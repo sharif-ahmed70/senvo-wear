@@ -22,6 +22,7 @@
     "format:check": "prettier . --check",
     "clean": "node scripts/clean-workspace.mjs",
     "boundary:check": "node scripts/check-boundaries.mjs",
+    "verify:migration-encoding": "node scripts/verify-migration-encoding.mjs",
     "db:generate": "turbo db:generate",
     "db:validate": "turbo db:validate",
     "db:migrate:create": "pnpm --filter @senvo/database db:migrate:create",

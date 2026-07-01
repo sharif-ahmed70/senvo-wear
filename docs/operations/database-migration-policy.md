@@ -37,3 +37,5 @@ Manual check constraints:
 - PostgreSQL check constraints that Prisma cannot fully model must use stable explicit names.
 - Migration review must verify those constraints remain present and are not silently dropped by future generated SQL.
 - Integration tests should assert manually reviewed check constraints exist and reject invalid rows.
+
+Migration SQL files must be UTF-8 without BOM. Run `pnpm verify:migration-encoding` before commit and byte-review generated SQL when a migration is created.

@@ -99,5 +99,8 @@ jobs:
       - name: Ensure test databases
         run: pnpm db:test:ensure
 
+      - name: Verify migration SQL encoding
+        run: pnpm verify:migration-encoding
+
       - name: Verify database migration and catalog integration
         run: pnpm verify:database
