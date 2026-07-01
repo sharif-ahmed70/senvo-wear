@@ -22,7 +22,10 @@ const baseEnvironment = {
 console.log(`Verifying database ${maskDatabaseUrl(testDatabaseUrl)}.`);
 
 const steps = [
-  ["Generate Prisma client", ["corepack", "pnpm", "db:generate"]],
+  [
+    "Prepare database integration dependencies",
+    ["corepack", "pnpm", "prepare:database-integration"],
+  ],
   ["Apply migrations", ["corepack", "pnpm", "db:test:migrate"]],
   ["Migration status", ["corepack", "pnpm", "db:test:status"]],
   [
