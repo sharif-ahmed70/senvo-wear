@@ -153,6 +153,61 @@ const hexValueSchema = z
   .regex(/^#[0-9A-Fa-f]{6}$/, "Hex values must use #RRGGBB format.")
   .nullable()
   .optional();
+const optionalTextSchema = (maxLength: number) =>
+  z.string().trim().min(1).max(maxLength).nullable().optional();
+const countryCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{2}$/, "Country codes must use two letters.")
+  .optional();
+const timezoneSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?$/,
+    "Timezone must be an IANA-style timezone.",
+  )
+  .optional();
+const emailSchema = z.string().trim().email().nullable().optional();
+const phoneSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[+0-9() .-]+$/,
+    "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+  )
+  .max(40)
+  .nullable()
+  .optional();
+const isoTimestampSchema = z.string().datetime({ offset: true });
+
+export const branchStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
+export const branchTypeSchema = z.enum([
+  "SHOWROOM",
+  "WAREHOUSE",
+  "OFFICE",
+  "FULFILMENT",
+  "HYBRID",
+]);
+export const stockLocationStatusSchema = z.enum([
+  "ACTIVE",
+  "INACTIVE",
+  "ARCHIVED",
+]);
+export const stockLocationTypeSchema = z.enum([
+  "WAREHOUSE",
+  "SHOWROOM",
+  "QC_HOLD",
+  "DAMAGE_HOLD",
+  "RETURN_HOLD",
+  "TRANSIT",
+  "OTHER",
+]);
+export const posCounterStatusSchema = z.enum([
+  "ACTIVE",
+  "INACTIVE",
+  "ARCHIVED",
+]);
 
 export const createOrganizationInputSchema = z.object({
   code: codeSchema,
@@ -213,6 +268,41 @@ export const createProductVariantInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+export const createBranchInputSchema = z.object({
+  addressLine1: optionalTextSchema(240),
+  addressLine2: optionalTextSchema(240),
+  city: optionalTextSchema(120),
+  code: codeSchema,
+  countryCode: countryCodeSchema,
+  district: optionalTextSchema(120),
+  email: emailSchema,
+  name: displayNameSchema,
+  organizationId: idSchema,
+  phone: phoneSchema,
+  postalCode: optionalTextSchema(120),
+  status: branchStatusSchema.optional(),
+  timezone: timezoneSchema,
+  type: branchTypeSchema.optional(),
+});
+
+export const createStockLocationInputSchema = z.object({
+  branchId: idSchema,
+  code: codeSchema,
+  isSellable: z.boolean().optional(),
+  name: displayNameSchema,
+  organizationId: idSchema,
+  status: stockLocationStatusSchema.optional(),
+  type: stockLocationTypeSchema.optional(),
+});
+
+export const createPosCounterInputSchema = z.object({
+  branchId: idSchema,
+  code: codeSchema,
+  name: displayNameSchema,
+  organizationId: idSchema,
+  status: posCounterStatusSchema.optional(),
+});
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -229,6 +319,13 @@ export type CreateProductInputContract = z.infer<
 >;
 export type CreateProductVariantInputContract = z.infer<
   typeof createProductVariantInputSchema
+>;
+export type CreateBranchInputContract = z.infer<typeof createBranchInputSchema>;
+export type CreateStockLocationInputContract = z.infer<
+  typeof createStockLocationInputSchema
+>;
+export type CreatePosCounterInputContract = z.infer<
+  typeof createPosCounterInputSchema
 >;
 
 export type CatalogRecordContract = {
@@ -295,3 +392,82 @@ export type ProductVariantContract = CatalogRecordContract & {
   sku: string;
   status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
 };
+
+export type BranchContract = CatalogRecordContract & {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  code: string;
+  countryCode: string;
+  district: string | null;
+  email: string | null;
+  name: string;
+  organizationId: string;
+  phone: string | null;
+  postalCode: string | null;
+  status: z.infer<typeof branchStatusSchema>;
+  timezone: string;
+  type: z.infer<typeof branchTypeSchema>;
+};
+
+export type StockLocationContract = CatalogRecordContract & {
+  branchId: string;
+  code: string;
+  isSellable: boolean;
+  name: string;
+  organizationId: string;
+  status: z.infer<typeof stockLocationStatusSchema>;
+  type: z.infer<typeof stockLocationTypeSchema>;
+};
+
+export type PosCounterContract = CatalogRecordContract & {
+  branchId: string;
+  code: string;
+  name: string;
+  organizationId: string;
+  status: z.infer<typeof posCounterStatusSchema>;
+};
+
+export const branchContractSchema = z.object({
+  addressLine1: z.string().nullable(),
+  addressLine2: z.string().nullable(),
+  city: z.string().nullable(),
+  code: z.string(),
+  countryCode: z.string(),
+  createdAt: isoTimestampSchema,
+  district: z.string().nullable(),
+  email: z.string().nullable(),
+  id: idSchema,
+  name: z.string(),
+  organizationId: idSchema,
+  phone: z.string().nullable(),
+  postalCode: z.string().nullable(),
+  status: branchStatusSchema,
+  timezone: z.string(),
+  type: branchTypeSchema,
+  updatedAt: isoTimestampSchema,
+});
+
+export const stockLocationContractSchema = z.object({
+  branchId: idSchema,
+  code: z.string(),
+  createdAt: isoTimestampSchema,
+  id: idSchema,
+  isSellable: z.boolean(),
+  name: z.string(),
+  organizationId: idSchema,
+  status: stockLocationStatusSchema,
+  type: stockLocationTypeSchema,
+  updatedAt: isoTimestampSchema,
+});
+
+export const posCounterContractSchema = z.object({
+  branchId: idSchema,
+  code: z.string(),
+  createdAt: isoTimestampSchema,
+  id: idSchema,
+  name: z.string(),
+  organizationId: idSchema,
+  status: posCounterStatusSchema,
+  updatedAt: isoTimestampSchema,
+});

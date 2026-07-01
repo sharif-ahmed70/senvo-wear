@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
+  branchContractSchema,
+  createBranchInputSchema,
   createColorInputSchema,
+  createPosCounterInputSchema,
   createProductVariantInputSchema,
+  createStockLocationInputSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
@@ -61,5 +65,63 @@ describe("API contracts", () => {
         sku: "bad sku",
       }).success,
     ).toBe(false);
+  });
+
+  it("validates organization operation creation inputs without Prisma types", () => {
+    expect(
+      createBranchInputSchema.parse({
+        code: "main-01",
+        countryCode: "BD",
+        email: "ops@senvo.test",
+        name: "Main Showroom",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        phone: "+880 1700-000000",
+        timezone: "Asia/Dhaka",
+        type: "SHOWROOM",
+      }),
+    ).toMatchObject({ code: "main-01" });
+
+    expect(
+      createStockLocationInputSchema.safeParse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        code: "bad code",
+        name: "QC Hold",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        type: "QC_HOLD",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createPosCounterInputSchema.safeParse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        code: "COUNTER-1",
+        name: "",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates organization operation output contracts with ISO timestamps", () => {
+    expect(
+      branchContractSchema.parse({
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        code: "MAIN",
+        countryCode: "BD",
+        createdAt: "2026-07-02T00:00:00.000Z",
+        district: null,
+        email: null,
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "Main Showroom",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        phone: null,
+        postalCode: null,
+        status: "ACTIVE",
+        timezone: "Asia/Dhaka",
+        type: "SHOWROOM",
+        updatedAt: "2026-07-02T00:00:00.000Z",
+      }),
+    ).toMatchObject({ code: "MAIN" });
   });
 });

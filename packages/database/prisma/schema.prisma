@@ -12,6 +12,42 @@ enum OrganizationStatus {
   INACTIVE
 }
 
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum BranchType {
+  SHOWROOM
+  WAREHOUSE
+  OFFICE
+  FULFILMENT
+  HYBRID
+}
+
+enum StockLocationStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum StockLocationType {
+  WAREHOUSE
+  SHOWROOM
+  QC_HOLD
+  DAMAGE_HOLD
+  RETURN_HOLD
+  TRANSIT
+  OTHER
+}
+
+enum PosCounterStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 enum CatalogItemStatus {
   ACTIVE
   INACTIVE
@@ -31,21 +67,95 @@ enum ProductVariantStatus {
 }
 
 model Organization {
-  id          String        @id @default(uuid()) @db.Uuid
-  name        String        @db.VarChar(160)
-  code        String        @unique @db.VarChar(64)
-  status      OrganizationStatus @default(ACTIVE)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id        String             @id @default(uuid()) @db.Uuid
+  name      String             @db.VarChar(160)
+  code      String             @unique @db.VarChar(64)
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  categories  Category[]
-  collections Collection[]
-  colors      Color[]
-  products    Product[]
-  sizes       Size[]
-  variants    ProductVariant[]
+  branches       Branch[]
+  categories     Category[]
+  collections    Collection[]
+  colors         Color[]
+  posCounters    PosCounter[]
+  products       Product[]
+  sizes          Size[]
+  stockLocations StockLocation[]
+  variants       ProductVariant[]
 
   @@map("organizations")
+}
+
+model Branch {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String       @db.VarChar(160)
+  code           String       @db.VarChar(64)
+  status         BranchStatus @default(ACTIVE)
+  type           BranchType   @default(SHOWROOM)
+  phone          String?      @db.VarChar(40)
+  email          String?      @db.VarChar(254)
+  addressLine1   String?      @map("address_line_1") @db.VarChar(240)
+  addressLine2   String?      @map("address_line_2") @db.VarChar(240)
+  city           String?      @db.VarChar(120)
+  district       String?      @db.VarChar(120)
+  postalCode     String?      @map("postal_code") @db.VarChar(120)
+  countryCode    String       @default("BD") @map("country_code") @db.VarChar(2)
+  timezone       String       @default("Asia/Dhaka") @db.VarChar(80)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  posCounters    PosCounter[]
+  stockLocations StockLocation[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@map("branches")
+}
+
+model StockLocation {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  branchId       String              @map("branch_id") @db.Uuid
+  name           String              @db.VarChar(160)
+  code           String              @db.VarChar(64)
+  type           StockLocationType   @default(WAREHOUSE)
+  status         StockLocationStatus @default(ACTIVE)
+  isSellable     Boolean             @default(false) @map("is_sellable")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  branch       Branch       @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, branchId])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@map("stock_locations")
+}
+
+model PosCounter {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  branchId       String           @map("branch_id") @db.Uuid
+  name           String           @db.VarChar(160)
+  code           String           @db.VarChar(64)
+  status         PosCounterStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  branch       Branch       @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, branchId])
+  @@index([organizationId, status])
+  @@map("pos_counters")
 }
 
 model Category {
@@ -186,8 +296,8 @@ model ProductCollection {
   collectionId   String   @map("collection_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  product      Product    @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
-  collection   Collection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  product    Product    @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  collection Collection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([productId, collectionId])
   @@index([organizationId, collectionId])

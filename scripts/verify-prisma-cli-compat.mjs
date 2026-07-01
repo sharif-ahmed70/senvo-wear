@@ -10,6 +10,10 @@ const migrationReviewDoc = readFileSync(
   "docs/operations/first-business-migration-review.md",
   "utf8",
 );
+const secondMigrationReviewDoc = readFileSync(
+  "docs/operations/second-business-migration-review.md",
+  "utf8",
+);
 
 const commandOwners = [
   ["root package.json", packageJson.scripts ?? {}],
@@ -78,6 +82,12 @@ const compatibilityChecks = [
       "corepack pnpm --filter @senvo/database exec prisma migrate diff --help",
     flags: ["--from-empty", "--to-schema", "--script"],
   },
+  {
+    name: "docs second business migration review",
+    helpCommand:
+      "corepack pnpm --filter @senvo/database exec prisma migrate diff --help",
+    flags: ["--from-schema", "--to-schema", "--script"],
+  },
 ];
 
 for (const [owner, scripts] of commandOwners) {
@@ -98,11 +108,19 @@ for (const [owner, scripts] of commandOwners) {
 }
 
 for (const prohibitedFlag of prohibitedFlags) {
-  if (migrationReviewDoc.includes(prohibitedFlag)) {
-    console.error(
-      `docs/operations/first-business-migration-review.md uses unsupported Prisma 7 option: ${prohibitedFlag}`,
-    );
-    process.exit(1);
+  for (const [documentPath, documentContent] of [
+    ["docs/operations/first-business-migration-review.md", migrationReviewDoc],
+    [
+      "docs/operations/second-business-migration-review.md",
+      secondMigrationReviewDoc,
+    ],
+  ]) {
+    if (documentContent.includes(prohibitedFlag)) {
+      console.error(
+        `${documentPath} uses unsupported Prisma 7 option: ${prohibitedFlag}`,
+      );
+      process.exit(1);
+    }
   }
 }
 

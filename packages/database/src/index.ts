@@ -34,3 +34,8 @@ export {
   PrismaProductVariantRepository,
   PrismaSizeRepository,
 } from "./catalog/repositories.js";
+export {
+  PrismaBranchRepository,
+  PrismaPosCounterRepository,
+  PrismaStockLocationRepository,
+} from "./organization/repositories.js";
