@@ -23,7 +23,7 @@
     "clean": "node scripts/clean-workspace.mjs",
     "boundary:check": "node scripts/check-boundaries.mjs",
     "verify:migration-encoding": "node scripts/verify-migration-encoding.mjs",
-    "prepare:database-integration": "pnpm db:generate && pnpm exec turbo run build --filter=@senvo/domain",
+    "prepare:database-integration": "pnpm db:generate && pnpm --filter @senvo/domain build",
     "verify:integration-package-resolution": "node scripts/verify-integration-package-resolution.mjs",
     "db:generate": "turbo db:generate",
     "db:validate": "turbo db:validate",
