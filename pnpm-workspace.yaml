@@ -1,0 +1,19 @@
+packages:
+  - apps/*
+  - packages/*
+overrides:
+  "@hono/node-server": 1.19.13
+  postcss: 8.5.16
+allowBuilds:
+  "@prisma/engines": true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - "@turbo/darwin-64@2.10.2"
+  - "@turbo/darwin-arm64@2.10.2"
+  - "@turbo/linux-64@2.10.2"
+  - "@turbo/linux-arm64@2.10.2"
+  - "@turbo/windows-64@2.10.2"
+  - "@turbo/windows-arm64@2.10.2"
+  - turbo@2.10.2

@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CatalogItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ProductVariantStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model Organization {
+  id          String        @id @default(uuid()) @db.Uuid
+  name        String        @db.VarChar(160)
+  code        String        @unique @db.VarChar(64)
+  status      OrganizationStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  categories  Category[]
+  collections Collection[]
+  colors      Color[]
+  products    Product[]
+  sizes       Size[]
+  variants    ProductVariant[]
+
+  @@map("organizations")
+}
+
+model Category {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  name           String            @db.VarChar(160)
+  slug           String            @db.VarChar(120)
+  description    String?           @db.VarChar(2000)
+  parentId       String?           @map("parent_id") @db.Uuid
+  status         CatalogItemStatus @default(ACTIVE)
+  sortOrder      Int               @default(0) @map("sort_order")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  parent       Category?    @relation("CategoryHierarchy", fields: [parentId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  children     Category[]   @relation("CategoryHierarchy")
+  products     Product[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, parentId])
+  @@index([organizationId, status])
+  @@map("categories")
+}
+
+model Collection {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  name           String            @db.VarChar(160)
+  slug           String            @db.VarChar(120)
+  description    String?           @db.VarChar(2000)
+  status         CatalogItemStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  products     ProductCollection[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+  @@map("collections")
+}
+
+model Color {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  name           String            @db.VarChar(160)
+  normalizedName String            @map("normalized_name") @db.VarChar(160)
+  code           String            @db.VarChar(64)
+  hexValue       String?           @map("hex_value") @db.VarChar(7)
+  status         CatalogItemStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  variants     ProductVariant[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, status])
+  @@map("colors")
+}
+
+model Size {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  name           String            @db.VarChar(160)
+  code           String            @db.VarChar(64)
+  sortOrder      Int               @default(0) @map("sort_order")
+  status         CatalogItemStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  variants     ProductVariant[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@index([organizationId, sortOrder])
+  @@index([organizationId, status])
+  @@map("sizes")
+}
+
+model Product {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  categoryId     String        @map("category_id") @db.Uuid
+  name           String        @db.VarChar(160)
+  slug           String        @db.VarChar(120)
+  productCode    String        @map("product_code") @db.VarChar(64)
+  description    String?       @db.VarChar(2000)
+  status         ProductStatus @default(DRAFT)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  category     Category            @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  collections  ProductCollection[]
+  variants     ProductVariant[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, productCode])
+  @@unique([organizationId, slug])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, status])
+  @@map("products")
+}
+
+model ProductVariant {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  productId      String               @map("product_id") @db.Uuid
+  colorId        String               @map("color_id") @db.Uuid
+  sizeId         String               @map("size_id") @db.Uuid
+  sku            String               @db.VarChar(80)
+  status         ProductVariantStatus @default(ACTIVE)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  product      Product      @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  color        Color        @relation(fields: [colorId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  size         Size         @relation(fields: [sizeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, sku])
+  @@unique([productId, colorId, sizeId])
+  @@index([organizationId, productId])
+  @@index([organizationId, status])
+  @@map("product_variants")
+}
+
+model ProductCollection {
+  organizationId String   @map("organization_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  collectionId   String   @map("collection_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product      Product    @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  collection   Collection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([productId, collectionId])
+  @@index([organizationId, collectionId])
+  @@map("product_collections")
+}

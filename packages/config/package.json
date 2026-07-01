@@ -1,0 +1,13 @@
+{
+  "name": "@senvo/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/next": "./eslint/next.js",
+    "./tsconfig/base": "./tsconfig/base.json",
+    "./tsconfig/next": "./tsconfig/next.json",
+    "./vitest/base": "./vitest/base.ts"
+  }
+}

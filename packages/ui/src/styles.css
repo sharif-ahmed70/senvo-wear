@@ -1,0 +1,104 @@
+:root {
+  --senvo-background: #f8f7f3;
+  --senvo-foreground: #171717;
+  --senvo-primary: #165c4a;
+  --senvo-primary-foreground: #ffffff;
+  --senvo-muted: #6f766f;
+  --senvo-muted-surface: #eeece4;
+  --senvo-border: #d9d5c7;
+  --senvo-destructive: #b42318;
+  --senvo-radius: 8px;
+  --senvo-space-1: 0.25rem;
+  --senvo-space-2: 0.5rem;
+  --senvo-space-3: 0.75rem;
+  --senvo-space-4: 1rem;
+  --senvo-space-6: 1.5rem;
+  --senvo-space-8: 2rem;
+  --senvo-space-12: 3rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--senvo-background);
+  color: var(--senvo-foreground);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  margin: 0;
+}
+
+.senvo-shell {
+  align-items: center;
+  display: flex;
+  min-height: 100svh;
+  padding: var(--senvo-space-6);
+}
+
+.senvo-shell__inner {
+  margin: 0 auto;
+  max-width: 760px;
+  width: 100%;
+}
+
+.senvo-shell__eyebrow {
+  color: var(--senvo-muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 var(--senvo-space-2);
+  text-transform: uppercase;
+}
+
+.senvo-shell__title {
+  font-size: clamp(2.25rem, 7vw, 4.5rem);
+  line-height: 1;
+  margin: 0 0 var(--senvo-space-6);
+}
+
+.senvo-panel {
+  background: #ffffff;
+  border: 1px solid var(--senvo-border);
+  border-radius: var(--senvo-radius);
+  padding: var(--senvo-space-6);
+}
+
+.senvo-panel p {
+  color: var(--senvo-muted);
+  font-size: 1rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.senvo-button {
+  border: 1px solid transparent;
+  border-radius: var(--senvo-radius);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 var(--senvo-space-4);
+}
+
+.senvo-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--senvo-primary), white 45%);
+  outline-offset: 2px;
+}
+
+.senvo-button--primary {
+  background: var(--senvo-primary);
+  color: var(--senvo-primary-foreground);
+}
+
+.senvo-button--secondary {
+  background: var(--senvo-muted-surface);
+  border-color: var(--senvo-border);
+  color: var(--senvo-foreground);
+}

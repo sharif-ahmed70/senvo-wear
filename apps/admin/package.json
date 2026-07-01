@@ -1,0 +1,27 @@
+{
+  "name": "@senvo/admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "lint": "eslint app next.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --passWithNoTests",
+    "test:run": "vitest run --passWithNoTests",
+    "clean": "node -e \"fs.rmSync('.next',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@senvo/ui": "workspace:*",
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  }
+}

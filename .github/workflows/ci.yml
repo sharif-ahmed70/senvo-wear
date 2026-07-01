@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Boundary check
+        run: pnpm boundary:check
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test:run
+
+      - name: Prisma validate
+        run: pnpm db:validate
+
+      - name: Prisma generate
+        run: pnpm db:generate
+
+      - name: Build
+        run: pnpm build
+
+      - name: Clean build
+        run: pnpm clean && pnpm db:generate && pnpm build
+
+      - name: Audit
+        run: pnpm audit --audit-level moderate
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: senvo_wear_test
+          POSTGRES_PASSWORD: senvo_test_password
+          POSTGRES_USER: senvo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U senvo_test -d senvo_wear_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      APP_ENV: test
+      TEST_ADMIN_DATABASE_URL: postgresql://senvo_test:senvo_test_password@localhost:5432/postgres
+      TEST_DATABASE_URL: postgresql://senvo_test:senvo_test_password@localhost:5432/senvo_wear_test
+      TEST_SHADOW_DATABASE_URL: postgresql://senvo_test:senvo_test_password@localhost:5432/senvo_wear_shadow_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure test databases
+        run: pnpm db:test:ensure
+
+      - name: Verify database migration and catalog integration
+        run: pnpm verify:database
