@@ -8,5 +8,6 @@ export default defineConfig({
   schema: "./prisma/schema.prisma",
   datasource: {
     url: databaseUrl,
+    shadowDatabaseUrl: process.env.TEST_SHADOW_DATABASE_URL,
   },
 });

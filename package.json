@@ -36,7 +36,7 @@
     "db:test:migrate": "node scripts/run-test-database-command.mjs corepack pnpm --filter @senvo/database exec prisma migrate deploy",
     "db:test:status": "node scripts/run-test-database-command.mjs corepack pnpm --filter @senvo/database exec prisma migrate status",
     "db:test:reset": "node scripts/run-test-database-command.mjs corepack pnpm --filter @senvo/database exec prisma migrate reset --force",
-    "db:test:drift": "node scripts/run-test-database-command.mjs --shadow corepack pnpm --filter @senvo/database exec prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --shadow-database-url $TEST_SHADOW_DATABASE_URL --exit-code",
+    "db:test:drift": "node scripts/run-test-drift-check.mjs",
     "test:integration": "node scripts/run-test-database-command.mjs corepack pnpm --filter @senvo/database test:integration",
     "test:catalog:integration": "pnpm test:integration",
     "verify:database": "node scripts/verify-database.mjs",
