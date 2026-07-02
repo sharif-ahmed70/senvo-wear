@@ -57,30 +57,36 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
   ): Promise<InventoryMovement> {
     try {
       return mapMovement(
-        await this.prisma.inventoryMovement.create({
-          data: {
-            destinationLocationId: record.destinationLocationId,
-            idempotencyKey: record.idempotencyKey,
-            lines: {
-              create: record.lines.map((line, index) => ({
-                lineNumber: index + 1,
-                note: line.note,
-                organizationId: record.organizationId,
-                productVariantId: line.productVariantId,
-                quantity: line.quantity,
-              })),
+        await this.prisma.$transaction(async (transaction) => {
+          const movement = await transaction.inventoryMovement.create({
+            data: {
+              destinationLocationId: record.destinationLocationId,
+              idempotencyKey: record.idempotencyKey,
+              movementNumber: record.movementNumber,
+              note: record.note,
+              occurredAt: record.occurredAt,
+              organizationId: record.organizationId,
+              payloadSignature,
+              referenceId: record.referenceId,
+              referenceType: record.referenceType,
+              sourceLocationId: record.sourceLocationId,
+              type: record.type,
             },
-            movementNumber: record.movementNumber,
-            note: record.note,
-            occurredAt: record.occurredAt,
-            organizationId: record.organizationId,
-            payloadSignature,
-            referenceId: record.referenceId,
-            referenceType: record.referenceType,
-            sourceLocationId: record.sourceLocationId,
-            type: record.type,
-          },
-          include: movementInclude,
+          });
+          await transaction.inventoryMovementLine.createMany({
+            data: record.lines.map((line, index) => ({
+              lineNumber: index + 1,
+              movementId: movement.id,
+              note: line.note,
+              organizationId: record.organizationId,
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+            })),
+          });
+          return transaction.inventoryMovement.findUniqueOrThrow({
+            include: movementInclude,
+            where: { id: movement.id },
+          });
         }),
       );
     } catch (error) {

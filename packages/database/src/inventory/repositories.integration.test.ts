@@ -545,11 +545,12 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       sourceLocationId?: string;
     },
   ) {
+    const defaultMovementNumber = type.replaceAll("_", "-");
     const movement = await createInventoryMovement(movements, {
       destinationLocationId: input.destinationLocationId,
-      idempotencyKey: `${input.movementNumber ?? type}-key`,
+      idempotencyKey: `${input.movementNumber ?? defaultMovementNumber}-key`,
       lines: [{ productVariantId: base.variant.id, quantity: input.quantity }],
-      movementNumber: input.movementNumber ?? type,
+      movementNumber: input.movementNumber ?? defaultMovementNumber,
       organizationId: base.organization.id,
       sourceLocationId: input.sourceLocationId,
       type,
