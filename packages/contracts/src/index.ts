@@ -181,13 +181,43 @@ const phoneSchema = z
   .optional();
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const expectedVersionSchema = z.number().int().positive();
+const positiveInventoryQuantitySchema = z.number().int().positive();
+const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/);
 const cursorSchema = z
   .string()
   .max(256)
   .regex(/^v1\|[^|]+\|[0-9a-fA-F-]{36}$/, "Cursor format is invalid.");
+const movementCursorSchema = z
+  .string()
+  .max(300)
+  .regex(
+    /^movement-v1\|[^|]+\|[0-9a-fA-F-]{36}$/,
+    "Movement cursor format is invalid.",
+  );
+const balanceCursorSchema = z
+  .string()
+  .max(64)
+  .regex(/^balance-v1\|[0-9a-fA-F-]{36}$/, "Balance cursor format is invalid.");
 const cursorPageRequestSchema = z
   .object({
     cursor: cursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
+const movementCursorPageRequestSchema = z
+  .object({
+    cursor: movementCursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
+const balanceCursorPageRequestSchema = z
+  .object({
+    cursor: balanceCursorSchema.optional(),
     pageSize: z.number().int().positive().max(100).optional(),
   })
   .strict();
@@ -219,6 +249,23 @@ export const posCounterStatusSchema = z.enum([
   "INACTIVE",
   "ARCHIVED",
 ]);
+export const inventoryMovementTypeSchema = z.enum([
+  "OPENING",
+  "RECEIPT",
+  "ISSUE",
+  "TRANSFER",
+  "ADJUSTMENT_IN",
+  "ADJUSTMENT_OUT",
+]);
+export const inventoryMovementStatusSchema = z.enum(["DRAFT", "POSTED"]);
+
+export const inventoryMovementLineInputSchema = z
+  .object({
+    note: optionalTextSchema(500),
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+  })
+  .strict();
 
 export const createOrganizationInputSchema = z.object({
   code: codeSchema,
@@ -313,6 +360,37 @@ export const createPosCounterInputSchema = z.object({
   organizationId: idSchema,
   status: posCounterStatusSchema.optional(),
 });
+
+export const createInventoryMovementInputSchema = z
+  .object({
+    destinationLocationId: idSchema.nullable().optional(),
+    idempotencyKey: idempotencyKeySchema,
+    lines: z.array(inventoryMovementLineInputSchema).min(1).max(500),
+    movementNumber: codeSchema,
+    note: optionalTextSchema(1000),
+    occurredAt: isoTimestampSchema.optional(),
+    organizationId: idSchema,
+    referenceId: optionalTextSchema(120),
+    referenceType: optionalTextSchema(80),
+    sourceLocationId: idSchema.nullable().optional(),
+    type: inventoryMovementTypeSchema,
+  })
+  .strict();
+
+export const replaceDraftMovementLinesInputSchema = z
+  .object({
+    lines: z.array(inventoryMovementLineInputSchema).min(1).max(500),
+    movementId: idSchema,
+    organizationId: idSchema,
+  })
+  .strict();
+
+export const postInventoryMovementInputSchema = z
+  .object({
+    movementId: idSchema,
+    organizationId: idSchema,
+  })
+  .strict();
 
 export const updateBranchMetadataInputSchema = z
   .object({
@@ -430,6 +508,42 @@ export const listPosCountersQuerySchema = cursorPageRequestSchema
   })
   .strict();
 
+export const getInventoryMovementQuerySchema = z
+  .object({
+    movementId: idSchema,
+    organizationId: idSchema,
+  })
+  .strict();
+
+export const listInventoryMovementsQuerySchema = movementCursorPageRequestSchema
+  .extend({
+    destinationLocationId: idSchema.optional(),
+    occurredFrom: isoTimestampSchema.optional(),
+    occurredTo: isoTimestampSchema.optional(),
+    organizationId: idSchema,
+    sourceLocationId: idSchema.optional(),
+    status: inventoryMovementStatusSchema.optional(),
+    type: inventoryMovementTypeSchema.optional(),
+  })
+  .strict();
+
+export const getOnHandBalanceQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const listLocationBalancesQuerySchema = balanceCursorPageRequestSchema
+  .extend({
+    locationId: idSchema,
+    onlyPositive: z.boolean().optional(),
+    organizationId: idSchema,
+    productVariantId: idSchema.optional(),
+  })
+  .strict();
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -453,6 +567,15 @@ export type CreateStockLocationInputContract = z.infer<
 >;
 export type CreatePosCounterInputContract = z.infer<
   typeof createPosCounterInputSchema
+>;
+export type CreateInventoryMovementInputContract = z.infer<
+  typeof createInventoryMovementInputSchema
+>;
+export type ReplaceDraftMovementLinesInputContract = z.infer<
+  typeof replaceDraftMovementLinesInputSchema
+>;
+export type PostInventoryMovementInputContract = z.infer<
+  typeof postInventoryMovementInputSchema
 >;
 export type UpdateBranchMetadataInputContract = z.infer<
   typeof updateBranchMetadataInputSchema
@@ -485,6 +608,18 @@ export type GetPosCounterQueryContract = z.infer<
 >;
 export type ListPosCountersQueryContract = z.infer<
   typeof listPosCountersQuerySchema
+>;
+export type GetInventoryMovementQueryContract = z.infer<
+  typeof getInventoryMovementQuerySchema
+>;
+export type ListInventoryMovementsQueryContract = z.infer<
+  typeof listInventoryMovementsQuerySchema
+>;
+export type GetOnHandBalanceQueryContract = z.infer<
+  typeof getOnHandBalanceQuerySchema
+>;
+export type ListLocationBalancesQueryContract = z.infer<
+  typeof listLocationBalancesQuerySchema
 >;
 
 export type CatalogRecordContract = {
@@ -591,6 +726,41 @@ export type PosCounterContract = CatalogRecordContract & {
   version: number;
 };
 
+export type InventoryMovementLineContract = {
+  createdAt: string;
+  id: string;
+  lineNumber: number;
+  movementId: string;
+  note: string | null;
+  organizationId: string;
+  productVariantId: string;
+  quantity: number;
+};
+
+export type InventoryMovementContract = CatalogRecordContract & {
+  destinationLocationId: string | null;
+  idempotencyKey: string;
+  lines: InventoryMovementLineContract[];
+  movementNumber: string;
+  note: string | null;
+  occurredAt: string;
+  organizationId: string;
+  postedAt: string | null;
+  referenceId: string | null;
+  referenceType: string | null;
+  sourceLocationId: string | null;
+  status: z.infer<typeof inventoryMovementStatusSchema>;
+  type: z.infer<typeof inventoryMovementTypeSchema>;
+  version: number;
+};
+
+export type OnHandBalanceContract = {
+  organizationId: string;
+  productVariantId: string;
+  quantity: number;
+  stockLocationId: string;
+};
+
 export const branchContractSchema = z.object({
   addressLine1: z.string().nullable(),
   addressLine2: z.string().nullable(),
@@ -638,12 +808,78 @@ export const posCounterContractSchema = z.object({
   version: expectedVersionSchema,
 });
 
+export const inventoryMovementLineContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    lineNumber: expectedVersionSchema,
+    movementId: idSchema,
+    note: z.string().nullable(),
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+  })
+  .strict();
+
+export const inventoryMovementContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    destinationLocationId: idSchema.nullable(),
+    id: idSchema,
+    idempotencyKey: idempotencyKeySchema,
+    lines: z.array(inventoryMovementLineContractSchema),
+    movementNumber: z.string(),
+    note: z.string().nullable(),
+    occurredAt: isoTimestampSchema,
+    organizationId: idSchema,
+    postedAt: isoTimestampSchema.nullable(),
+    referenceId: z.string().nullable(),
+    referenceType: z.string().nullable(),
+    sourceLocationId: idSchema.nullable(),
+    status: inventoryMovementStatusSchema,
+    type: inventoryMovementTypeSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const onHandBalanceContractSchema = z
+  .object({
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    quantity: z.number().int(),
+    stockLocationId: idSchema,
+  })
+  .strict();
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
       hasMore: z.boolean(),
       items: z.array(itemSchema),
       nextCursor: cursorSchema.nullable(),
+    })
+    .strict();
+
+export const movementCursorPageResultSchema = <T extends z.ZodTypeAny>(
+  itemSchema: T,
+) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: movementCursorSchema.nullable(),
+    })
+    .strict();
+
+export const balanceCursorPageResultSchema = <T extends z.ZodTypeAny>(
+  itemSchema: T,
+) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: balanceCursorSchema.nullable(),
     })
     .strict();
 
@@ -654,4 +890,9 @@ export const stockLocationPageContractSchema = cursorPageResultSchema(
 );
 export const posCounterPageContractSchema = cursorPageResultSchema(
   posCounterContractSchema,
+);
+export const inventoryMovementPageContractSchema =
+  movementCursorPageResultSchema(inventoryMovementContractSchema);
+export const locationBalancePageContractSchema = balanceCursorPageResultSchema(
+  onHandBalanceContractSchema,
 );

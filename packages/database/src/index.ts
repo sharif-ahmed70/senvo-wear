@@ -39,3 +39,7 @@ export {
   PrismaPosCounterRepository,
   PrismaStockLocationRepository,
 } from "./organization/repositories.js";
+export {
+  PrismaInventoryBalanceQueryRepository,
+  PrismaInventoryMovementRepository,
+} from "./inventory/repositories.js";

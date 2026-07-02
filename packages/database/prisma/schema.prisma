@@ -66,6 +66,20 @@ enum ProductVariantStatus {
   ARCHIVED
 }
 
+enum InventoryMovementType {
+  OPENING
+  RECEIPT
+  ISSUE
+  TRANSFER
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+enum InventoryMovementStatus {
+  DRAFT
+  POSTED
+}
+
 model Organization {
   id        String             @id @default(uuid()) @db.Uuid
   name      String             @db.VarChar(160)
@@ -83,6 +97,8 @@ model Organization {
   sizes          Size[]
   stockLocations StockLocation[]
   variants       ProductVariant[]
+  inventoryMovements InventoryMovement[]
+  inventoryMovementLines InventoryMovementLine[]
 
   @@map("organizations")
 }
@@ -133,7 +149,10 @@ model StockLocation {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   branch       Branch       @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  sourceInventoryMovements InventoryMovement[] @relation("InventoryMovementSourceLocation")
+  destinationInventoryMovements InventoryMovement[] @relation("InventoryMovementDestinationLocation")
 
+  @@unique([id, organizationId])
   @@unique([organizationId, code])
   @@index([organizationId, branchId])
   @@index([organizationId, status])
@@ -285,7 +304,9 @@ model ProductVariant {
   product      Product      @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   color        Color        @relation(fields: [colorId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   size         Size         @relation(fields: [sizeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  inventoryMovementLines InventoryMovementLine[]
 
+  @@unique([id, organizationId])
   @@unique([organizationId, sku])
   @@unique([productId, colorId, sizeId])
   @@index([organizationId, productId])
@@ -305,4 +326,59 @@ model ProductCollection {
   @@id([productId, collectionId])
   @@index([organizationId, collectionId])
   @@map("product_collections")
+}
+
+model InventoryMovement {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  organizationId        String                  @map("organization_id") @db.Uuid
+  movementNumber        String                  @map("movement_number") @db.VarChar(64)
+  type                  InventoryMovementType
+  status                InventoryMovementStatus @default(DRAFT)
+  sourceLocationId      String?                 @map("source_location_id") @db.Uuid
+  destinationLocationId String?                 @map("destination_location_id") @db.Uuid
+  referenceType         String?                 @map("reference_type") @db.VarChar(80)
+  referenceId           String?                 @map("reference_id") @db.VarChar(120)
+  idempotencyKey        String                  @map("idempotency_key") @db.VarChar(128)
+  payloadSignature      String                  @map("payload_signature") @db.Text
+  occurredAt            DateTime                @map("occurred_at") @db.Timestamptz(6)
+  postedAt              DateTime?               @map("posted_at") @db.Timestamptz(6)
+  note                  String?                 @db.VarChar(1000)
+  version               Int                     @default(1)
+  createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sourceLocation      StockLocation?            @relation("InventoryMovementSourceLocation", fields: [sourceLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  destinationLocation StockLocation?            @relation("InventoryMovementDestinationLocation", fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  lines               InventoryMovementLine[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, movementNumber])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, occurredAt, id])
+  @@index([organizationId, type, occurredAt, id])
+  @@index([organizationId, sourceLocationId, occurredAt])
+  @@index([organizationId, destinationLocationId, occurredAt])
+  @@map("inventory_movements")
+}
+
+model InventoryMovementLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  movementId       String   @map("movement_id") @db.Uuid
+  productVariantId String   @map("product_variant_id") @db.Uuid
+  quantity         Int
+  lineNumber       Int      @map("line_number")
+  note             String?  @db.VarChar(500)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  movement       InventoryMovement @relation(fields: [movementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant    @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([movementId, productVariantId])
+  @@unique([movementId, lineNumber])
+  @@index([organizationId, productVariantId])
+  @@index([movementId])
+  @@map("inventory_movement_lines")
 }

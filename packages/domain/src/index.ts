@@ -54,6 +54,13 @@ export type {
   StockLocationStatus,
   StockLocationType,
 } from "./organization/domain/models.js";
+export type {
+  InventoryMovement,
+  InventoryMovementLine,
+  InventoryMovementStatus,
+  InventoryMovementType,
+  OnHandBalance,
+} from "./inventory/domain/models.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -96,6 +103,19 @@ export {
   listStockLocations,
   parseCursor,
 } from "./organization/application/read-use-cases.js";
+export {
+  createInventoryMovement,
+  encodeBalanceCursor,
+  encodeMovementCursor,
+  getInventoryMovementById,
+  getOnHandBalance,
+  listInventoryMovements,
+  listLocationBalances,
+  parseBalanceCursor,
+  parseMovementCursor,
+  postInventoryMovement,
+  replaceDraftMovementLines,
+} from "./inventory/application/movement-use-cases.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
@@ -117,6 +137,15 @@ export type {
   ListPosCountersInput,
   ListStockLocationsInput,
 } from "./organization/application/read-use-cases.js";
+export type {
+  CreateInventoryMovementInput,
+  GetInventoryMovementByIdInput,
+  GetOnHandBalanceInput,
+  ListInventoryMovementsInput,
+  ListLocationBalancesInput,
+  PostInventoryMovementInput,
+  ReplaceDraftMovementLinesInput,
+} from "./inventory/application/movement-use-cases.js";
 export type {
   CategoryRepository,
   CollectionRepository,
@@ -151,3 +180,15 @@ export type {
   StockLocationMetadataPatch,
   StockLocationRepository,
 } from "./organization/repositories/organization-repositories.js";
+export type {
+  CreateInventoryMovementRecord,
+  CursorPageRequest as InventoryCursorPageRequest,
+  CursorPageResult as InventoryCursorPageResult,
+  InventoryBalanceFilter,
+  InventoryBalanceQueryRepository,
+  InventoryMovementLineDraft,
+  InventoryMovementLineInput,
+  InventoryMovementListFilter,
+  InventoryMovementRepository,
+  ReplaceInventoryMovementLinesRecord,
+} from "./inventory/repositories/inventory-repositories.js";
