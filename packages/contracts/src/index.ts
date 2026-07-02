@@ -181,6 +181,16 @@ const phoneSchema = z
   .optional();
 const isoTimestampSchema = z.string().datetime({ offset: true });
 const expectedVersionSchema = z.number().int().positive();
+const cursorSchema = z
+  .string()
+  .max(256)
+  .regex(/^v1\|[^|]+\|[0-9a-fA-F-]{36}$/, "Cursor format is invalid.");
+const cursorPageRequestSchema = z
+  .object({
+    cursor: cursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
 
 export const branchStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
 export const branchTypeSchema = z.enum([
@@ -370,6 +380,56 @@ export const changePosCounterStatusInputSchema = z
   })
   .strict();
 
+export const getBranchQuerySchema = z
+  .object({
+    branchId: idSchema,
+    organizationId: idSchema,
+  })
+  .strict();
+
+export const listBranchesQuerySchema = cursorPageRequestSchema
+  .extend({
+    organizationId: idSchema,
+    search: z.string().trim().min(1).max(120).optional(),
+    status: branchStatusSchema.optional(),
+    type: branchTypeSchema.optional(),
+  })
+  .strict();
+
+export const getStockLocationQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const listStockLocationsQuerySchema = cursorPageRequestSchema
+  .extend({
+    branchId: idSchema.optional(),
+    isSellable: z.boolean().optional(),
+    organizationId: idSchema,
+    search: z.string().trim().min(1).max(120).optional(),
+    status: stockLocationStatusSchema.optional(),
+    type: stockLocationTypeSchema.optional(),
+  })
+  .strict();
+
+export const getPosCounterQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    posCounterId: idSchema,
+  })
+  .strict();
+
+export const listPosCountersQuerySchema = cursorPageRequestSchema
+  .extend({
+    branchId: idSchema.optional(),
+    organizationId: idSchema,
+    search: z.string().trim().min(1).max(120).optional(),
+    status: posCounterStatusSchema.optional(),
+  })
+  .strict();
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -411,6 +471,20 @@ export type UpdatePosCounterMetadataInputContract = z.infer<
 >;
 export type ChangePosCounterStatusInputContract = z.infer<
   typeof changePosCounterStatusInputSchema
+>;
+export type GetBranchQueryContract = z.infer<typeof getBranchQuerySchema>;
+export type ListBranchesQueryContract = z.infer<typeof listBranchesQuerySchema>;
+export type GetStockLocationQueryContract = z.infer<
+  typeof getStockLocationQuerySchema
+>;
+export type ListStockLocationsQueryContract = z.infer<
+  typeof listStockLocationsQuerySchema
+>;
+export type GetPosCounterQueryContract = z.infer<
+  typeof getPosCounterQuerySchema
+>;
+export type ListPosCountersQueryContract = z.infer<
+  typeof listPosCountersQuerySchema
 >;
 
 export type CatalogRecordContract = {
@@ -563,3 +637,21 @@ export const posCounterContractSchema = z.object({
   updatedAt: isoTimestampSchema,
   version: expectedVersionSchema,
 });
+
+export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: cursorSchema.nullable(),
+    })
+    .strict();
+
+export const branchPageContractSchema =
+  cursorPageResultSchema(branchContractSchema);
+export const stockLocationPageContractSchema = cursorPageResultSchema(
+  stockLocationContractSchema,
+);
+export const posCounterPageContractSchema = cursorPageResultSchema(
+  posCounterContractSchema,
+);

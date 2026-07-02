@@ -6,6 +6,10 @@ import {
   createOrganization,
   createPosCounter,
   createStockLocation,
+  getBranchById,
+  listBranches,
+  listPosCounters,
+  listStockLocations,
   updateBranchMetadata,
   updatePosCounterMetadata,
   updateStockLocationMetadata,
@@ -495,6 +499,221 @@ describeWithDatabase("Prisma organization operation repositories", () => {
     await expectDbReject(
       prisma.branch.delete({ where: { id: first.branch.id } }),
     );
+  });
+
+  it("reads branches by organization, filters, search, archived policy, and cursor pagination", async () => {
+    const first = await createOperationalBase(repositories, "A");
+    const second = await createOperationalBase(repositories, "B");
+    const warehouse = await createBranch(repositories, {
+      code: "WAREHOUSE",
+      name: "Central Warehouse",
+      organizationId: first.organization.id,
+      status: "INACTIVE",
+      type: "WAREHOUSE",
+    });
+    const archived = await createBranch(repositories, {
+      code: "OLD-SHOP",
+      name: "Old Shop",
+      organizationId: first.organization.id,
+      status: "ARCHIVED",
+    });
+
+    await expect(
+      getBranchById(repositories.branches, {
+        branchId: first.branch.id,
+        organizationId: first.organization.id,
+      }),
+    ).resolves.toMatchObject({
+      id: first.branch.id,
+      organizationId: first.organization.id,
+    });
+    await expect(
+      getBranchById(repositories.branches, {
+        branchId: second.branch.id,
+        organizationId: first.organization.id,
+      }),
+    ).rejects.toThrow("Branch was not found");
+
+    await expect(
+      listBranches(repositories.branches, {
+        organizationId: first.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toMatchObject({ items: [{ id: warehouse.id }] });
+    await expect(
+      listBranches(repositories.branches, {
+        organizationId: first.organization.id,
+        type: "WAREHOUSE",
+      }),
+    ).resolves.toMatchObject({ items: [{ id: warehouse.id }] });
+    await expect(
+      listBranches(repositories.branches, {
+        organizationId: first.organization.id,
+        search: "central",
+      }),
+    ).resolves.toMatchObject({ items: [{ code: "WAREHOUSE" }] });
+    await expect(
+      listBranches(repositories.branches, {
+        organizationId: first.organization.id,
+        search: "main",
+      }),
+    ).resolves.toMatchObject({ items: [{ code: "MAIN" }] });
+
+    const defaultBranches = await listBranches(repositories.branches, {
+      organizationId: first.organization.id,
+    });
+    expect(defaultBranches.items.map((branch) => branch.id)).not.toContain(
+      archived.id,
+    );
+    await expect(
+      listBranches(repositories.branches, {
+        organizationId: first.organization.id,
+        status: "ARCHIVED",
+      }),
+    ).resolves.toMatchObject({ items: [{ id: archived.id }] });
+
+    const firstPage = await listBranches(repositories.branches, {
+      organizationId: first.organization.id,
+      pageSize: 1,
+    });
+    expect(firstPage).toMatchObject({ hasMore: true });
+    const secondPage = await listBranches(repositories.branches, {
+      cursor: firstPage.nextCursor ?? undefined,
+      organizationId: first.organization.id,
+      pageSize: 10,
+    });
+    expect([
+      ...firstPage.items.map((branch) => branch.id),
+      ...secondPage.items.map((branch) => branch.id),
+    ]).toEqual(defaultBranches.items.map((branch) => branch.id));
+  });
+
+  it("lists stock locations by branch, sellability, search, and organization", async () => {
+    const first = await createOperationalBase(repositories, "A");
+    const second = await createOperationalBase(repositories, "B");
+    const hold = await createStockLocation(repositories, {
+      branchId: first.branch.id,
+      code: "QC-HOLD",
+      name: "Quality Hold",
+      organizationId: first.organization.id,
+      type: "QC_HOLD",
+    });
+
+    const branchLocations = await listStockLocations(
+      repositories.stockLocations,
+      {
+        branchId: first.branch.id,
+        organizationId: first.organization.id,
+      },
+    );
+    expect(branchLocations.items.map((location) => location.id)).toEqual(
+      expect.arrayContaining([first.location.id, hold.id]),
+    );
+    await expect(
+      listStockLocations(repositories.stockLocations, {
+        isSellable: true,
+        organizationId: first.organization.id,
+      }),
+    ).resolves.toMatchObject({ items: [{ id: first.location.id }] });
+    await expect(
+      listStockLocations(repositories.stockLocations, {
+        organizationId: first.organization.id,
+        search: "quality",
+      }),
+    ).resolves.toMatchObject({ items: [{ code: "QC-HOLD" }] });
+    await expect(
+      listStockLocations(repositories.stockLocations, {
+        organizationId: first.organization.id,
+        search: first.location.code.toLowerCase(),
+      }),
+    ).resolves.toMatchObject({ items: [{ id: first.location.id }] });
+    const isolated = await listStockLocations(repositories.stockLocations, {
+      organizationId: first.organization.id,
+      search: second.location.name,
+    });
+    expect(isolated.items).toHaveLength(0);
+  });
+
+  it("lists POS counters by branch, status, search, and organization", async () => {
+    const first = await createOperationalBase(repositories, "A");
+    const second = await createOperationalBase(repositories, "B");
+    const inactive = await createPosCounter(repositories, {
+      branchId: first.branch.id,
+      code: "BACK",
+      name: "Back Counter",
+      organizationId: first.organization.id,
+      status: "INACTIVE",
+    });
+
+    const branchCounters = await listPosCounters(repositories.posCounters, {
+      branchId: first.branch.id,
+      organizationId: first.organization.id,
+    });
+    expect(branchCounters.items.map((counter) => counter.id)).toEqual(
+      expect.arrayContaining([first.counter.id, inactive.id]),
+    );
+    await expect(
+      listPosCounters(repositories.posCounters, {
+        organizationId: first.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toMatchObject({ items: [{ id: inactive.id }] });
+    await expect(
+      listPosCounters(repositories.posCounters, {
+        organizationId: first.organization.id,
+        search: "back",
+      }),
+    ).resolves.toMatchObject({ items: [{ code: "BACK" }] });
+    await expect(
+      listPosCounters(repositories.posCounters, {
+        organizationId: first.organization.id,
+        search: first.counter.code.toLowerCase(),
+      }),
+    ).resolves.toMatchObject({ items: [{ id: first.counter.id }] });
+    const isolated = await listPosCounters(repositories.posCounters, {
+      organizationId: first.organization.id,
+      search: second.counter.name,
+    });
+    expect(isolated.items).toHaveLength(0);
+  });
+
+  it("keeps deterministic branch ordering for equal timestamps", async () => {
+    const organization = await createOrganization(repositories.organizations, {
+      code: "ORDER",
+      name: "Ordering",
+    });
+    const branches = await Promise.all(
+      ["B-1", "B-2", "B-3"].map((code) =>
+        createBranch(repositories, {
+          code,
+          name: code,
+          organizationId: organization.id,
+        }),
+      ),
+    );
+    const sameCreatedAt = new Date("2026-07-02T00:00:00.000Z");
+    await prisma.branch.updateMany({
+      data: { createdAt: sameCreatedAt },
+      where: { organizationId: organization.id },
+    });
+
+    const orderedIds = branches
+      .map((branch) => branch.id)
+      .sort((left, right) => left.localeCompare(right));
+    const firstPage = await listBranches(repositories.branches, {
+      organizationId: organization.id,
+      pageSize: 2,
+    });
+    const secondPage = await listBranches(repositories.branches, {
+      cursor: firstPage.nextCursor ?? undefined,
+      organizationId: organization.id,
+      pageSize: 2,
+    });
+
+    expect([
+      ...firstPage.items.map((branch) => branch.id),
+      ...secondPage.items.map((branch) => branch.id),
+    ]).toEqual(orderedIds);
   });
 });
 

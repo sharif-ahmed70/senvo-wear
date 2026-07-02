@@ -3,15 +3,21 @@ import {
   ConflictError,
   type Branch,
   type BranchChildStatusCounts,
+  type BranchListFilter,
   type BranchMetadataPatch,
   type BranchRepository,
   type CreateBranchRecord,
   type CreatePosCounterRecord,
   type CreateStockLocationRecord,
+  type CursorPageResult,
+  encodeCursor,
+  parseCursor,
   type PosCounter,
+  type PosCounterListFilter,
   type PosCounterMetadataPatch,
   type PosCounterRepository,
   type StockLocation,
+  type StockLocationListFilter,
   type StockLocationMetadataPatch,
   type StockLocationRepository,
 } from "@senvo/domain";
@@ -47,9 +53,29 @@ export class PrismaBranchRepository implements BranchRepository {
     return record ? mapBranch(record) : null;
   }
 
-  async findById(id: string): Promise<Branch | null> {
-    const record = await this.prisma.branch.findUnique({ where: { id } });
+  async findById(id: string, organizationId?: string): Promise<Branch | null> {
+    const record = await this.prisma.branch.findFirst({
+      where: { id, ...(organizationId ? { organizationId } : {}) },
+    });
     return record ? mapBranch(record) : null;
+  }
+
+  async list(filter: BranchListFilter): Promise<CursorPageResult<Branch>> {
+    const cursor = filter.cursor ? parseCursor(filter.cursor) : undefined;
+    const records = await this.prisma.branch.findMany({
+      orderBy: orderedByCreatedAtAndId(),
+      take: filter.pageSize + 1,
+      where: {
+        organizationId: filter.organizationId,
+        ...(filter.status
+          ? { status: filter.status }
+          : { status: { in: ["ACTIVE", "INACTIVE"] } }),
+        ...(filter.type ? { type: filter.type } : {}),
+        ...andReadPredicates(filter.search, cursor),
+      },
+    });
+
+    return toCursorPage(records.map(mapBranch), filter.pageSize);
   }
 
   async countChildrenByStatuses(
@@ -167,11 +193,38 @@ export class PrismaStockLocationRepository implements StockLocationRepository {
     return record ? mapStockLocation(record) : null;
   }
 
-  async findById(id: string): Promise<StockLocation | null> {
-    const record = await this.prisma.stockLocation.findUnique({
-      where: { id },
+  async findById(
+    id: string,
+    organizationId?: string,
+  ): Promise<StockLocation | null> {
+    const record = await this.prisma.stockLocation.findFirst({
+      where: { id, ...(organizationId ? { organizationId } : {}) },
     });
     return record ? mapStockLocation(record) : null;
+  }
+
+  async list(
+    filter: StockLocationListFilter,
+  ): Promise<CursorPageResult<StockLocation>> {
+    const cursor = filter.cursor ? parseCursor(filter.cursor) : undefined;
+    const records = await this.prisma.stockLocation.findMany({
+      orderBy: orderedByCreatedAtAndId(),
+      take: filter.pageSize + 1,
+      where: {
+        organizationId: filter.organizationId,
+        ...(filter.branchId ? { branchId: filter.branchId } : {}),
+        ...(filter.status
+          ? { status: filter.status }
+          : { status: { in: ["ACTIVE", "INACTIVE"] } }),
+        ...(filter.type ? { type: filter.type } : {}),
+        ...(filter.isSellable === undefined
+          ? {}
+          : { isSellable: filter.isSellable }),
+        ...andReadPredicates(filter.search, cursor),
+      },
+    });
+
+    return toCursorPage(records.map(mapStockLocation), filter.pageSize);
   }
 
   async changeStatus(record: {
@@ -250,9 +303,34 @@ export class PrismaPosCounterRepository implements PosCounterRepository {
     return record ? mapPosCounter(record) : null;
   }
 
-  async findById(id: string): Promise<PosCounter | null> {
-    const record = await this.prisma.posCounter.findUnique({ where: { id } });
+  async findById(
+    id: string,
+    organizationId?: string,
+  ): Promise<PosCounter | null> {
+    const record = await this.prisma.posCounter.findFirst({
+      where: { id, ...(organizationId ? { organizationId } : {}) },
+    });
     return record ? mapPosCounter(record) : null;
+  }
+
+  async list(
+    filter: PosCounterListFilter,
+  ): Promise<CursorPageResult<PosCounter>> {
+    const cursor = filter.cursor ? parseCursor(filter.cursor) : undefined;
+    const records = await this.prisma.posCounter.findMany({
+      orderBy: orderedByCreatedAtAndId(),
+      take: filter.pageSize + 1,
+      where: {
+        organizationId: filter.organizationId,
+        ...(filter.branchId ? { branchId: filter.branchId } : {}),
+        ...(filter.status
+          ? { status: filter.status }
+          : { status: { in: ["ACTIVE", "INACTIVE"] } }),
+        ...andReadPredicates(filter.search, cursor),
+      },
+    });
+
+    return toCursorPage(records.map(mapPosCounter), filter.pageSize);
   }
 
   async changeStatus(record: {
@@ -352,6 +430,74 @@ function mapStockLocation(record: StockLocation): StockLocation {
 
 function mapPosCounter(record: PosCounter): PosCounter {
   return record;
+}
+
+function orderedByCreatedAtAndId() {
+  return [{ createdAt: "asc" as const }, { id: "asc" as const }];
+}
+
+function searchByNameOrCode(search?: string):
+  | {
+      OR: [
+        { name: { contains: string; mode: "insensitive" } },
+        { code: { contains: string; mode: "insensitive" } },
+      ];
+    }
+  | Record<string, never> {
+  return search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { code: { contains: search, mode: "insensitive" } },
+        ],
+      }
+    : {};
+}
+
+function andReadPredicates(
+  search?: string,
+  cursor?: ReturnType<typeof parseCursor>,
+): Record<string, unknown> {
+  const predicates = [searchByNameOrCode(search), afterCursor(cursor)].filter(
+    (predicate) => Object.keys(predicate).length > 0,
+  );
+
+  if (predicates.length === 0) {
+    return {};
+  }
+  return { AND: predicates };
+}
+
+function afterCursor(
+  cursor?: ReturnType<typeof parseCursor>,
+): Record<string, unknown> {
+  if (!cursor) {
+    return {};
+  }
+  return {
+    OR: [
+      { createdAt: { gt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+    ],
+  };
+}
+
+function toCursorPage<T extends { createdAt: Date; id: string }>(
+  records: T[],
+  pageSize: number,
+): CursorPageResult<T> {
+  const items = records.slice(0, pageSize);
+  const hasMore = records.length > pageSize;
+  const lastItem = items.at(-1);
+
+  return {
+    hasMore,
+    items,
+    nextCursor:
+      hasMore && lastItem
+        ? encodeCursor(lastItem.createdAt, lastItem.id)
+        : null,
+  };
 }
 
 function assertNoBranchStatusBlockers(blockers: BranchChildStatusCounts): void {

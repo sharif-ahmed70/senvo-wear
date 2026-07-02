@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
   branchContractSchema,
+  branchPageContractSchema,
   changeBranchStatusInputSchema,
   changePosCounterStatusInputSchema,
   changeStockLocationStatusInputSchema,
@@ -10,9 +11,17 @@ import {
   createPosCounterInputSchema,
   createProductVariantInputSchema,
   createStockLocationInputSchema,
+  getBranchQuerySchema,
+  getPosCounterQuerySchema,
+  getStockLocationQuerySchema,
+  listBranchesQuerySchema,
+  listPosCountersQuerySchema,
+  listStockLocationsQuerySchema,
+  posCounterPageContractSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
+  stockLocationPageContractSchema,
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
   updateStockLocationMetadataInputSchema,
@@ -194,6 +203,122 @@ describe("API contracts", () => {
         organizationId: "11111111-1111-4111-8111-111111111111",
         posCounterId: "11111111-1111-4111-8111-111111111111",
         status: "ARCHIVED",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("validates organization operation read query inputs and paginated outputs", () => {
+    const branchId = "11111111-1111-4111-8111-111111111111";
+    const organizationId = "22222222-2222-4222-8222-222222222222";
+    const cursor =
+      "v1|2026-07-02T00%3A00%3A00.000Z|11111111-1111-4111-8111-111111111111";
+
+    expect(
+      getBranchQuerySchema.parse({
+        branchId,
+        organizationId,
+      }),
+    ).toMatchObject({ branchId, organizationId });
+    expect(
+      getStockLocationQuerySchema.safeParse({
+        branchId,
+        organizationId,
+        stockLocationId: branchId,
+      }).success,
+    ).toBe(false);
+    expect(
+      getPosCounterQuerySchema.parse({
+        organizationId,
+        posCounterId: branchId,
+      }),
+    ).toMatchObject({ posCounterId: branchId });
+
+    expect(
+      listBranchesQuerySchema.parse({
+        cursor,
+        organizationId,
+        pageSize: 100,
+        search: "Main",
+        status: "ARCHIVED",
+        type: "SHOWROOM",
+      }),
+    ).toMatchObject({ cursor, status: "ARCHIVED" });
+    expect(
+      listBranchesQuerySchema.safeParse({
+        code: "MAIN",
+        organizationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      listBranchesQuerySchema.safeParse({
+        organizationId,
+        pageSize: 101,
+      }).success,
+    ).toBe(false);
+    expect(
+      listBranchesQuerySchema.safeParse({
+        cursor: "bad",
+        organizationId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      listStockLocationsQuerySchema.parse({
+        branchId,
+        isSellable: true,
+        organizationId,
+        search: "floor",
+        status: "ACTIVE",
+        type: "SHOWROOM",
+      }),
+    ).toMatchObject({ branchId, isSellable: true });
+    expect(
+      listPosCountersQuerySchema.parse({
+        branchId,
+        organizationId,
+        status: "INACTIVE",
+      }),
+    ).toMatchObject({ status: "INACTIVE" });
+
+    const branch = {
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      code: "MAIN",
+      countryCode: "BD",
+      createdAt: "2026-07-02T00:00:00.000Z",
+      district: null,
+      email: null,
+      id: branchId,
+      name: "Main",
+      organizationId,
+      phone: null,
+      postalCode: null,
+      status: "ACTIVE",
+      timezone: "Asia/Dhaka",
+      type: "SHOWROOM",
+      updatedAt: "2026-07-02T00:00:00.000Z",
+      version: 1,
+    };
+    expect(
+      branchPageContractSchema.parse({
+        hasMore: true,
+        items: [branch],
+        nextCursor: cursor,
+      }),
+    ).toMatchObject({ hasMore: true });
+    expect(
+      stockLocationPageContractSchema.safeParse({
+        hasMore: false,
+        items: [],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      posCounterPageContractSchema.safeParse({
+        hasMore: false,
+        items: [],
+        nextCursor: null,
       }).success,
     ).toBe(true);
   });

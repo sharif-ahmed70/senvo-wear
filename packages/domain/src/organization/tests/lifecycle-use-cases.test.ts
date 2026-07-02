@@ -299,6 +299,7 @@ function createInMemoryRepositories() {
       ) ?? null,
     findById: async (branchId: string) =>
       branches.find((branch) => branch.id === branchId) ?? null,
+    list: async () => ({ hasMore: false, items: [], nextCursor: null }),
     changeStatus: async (record) =>
       updateVersioned(branches, record, (branch) => {
         branch.status = record.status;
@@ -328,6 +329,7 @@ function createInMemoryRepositories() {
       ) ?? null,
     findById: async (locationId: string) =>
       stockLocations.find((location) => location.id === locationId) ?? null,
+    list: async () => ({ hasMore: false, items: [], nextCursor: null }),
     changeStatus: async (record) =>
       updateVersioned(stockLocations, record, (location) => {
         location.isSellable = record.isSellable;
@@ -358,6 +360,7 @@ function createInMemoryRepositories() {
       ) ?? null,
     findById: async (counterId: string) =>
       posCounters.find((counter) => counter.id === counterId) ?? null,
+    list: async () => ({ hasMore: false, items: [], nextCursor: null }),
     changeStatus: async (record) =>
       updateVersioned(posCounters, record, (counter) => {
         counter.status = record.status;

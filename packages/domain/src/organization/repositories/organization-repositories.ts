@@ -43,6 +43,46 @@ export type BranchChildStatusCounts = {
   stockLocations: number;
 };
 
+export type CursorPageRequest = {
+  cursor?: string;
+  pageSize?: number;
+};
+
+export type CursorPageResult<T> = {
+  hasMore: boolean;
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type BranchListFilter = {
+  cursor?: string;
+  organizationId: string;
+  pageSize: number;
+  search?: string;
+  status?: Branch["status"];
+  type?: Branch["type"];
+};
+
+export type StockLocationListFilter = {
+  branchId?: string;
+  cursor?: string;
+  isSellable?: boolean;
+  organizationId: string;
+  pageSize: number;
+  search?: string;
+  status?: StockLocation["status"];
+  type?: StockLocation["type"];
+};
+
+export type PosCounterListFilter = {
+  branchId?: string;
+  cursor?: string;
+  organizationId: string;
+  pageSize: number;
+  search?: string;
+  status?: PosCounter["status"];
+};
+
 export type OrganizationLookupRepository = {
   findById(id: string): Promise<Organization | null>;
 };
@@ -55,7 +95,8 @@ export type BranchRepository = {
     statuses: readonly Branch["status"][],
   ): Promise<BranchChildStatusCounts>;
   findByCode(organizationId: string, code: string): Promise<Branch | null>;
-  findById(id: string): Promise<Branch | null>;
+  findById(id: string, organizationId?: string): Promise<Branch | null>;
+  list(filter: BranchListFilter): Promise<CursorPageResult<Branch>>;
   changeStatus(record: {
     blockedChildStatuses?: readonly Branch["status"][];
     expectedVersion: number;
@@ -77,7 +118,10 @@ export type StockLocationRepository = {
     organizationId: string,
     code: string,
   ): Promise<StockLocation | null>;
-  findById(id: string): Promise<StockLocation | null>;
+  findById(id: string, organizationId?: string): Promise<StockLocation | null>;
+  list(
+    filter: StockLocationListFilter,
+  ): Promise<CursorPageResult<StockLocation>>;
   changeStatus(record: {
     expectedVersion: number;
     id: string;
@@ -96,7 +140,8 @@ export type StockLocationRepository = {
 export type PosCounterRepository = {
   create(record: CreatePosCounterRecord): Promise<PosCounter>;
   findByCode(organizationId: string, code: string): Promise<PosCounter | null>;
-  findById(id: string): Promise<PosCounter | null>;
+  findById(id: string, organizationId?: string): Promise<PosCounter | null>;
+  list(filter: PosCounterListFilter): Promise<CursorPageResult<PosCounter>>;
   changeStatus(record: {
     expectedVersion: number;
     id: string;
