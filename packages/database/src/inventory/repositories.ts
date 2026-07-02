@@ -214,7 +214,10 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
           await lockMovementRow(transaction, record);
           const movement = await transaction.inventoryMovement.findFirst({
             include: movementInclude,
-            where: record,
+            where: {
+              id: record.movementId,
+              organizationId: record.organizationId,
+            },
           });
           if (!movement) {
             throw new BusinessRuleError(
