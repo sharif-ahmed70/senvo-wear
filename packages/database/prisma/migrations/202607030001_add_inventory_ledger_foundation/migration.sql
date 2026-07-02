@@ -110,6 +110,9 @@ ALTER TABLE "inventory_movement_lines"
   ON DELETE RESTRICT
   ON UPDATE CASCADE;
 
+CREATE UNIQUE INDEX "inventory_movements_id_organization_id_key"
+  ON "inventory_movements"("id", "organization_id");
+
 ALTER TABLE "inventory_movement_lines"
   ADD CONSTRAINT "inventory_movement_lines_movement_id_organization_id_fkey"
   FOREIGN KEY ("movement_id", "organization_id")
