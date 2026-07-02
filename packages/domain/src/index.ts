@@ -78,11 +78,27 @@ export {
   createPosCounter,
   createStockLocation,
 } from "./organization/application/create-use-cases.js";
+export {
+  changeBranchStatus,
+  changePosCounterStatus,
+  changeStockLocationStatus,
+  updateBranchMetadata,
+  updatePosCounterMetadata,
+  updateStockLocationMetadata,
+} from "./organization/application/lifecycle-use-cases.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
   CreateStockLocationInput,
 } from "./organization/application/create-use-cases.js";
+export type {
+  ChangeBranchStatusInput,
+  ChangePosCounterStatusInput,
+  ChangeStockLocationStatusInput,
+  UpdateBranchMetadataInput,
+  UpdatePosCounterMetadataInput,
+  UpdateStockLocationMetadataInput,
+} from "./organization/application/lifecycle-use-cases.js";
 export type {
   CategoryRepository,
   CollectionRepository,
@@ -100,11 +116,15 @@ export type {
   SizeRepository,
 } from "./catalog/repositories/catalog-repositories.js";
 export type {
+  BranchChildStatusCounts,
+  BranchMetadataPatch,
   BranchRepository,
   CreateBranchRecord,
   CreatePosCounterRecord,
   CreateStockLocationRecord,
   OrganizationLookupRepository,
+  PosCounterMetadataPatch,
   PosCounterRepository,
+  StockLocationMetadataPatch,
   StockLocationRepository,
 } from "./organization/repositories/organization-repositories.js";

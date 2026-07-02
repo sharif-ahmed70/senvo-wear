@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
   branchContractSchema,
+  changeBranchStatusInputSchema,
+  changePosCounterStatusInputSchema,
+  changeStockLocationStatusInputSchema,
   createBranchInputSchema,
   createColorInputSchema,
   createPosCounterInputSchema,
@@ -10,6 +13,9 @@ import {
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
+  updateBranchMetadataInputSchema,
+  updatePosCounterMetadataInputSchema,
+  updateStockLocationMetadataInputSchema,
 } from "./index.js";
 
 describe("API contracts", () => {
@@ -121,7 +127,74 @@ describe("API contracts", () => {
         timezone: "Asia/Dhaka",
         type: "SHOWROOM",
         updatedAt: "2026-07-02T00:00:00.000Z",
+        version: 1,
       }),
     ).toMatchObject({ code: "MAIN" });
+  });
+
+  it("validates lifecycle inputs with expected versions and immutable fields absent", () => {
+    expect(
+      updateBranchMetadataInputSchema.safeParse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        code: "NEW-CODE",
+        email: null,
+        expectedVersion: 1,
+        name: "Main Updated",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateBranchMetadataInputSchema.parse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        email: null,
+        expectedVersion: 1,
+        name: "Main Updated",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({ email: null, expectedVersion: 1 });
+
+    expect(
+      updateStockLocationMetadataInputSchema.safeParse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        expectedVersion: 1,
+        name: "Floor",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        stockLocationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+    expect(
+      updatePosCounterMetadataInputSchema.safeParse({
+        code: "COUNTER-2",
+        expectedVersion: 1,
+        name: "Counter",
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        posCounterId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      changeBranchStatusInputSchema.parse({
+        branchId: "11111111-1111-4111-8111-111111111111",
+        expectedVersion: 2,
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        status: "INACTIVE",
+      }),
+    ).toMatchObject({ status: "INACTIVE" });
+    expect(
+      changeStockLocationStatusInputSchema.safeParse({
+        expectedVersion: 0,
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        status: "ARCHIVED",
+        stockLocationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+    expect(
+      changePosCounterStatusInputSchema.safeParse({
+        expectedVersion: 1,
+        organizationId: "11111111-1111-4111-8111-111111111111",
+        posCounterId: "11111111-1111-4111-8111-111111111111",
+        status: "ARCHIVED",
+      }).success,
+    ).toBe(true);
   });
 });

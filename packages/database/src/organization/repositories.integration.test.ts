@@ -1,8 +1,14 @@
 import {
   createBranch,
+  changeBranchStatus,
+  changePosCounterStatus,
+  changeStockLocationStatus,
   createOrganization,
   createPosCounter,
   createStockLocation,
+  updateBranchMetadata,
+  updatePosCounterMetadata,
+  updateStockLocationMetadata,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "../index.js";
@@ -254,6 +260,241 @@ describeWithDatabase("Prisma organization operation repositories", () => {
       type: "QC_HOLD",
     });
     expect(counter.status).toBe("ARCHIVED");
+  });
+
+  it("increments versions and rejects stale metadata updates", async () => {
+    const base = await createOperationalBase(repositories, "A");
+
+    const branch = await updateBranchMetadata(repositories.branches, {
+      branchId: base.branch.id,
+      email: null,
+      expectedVersion: base.branch.version,
+      name: " Main   Updated ",
+      organizationId: base.organization.id,
+    });
+    expect(branch).toMatchObject({
+      email: null,
+      name: "Main Updated",
+      version: base.branch.version + 1,
+    });
+    await expect(
+      updateBranchMetadata(repositories.branches, {
+        branchId: base.branch.id,
+        expectedVersion: base.branch.version,
+        name: "Stale",
+        organizationId: base.organization.id,
+      }),
+    ).rejects.toThrow("Expected version");
+
+    const location = await updateStockLocationMetadata(
+      repositories.stockLocations,
+      {
+        expectedVersion: base.location.version,
+        isSellable: false,
+        name: "Floor Updated",
+        organizationId: base.organization.id,
+        stockLocationId: base.location.id,
+      },
+    );
+    expect(location).toMatchObject({
+      isSellable: false,
+      name: "Floor Updated",
+      version: base.location.version + 1,
+    });
+    await expect(
+      updateStockLocationMetadata(repositories.stockLocations, {
+        expectedVersion: base.location.version,
+        name: "Stale Floor",
+        organizationId: base.organization.id,
+        stockLocationId: base.location.id,
+      }),
+    ).rejects.toThrow("Expected version");
+
+    const counter = await updatePosCounterMetadata(repositories.posCounters, {
+      expectedVersion: base.counter.version,
+      name: "Counter Updated",
+      organizationId: base.organization.id,
+      posCounterId: base.counter.id,
+    });
+    expect(counter).toMatchObject({
+      name: "Counter Updated",
+      version: base.counter.version + 1,
+    });
+    await expect(
+      updatePosCounterMetadata(repositories.posCounters, {
+        expectedVersion: base.counter.version,
+        name: "Stale Counter",
+        organizationId: base.organization.id,
+        posCounterId: base.counter.id,
+      }),
+    ).rejects.toThrow("Expected version");
+  });
+
+  it("enforces branch lifecycle blockers and allows archive only after children are archived", async () => {
+    const base = await createOperationalBase(repositories, "A");
+
+    await expect(
+      changeBranchStatus(repositories.branches, {
+        branchId: base.branch.id,
+        expectedVersion: base.branch.version,
+        organizationId: base.organization.id,
+        status: "INACTIVE",
+      }),
+    ).rejects.toThrow("stock locations and POS counters");
+
+    const archivedLocation = await changeStockLocationStatus(
+      repositories.stockLocations,
+      {
+        expectedVersion: base.location.version,
+        organizationId: base.organization.id,
+        status: "ARCHIVED",
+        stockLocationId: base.location.id,
+      },
+    );
+    await expect(
+      changeBranchStatus(repositories.branches, {
+        branchId: base.branch.id,
+        expectedVersion: base.branch.version,
+        organizationId: base.organization.id,
+        status: "INACTIVE",
+      }),
+    ).rejects.toThrow("POS counters");
+
+    const inactiveCounter = await changePosCounterStatus(
+      repositories.posCounters,
+      {
+        expectedVersion: base.counter.version,
+        organizationId: base.organization.id,
+        posCounterId: base.counter.id,
+        status: "INACTIVE",
+      },
+    );
+    await expect(
+      changeBranchStatus(repositories.branches, {
+        branchId: base.branch.id,
+        expectedVersion: base.branch.version,
+        organizationId: base.organization.id,
+        status: "ARCHIVED",
+      }),
+    ).rejects.toThrow("POS counters");
+
+    await changePosCounterStatus(repositories.posCounters, {
+      expectedVersion: inactiveCounter.version,
+      organizationId: base.organization.id,
+      posCounterId: base.counter.id,
+      status: "ARCHIVED",
+    });
+    const archivedBranch = await changeBranchStatus(repositories.branches, {
+      branchId: base.branch.id,
+      expectedVersion: base.branch.version,
+      organizationId: base.organization.id,
+      status: "ARCHIVED",
+    });
+
+    expect(archivedBranch).toMatchObject({
+      status: "ARCHIVED",
+      version: base.branch.version + 1,
+    });
+    expect(archivedLocation.isSellable).toBe(false);
+  });
+
+  it("forces inactive and archived locations non-sellable and blocks invalid sellable persistence", async () => {
+    const base = await createOperationalBase(repositories, "A");
+
+    const inactiveLocation = await changeStockLocationStatus(
+      repositories.stockLocations,
+      {
+        expectedVersion: base.location.version,
+        organizationId: base.organization.id,
+        status: "INACTIVE",
+        stockLocationId: base.location.id,
+      },
+    );
+    expect(inactiveLocation).toMatchObject({
+      isSellable: false,
+      status: "INACTIVE",
+    });
+
+    const reactivated = await changeStockLocationStatus(
+      repositories.stockLocations,
+      {
+        expectedVersion: inactiveLocation.version,
+        organizationId: base.organization.id,
+        status: "ACTIVE",
+        stockLocationId: base.location.id,
+      },
+    );
+    expect(reactivated.isSellable).toBe(false);
+
+    await expect(
+      updateStockLocationMetadata(repositories.stockLocations, {
+        expectedVersion: reactivated.version,
+        isSellable: true,
+        organizationId: base.organization.id,
+        stockLocationId: base.location.id,
+        type: "QC_HOLD",
+      }),
+    ).rejects.toThrow("cannot be sellable");
+
+    await expectDbReject(
+      prisma.stockLocation.create({
+        data: {
+          branchId: base.branch.id,
+          code: "BAD-QC",
+          isSellable: true,
+          name: "Bad QC",
+          organizationId: base.organization.id,
+          type: "QC_HOLD",
+        },
+      }),
+    );
+    await expectDbReject(
+      prisma.stockLocation.create({
+        data: {
+          branchId: base.branch.id,
+          code: "BAD-INACTIVE",
+          isSellable: true,
+          name: "Bad Inactive",
+          organizationId: base.organization.id,
+          status: "INACTIVE",
+          type: "SHOWROOM",
+        },
+      }),
+    );
+  });
+
+  it("rejects cross-organization lifecycle updates and keeps restrictive deletion intact", async () => {
+    const first = await createOperationalBase(repositories, "A");
+    const second = await createOperationalBase(repositories, "B");
+
+    await expect(
+      updateBranchMetadata(repositories.branches, {
+        branchId: first.branch.id,
+        expectedVersion: first.branch.version,
+        name: "Wrong Org",
+        organizationId: second.organization.id,
+      }),
+    ).rejects.toThrow("same organization");
+    await expect(
+      updateStockLocationMetadata(repositories.stockLocations, {
+        expectedVersion: first.location.version,
+        name: "Wrong Org",
+        organizationId: second.organization.id,
+        stockLocationId: first.location.id,
+      }),
+    ).rejects.toThrow("same organization");
+    await expect(
+      changePosCounterStatus(repositories.posCounters, {
+        expectedVersion: first.counter.version,
+        organizationId: second.organization.id,
+        posCounterId: first.counter.id,
+        status: "INACTIVE",
+      }),
+    ).rejects.toThrow("same organization");
+
+    await expectDbReject(
+      prisma.branch.delete({ where: { id: first.branch.id } }),
+    );
   });
 });
 

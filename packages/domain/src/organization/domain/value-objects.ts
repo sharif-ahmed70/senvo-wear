@@ -191,6 +191,44 @@ export function normalizeStockLocationSellable(
   return isSellable ?? defaultStockLocationSellable(type);
 }
 
+export function normalizeUpdatedStockLocationSellable(
+  type: StockLocationType,
+  status: StockLocationStatus,
+  isSellable: boolean,
+): boolean {
+  if (status !== "ACTIVE") {
+    return false;
+  }
+  return normalizeStockLocationSellable(type, isSellable);
+}
+
+export function assertValidStatusTransition(
+  currentStatus: BranchStatus | StockLocationStatus | PosCounterStatus,
+  nextStatus: BranchStatus | StockLocationStatus | PosCounterStatus,
+  field: string,
+): void {
+  if (currentStatus === nextStatus) {
+    return;
+  }
+  if (currentStatus === "ARCHIVED") {
+    throw new BusinessRuleError(
+      `${field} is archived and cannot change status.`,
+    );
+  }
+  if (!["ACTIVE", "INACTIVE", "ARCHIVED"].includes(nextStatus)) {
+    throw new ValidationApplicationError(`${field} status is invalid.`);
+  }
+}
+
+export function assertPositiveVersion(expectedVersion: number): number {
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw new ValidationApplicationError(
+      "expectedVersion must be a positive integer.",
+    );
+  }
+  return expectedVersion;
+}
+
 export function assertSameOrganization(
   expectedOrganizationId: string,
   actualOrganizationId: string,

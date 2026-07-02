@@ -22,6 +22,8 @@ Enums added:
 
 `PosCounter` belongs to both `Organization` and `Branch`. Its branch relation also uses `(branch_id, organization_id)` to prevent cross-organization references.
 
+Branches, stock locations, and POS counters include an integer `version` for optimistic concurrency. Metadata and lifecycle updates increment version atomically when the expected version matches.
+
 ## Uniqueness And Indexing
 
 Branch:
@@ -43,6 +45,10 @@ POS counter:
 - unique `(organization_id, code)`
 - index `(organization_id, branch_id)`
 - index `(organization_id, status)`
+
+## Check Constraints
+
+`stock_locations_sellability_status_type_check` prevents persisted sellability for inactive, archived, hold, and transit stock locations.
 
 ## Referential Actions
 

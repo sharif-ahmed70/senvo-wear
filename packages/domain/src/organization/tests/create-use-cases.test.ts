@@ -225,6 +225,7 @@ function createInMemoryRepositories(): {
           createdAt: now(),
           id: id("branch"),
           updatedAt: now(),
+          version: 1,
         };
         branches.push(branch);
         return branch;
@@ -236,6 +237,12 @@ function createInMemoryRepositories(): {
         ) ?? null,
       findById: async (branchId: string) =>
         branches.find((branch) => branch.id === branchId) ?? null,
+      changeStatus: async () => null,
+      countChildrenByStatuses: async () => ({
+        posCounters: 0,
+        stockLocations: 0,
+      }),
+      updateMetadata: async () => null,
     },
     organizations: {
       create: async (record: CreateOrganizationRecord) => {
@@ -263,6 +270,7 @@ function createInMemoryRepositories(): {
           createdAt: now(),
           id: id("counter"),
           updatedAt: now(),
+          version: 1,
         };
         posCounters.push(counter);
         return counter;
@@ -272,6 +280,10 @@ function createInMemoryRepositories(): {
           (counter) =>
             counter.organizationId === organizationId && counter.code === code,
         ) ?? null,
+      findById: async (counterId: string) =>
+        posCounters.find((counter) => counter.id === counterId) ?? null,
+      changeStatus: async () => null,
+      updateMetadata: async () => null,
     },
     stockLocations: {
       create: async (record: CreateStockLocationRecord) => {
@@ -280,6 +292,7 @@ function createInMemoryRepositories(): {
           createdAt: now(),
           id: id("location"),
           updatedAt: now(),
+          version: 1,
         };
         stockLocations.push(location);
         return location;
@@ -290,6 +303,10 @@ function createInMemoryRepositories(): {
             location.organizationId === organizationId &&
             location.code === code,
         ) ?? null,
+      findById: async (locationId: string) =>
+        stockLocations.find((location) => location.id === locationId) ?? null,
+      changeStatus: async () => null,
+      updateMetadata: async () => null,
     },
   };
 }

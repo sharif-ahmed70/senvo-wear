@@ -30,6 +30,7 @@ export type Branch = {
   timezone: string;
   type: BranchType;
   updatedAt: Date;
+  version: number;
 };
 
 export type StockLocation = {
@@ -43,6 +44,7 @@ export type StockLocation = {
   status: StockLocationStatus;
   type: StockLocationType;
   updatedAt: Date;
+  version: number;
 };
 
 export type PosCounter = {
@@ -54,4 +56,5 @@ export type PosCounter = {
   organizationId: string;
   status: PosCounterStatus;
   updatedAt: Date;
+  version: number;
 };

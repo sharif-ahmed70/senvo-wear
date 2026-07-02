@@ -103,6 +103,7 @@ model Branch {
   postalCode     String?      @map("postal_code") @db.VarChar(120)
   countryCode    String       @default("BD") @map("country_code") @db.VarChar(2)
   timezone       String       @default("Asia/Dhaka") @db.VarChar(80)
+  version        Int          @default(1)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -126,6 +127,7 @@ model StockLocation {
   type           StockLocationType   @default(WAREHOUSE)
   status         StockLocationStatus @default(ACTIVE)
   isSellable     Boolean             @default(false) @map("is_sellable")
+  version        Int                 @default(1)
   createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -146,6 +148,7 @@ model PosCounter {
   name           String           @db.VarChar(160)
   code           String           @db.VarChar(64)
   status         PosCounterStatus @default(ACTIVE)
+  version        Int              @default(1)
   createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 

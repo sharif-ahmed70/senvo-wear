@@ -21,3 +21,23 @@ SQL review:
 - Contains no `DROP`, destructive alteration, data deletion, backfill, trigger, or production data dependency.
 
 Rollback/recreation test: configured through `pnpm verify:database`, which applies migrations, runs database integration tests, resets the test database, reapplies migrations, reruns integration tests, and performs drift detection when `TEST_SHADOW_DATABASE_URL` is available. Local PostgreSQL was not available at migration creation time.
+
+# Third Business Migration Review
+
+Migration: `202607020002_add_operational_entity_versions`
+
+Generation command:
+
+```sh
+corepack pnpm --filter @senvo/database exec prisma migrate diff --from-schema <previous-schema.prisma> --to-schema prisma/schema.prisma --script
+```
+
+Initial database used: none. Local PostgreSQL is unavailable on this workstation, so the migration was generated from the previous checked-in schema to the updated Prisma schema using Prisma's offline schema diff mode.
+
+SQL review:
+
+- Adds `version INTEGER NOT NULL DEFAULT 1` to `branches`, `stock_locations`, and `pos_counters`.
+- Adds `stock_locations_sellability_status_type_check` so inactive, archived, hold, and transit locations cannot persist as sellable.
+- Contains no `DROP`, destructive alteration, data deletion, backfill script, trigger, or unrelated table change.
+
+Rollback/recreation test: configured through `pnpm verify:database` and verified in CI after push.

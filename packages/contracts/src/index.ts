@@ -180,6 +180,7 @@ const phoneSchema = z
   .nullable()
   .optional();
 const isoTimestampSchema = z.string().datetime({ offset: true });
+const expectedVersionSchema = z.number().int().positive();
 
 export const branchStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]);
 export const branchTypeSchema = z.enum([
@@ -303,6 +304,72 @@ export const createPosCounterInputSchema = z.object({
   status: posCounterStatusSchema.optional(),
 });
 
+export const updateBranchMetadataInputSchema = z
+  .object({
+    addressLine1: optionalTextSchema(240),
+    addressLine2: optionalTextSchema(240),
+    branchId: idSchema,
+    city: optionalTextSchema(120),
+    countryCode: countryCodeSchema,
+    district: optionalTextSchema(120),
+    email: emailSchema,
+    expectedVersion: expectedVersionSchema,
+    name: displayNameSchema.optional(),
+    organizationId: idSchema,
+    phone: phoneSchema,
+    postalCode: optionalTextSchema(120),
+    timezone: timezoneSchema,
+    type: branchTypeSchema.optional(),
+  })
+  .strict();
+
+export const changeBranchStatusInputSchema = z
+  .object({
+    branchId: idSchema,
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    status: branchStatusSchema,
+  })
+  .strict();
+
+export const updateStockLocationMetadataInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    isSellable: z.boolean().optional(),
+    name: displayNameSchema.optional(),
+    organizationId: idSchema,
+    stockLocationId: idSchema,
+    type: stockLocationTypeSchema.optional(),
+  })
+  .strict();
+
+export const changeStockLocationStatusInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    status: stockLocationStatusSchema,
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const updatePosCounterMetadataInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    name: displayNameSchema.optional(),
+    organizationId: idSchema,
+    posCounterId: idSchema,
+  })
+  .strict();
+
+export const changePosCounterStatusInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    posCounterId: idSchema,
+    status: posCounterStatusSchema,
+  })
+  .strict();
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -327,11 +394,30 @@ export type CreateStockLocationInputContract = z.infer<
 export type CreatePosCounterInputContract = z.infer<
   typeof createPosCounterInputSchema
 >;
+export type UpdateBranchMetadataInputContract = z.infer<
+  typeof updateBranchMetadataInputSchema
+>;
+export type ChangeBranchStatusInputContract = z.infer<
+  typeof changeBranchStatusInputSchema
+>;
+export type UpdateStockLocationMetadataInputContract = z.infer<
+  typeof updateStockLocationMetadataInputSchema
+>;
+export type ChangeStockLocationStatusInputContract = z.infer<
+  typeof changeStockLocationStatusInputSchema
+>;
+export type UpdatePosCounterMetadataInputContract = z.infer<
+  typeof updatePosCounterMetadataInputSchema
+>;
+export type ChangePosCounterStatusInputContract = z.infer<
+  typeof changePosCounterStatusInputSchema
+>;
 
 export type CatalogRecordContract = {
   createdAt: string;
   id: string;
   updatedAt: string;
+  version?: number;
 };
 
 export type OrganizationContract = CatalogRecordContract & {
@@ -408,6 +494,7 @@ export type BranchContract = CatalogRecordContract & {
   status: z.infer<typeof branchStatusSchema>;
   timezone: string;
   type: z.infer<typeof branchTypeSchema>;
+  version: number;
 };
 
 export type StockLocationContract = CatalogRecordContract & {
@@ -418,6 +505,7 @@ export type StockLocationContract = CatalogRecordContract & {
   organizationId: string;
   status: z.infer<typeof stockLocationStatusSchema>;
   type: z.infer<typeof stockLocationTypeSchema>;
+  version: number;
 };
 
 export type PosCounterContract = CatalogRecordContract & {
@@ -426,6 +514,7 @@ export type PosCounterContract = CatalogRecordContract & {
   name: string;
   organizationId: string;
   status: z.infer<typeof posCounterStatusSchema>;
+  version: number;
 };
 
 export const branchContractSchema = z.object({
@@ -446,6 +535,7 @@ export const branchContractSchema = z.object({
   timezone: z.string(),
   type: branchTypeSchema,
   updatedAt: isoTimestampSchema,
+  version: expectedVersionSchema,
 });
 
 export const stockLocationContractSchema = z.object({
@@ -459,6 +549,7 @@ export const stockLocationContractSchema = z.object({
   status: stockLocationStatusSchema,
   type: stockLocationTypeSchema,
   updatedAt: isoTimestampSchema,
+  version: expectedVersionSchema,
 });
 
 export const posCounterContractSchema = z.object({
@@ -470,4 +561,5 @@ export const posCounterContractSchema = z.object({
   organizationId: idSchema,
   status: posCounterStatusSchema,
   updatedAt: isoTimestampSchema,
+  version: expectedVersionSchema,
 });
