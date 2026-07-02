@@ -19,7 +19,7 @@ ALTER TABLE "product_variants"
   ADD CONSTRAINT "product_variants_id_organization_id_key" UNIQUE ("id", "organization_id");
 
 CREATE TABLE "inventory_movements" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "id" UUID NOT NULL,
   "organization_id" UUID NOT NULL,
   "movement_number" VARCHAR(64) NOT NULL,
   "type" "InventoryMovementType" NOT NULL,
@@ -68,7 +68,7 @@ CREATE TABLE "inventory_movements" (
 );
 
 CREATE TABLE "inventory_movement_lines" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "id" UUID NOT NULL,
   "organization_id" UUID NOT NULL,
   "movement_id" UUID NOT NULL,
   "product_variant_id" UUID NOT NULL,
