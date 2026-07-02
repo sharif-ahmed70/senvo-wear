@@ -527,7 +527,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
 
     expect(constraints.map((constraint) => constraint.conname)).toEqual([
       "inventory_movement_lines_movement_id_organization_id_fkey",
-      "inventory_movement_lines_product_variant_id_organization_id_fkey",
+      "inventory_movement_lines_product_variant_id_organization_id_fke",
       "inventory_movement_lines_quantity_positive_check",
       "inventory_movements_location_shape_check",
       "inventory_movements_posted_at_status_check",

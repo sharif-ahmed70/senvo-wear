@@ -430,7 +430,7 @@ async function lockAffectedBalanceKeys(
   ].sort();
 
   for (const key of keys) {
-    await transaction.$queryRaw`
+    await transaction.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
     `;
   }
