@@ -97,7 +97,7 @@ ALTER TABLE "inventory_movements"
   ON UPDATE CASCADE;
 
 ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_destination_location_id_organization_id_fkey"
+  ADD CONSTRAINT "inventory_movements_destination_location_id_organization_i_fkey"
   FOREIGN KEY ("destination_location_id", "organization_id")
   REFERENCES "stock_locations"("id", "organization_id")
   ON DELETE RESTRICT
@@ -121,7 +121,7 @@ ALTER TABLE "inventory_movement_lines"
   ON UPDATE CASCADE;
 
 ALTER TABLE "inventory_movement_lines"
-  ADD CONSTRAINT "inventory_movement_lines_product_variant_id_organization_id_fkey"
+  ADD CONSTRAINT "inventory_movement_lines_product_variant_id_organization_i_fkey"
   FOREIGN KEY ("product_variant_id", "organization_id")
   REFERENCES "product_variants"("id", "organization_id")
   ON DELETE RESTRICT
@@ -145,10 +145,10 @@ CREATE INDEX "inventory_movements_organization_id_status_occurred_at_id_idx"
 CREATE INDEX "inventory_movements_organization_id_type_occurred_at_id_idx"
   ON "inventory_movements"("organization_id", "type", "occurred_at", "id");
 
-CREATE INDEX "inventory_movements_organization_id_source_location_id_occurred_at_idx"
+CREATE INDEX "inventory_movements_organization_id_source_location_id_occu_idx"
   ON "inventory_movements"("organization_id", "source_location_id", "occurred_at");
 
-CREATE INDEX "inventory_movements_organization_id_destination_location_id_occurred_at_idx"
+CREATE INDEX "inventory_movements_organization_id_destination_location_id_idx"
   ON "inventory_movements"("organization_id", "destination_location_id", "occurred_at");
 
 CREATE INDEX "inventory_movement_lines_organization_id_product_variant_id_idx"

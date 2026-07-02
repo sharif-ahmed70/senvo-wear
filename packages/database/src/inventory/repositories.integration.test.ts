@@ -507,7 +507,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         'inventory_movements_posted_at_status_check',
         'inventory_movement_lines_quantity_positive_check',
         'inventory_movement_lines_movement_id_organization_id_fkey',
-        'inventory_movement_lines_product_variant_id_organization_id_fkey'
+        'inventory_movement_lines_product_variant_id_organization_i_fkey'
       )
       ORDER BY conname
     `;
@@ -518,8 +518,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         AND indexname IN (
           'inventory_movements_organization_id_status_occurred_at_id_idx',
           'inventory_movements_organization_id_type_occurred_at_id_idx',
-          'inventory_movements_organization_id_source_location_id_occurred_at_idx',
-          'inventory_movements_organization_id_destination_location_id_occurred_at_idx',
+          'inventory_movements_organization_id_source_location_id_occu_idx',
+          'inventory_movements_organization_id_destination_location_id_idx',
           'inventory_movement_lines_organization_id_product_variant_id_idx'
         )
       ORDER BY indexname
@@ -527,7 +527,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
 
     expect(constraints.map((constraint) => constraint.conname)).toEqual([
       "inventory_movement_lines_movement_id_organization_id_fkey",
-      "inventory_movement_lines_product_variant_id_organization_id_fke",
+      "inventory_movement_lines_product_variant_id_organization_i_fkey",
       "inventory_movement_lines_quantity_positive_check",
       "inventory_movements_location_shape_check",
       "inventory_movements_posted_at_status_check",
