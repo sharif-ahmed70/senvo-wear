@@ -1,18 +1,30 @@
 import {
   BusinessRuleError,
+  ConcurrencyError,
   ConflictError,
   type CursorPageResult,
+  encodeAvailabilityCursor,
   encodeBalanceCursor,
   encodeMovementCursor,
+  encodeReservationCursor,
+  type CreateInventoryReservationRecord,
   type CreateInventoryMovementRecord,
+  type InventoryAvailability,
+  type InventoryAvailabilityFilter,
+  type InventoryAvailabilityQueryRepository,
   type InventoryBalanceFilter,
   type InventoryBalanceQueryRepository,
   type InventoryMovement,
   type InventoryMovementListFilter,
   type InventoryMovementRepository,
+  type InventoryReservation,
+  type InventoryReservationListFilter,
+  type InventoryReservationRepository,
   type OnHandBalance,
+  parseAvailabilityCursor,
   parseBalanceCursor,
   parseMovementCursor,
+  parseReservationCursor,
   type ReplaceInventoryMovementLinesRecord,
   type ReverseInventoryMovementRecord,
 } from "@senvo/domain";
@@ -25,6 +37,8 @@ type InventoryPrismaClient = Pick<
   | "$transaction"
   | "inventoryMovement"
   | "inventoryMovementLine"
+  | "inventoryReservation"
+  | "inventoryReservationLine"
   | "organization"
   | "productVariant"
   | "stockLocation"
@@ -39,6 +53,12 @@ type MovementWithLines = Prisma.InventoryMovementGetPayload<{
   };
 }>;
 
+type ReservationWithLines = Prisma.InventoryReservationGetPayload<{
+  include: {
+    lines: { orderBy: { lineNumber: "asc" } };
+  };
+}>;
+
 type KnownPrismaError = {
   code?: string;
 };
@@ -50,6 +70,13 @@ type PayloadSignatureRow = {
 type BalanceRow = {
   product_variant_id: string;
   quantity: bigint | number;
+};
+
+type AvailabilityRow = {
+  available_quantity: bigint | number;
+  on_hand_quantity: bigint | number;
+  product_variant_id: string;
+  reserved_quantity: bigint | number;
 };
 
 export class PrismaInventoryMovementRepository implements InventoryMovementRepository {
@@ -514,9 +541,331 @@ export class PrismaInventoryBalanceQueryRepository implements InventoryBalanceQu
   }
 }
 
+export class PrismaInventoryReservationRepository implements InventoryReservationRepository {
+  constructor(private readonly prisma: InventoryPrismaClient) {}
+
+  async changeStatus(record: {
+    expectedVersion: number;
+    organizationId: string;
+    reservationId: string;
+    status: "CONFIRMED" | "RELEASED" | "EXPIRED";
+  }): Promise<InventoryReservation> {
+    try {
+      const reservation = await this.prisma.$transaction(
+        async (transaction) => {
+          await lockReservationRow(transaction, record);
+          const current = await transaction.inventoryReservation.findFirst({
+            include: reservationInclude,
+            where: {
+              id: record.reservationId,
+              organizationId: record.organizationId,
+            },
+          });
+          if (!current) {
+            return null;
+          }
+          if (current.status !== "ACTIVE") {
+            throw new BusinessRuleError(
+              "Terminal inventory reservations cannot transition.",
+            );
+          }
+          if (current.version !== record.expectedVersion) {
+            throw new ConcurrencyError();
+          }
+          const now = new Date();
+          return transaction.inventoryReservation.update({
+            data: {
+              confirmedAt: record.status === "CONFIRMED" ? now : null,
+              expiredAt: record.status === "EXPIRED" ? now : null,
+              releasedAt: record.status === "RELEASED" ? now : null,
+              status: record.status,
+              version: { increment: 1 },
+            },
+            include: reservationInclude,
+            where: { id: current.id },
+          });
+        },
+      );
+      if (!reservation) {
+        throw new BusinessRuleError(
+          "Inventory reservation must belong to the same organization.",
+        );
+      }
+      return mapReservation(reservation);
+    } catch (error) {
+      mapInventoryReservationIntegrityError(error);
+    }
+  }
+
+  async createActive(
+    record: CreateInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<InventoryReservation> {
+    try {
+      return mapReservation(
+        await this.prisma.$transaction(async (transaction) => {
+          const existing = await transaction.inventoryReservation.findUnique({
+            include: reservationInclude,
+            where: {
+              organizationId_idempotencyKey: {
+                idempotencyKey: record.idempotencyKey,
+                organizationId: record.organizationId,
+              },
+            },
+          });
+          if (existing) {
+            const existingSignature =
+              await getReservationPayloadSignatureInTransaction(
+                transaction,
+                existing.id,
+                existing.organizationId,
+              );
+            if (existingSignature === payloadSignature) {
+              return existing;
+            }
+            throw new ConflictError("Idempotency key was already used.");
+          }
+
+          await assertReservationEligibility(transaction, record);
+          await lockReservationBalanceKeys(transaction, record);
+          await assertAvailableToReserve(transaction, record);
+
+          const reservation = await transaction.inventoryReservation.create({
+            data: {
+              expiresAt: record.expiresAt,
+              idempotencyKey: record.idempotencyKey,
+              note: record.note,
+              organizationId: record.organizationId,
+              payloadSignature,
+              referenceId: record.referenceId,
+              referenceType: record.referenceType,
+              reservationNumber: record.reservationNumber,
+              stockLocationId: record.stockLocationId,
+            },
+          });
+          await transaction.inventoryReservationLine.createMany({
+            data: record.lines.map((line, index) => ({
+              lineNumber: index + 1,
+              organizationId: record.organizationId,
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+              reservationId: reservation.id,
+            })),
+          });
+          return transaction.inventoryReservation.findUniqueOrThrow({
+            include: reservationInclude,
+            where: { id: reservation.id },
+          });
+        }),
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.findByIdempotencyKey(
+          record.organizationId,
+          record.idempotencyKey,
+        );
+        const existingSignature = existing
+          ? await this.getPayloadSignature(existing.id, existing.organizationId)
+          : null;
+        if (existing && existingSignature === payloadSignature) {
+          return existing;
+        }
+        throw new ConflictError(
+          "Inventory reservation identity or idempotency key already exists.",
+          error,
+        );
+      }
+      mapInventoryReservationIntegrityError(error);
+    }
+  }
+
+  async findById(
+    id: string,
+    organizationId: string,
+  ): Promise<InventoryReservation | null> {
+    const record = await this.prisma.inventoryReservation.findFirst({
+      include: reservationInclude,
+      where: { id, organizationId },
+    });
+    return record ? mapReservation(record) : null;
+  }
+
+  async findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<InventoryReservation | null> {
+    const record = await this.prisma.inventoryReservation.findUnique({
+      include: reservationInclude,
+      where: {
+        organizationId_idempotencyKey: { idempotencyKey, organizationId },
+      },
+    });
+    return record ? mapReservation(record) : null;
+  }
+
+  async getPayloadSignature(
+    reservationId: string,
+    organizationId: string,
+  ): Promise<string | null> {
+    const rows = await this.prisma.$queryRaw<PayloadSignatureRow[]>`
+      SELECT payload_signature
+      FROM inventory_reservations
+      WHERE id = ${reservationId}::uuid
+        AND organization_id = ${organizationId}::uuid
+      LIMIT 1
+    `;
+    return rows.at(0)?.payload_signature ?? null;
+  }
+
+  async list(
+    filter: InventoryReservationListFilter,
+  ): Promise<CursorPageResult<InventoryReservation>> {
+    const cursor = filter.cursor
+      ? parseReservationCursor(filter.cursor)
+      : undefined;
+    const records = await this.prisma.inventoryReservation.findMany({
+      include: reservationInclude,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: filter.pageSize + 1,
+      where: {
+        organizationId: filter.organizationId,
+        ...(filter.expiresBefore
+          ? { expiresAt: { lt: filter.expiresBefore } }
+          : {}),
+        ...(filter.productVariantId
+          ? {
+              lines: {
+                some: {
+                  organizationId: filter.organizationId,
+                  productVariantId: filter.productVariantId,
+                },
+              },
+            }
+          : {}),
+        ...(filter.referenceId ? { referenceId: filter.referenceId } : {}),
+        ...(filter.referenceType
+          ? { referenceType: filter.referenceType }
+          : {}),
+        ...(filter.status ? { status: filter.status } : {}),
+        ...(filter.stockLocationId
+          ? { stockLocationId: filter.stockLocationId }
+          : {}),
+        ...afterReservationCursor(cursor),
+      },
+    });
+    return toReservationCursorPage(
+      records.map(mapReservation),
+      filter.pageSize,
+    );
+  }
+
+  async sumActiveReserved(input: {
+    organizationId: string;
+    productVariantId: string;
+    stockLocationId: string;
+  }): Promise<number> {
+    return getReservedQuantity(this.prisma, input);
+  }
+}
+
+export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvailabilityQueryRepository {
+  constructor(private readonly prisma: InventoryPrismaClient) {}
+
+  async getAvailability(input: {
+    organizationId: string;
+    productVariantId: string;
+    stockLocationId: string;
+  }): Promise<InventoryAvailability> {
+    const [onHandQuantity, reservedQuantity] = await Promise.all([
+      getBalance(this.prisma, input),
+      getReservedQuantity(this.prisma, input),
+    ]);
+    return {
+      ...input,
+      availableQuantity: onHandQuantity - reservedQuantity,
+      onHandQuantity,
+      reservedQuantity,
+    };
+  }
+
+  async listByLocation(
+    filter: InventoryAvailabilityFilter,
+  ): Promise<CursorPageResult<InventoryAvailability>> {
+    const cursor = filter.cursor
+      ? parseAvailabilityCursor(filter.cursor)
+      : undefined;
+    const rows = await this.prisma.$queryRaw<AvailabilityRow[]>`
+      WITH on_hand AS (
+        SELECT product_variant_id, SUM(quantity_delta)::bigint AS on_hand_quantity
+        FROM (
+          SELECT line.product_variant_id, line.quantity AS quantity_delta
+          FROM inventory_movement_lines line
+          INNER JOIN inventory_movements movement
+            ON movement.id = line.movement_id
+           AND movement.organization_id = line.organization_id
+          WHERE movement.status = 'POSTED'
+            AND line.organization_id = ${filter.organizationId}::uuid
+            AND movement.destination_location_id = ${filter.stockLocationId}::uuid
+          UNION ALL
+          SELECT line.product_variant_id, -line.quantity AS quantity_delta
+          FROM inventory_movement_lines line
+          INNER JOIN inventory_movements movement
+            ON movement.id = line.movement_id
+           AND movement.organization_id = line.organization_id
+          WHERE movement.status = 'POSTED'
+            AND line.organization_id = ${filter.organizationId}::uuid
+            AND movement.source_location_id = ${filter.stockLocationId}::uuid
+        ) balance
+        GROUP BY product_variant_id
+      ),
+      reserved AS (
+        SELECT line.product_variant_id, SUM(line.quantity)::bigint AS reserved_quantity
+        FROM inventory_reservation_lines line
+        INNER JOIN inventory_reservations reservation
+          ON reservation.id = line.reservation_id
+         AND reservation.organization_id = line.organization_id
+        WHERE reservation.status = 'ACTIVE'
+          AND line.organization_id = ${filter.organizationId}::uuid
+          AND reservation.stock_location_id = ${filter.stockLocationId}::uuid
+        GROUP BY line.product_variant_id
+      ),
+      availability AS (
+        SELECT
+          COALESCE(on_hand.product_variant_id, reserved.product_variant_id) AS product_variant_id,
+          COALESCE(on_hand.on_hand_quantity, 0)::bigint AS on_hand_quantity,
+          COALESCE(reserved.reserved_quantity, 0)::bigint AS reserved_quantity,
+          (COALESCE(on_hand.on_hand_quantity, 0) - COALESCE(reserved.reserved_quantity, 0))::bigint AS available_quantity
+        FROM on_hand
+        FULL OUTER JOIN reserved
+          ON reserved.product_variant_id = on_hand.product_variant_id
+      )
+      SELECT product_variant_id, on_hand_quantity, reserved_quantity, available_quantity
+      FROM availability
+      WHERE (${filter.productVariantId ?? null}::uuid IS NULL OR product_variant_id = ${filter.productVariantId ?? null}::uuid)
+        AND (${cursor?.productVariantId ?? null}::uuid IS NULL OR product_variant_id > ${cursor?.productVariantId ?? null}::uuid)
+        AND (${filter.onlyAvailable ?? false}::boolean = false OR available_quantity > 0)
+      ORDER BY product_variant_id ASC
+      LIMIT ${filter.pageSize + 1}
+    `;
+    const items = rows.map((row) => ({
+      availableQuantity: Number(row.available_quantity),
+      onHandQuantity: Number(row.on_hand_quantity),
+      organizationId: filter.organizationId,
+      productVariantId: row.product_variant_id,
+      reservedQuantity: Number(row.reserved_quantity),
+      stockLocationId: filter.stockLocationId,
+    }));
+    return toAvailabilityCursorPage(items, filter.pageSize);
+  }
+}
+
 const movementInclude = {
   lines: { orderBy: { lineNumber: "asc" as const } },
   reversedByMovements: { select: { id: true }, take: 1 },
+};
+
+const reservationInclude = {
+  lines: { orderBy: { lineNumber: "asc" as const } },
 };
 
 async function lockMovementRow(
@@ -532,6 +881,19 @@ async function lockMovementRow(
   `;
 }
 
+async function lockReservationRow(
+  transaction: InventoryTransaction,
+  record: { reservationId: string; organizationId: string },
+): Promise<void> {
+  await transaction.$queryRaw`
+    SELECT id
+    FROM inventory_reservations
+    WHERE id = ${record.reservationId}::uuid
+      AND organization_id = ${record.organizationId}::uuid
+    FOR UPDATE
+  `;
+}
+
 async function getPayloadSignatureInTransaction(
   transaction: InventoryTransaction,
   movementId: string,
@@ -541,6 +903,21 @@ async function getPayloadSignatureInTransaction(
     SELECT payload_signature
     FROM inventory_movements
     WHERE id = ${movementId}::uuid
+      AND organization_id = ${organizationId}::uuid
+    LIMIT 1
+  `;
+  return rows.at(0)?.payload_signature ?? null;
+}
+
+async function getReservationPayloadSignatureInTransaction(
+  transaction: InventoryTransaction,
+  reservationId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const rows = await transaction.$queryRaw<PayloadSignatureRow[]>`
+    SELECT payload_signature
+    FROM inventory_reservations
+    WHERE id = ${reservationId}::uuid
       AND organization_id = ${organizationId}::uuid
     LIMIT 1
   `;
@@ -594,6 +971,48 @@ async function assertPostingEligibility(
   }
 }
 
+async function assertReservationEligibility(
+  transaction: InventoryTransaction,
+  record: CreateInventoryReservationRecord,
+): Promise<void> {
+  const organization = await transaction.organization.findFirst({
+    where: { id: record.organizationId, status: "ACTIVE" },
+  });
+  if (!organization) {
+    throw new BusinessRuleError(
+      "Inventory reservation organization must be active.",
+    );
+  }
+
+  const location = await transaction.stockLocation.findFirst({
+    where: {
+      id: record.stockLocationId,
+      isSellable: true,
+      organizationId: record.organizationId,
+      status: "ACTIVE",
+    },
+  });
+  if (!location) {
+    throw new BusinessRuleError(
+      "Inventory reservation location must be active, sellable, and in the same organization.",
+    );
+  }
+
+  const variantIds = record.lines.map((line) => line.productVariantId);
+  const activeVariants = await transaction.productVariant.findMany({
+    where: {
+      id: { in: variantIds },
+      organizationId: record.organizationId,
+      status: "ACTIVE",
+    },
+  });
+  if (activeVariants.length !== new Set(variantIds).size) {
+    throw new BusinessRuleError(
+      "Inventory reservation variants must be active and in the same organization.",
+    );
+  }
+}
+
 async function lockAffectedBalanceKeys(
   transaction: InventoryTransaction,
   movement: MovementWithLines,
@@ -617,6 +1036,52 @@ async function lockAffectedBalanceKeys(
     await transaction.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
     `;
+  }
+}
+
+async function lockReservationBalanceKeys(
+  transaction: InventoryTransaction,
+  record: CreateInventoryReservationRecord,
+): Promise<void> {
+  const keys = [
+    ...new Set(
+      record.lines.map(
+        (line) =>
+          `${record.organizationId}:${record.stockLocationId}:${line.productVariantId}`,
+      ),
+    ),
+  ].sort();
+
+  for (const key of keys) {
+    await transaction.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
+    `;
+  }
+}
+
+async function assertAvailableToReserve(
+  transaction: InventoryTransaction,
+  record: CreateInventoryReservationRecord,
+): Promise<void> {
+  for (const line of record.lines) {
+    const [onHand, reserved] = await Promise.all([
+      getBalance(transaction, {
+        organizationId: record.organizationId,
+        productVariantId: line.productVariantId,
+        stockLocationId: record.stockLocationId,
+      }),
+      getReservedQuantity(transaction, {
+        organizationId: record.organizationId,
+        productVariantId: line.productVariantId,
+        stockLocationId: record.stockLocationId,
+      }),
+    ]);
+    const available = onHand - reserved;
+    if (available < line.quantity) {
+      throw new BusinessRuleError(
+        `Insufficient available stock for variant ${line.productVariantId} at location ${record.stockLocationId}: onHand ${onHand}, reserved ${reserved}, available ${available}, requested ${line.quantity}.`,
+      );
+    }
   }
 }
 
@@ -676,6 +1141,28 @@ async function getBalance(
   return Number(rows.at(0)?.quantity ?? 0);
 }
 
+async function getReservedQuantity(
+  client: Pick<InventoryPrismaClient, "$queryRaw">,
+  input: {
+    organizationId: string;
+    productVariantId: string;
+    stockLocationId: string;
+  },
+): Promise<number> {
+  const rows = await client.$queryRaw<Array<{ quantity: bigint | number }>>`
+    SELECT COALESCE(SUM(line.quantity), 0)::bigint AS quantity
+    FROM inventory_reservation_lines line
+    INNER JOIN inventory_reservations reservation
+      ON reservation.id = line.reservation_id
+     AND reservation.organization_id = line.organization_id
+    WHERE reservation.status = 'ACTIVE'
+      AND line.organization_id = ${input.organizationId}::uuid
+      AND line.product_variant_id = ${input.productVariantId}::uuid
+      AND reservation.stock_location_id = ${input.stockLocationId}::uuid
+  `;
+  return Number(rows.at(0)?.quantity ?? 0);
+}
+
 function afterMovementCursor(
   cursor?: ReturnType<typeof parseMovementCursor>,
 ): Record<string, unknown> {
@@ -686,6 +1173,20 @@ function afterMovementCursor(
     OR: [
       { occurredAt: { lt: cursor.occurredAt } },
       { occurredAt: cursor.occurredAt, id: { lt: cursor.id } },
+    ],
+  };
+}
+
+function afterReservationCursor(
+  cursor?: ReturnType<typeof parseReservationCursor>,
+): Record<string, unknown> {
+  if (!cursor) {
+    return {};
+  }
+  return {
+    OR: [
+      { createdAt: { lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { lt: cursor.id } },
     ],
   };
 }
@@ -736,6 +1237,40 @@ function toBalanceCursorPage(
   };
 }
 
+function toReservationCursorPage(
+  records: InventoryReservation[],
+  pageSize: number,
+): CursorPageResult<InventoryReservation> {
+  const items = records.slice(0, pageSize);
+  const hasMore = records.length > pageSize;
+  const lastItem = items.at(-1);
+  return {
+    hasMore,
+    items,
+    nextCursor:
+      hasMore && lastItem
+        ? encodeReservationCursor(lastItem.createdAt, lastItem.id)
+        : null,
+  };
+}
+
+function toAvailabilityCursorPage(
+  records: InventoryAvailability[],
+  pageSize: number,
+): CursorPageResult<InventoryAvailability> {
+  const items = records.slice(0, pageSize);
+  const hasMore = records.length > pageSize;
+  const lastItem = items.at(-1);
+  return {
+    hasMore,
+    items,
+    nextCursor:
+      hasMore && lastItem
+        ? encodeAvailabilityCursor(lastItem.productVariantId)
+        : null,
+  };
+}
+
 function mapMovement(record: MovementWithLines): InventoryMovement {
   return {
     createdAt: record.createdAt,
@@ -772,6 +1307,36 @@ function mapMovement(record: MovementWithLines): InventoryMovement {
   };
 }
 
+function mapReservation(record: ReservationWithLines): InventoryReservation {
+  return {
+    confirmedAt: record.confirmedAt,
+    createdAt: record.createdAt,
+    expiredAt: record.expiredAt,
+    expiresAt: record.expiresAt,
+    id: record.id,
+    idempotencyKey: record.idempotencyKey,
+    lines: record.lines.map((line) => ({
+      createdAt: line.createdAt,
+      id: line.id,
+      lineNumber: line.lineNumber,
+      organizationId: line.organizationId,
+      productVariantId: line.productVariantId,
+      quantity: line.quantity,
+      reservationId: line.reservationId,
+    })),
+    note: record.note,
+    organizationId: record.organizationId,
+    referenceId: record.referenceId,
+    referenceType: record.referenceType,
+    releasedAt: record.releasedAt,
+    reservationNumber: record.reservationNumber,
+    status: record.status,
+    stockLocationId: record.stockLocationId,
+    updatedAt: record.updatedAt,
+    version: record.version,
+  };
+}
+
 function mapInventoryIntegrityError(error: unknown): never {
   if (isUniqueConstraintError(error)) {
     throw new ConflictError(
@@ -788,6 +1353,28 @@ function mapInventoryIntegrityError(error: unknown): never {
   if (isCheckConstraintError(error)) {
     throw new BusinessRuleError(
       "Inventory movement database rule was violated.",
+      error,
+    );
+  }
+  throw error;
+}
+
+function mapInventoryReservationIntegrityError(error: unknown): never {
+  if (isUniqueConstraintError(error)) {
+    throw new ConflictError(
+      "Inventory reservation uniqueness was violated.",
+      error,
+    );
+  }
+  if (isForeignKeyConstraintError(error)) {
+    throw new BusinessRuleError(
+      "Inventory reservation reference integrity was violated.",
+      error,
+    );
+  }
+  if (isCheckConstraintError(error)) {
+    throw new BusinessRuleError(
+      "Inventory reservation database rule was violated.",
       error,
     );
   }

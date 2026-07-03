@@ -3,6 +3,9 @@ import type {
   InventoryMovementLine,
   InventoryMovementStatus,
   InventoryMovementType,
+  InventoryAvailability,
+  InventoryReservation,
+  InventoryReservationStatus,
   OnHandBalance,
 } from "../domain/models.js";
 
@@ -82,6 +85,51 @@ export type InventoryBalanceFilter = {
   productVariantId?: string;
 };
 
+export type InventoryReservationLineInput = {
+  productVariantId: string;
+  quantity: number;
+};
+
+export type CreateInventoryReservationRecord = {
+  expiresAt: Date | null;
+  idempotencyKey: string;
+  lines: InventoryReservationLineInput[];
+  note: string | null;
+  organizationId: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  reservationNumber: string;
+  stockLocationId: string;
+};
+
+export type ChangeInventoryReservationStatusRecord = {
+  expectedVersion: number;
+  organizationId: string;
+  reservationId: string;
+  status: Exclude<InventoryReservationStatus, "ACTIVE">;
+};
+
+export type InventoryReservationListFilter = {
+  cursor?: string;
+  expiresBefore?: Date;
+  organizationId: string;
+  pageSize: number;
+  productVariantId?: string;
+  referenceId?: string;
+  referenceType?: string;
+  status?: InventoryReservationStatus;
+  stockLocationId?: string;
+};
+
+export type InventoryAvailabilityFilter = {
+  cursor?: string;
+  onlyAvailable?: boolean;
+  organizationId: string;
+  pageSize: number;
+  productVariantId?: string;
+  stockLocationId: string;
+};
+
 export type InventoryMovementRepository = {
   createDraft(
     record: CreateInventoryMovementRecord,
@@ -125,6 +173,47 @@ export type InventoryBalanceQueryRepository = {
   listByLocation(
     filter: InventoryBalanceFilter,
   ): Promise<CursorPageResult<OnHandBalance>>;
+};
+
+export type InventoryReservationRepository = {
+  changeStatus(
+    record: ChangeInventoryReservationStatusRecord,
+  ): Promise<InventoryReservation>;
+  createActive(
+    record: CreateInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<InventoryReservation>;
+  findById(
+    id: string,
+    organizationId: string,
+  ): Promise<InventoryReservation | null>;
+  findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<InventoryReservation | null>;
+  getPayloadSignature(
+    reservationId: string,
+    organizationId: string,
+  ): Promise<string | null>;
+  list(
+    filter: InventoryReservationListFilter,
+  ): Promise<CursorPageResult<InventoryReservation>>;
+  sumActiveReserved(input: {
+    organizationId: string;
+    productVariantId: string;
+    stockLocationId: string;
+  }): Promise<number>;
+};
+
+export type InventoryAvailabilityQueryRepository = {
+  getAvailability(input: {
+    organizationId: string;
+    productVariantId: string;
+    stockLocationId: string;
+  }): Promise<InventoryAvailability>;
+  listByLocation(
+    filter: InventoryAvailabilityFilter,
+  ): Promise<CursorPageResult<InventoryAvailability>>;
 };
 
 export type InventoryMovementLineDraft = Pick<

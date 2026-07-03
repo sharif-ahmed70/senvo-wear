@@ -203,6 +203,20 @@ const balanceCursorSchema = z
   .string()
   .max(64)
   .regex(/^balance-v1\|[0-9a-fA-F-]{36}$/, "Balance cursor format is invalid.");
+const reservationCursorSchema = z
+  .string()
+  .max(300)
+  .regex(
+    /^reservation-v1\|[^|]+\|[0-9a-fA-F-]{36}$/,
+    "Reservation cursor format is invalid.",
+  );
+const availabilityCursorSchema = z
+  .string()
+  .max(80)
+  .regex(
+    /^availability-v1\|[0-9a-fA-F-]{36}$/,
+    "Availability cursor format is invalid.",
+  );
 const cursorPageRequestSchema = z
   .object({
     cursor: cursorSchema.optional(),
@@ -218,6 +232,18 @@ const movementCursorPageRequestSchema = z
 const balanceCursorPageRequestSchema = z
   .object({
     cursor: balanceCursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
+const reservationCursorPageRequestSchema = z
+  .object({
+    cursor: reservationCursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
+const availabilityCursorPageRequestSchema = z
+  .object({
+    cursor: availabilityCursorSchema.optional(),
     pageSize: z.number().int().positive().max(100).optional(),
   })
   .strict();
@@ -258,6 +284,12 @@ export const inventoryMovementTypeSchema = z.enum([
   "ADJUSTMENT_OUT",
 ]);
 export const inventoryMovementStatusSchema = z.enum(["DRAFT", "POSTED"]);
+export const inventoryReservationStatusSchema = z.enum([
+  "ACTIVE",
+  "CONFIRMED",
+  "RELEASED",
+  "EXPIRED",
+]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -404,6 +436,41 @@ export const reverseInventoryMovementInputSchema = z
     reversalMovementNumber: codeSchema,
   })
   .strict();
+
+export const inventoryReservationLineInputSchema = z
+  .object({
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+  })
+  .strict();
+
+export const createInventoryReservationInputSchema = z
+  .object({
+    expiresAt: isoTimestampSchema.nullable().optional(),
+    idempotencyKey: idempotencyKeySchema,
+    lines: z.array(inventoryReservationLineInputSchema).min(1).max(500),
+    note: optionalTextSchema(1000),
+    organizationId: idSchema,
+    referenceId: optionalTextSchema(120),
+    referenceType: optionalTextSchema(80),
+    reservationNumber: codeSchema,
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const confirmInventoryReservationInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    reservationId: idSchema,
+  })
+  .strict();
+
+export const releaseInventoryReservationInputSchema =
+  confirmInventoryReservationInputSchema;
+
+export const expireInventoryReservationInputSchema =
+  confirmInventoryReservationInputSchema;
 
 export const updateBranchMetadataInputSchema = z
   .object({
@@ -559,6 +626,46 @@ export const listLocationBalancesQuerySchema = balanceCursorPageRequestSchema
   })
   .strict();
 
+export const getInventoryReservationQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    reservationId: idSchema,
+  })
+  .strict();
+
+export const listInventoryReservationsQuerySchema =
+  reservationCursorPageRequestSchema
+    .extend({
+      expiresBefore: isoTimestampSchema.optional(),
+      organizationId: idSchema,
+      productVariantId: idSchema.optional(),
+      referenceId: optionalTextSchema(120),
+      referenceType: optionalTextSchema(80),
+      status: inventoryReservationStatusSchema.optional(),
+      stockLocationId: idSchema.optional(),
+    })
+    .strict();
+
+export const getReservedQuantityQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const getAvailableToSellQuerySchema = getReservedQuantityQuerySchema;
+
+export const listLocationAvailabilityQuerySchema =
+  availabilityCursorPageRequestSchema
+    .extend({
+      onlyAvailable: z.boolean().optional(),
+      organizationId: idSchema,
+      productVariantId: idSchema.optional(),
+      stockLocationId: idSchema,
+    })
+    .strict();
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -594,6 +701,18 @@ export type PostInventoryMovementInputContract = z.infer<
 >;
 export type ReverseInventoryMovementInputContract = z.infer<
   typeof reverseInventoryMovementInputSchema
+>;
+export type CreateInventoryReservationInputContract = z.infer<
+  typeof createInventoryReservationInputSchema
+>;
+export type ConfirmInventoryReservationInputContract = z.infer<
+  typeof confirmInventoryReservationInputSchema
+>;
+export type ReleaseInventoryReservationInputContract = z.infer<
+  typeof releaseInventoryReservationInputSchema
+>;
+export type ExpireInventoryReservationInputContract = z.infer<
+  typeof expireInventoryReservationInputSchema
 >;
 export type UpdateBranchMetadataInputContract = z.infer<
   typeof updateBranchMetadataInputSchema
@@ -638,6 +757,21 @@ export type GetOnHandBalanceQueryContract = z.infer<
 >;
 export type ListLocationBalancesQueryContract = z.infer<
   typeof listLocationBalancesQuerySchema
+>;
+export type GetInventoryReservationQueryContract = z.infer<
+  typeof getInventoryReservationQuerySchema
+>;
+export type ListInventoryReservationsQueryContract = z.infer<
+  typeof listInventoryReservationsQuerySchema
+>;
+export type GetReservedQuantityQueryContract = z.infer<
+  typeof getReservedQuantityQuerySchema
+>;
+export type GetAvailableToSellQueryContract = z.infer<
+  typeof getAvailableToSellQuerySchema
+>;
+export type ListLocationAvailabilityQueryContract = z.infer<
+  typeof listLocationAvailabilityQuerySchema
 >;
 
 export type CatalogRecordContract = {
@@ -784,6 +918,42 @@ export type OnHandBalanceContract = {
   stockLocationId: string;
 };
 
+export type InventoryReservationLineContract = {
+  createdAt: string;
+  id: string;
+  lineNumber: number;
+  organizationId: string;
+  productVariantId: string;
+  quantity: number;
+  reservationId: string;
+};
+
+export type InventoryReservationContract = CatalogRecordContract & {
+  confirmedAt: string | null;
+  expiredAt: string | null;
+  expiresAt: string | null;
+  idempotencyKey: string;
+  lines: InventoryReservationLineContract[];
+  note: string | null;
+  organizationId: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  releasedAt: string | null;
+  reservationNumber: string;
+  status: z.infer<typeof inventoryReservationStatusSchema>;
+  stockLocationId: string;
+  version: number;
+};
+
+export type InventoryAvailabilityContract = {
+  availableQuantity: number;
+  onHandQuantity: number;
+  organizationId: string;
+  productVariantId: string;
+  reservedQuantity: number;
+  stockLocationId: string;
+};
+
 export const branchContractSchema = z.object({
   addressLine1: z.string().nullable(),
   addressLine2: z.string().nullable(),
@@ -880,6 +1050,51 @@ export const onHandBalanceContractSchema = z
   })
   .strict();
 
+export const inventoryReservationLineContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    lineNumber: expectedVersionSchema,
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+    reservationId: idSchema,
+  })
+  .strict();
+
+export const inventoryReservationContractSchema = z
+  .object({
+    confirmedAt: isoTimestampSchema.nullable(),
+    createdAt: isoTimestampSchema,
+    expiredAt: isoTimestampSchema.nullable(),
+    expiresAt: isoTimestampSchema.nullable(),
+    id: idSchema,
+    idempotencyKey: idempotencyKeySchema,
+    lines: z.array(inventoryReservationLineContractSchema),
+    note: z.string().nullable(),
+    organizationId: idSchema,
+    referenceId: z.string().nullable(),
+    referenceType: z.string().nullable(),
+    releasedAt: isoTimestampSchema.nullable(),
+    reservationNumber: z.string(),
+    status: inventoryReservationStatusSchema,
+    stockLocationId: idSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const inventoryAvailabilityContractSchema = z
+  .object({
+    availableQuantity: z.number().int(),
+    onHandQuantity: z.number().int(),
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    reservedQuantity: z.number().int().nonnegative(),
+    stockLocationId: idSchema,
+  })
+  .strict();
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
@@ -911,6 +1126,28 @@ export const balanceCursorPageResultSchema = <T extends z.ZodTypeAny>(
     })
     .strict();
 
+export const reservationCursorPageResultSchema = <T extends z.ZodTypeAny>(
+  itemSchema: T,
+) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: reservationCursorSchema.nullable(),
+    })
+    .strict();
+
+export const availabilityCursorPageResultSchema = <T extends z.ZodTypeAny>(
+  itemSchema: T,
+) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: availabilityCursorSchema.nullable(),
+    })
+    .strict();
+
 export const branchPageContractSchema =
   cursorPageResultSchema(branchContractSchema);
 export const stockLocationPageContractSchema = cursorPageResultSchema(
@@ -924,3 +1161,7 @@ export const inventoryMovementPageContractSchema =
 export const locationBalancePageContractSchema = balanceCursorPageResultSchema(
   onHandBalanceContractSchema,
 );
+export const inventoryReservationPageContractSchema =
+  reservationCursorPageResultSchema(inventoryReservationContractSchema);
+export const locationAvailabilityPageContractSchema =
+  availabilityCursorPageResultSchema(inventoryAvailabilityContractSchema);

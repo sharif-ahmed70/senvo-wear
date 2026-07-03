@@ -11,21 +11,31 @@ import {
   createColorInputSchema,
   createPosCounterInputSchema,
   createProductVariantInputSchema,
+  createInventoryReservationInputSchema,
   createStockLocationInputSchema,
   getBranchQuerySchema,
   getInventoryMovementQuerySchema,
   getOnHandBalanceQuerySchema,
+  getAvailableToSellQuerySchema,
   getPosCounterQuerySchema,
+  getInventoryReservationQuerySchema,
   getStockLocationQuerySchema,
+  inventoryReservationPageContractSchema,
+  locationAvailabilityPageContractSchema,
   inventoryMovementPageContractSchema,
   listInventoryMovementsQuerySchema,
   listBranchesQuerySchema,
   listLocationBalancesQuerySchema,
+  listLocationAvailabilityQuerySchema,
+  listInventoryReservationsQuerySchema,
   listPosCountersQuerySchema,
   listStockLocationsQuerySchema,
   posCounterPageContractSchema,
   postInventoryMovementInputSchema,
+  confirmInventoryReservationInputSchema,
+  expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
+  releaseInventoryReservationInputSchema,
   reverseInventoryMovementInputSchema,
   createApiFailure,
   createApiSuccess,
@@ -423,6 +433,66 @@ describe("API contracts", () => {
     expect(sourceLocationId).toBeDefined();
   });
 
+  it("validates inventory reservation command inputs", () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const stockLocationId = "33333333-3333-4333-8333-333333333333";
+    const productVariantId = "44444444-4444-4444-8444-444444444444";
+
+    expect(
+      createInventoryReservationInputSchema.parse({
+        expiresAt: "2999-01-01T00:00:00.000Z",
+        idempotencyKey: "reserve-123",
+        lines: [{ productVariantId, quantity: 2 }],
+        note: "Hold for future workflow",
+        organizationId,
+        referenceId: "REF-1",
+        referenceType: "MANUAL",
+        reservationNumber: "RSV-1",
+        stockLocationId,
+      }),
+    ).toMatchObject({ reservationNumber: "RSV-1" });
+    expect(
+      createInventoryReservationInputSchema.safeParse({
+        idempotencyKey: "reserve-123",
+        lines: [{ productVariantId, quantity: 2 }],
+        organizationId,
+        reservationNumber: "RSV-1",
+        salesOrderId: productVariantId,
+        stockLocationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      createInventoryReservationInputSchema.safeParse({
+        idempotencyKey: "reserve-123",
+        lines: [{ productVariantId, quantity: 0 }],
+        organizationId,
+        reservationNumber: "RSV-1",
+        stockLocationId,
+      }).success,
+    ).toBe(false);
+
+    for (const schema of [
+      confirmInventoryReservationInputSchema,
+      releaseInventoryReservationInputSchema,
+      expireInventoryReservationInputSchema,
+    ]) {
+      expect(
+        schema.parse({
+          expectedVersion: 1,
+          organizationId,
+          reservationId: productVariantId,
+        }),
+      ).toMatchObject({ expectedVersion: 1 });
+      expect(
+        schema.safeParse({
+          expectedVersion: 0,
+          organizationId,
+          reservationId: productVariantId,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("validates inventory read query inputs and paginated outputs", () => {
     const organizationId = "11111111-1111-4111-8111-111111111111";
     const movementId = "22222222-2222-4222-8222-222222222222";
@@ -511,6 +581,112 @@ describe("API contracts", () => {
           },
         ],
         nextCursor: movementCursor,
+      }),
+    ).toMatchObject({ hasMore: true });
+  });
+
+  it("validates inventory reservation and availability read contracts", () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const reservationId = "22222222-2222-4222-8222-222222222222";
+    const locationId = "33333333-3333-4333-8333-333333333333";
+    const productVariantId = "44444444-4444-4444-8444-444444444444";
+    const reservationCursor =
+      "reservation-v1|2026-07-03T00%3A00%3A00.000Z|22222222-2222-4222-8222-222222222222";
+    const availabilityCursor =
+      "availability-v1|44444444-4444-4444-8444-444444444444";
+
+    expect(
+      getInventoryReservationQuerySchema.parse({
+        organizationId,
+        reservationId,
+      }),
+    ).toMatchObject({ reservationId });
+    expect(
+      listInventoryReservationsQuerySchema.parse({
+        cursor: reservationCursor,
+        expiresBefore: "2999-01-01T00:00:00.000Z",
+        organizationId,
+        pageSize: 100,
+        productVariantId,
+        referenceId: "REF-1",
+        referenceType: "MANUAL",
+        status: "ACTIVE",
+        stockLocationId: locationId,
+      }),
+    ).toMatchObject({ status: "ACTIVE" });
+    expect(
+      listInventoryReservationsQuerySchema.safeParse({
+        cursor: "bad",
+        organizationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      getAvailableToSellQuerySchema.parse({
+        organizationId,
+        productVariantId,
+        stockLocationId: locationId,
+      }),
+    ).toMatchObject({ productVariantId });
+    expect(
+      listLocationAvailabilityQuerySchema.parse({
+        cursor: availabilityCursor,
+        onlyAvailable: true,
+        organizationId,
+        stockLocationId: locationId,
+      }),
+    ).toMatchObject({ onlyAvailable: true });
+
+    expect(
+      inventoryReservationPageContractSchema.parse({
+        hasMore: true,
+        items: [
+          {
+            confirmedAt: null,
+            createdAt: "2026-07-03T00:00:00.000Z",
+            expiredAt: null,
+            expiresAt: "2999-01-01T00:00:00.000Z",
+            id: reservationId,
+            idempotencyKey: "reserve-123",
+            lines: [
+              {
+                createdAt: "2026-07-03T00:00:00.000Z",
+                id: productVariantId,
+                lineNumber: 1,
+                organizationId,
+                productVariantId,
+                quantity: 2,
+                reservationId,
+              },
+            ],
+            note: null,
+            organizationId,
+            referenceId: null,
+            referenceType: null,
+            releasedAt: null,
+            reservationNumber: "RSV-1",
+            status: "ACTIVE",
+            stockLocationId: locationId,
+            updatedAt: "2026-07-03T00:00:00.000Z",
+            version: 1,
+          },
+        ],
+        nextCursor: reservationCursor,
+      }),
+    ).toMatchObject({ hasMore: true });
+    expect(
+      locationAvailabilityPageContractSchema.parse({
+        hasMore: true,
+        items: [
+          {
+            availableQuantity: 8,
+            onHandQuantity: 10,
+            organizationId,
+            productVariantId,
+            reservedQuantity: 2,
+            stockLocationId: locationId,
+          },
+        ],
+        nextCursor: availabilityCursor,
       }),
     ).toMatchObject({ hasMore: true });
   });

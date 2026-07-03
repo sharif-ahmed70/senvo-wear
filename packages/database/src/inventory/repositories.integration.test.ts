@@ -1,10 +1,17 @@
 import {
   createInventoryMovement,
+  createInventoryReservation,
+  confirmInventoryReservation,
+  expireInventoryReservation,
+  getAvailableToSell,
   getOnHandBalance,
   listInventoryMovements,
+  listInventoryReservations,
+  listLocationAvailability,
   listLocationBalances,
   postInventoryMovement,
   replaceDraftMovementLines,
+  releaseInventoryReservation,
   reverseInventoryMovement,
   type InventoryMovementType,
 } from "@senvo/domain";
@@ -13,6 +20,8 @@ import { createPrismaClient } from "../index.js";
 import {
   PrismaInventoryBalanceQueryRepository,
   PrismaInventoryMovementRepository,
+  PrismaInventoryAvailabilityQueryRepository,
+  PrismaInventoryReservationRepository,
 } from "./repositories.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -23,15 +32,21 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   let prisma: ReturnType<typeof createPrismaClient>;
   let movements: PrismaInventoryMovementRepository;
   let balances: PrismaInventoryBalanceQueryRepository;
+  let reservations: PrismaInventoryReservationRepository;
+  let availability: PrismaInventoryAvailabilityQueryRepository;
 
   beforeAll(() => {
     process.env.DATABASE_URL = testDatabaseUrl;
     prisma = createPrismaClient();
     movements = new PrismaInventoryMovementRepository(prisma);
     balances = new PrismaInventoryBalanceQueryRepository(prisma);
+    reservations = new PrismaInventoryReservationRepository(prisma);
+    availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
   });
 
   beforeEach(async () => {
+    await prisma.inventoryReservationLine.deleteMany();
+    await prisma.inventoryReservation.deleteMany();
     await prisma.inventoryMovementLine.deleteMany();
     await prisma.inventoryMovement.deleteMany();
     await prisma.productCollection.deleteMany();
@@ -729,6 +744,349 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ]);
   });
 
+  it("creates active reservation and decreases ATS without changing on-hand", async () => {
+    const base = await createInventoryBase("RSV-CREATE");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CREATE",
+    });
+
+    expect(reservation).toMatchObject({
+      stockLocationId: base.primaryLocation.id,
+      status: "ACTIVE",
+      version: 1,
+    });
+    await expectBalance(base, base.primaryLocation.id, 10);
+    await expectAvailability(base, 10, 4, 6);
+  });
+
+  it("confirm, release, and expire restore ATS without issuing stock", async () => {
+    const base = await createInventoryBase("RSV-LIFE");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const confirmedSource = await reserve(base, {
+      idempotencyKey: "rsv-life-confirm",
+      quantity: 3,
+      reservationNumber: "RSV-LIFE-CONFIRM",
+    });
+
+    await confirmInventoryReservation(reservations, {
+      expectedVersion: confirmedSource.version,
+      organizationId: base.organization.id,
+      reservationId: confirmedSource.id,
+    });
+    await expectAvailability(base, 10, 0, 10);
+
+    const releasedSource = await reserve(base, {
+      idempotencyKey: "rsv-life-release",
+      quantity: 3,
+      reservationNumber: "RSV-LIFE-RELEASE",
+    });
+    await releaseInventoryReservation(reservations, {
+      expectedVersion: releasedSource.version,
+      organizationId: base.organization.id,
+      reservationId: releasedSource.id,
+    });
+    await expectAvailability(base, 10, 0, 10);
+
+    const expiredSource = await reserve(base, {
+      expiresAt: "2999-01-01T00:00:00.000Z",
+      idempotencyKey: "rsv-life-expire",
+      quantity: 3,
+      reservationNumber: "RSV-LIFE-EXPIRE",
+    });
+    await expireInventoryReservation(reservations, {
+      expectedVersion: expiredSource.version,
+      organizationId: base.organization.id,
+      reservationId: expiredSource.id,
+    });
+    await expectAvailability(base, 10, 0, 10);
+    await expectBalance(base, base.primaryLocation.id, 10);
+  });
+
+  it("rejects terminal transitions and stale reservation versions", async () => {
+    const base = await createInventoryBase("RSV-TERMINAL");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    const reservation = await reserve(base, {
+      quantity: 2,
+      reservationNumber: "RSV-TERMINAL",
+    });
+    const confirmed = await confirmInventoryReservation(reservations, {
+      expectedVersion: reservation.version,
+      organizationId: base.organization.id,
+      reservationId: reservation.id,
+    });
+
+    await expect(
+      releaseInventoryReservation(reservations, {
+        expectedVersion: confirmed.version,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow("Terminal");
+
+    const active = await reserve(base, {
+      idempotencyKey: "rsv-stale-version",
+      quantity: 1,
+      reservationNumber: "RSV-STALE",
+    });
+    await expect(
+      releaseInventoryReservation(reservations, {
+        expectedVersion: active.version + 1,
+        organizationId: base.organization.id,
+        reservationId: active.id,
+      }),
+    ).rejects.toThrow("changed");
+  });
+
+  it("rejects insufficient ATS and keeps multi-line reservation atomic", async () => {
+    const base = await createInventoryBase("RSV-ATS");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    const secondVariant = await createSecondVariant(base, "RSV-ATS");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "RSV-ATS-SECOND-OPEN",
+      quantity: 1,
+      variantId: secondVariant.id,
+    });
+
+    await expect(
+      createInventoryReservation(reservations, {
+        idempotencyKey: "rsv-atomic-fail",
+        lines: [
+          { productVariantId: base.variant.id, quantity: 3 },
+          { productVariantId: secondVariant.id, quantity: 2 },
+        ],
+        organizationId: base.organization.id,
+        reservationNumber: "RSV-ATOMIC",
+        stockLocationId: base.primaryLocation.id,
+      }),
+    ).rejects.toThrow("Insufficient available stock");
+    await expectAvailability(base, 5, 0, 5);
+  });
+
+  it("serializes concurrent reservations and prevents overselling", async () => {
+    const base = await createInventoryBase("RSV-CONCURRENT");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    const results = await Promise.allSettled([
+      reserve(base, {
+        idempotencyKey: "rsv-concurrent-a",
+        quantity: 7,
+        reservationNumber: "RSV-CONCURRENT-A",
+      }),
+      reserve(base, {
+        idempotencyKey: "rsv-concurrent-b",
+        quantity: 7,
+        reservationNumber: "RSV-CONCURRENT-B",
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expectAvailability(base, 10, 7, 3);
+  });
+
+  it("handles concurrent duplicate idempotency and conflicting idempotency", async () => {
+    const base = await createInventoryBase("RSV-IDEMPOTENT");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const input = {
+      idempotencyKey: "rsv-same-key",
+      quantity: 4,
+      reservationNumber: "RSV-SAME",
+    };
+
+    const [first, second] = await Promise.all([
+      reserve(base, input),
+      reserve(base, input),
+    ]);
+    expect(second.id).toBe(first.id);
+    await expectAvailability(base, 10, 4, 6);
+
+    await expect(
+      reserve(base, {
+        idempotencyKey: "rsv-same-key",
+        quantity: 5,
+        reservationNumber: "RSV-SAME",
+      }),
+    ).rejects.toThrow("Idempotency key");
+  });
+
+  it("enforces organization, location, and variant eligibility", async () => {
+    const base = await createInventoryBase("RSV-ELIG-A");
+    const other = await createInventoryBase("RSV-ELIG-B");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+
+    await expect(
+      reserve(base, {
+        stockLocationId: other.primaryLocation.id,
+      }),
+    ).rejects.toThrow("same organization");
+    await expect(
+      reserve(base, {
+        lines: [{ productVariantId: other.variant.id, quantity: 1 }],
+      }),
+    ).rejects.toThrow("same organization");
+
+    await prisma.stockLocation.update({
+      data: { status: "INACTIVE" },
+      where: { id: base.primaryLocation.id },
+    });
+    await expect(
+      reserve(base, {
+        idempotencyKey: "rsv-inactive-location",
+        reservationNumber: "RSV-INACTIVE-LOCATION",
+      }),
+    ).rejects.toThrow("active");
+    await prisma.stockLocation.update({
+      data: { isSellable: false, status: "ACTIVE" },
+      where: { id: base.primaryLocation.id },
+    });
+    await expect(
+      reserve(base, {
+        idempotencyKey: "rsv-nonsell-location",
+        reservationNumber: "RSV-NONSELL-LOCATION",
+      }),
+    ).rejects.toThrow("sellable");
+    await prisma.stockLocation.update({
+      data: { isSellable: true },
+      where: { id: base.primaryLocation.id },
+    });
+    await prisma.productVariant.update({
+      data: { status: "INACTIVE" },
+      where: { id: base.variant.id },
+    });
+    await expect(
+      reserve(base, {
+        idempotencyKey: "rsv-inactive-variant",
+        reservationNumber: "RSV-INACTIVE-VARIANT",
+      }),
+    ).rejects.toThrow("variants must be active");
+    await prisma.productVariant.update({
+      data: { status: "ARCHIVED" },
+      where: { id: base.variant.id },
+    });
+    await expect(
+      reserve(base, {
+        idempotencyKey: "rsv-archived-variant",
+        reservationNumber: "RSV-ARCHIVED-VARIANT",
+      }),
+    ).rejects.toThrow("variants must be active");
+  });
+
+  it("excludes draft movements and reflects reversal through on-hand", async () => {
+    const base = await createInventoryBase("RSV-LEDGER");
+    await createInventoryMovement(movements, {
+      destinationLocationId: base.primaryLocation.id,
+      idempotencyKey: "rsv-draft-stock",
+      lines: [{ productVariantId: base.variant.id, quantity: 10 }],
+      movementNumber: "RSV-DRAFT-STOCK",
+      organizationId: base.organization.id,
+      type: "OPENING",
+    });
+    await expectAvailability(base, 0, 0, 0);
+
+    const receipt = await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "RSV-REVERSAL-RECEIPT",
+      quantity: 6,
+    });
+    await expectAvailability(base, 6, 0, 6);
+    await reversePosted(base, receipt.id, {
+      idempotencyKey: "rsv-reverse-receipt",
+      movementNumber: "RSV-REVERSAL",
+    });
+    await expectAvailability(base, 0, 0, 0);
+  });
+
+  it("lists reservations and availability with organization isolation", async () => {
+    const base = await createInventoryBase("RSV-LIST-A");
+    const other = await createInventoryBase("RSV-LIST-B");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    await createAndPost("OPENING", other, {
+      destinationLocationId: other.primaryLocation.id,
+      quantity: 9,
+    });
+    const reservation = await reserve(base, {
+      referenceId: "REF-1",
+      referenceType: "MANUAL",
+      reservationNumber: "RSV-LIST",
+    });
+    await reserve(other, {
+      idempotencyKey: "rsv-list-other",
+      reservationNumber: "RSV-LIST-OTHER",
+    });
+
+    const reservationPage = await listInventoryReservations(reservations, {
+      organizationId: base.organization.id,
+      pageSize: 10,
+      productVariantId: base.variant.id,
+      referenceId: "REF-1",
+      referenceType: "MANUAL",
+      status: "ACTIVE",
+      stockLocationId: base.primaryLocation.id,
+    });
+    expect(reservationPage.items).toMatchObject([{ id: reservation.id }]);
+
+    const availabilityPage = await listLocationAvailability(availability, {
+      onlyAvailable: true,
+      organizationId: base.organization.id,
+      stockLocationId: base.primaryLocation.id,
+    });
+    expect(availabilityPage.items).toMatchObject([
+      {
+        availableQuantity: 1,
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+      },
+    ]);
+  });
+
+  it("preserves restrictive deletion for reservation history", async () => {
+    const base = await createInventoryBase("RSV-DELETE");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    await reserve(base, { reservationNumber: "RSV-DELETE" });
+
+    await expect(
+      prisma.stockLocation.delete({ where: { id: base.primaryLocation.id } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.productVariant.delete({ where: { id: base.variant.id } }),
+    ).rejects.toThrow();
+  });
+
   it("exposes inventory constraints and indexes for migration review", async () => {
     const constraints = await prisma.$queryRaw<Array<{ conname: string }>>`
       SELECT conname
@@ -774,13 +1132,19 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       movementNumber?: string;
       quantity: number;
       sourceLocationId?: string;
+      variantId?: string;
     },
   ) {
     const defaultMovementNumber = type.replaceAll("_", "-");
     const movement = await createInventoryMovement(movements, {
       destinationLocationId: input.destinationLocationId,
       idempotencyKey: `${input.movementNumber ?? defaultMovementNumber}-key`,
-      lines: [{ productVariantId: base.variant.id, quantity: input.quantity }],
+      lines: [
+        {
+          productVariantId: input.variantId ?? base.variant.id,
+          quantity: input.quantity,
+        },
+      ],
       movementNumber: input.movementNumber ?? defaultMovementNumber,
       organizationId: base.organization.id,
       sourceLocationId: input.sourceLocationId,
@@ -812,6 +1176,33 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     });
   }
 
+  async function reserve(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    input?: {
+      expiresAt?: string;
+      idempotencyKey?: string;
+      lines?: { productVariantId: string; quantity: number }[];
+      quantity?: number;
+      referenceId?: string;
+      referenceType?: string;
+      reservationNumber?: string;
+      stockLocationId?: string;
+    },
+  ) {
+    return createInventoryReservation(reservations, {
+      expiresAt: input?.expiresAt,
+      idempotencyKey: input?.idempotencyKey ?? "reservation-key",
+      lines: input?.lines ?? [
+        { productVariantId: base.variant.id, quantity: input?.quantity ?? 4 },
+      ],
+      organizationId: base.organization.id,
+      referenceId: input?.referenceId,
+      referenceType: input?.referenceType,
+      reservationNumber: input?.reservationNumber ?? "RESERVATION",
+      stockLocationId: input?.stockLocationId ?? base.primaryLocation.id,
+    });
+  }
+
   async function expectBalance(
     base: Awaited<ReturnType<typeof createInventoryBase>>,
     stockLocationId: string,
@@ -824,6 +1215,56 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         stockLocationId,
       }),
     ).resolves.toMatchObject({ quantity });
+  }
+
+  async function expectAvailability(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    onHandQuantity: number,
+    reservedQuantity: number,
+    availableQuantity: number,
+  ) {
+    await expect(
+      getAvailableToSell(availability, {
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        stockLocationId: base.primaryLocation.id,
+      }),
+    ).resolves.toMatchObject({
+      availableQuantity,
+      onHandQuantity,
+      reservedQuantity,
+    });
+  }
+
+  async function createSecondVariant(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    suffix: string,
+  ) {
+    const color = await prisma.color.create({
+      data: {
+        code: `COLOR-2-${suffix}`,
+        name: `Color 2 ${suffix}`,
+        normalizedName: `COLOR 2 ${suffix}`,
+        organizationId: base.organization.id,
+      },
+    });
+    const size = await prisma.size.create({
+      data: {
+        code: `SIZE-2-${suffix}`,
+        name: `Size 2 ${suffix}`,
+        organizationId: base.organization.id,
+        sortOrder: 2,
+      },
+    });
+    return prisma.productVariant.create({
+      data: {
+        colorId: color.id,
+        organizationId: base.organization.id,
+        productId: base.product.id,
+        sizeId: size.id,
+        sku: `SKU-2-${suffix}`,
+      },
+    });
   }
 
   async function createInventoryBase(suffix: string) {
@@ -844,6 +1285,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       data: {
         branchId: branch.id,
         code: `PRIMARY-${suffix}`,
+        isSellable: true,
         name: `Primary ${suffix}`,
         organizationId: organization.id,
         type: "WAREHOUSE",

@@ -59,6 +59,10 @@ export type {
   InventoryMovementLine,
   InventoryMovementStatus,
   InventoryMovementType,
+  InventoryAvailability,
+  InventoryReservation,
+  InventoryReservationLine,
+  InventoryReservationStatus,
   OnHandBalance,
 } from "./inventory/domain/models.js";
 export {
@@ -117,6 +121,21 @@ export {
   replaceDraftMovementLines,
   reverseInventoryMovement,
 } from "./inventory/application/movement-use-cases.js";
+export {
+  confirmInventoryReservation,
+  createInventoryReservation,
+  encodeAvailabilityCursor,
+  encodeReservationCursor,
+  expireInventoryReservation,
+  getAvailableToSell,
+  getInventoryReservationById,
+  getReservedQuantity,
+  listInventoryReservations,
+  listLocationAvailability,
+  parseAvailabilityCursor,
+  parseReservationCursor,
+  releaseInventoryReservation,
+} from "./inventory/application/reservation-use-cases.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
@@ -148,6 +167,15 @@ export type {
   ReplaceDraftMovementLinesInput,
   ReverseInventoryMovementInput,
 } from "./inventory/application/movement-use-cases.js";
+export type {
+  ChangeInventoryReservationStatusInput,
+  CreateInventoryReservationInput,
+  GetAvailableToSellInput,
+  GetInventoryReservationByIdInput,
+  GetReservedQuantityInput,
+  ListInventoryReservationsInput,
+  ListLocationAvailabilityInput,
+} from "./inventory/application/reservation-use-cases.js";
 export type {
   CategoryRepository,
   CollectionRepository,
@@ -187,6 +215,11 @@ export type {
   CursorPageRequest as InventoryCursorPageRequest,
   CursorPageResult as InventoryCursorPageResult,
   InventoryBalanceFilter,
+  InventoryAvailabilityFilter,
+  InventoryAvailabilityQueryRepository,
+  InventoryReservationLineInput,
+  InventoryReservationListFilter,
+  InventoryReservationRepository,
   InventoryBalanceQueryRepository,
   InventoryMovementLineDraft,
   InventoryMovementLineInput,
@@ -194,4 +227,6 @@ export type {
   InventoryMovementRepository,
   ReplaceInventoryMovementLinesRecord,
   ReverseInventoryMovementRecord,
+  ChangeInventoryReservationStatusRecord,
+  CreateInventoryReservationRecord,
 } from "./inventory/repositories/inventory-repositories.js";
