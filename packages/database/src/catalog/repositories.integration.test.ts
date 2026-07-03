@@ -50,8 +50,14 @@ describeWithDatabase("Prisma catalog repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrder.deleteMany();
+    await prisma.inventoryReservationLine.deleteMany();
+    await prisma.inventoryReservation.deleteMany();
     await prisma.inventoryMovementLine.deleteMany();
     await prisma.inventoryMovement.deleteMany();
+    await prisma.inventoryAllocationPolicyLocation.deleteMany();
+    await prisma.inventoryAllocationPolicy.deleteMany();
     await prisma.productCollection.deleteMany();
     await prisma.productVariant.deleteMany();
     await prisma.product.deleteMany();

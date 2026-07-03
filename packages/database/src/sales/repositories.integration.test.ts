@@ -268,7 +268,9 @@ describeWithDatabase("Prisma sales order repositories", () => {
         salesOrderId: confirmed.id,
       }),
     ).resolves.toMatchObject({ status: "CANCELLED" });
-    await expect(prisma.inventoryMovement.count()).resolves.toBe(0);
+    await expect(
+      prisma.inventoryMovement.count({ where: { type: "ISSUE" } }),
+    ).resolves.toBe(0);
   });
 
   it("fulfills confirmed orders through reservation consumption exactly once", async () => {

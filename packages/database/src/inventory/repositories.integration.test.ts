@@ -60,6 +60,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrder.deleteMany();
     await prisma.inventoryReservationLine.deleteMany();
     await prisma.inventoryReservation.deleteMany();
     await prisma.inventoryMovementLine.deleteMany();
