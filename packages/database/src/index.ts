@@ -48,3 +48,4 @@ export {
   PrismaInventoryReservationConsumptionRepository,
   PrismaInventoryReservationRepository,
 } from "./inventory/repositories.js";
+export { PrismaSalesOrderRepository } from "./sales/repositories.js";

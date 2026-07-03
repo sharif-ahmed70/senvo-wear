@@ -97,6 +97,20 @@ enum InventoryAllocationStrategy {
   PRIORITY_ORDER
 }
 
+enum SalesOrderStatus {
+  DRAFT
+  RESERVED
+  CONFIRMED
+  CANCELLED
+  FULFILLED
+}
+
+enum SalesOrderChannel {
+  ONLINE
+  POS
+  MANUAL
+}
+
 model Organization {
   id        String             @id @default(uuid()) @db.Uuid
   name      String             @db.VarChar(160)
@@ -120,6 +134,8 @@ model Organization {
   inventoryReservationLines InventoryReservationLine[]
   inventoryAllocationPolicies InventoryAllocationPolicy[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
+  salesOrders SalesOrder[]
+  salesOrderLines SalesOrderLine[]
 
   @@map("organizations")
 }
@@ -329,6 +345,7 @@ model ProductVariant {
   size         Size         @relation(fields: [sizeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   inventoryMovementLines InventoryMovementLine[]
   inventoryReservationLines InventoryReservationLine[]
+  salesOrderLines SalesOrderLine[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, sku])
@@ -379,6 +396,7 @@ model InventoryMovement {
   reversesMovement    InventoryMovement?        @relation("InventoryMovementReversal", fields: [reversesMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   reversedByMovements InventoryMovement[]       @relation("InventoryMovementReversal")
   consumedReservation InventoryReservation?     @relation("InventoryReservationConsumption")
+  fulfilledSalesOrder SalesOrder?               @relation("SalesOrderFulfillmentMovement")
   lines               InventoryMovementLine[]
 
   @@unique([id, organizationId])
@@ -438,6 +456,7 @@ model InventoryReservation {
   stockLocation StockLocation              @relation(fields: [stockLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   consumedByMovement InventoryMovement?    @relation("InventoryReservationConsumption", fields: [consumedByMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   lines         InventoryReservationLine[]
+  salesOrder    SalesOrder?                @relation("SalesOrderInventoryReservation")
 
   @@unique([id, organizationId])
   @@unique([organizationId, reservationNumber])
@@ -483,6 +502,7 @@ model InventoryAllocationPolicy {
 
   organization Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   locations    InventoryAllocationPolicyLocation[]
+  salesOrders   SalesOrder[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -509,4 +529,83 @@ model InventoryAllocationPolicyLocation {
   @@index([organizationId, policyId, priority])
   @@index([organizationId, stockLocationId])
   @@map("inventory_allocation_policy_locations")
+}
+
+model SalesOrder {
+  id                     String            @id @default(uuid()) @db.Uuid
+  organizationId         String            @map("organization_id") @db.Uuid
+  orderNumber            String            @map("order_number") @db.VarChar(64)
+  status                 SalesOrderStatus  @default(DRAFT)
+  channel                SalesOrderChannel
+  currencyCode           String            @map("currency_code") @db.VarChar(3)
+  subtotalMinor          Int               @map("subtotal_minor")
+  discountMinor          Int               @default(0) @map("discount_minor")
+  deliveryMinor          Int               @default(0) @map("delivery_minor")
+  totalMinor             Int               @map("total_minor")
+  customerName           String?           @map("customer_name") @db.VarChar(160)
+  customerPhone          String?           @map("customer_phone") @db.VarChar(40)
+  customerEmail          String?           @map("customer_email") @db.VarChar(254)
+  deliveryAddressLine1   String?           @map("delivery_address_line_1") @db.VarChar(240)
+  deliveryAddressLine2   String?           @map("delivery_address_line_2") @db.VarChar(240)
+  deliveryCity           String?           @map("delivery_city") @db.VarChar(120)
+  deliveryDistrict       String?           @map("delivery_district") @db.VarChar(120)
+  deliveryPostalCode     String?           @map("delivery_postal_code") @db.VarChar(120)
+  allocationPolicyId     String?           @map("allocation_policy_id") @db.Uuid
+  inventoryReservationId String?           @map("inventory_reservation_id") @db.Uuid
+  fulfillmentMovementId  String?           @map("fulfillment_movement_id") @db.Uuid
+  idempotencyKey         String            @map("idempotency_key") @db.VarChar(128)
+  payloadSignature       String            @map("payload_signature") @db.Text
+  note                   String?           @db.VarChar(1000)
+  version                Int               @default(1)
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reservedAt             DateTime?         @map("reserved_at") @db.Timestamptz(6)
+  confirmedAt            DateTime?         @map("confirmed_at") @db.Timestamptz(6)
+  cancelledAt            DateTime?         @map("cancelled_at") @db.Timestamptz(6)
+  fulfilledAt            DateTime?         @map("fulfilled_at") @db.Timestamptz(6)
+
+  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  allocationPolicy     InventoryAllocationPolicy? @relation(fields: [allocationPolicyId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  inventoryReservation InventoryReservation?      @relation("SalesOrderInventoryReservation", fields: [inventoryReservationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  fulfillmentMovement  InventoryMovement?         @relation("SalesOrderFulfillmentMovement", fields: [fulfillmentMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  lines                SalesOrderLine[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, orderNumber])
+  @@unique([organizationId, idempotencyKey])
+  @@unique([inventoryReservationId, organizationId], map: "sales_orders_inventory_reservation_id_organization_key")
+  @@unique([fulfillmentMovementId, organizationId], map: "sales_orders_fulfillment_movement_id_organization_key")
+  @@index([organizationId, status, createdAt, id])
+  @@index([organizationId, channel, createdAt, id])
+  @@index([organizationId, customerPhone])
+  @@index([organizationId, allocationPolicyId])
+  @@index([organizationId, inventoryReservationId])
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  salesOrderId        String   @map("sales_order_id") @db.Uuid
+  productVariantId    String   @map("product_variant_id") @db.Uuid
+  lineNumber          Int      @map("line_number")
+  productNameSnapshot String   @map("product_name_snapshot") @db.VarChar(160)
+  skuSnapshot         String   @map("sku_snapshot") @db.VarChar(80)
+  colorSnapshot       String?  @map("color_snapshot") @db.VarChar(160)
+  sizeSnapshot        String?  @map("size_snapshot") @db.VarChar(160)
+  quantity            Int
+  unitPriceMinor      Int      @map("unit_price_minor")
+  discountMinor       Int      @default(0) @map("discount_minor")
+  lineTotalMinor      Int      @map("line_total_minor")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrder     SalesOrder     @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([salesOrderId, productVariantId])
+  @@unique([salesOrderId, lineNumber])
+  @@index([organizationId, productVariantId])
+  @@index([salesOrderId])
+  @@map("sales_order_lines")
 }

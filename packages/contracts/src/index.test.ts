@@ -5,6 +5,8 @@ import {
   allocateInventoryReservationResultContractSchema,
   branchContractSchema,
   branchPageContractSchema,
+  cancelSalesOrderInputSchema,
+  confirmSalesOrderInputSchema,
   changeInventoryAllocationPolicyStatusInputSchema,
   changeBranchStatusInputSchema,
   changePosCounterStatusInputSchema,
@@ -16,7 +18,9 @@ import {
   createPosCounterInputSchema,
   createProductVariantInputSchema,
   createInventoryReservationInputSchema,
+  createSalesOrderInputSchema,
   createStockLocationInputSchema,
+  fulfillSalesOrderInputSchema,
   getInventoryAllocationPolicyQuerySchema,
   getBranchQuerySchema,
   getInventoryMovementQuerySchema,
@@ -24,6 +28,7 @@ import {
   getAvailableToSellQuerySchema,
   getPosCounterQuerySchema,
   getInventoryReservationQuerySchema,
+  getSalesOrderQuerySchema,
   getStockLocationQuerySchema,
   inventoryAllocationPolicyPageContractSchema,
   inventoryAllocationPreviewContractSchema,
@@ -36,6 +41,7 @@ import {
   listLocationBalancesQuerySchema,
   listLocationAvailabilityQuerySchema,
   listInventoryReservationsQuerySchema,
+  listSalesOrdersQuerySchema,
   listPosCountersQuerySchema,
   listStockLocationsQuerySchema,
   posCounterPageContractSchema,
@@ -46,8 +52,11 @@ import {
   expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
   replaceInventoryAllocationPolicyLocationsInputSchema,
+  reserveSalesOrderInputSchema,
   releaseInventoryReservationInputSchema,
   reverseInventoryMovementInputSchema,
+  salesOrderContractSchema,
+  salesOrderPageContractSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
@@ -971,5 +980,174 @@ describe("API contracts", () => {
         clientSuppliedAts: 999,
       }).success,
     ).toBe(false);
+  });
+
+  it("validates sales order core contracts without client totals or inventory lines", () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const salesOrderId = "22222222-2222-4222-8222-222222222222";
+    const productVariantId = "33333333-3333-4333-8333-333333333333";
+    const allocationPolicyId = "44444444-4444-4444-8444-444444444444";
+    const reservationId = "55555555-5555-4555-8555-555555555555";
+    const movementId = "66666666-6666-4666-8666-666666666666";
+    const timestamp = "2026-07-03T00:00:00.000Z";
+
+    expect(
+      createSalesOrderInputSchema.parse({
+        allocationPolicyId,
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        customerPhone: "+8801711111111",
+        deliveryMinor: 100,
+        idempotencyKey: "order-123",
+        lines: [
+          {
+            discountMinor: 100,
+            productVariantId,
+            quantity: 2,
+            unitPriceMinor: 1000,
+          },
+        ],
+        orderDiscountMinor: 50,
+        orderNumber: "SO-1",
+        organizationId,
+      }),
+    ).toMatchObject({ currencyCode: "BDT" });
+    expect(
+      createSalesOrderInputSchema.safeParse({
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        idempotencyKey: "order-123",
+        lines: [
+          { productVariantId, quantity: 1, unitPriceMinor: 1000 },
+          { productVariantId, quantity: 1, unitPriceMinor: 1000 },
+        ],
+        orderNumber: "SO-1",
+        organizationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      createSalesOrderInputSchema.safeParse({
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        idempotencyKey: "order-123",
+        lines: [{ productVariantId, quantity: 1, unitPriceMinor: 1000 }],
+        orderNumber: "SO-1",
+        organizationId,
+        totalMinor: 1000,
+      }).success,
+    ).toBe(false);
+    expect(
+      reserveSalesOrderInputSchema.safeParse({
+        expectedVersion: 1,
+        lines: [{ productVariantId, quantity: 1 }],
+        organizationId,
+        reservationIdempotencyKey: "reserve-123",
+        reservationNumber: "RSV-SO-1",
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      fulfillSalesOrderInputSchema.safeParse({
+        consumptionIdempotencyKey: "consume-123",
+        expectedVersion: 3,
+        movementNumber: "MOVE-SO-1",
+        occurredAt: timestamp,
+        organizationId,
+        salesOrderId,
+        movementLines: [{ productVariantId, quantity: 1 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      confirmSalesOrderInputSchema.parse({
+        expectedVersion: 2,
+        organizationId,
+        salesOrderId,
+      }),
+    ).toMatchObject({ expectedVersion: 2 });
+    expect(
+      cancelSalesOrderInputSchema.parse({
+        expectedVersion: 2,
+        organizationId,
+        salesOrderId,
+      }),
+    ).toMatchObject({ salesOrderId });
+    expect(
+      getSalesOrderQuerySchema.parse({ organizationId, salesOrderId }),
+    ).toMatchObject({ organizationId });
+    expect(
+      listSalesOrdersQuerySchema.parse({
+        channel: "ONLINE",
+        organizationId,
+        pageSize: 25,
+        status: "RESERVED",
+      }),
+    ).toMatchObject({ status: "RESERVED" });
+
+    const order = {
+      allocationPolicyId,
+      cancelledAt: null,
+      channel: "ONLINE",
+      confirmedAt: null,
+      createdAt: timestamp,
+      currencyCode: "BDT",
+      customerEmail: null,
+      customerName: "A Buyer",
+      customerPhone: "+8801711111111",
+      deliveryAddressLine1: null,
+      deliveryAddressLine2: null,
+      deliveryCity: null,
+      deliveryDistrict: null,
+      deliveryMinor: 100,
+      deliveryPostalCode: null,
+      discountMinor: 50,
+      fulfilledAt: null,
+      fulfillmentMovementId: null,
+      id: salesOrderId,
+      idempotencyKey: "order-123",
+      inventoryReservationId: reservationId,
+      lines: [
+        {
+          colorSnapshot: "Black",
+          createdAt: timestamp,
+          discountMinor: 100,
+          id: reservationId,
+          lineNumber: 1,
+          lineTotalMinor: 1900,
+          organizationId,
+          productNameSnapshot: "Oxford Shirt",
+          productVariantId,
+          quantity: 2,
+          salesOrderId,
+          sizeSnapshot: "L",
+          skuSnapshot: "OX-BLK-L",
+          unitPriceMinor: 1000,
+        },
+      ],
+      note: null,
+      orderNumber: "SO-1",
+      organizationId,
+      payloadSignature: "{}",
+      reservedAt: timestamp,
+      status: "RESERVED",
+      subtotalMinor: 1900,
+      totalMinor: 1950,
+      updatedAt: timestamp,
+      version: 2,
+    };
+    expect(salesOrderContractSchema.parse(order)).toMatchObject({
+      inventoryReservationId: reservationId,
+    });
+    expect(
+      salesOrderPageContractSchema.parse({
+        hasMore: false,
+        items: [
+          {
+            ...order,
+            fulfillmentMovementId: movementId,
+          },
+        ],
+        nextCursor: null,
+      }),
+    ).toMatchObject({ hasMore: false });
   });
 });

@@ -217,6 +217,13 @@ const availabilityCursorSchema = z
     /^availability-v1\|[0-9a-fA-F-]{36}$/,
     "Availability cursor format is invalid.",
   );
+const salesOrderCursorSchema = z
+  .string()
+  .max(300)
+  .regex(
+    /^sales-order-v1\|[^|]+\|[0-9a-fA-F-]{36}$/,
+    "Sales order cursor format is invalid.",
+  );
 const cursorPageRequestSchema = z
   .object({
     cursor: cursorSchema.optional(),
@@ -244,6 +251,12 @@ const reservationCursorPageRequestSchema = z
 const availabilityCursorPageRequestSchema = z
   .object({
     cursor: availabilityCursorSchema.optional(),
+    pageSize: z.number().int().positive().max(100).optional(),
+  })
+  .strict();
+const salesOrderCursorPageRequestSchema = z
+  .object({
+    cursor: salesOrderCursorSchema.optional(),
     pageSize: z.number().int().positive().max(100).optional(),
   })
   .strict();
@@ -296,6 +309,14 @@ export const inventoryAllocationPolicyStatusSchema = z.enum([
   "ARCHIVED",
 ]);
 export const inventoryAllocationStrategySchema = z.enum(["PRIORITY_ORDER"]);
+export const salesOrderStatusSchema = z.enum([
+  "DRAFT",
+  "RESERVED",
+  "CONFIRMED",
+  "CANCELLED",
+  "FULFILLED",
+]);
+export const salesOrderChannelSchema = z.enum(["ONLINE", "POS", "MANUAL"]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -603,6 +624,111 @@ export const allocateAndCreateInventoryReservationInputSchema = z
     referenceId: optionalTextSchema(120),
     referenceType: optionalTextSchema(80),
     reservationNumber: codeSchema,
+  })
+  .strict();
+
+const salesOrderCurrencyCodeSchema = z.literal("BDT");
+const minorUnitAmountSchema = z.number().int().nonnegative();
+const salesOrderLineInputSchema = z
+  .object({
+    discountMinor: minorUnitAmountSchema.optional(),
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+    unitPriceMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+const salesOrderLinesInputSchema = z
+  .array(salesOrderLineInputSchema)
+  .min(1)
+  .max(500)
+  .superRefine((lines, context) => {
+    const seen = new Set<string>();
+    lines.forEach((line, index) => {
+      if (seen.has(line.productVariantId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Duplicate product variants are not allowed.",
+          path: [index, "productVariantId"],
+        });
+      }
+      seen.add(line.productVariantId);
+    });
+  });
+
+export const createSalesOrderInputSchema = z
+  .object({
+    allocationPolicyId: idSchema.nullable().optional(),
+    channel: salesOrderChannelSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customerEmail: emailSchema,
+    customerName: optionalTextSchema(160),
+    customerPhone: phoneSchema,
+    deliveryAddressLine1: optionalTextSchema(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryMinor: minorUnitAmountSchema.optional(),
+    deliveryPostalCode: optionalTextSchema(120),
+    idempotencyKey: idempotencyKeySchema,
+    lines: salesOrderLinesInputSchema,
+    note: optionalTextSchema(1000),
+    orderDiscountMinor: minorUnitAmountSchema.optional(),
+    orderNumber: codeSchema,
+    organizationId: idSchema,
+  })
+  .strict();
+
+export const reserveSalesOrderInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    expiresAt: isoTimestampSchema.nullable().optional(),
+    organizationId: idSchema,
+    preferredBranchId: idSchema.nullable().optional(),
+    preferredLocationId: idSchema.nullable().optional(),
+    reservationIdempotencyKey: idempotencyKeySchema,
+    reservationNumber: codeSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const confirmSalesOrderInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const cancelSalesOrderInputSchema = confirmSalesOrderInputSchema;
+
+export const fulfillSalesOrderInputSchema = z
+  .object({
+    consumptionIdempotencyKey: idempotencyKeySchema,
+    expectedVersion: expectedVersionSchema,
+    movementNumber: codeSchema,
+    note: optionalTextSchema(1000),
+    occurredAt: isoTimestampSchema,
+    organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const getSalesOrderQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const listSalesOrdersQuerySchema = salesOrderCursorPageRequestSchema
+  .extend({
+    channel: salesOrderChannelSchema.optional(),
+    createdFrom: isoTimestampSchema.optional(),
+    createdTo: isoTimestampSchema.optional(),
+    customerPhone: z.string().trim().min(1).max(40).optional(),
+    organizationId: idSchema,
+    status: salesOrderStatusSchema.optional(),
   })
   .strict();
 
@@ -1399,6 +1525,62 @@ export const allocateInventoryReservationResultContractSchema = z
   })
   .strict();
 
+export const salesOrderLineContractSchema = z
+  .object({
+    colorSnapshot: z.string().nullable(),
+    createdAt: isoTimestampSchema,
+    discountMinor: minorUnitAmountSchema,
+    id: idSchema,
+    lineNumber: expectedVersionSchema,
+    lineTotalMinor: minorUnitAmountSchema,
+    organizationId: idSchema,
+    productNameSnapshot: z.string(),
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+    salesOrderId: idSchema,
+    sizeSnapshot: z.string().nullable(),
+    skuSnapshot: z.string(),
+    unitPriceMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+export const salesOrderContractSchema = z
+  .object({
+    allocationPolicyId: idSchema.nullable(),
+    cancelledAt: isoTimestampSchema.nullable(),
+    channel: salesOrderChannelSchema,
+    confirmedAt: isoTimestampSchema.nullable(),
+    createdAt: isoTimestampSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customerEmail: z.string().nullable(),
+    customerName: z.string().nullable(),
+    customerPhone: z.string().nullable(),
+    deliveryAddressLine1: z.string().nullable(),
+    deliveryAddressLine2: z.string().nullable(),
+    deliveryCity: z.string().nullable(),
+    deliveryDistrict: z.string().nullable(),
+    deliveryMinor: minorUnitAmountSchema,
+    deliveryPostalCode: z.string().nullable(),
+    discountMinor: minorUnitAmountSchema,
+    fulfilledAt: isoTimestampSchema.nullable(),
+    fulfillmentMovementId: idSchema.nullable(),
+    id: idSchema,
+    idempotencyKey: idempotencyKeySchema,
+    inventoryReservationId: idSchema.nullable(),
+    lines: z.array(salesOrderLineContractSchema),
+    note: z.string().nullable(),
+    orderNumber: z.string(),
+    organizationId: idSchema,
+    payloadSignature: z.string(),
+    reservedAt: isoTimestampSchema.nullable(),
+    status: salesOrderStatusSchema,
+    subtotalMinor: minorUnitAmountSchema,
+    totalMinor: minorUnitAmountSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
@@ -1452,6 +1634,17 @@ export const availabilityCursorPageResultSchema = <T extends z.ZodTypeAny>(
     })
     .strict();
 
+export const salesOrderCursorPageResultSchema = <T extends z.ZodTypeAny>(
+  itemSchema: T,
+) =>
+  z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: salesOrderCursorSchema.nullable(),
+    })
+    .strict();
+
 export const branchPageContractSchema =
   cursorPageResultSchema(branchContractSchema);
 export const stockLocationPageContractSchema = cursorPageResultSchema(
@@ -1471,3 +1664,6 @@ export const locationAvailabilityPageContractSchema =
   availabilityCursorPageResultSchema(inventoryAvailabilityContractSchema);
 export const inventoryAllocationPolicyPageContractSchema =
   cursorPageResultSchema(inventoryAllocationPolicyContractSchema);
+export const salesOrderPageContractSchema = salesOrderCursorPageResultSchema(
+  salesOrderContractSchema,
+);

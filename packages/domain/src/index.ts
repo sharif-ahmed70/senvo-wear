@@ -72,6 +72,12 @@ export type {
   InventoryReservationStatus,
   OnHandBalance,
 } from "./inventory/domain/models.js";
+export type {
+  SalesOrder,
+  SalesOrderChannel,
+  SalesOrderLine,
+  SalesOrderStatus,
+} from "./sales/domain/models.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -154,6 +160,17 @@ export {
   parseReservationCursor,
   releaseInventoryReservation,
 } from "./inventory/application/reservation-use-cases.js";
+export {
+  cancelSalesOrder,
+  confirmSalesOrder,
+  createSalesOrder,
+  encodeSalesOrderCursor,
+  fulfillSalesOrder,
+  getSalesOrderById,
+  listSalesOrders,
+  parseSalesOrderCursor,
+  reserveSalesOrder,
+} from "./sales/application/order-use-cases.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
@@ -205,6 +222,14 @@ export type {
   ListInventoryReservationsInput,
   ListLocationAvailabilityInput,
 } from "./inventory/application/reservation-use-cases.js";
+export type {
+  ConfirmSalesOrderInput,
+  CreateSalesOrderInput,
+  FulfillSalesOrderInput,
+  GetSalesOrderByIdInput,
+  ListSalesOrdersInput,
+  ReserveSalesOrderInput,
+} from "./sales/application/order-use-cases.js";
 export type {
   CategoryRepository,
   CollectionRepository,
@@ -275,3 +300,15 @@ export type {
   ChangeInventoryReservationStatusRecord,
   CreateInventoryReservationRecord,
 } from "./inventory/repositories/inventory-repositories.js";
+export type {
+  CancelSalesOrderRecord,
+  ConfirmSalesOrderRecord,
+  CreateDraftSalesOrderRecord,
+  CreateSalesOrderLineRecord,
+  CursorPageRequest as SalesCursorPageRequest,
+  CursorPageResult as SalesCursorPageResult,
+  FulfillSalesOrderRecord,
+  ReserveSalesOrderRecord,
+  SalesOrderListFilter,
+  SalesOrderRepository,
+} from "./sales/repositories/sales-order-repositories.js";
