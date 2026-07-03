@@ -84,6 +84,9 @@ ALTER TABLE "inventory_reservations"
   ON DELETE RESTRICT
   ON UPDATE CASCADE;
 
+CREATE UNIQUE INDEX "inventory_reservations_id_organization_id_key"
+  ON "inventory_reservations"("id", "organization_id");
+
 ALTER TABLE "inventory_reservation_lines"
   ADD CONSTRAINT "inventory_reservation_lines_organization_id_fkey"
   FOREIGN KEY ("organization_id")
@@ -104,9 +107,6 @@ ALTER TABLE "inventory_reservation_lines"
   REFERENCES "product_variants"("id", "organization_id")
   ON DELETE RESTRICT
   ON UPDATE CASCADE;
-
-CREATE UNIQUE INDEX "inventory_reservations_id_organization_id_key"
-  ON "inventory_reservations"("id", "organization_id");
 
 CREATE UNIQUE INDEX "inventory_reservations_organization_id_reservation_number_key"
   ON "inventory_reservations"("organization_id", "reservation_number");
