@@ -7,12 +7,17 @@ const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
 const violations = [];
 
 const forbiddenByPackage = new Map([
+  ["apps", []],
   [
     "packages/domain",
     [
       {
         pattern: /^@senvo\/database($|\/)/,
         reason: "domain must not depend on database",
+      },
+      {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "domain must not depend on application services",
       },
       { pattern: /^@senvo\/ui($|\/)/, reason: "domain must not depend on UI" },
       { pattern: /^@prisma\//, reason: "domain must not depend on Prisma" },
@@ -28,14 +33,44 @@ const forbiddenByPackage = new Map([
         reason: "contracts must not expose database records",
       },
       {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "contracts must not depend on application services",
+      },
+      {
         pattern: /^@prisma\//,
         reason: "contracts must not expose Prisma types",
       },
     ],
   ],
   [
+    "packages/application",
+    [
+      {
+        pattern: /^@senvo\/ui($|\/)/,
+        reason: "application services must not depend on UI",
+      },
+      {
+        pattern: /^@prisma\//,
+        reason:
+          "application services must depend on database repositories, not Prisma directly",
+      },
+      {
+        pattern: /^next($|\/)/,
+        reason: "application services must not depend on Next.js",
+      },
+      {
+        pattern: /^react($|\/)/,
+        reason: "application services must not depend on React",
+      },
+    ],
+  ],
+  [
     "packages/database",
     [
+      {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "database must not depend on application services",
+      },
       {
         pattern: /^@senvo\/ui($|\/)/,
         reason: "database must not depend on UI",
@@ -52,6 +87,10 @@ const forbiddenByPackage = new Map([
         reason: "utils must not contain database access",
       },
       {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "utils must not contain application service composition",
+      },
+      {
         pattern: /^@prisma\//,
         reason: "utils must not contain database access",
       },
@@ -60,6 +99,28 @@ const forbiddenByPackage = new Map([
         reason: "utils must not contain framework code",
       },
       { pattern: /^react($|\/)/, reason: "utils must not contain UI code" },
+    ],
+  ],
+  [
+    "packages/ui",
+    [
+      {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "UI must not import server-only application services",
+      },
+      {
+        pattern: /^@senvo\/database($|\/)/,
+        reason: "UI must not import database access",
+      },
+    ],
+  ],
+  [
+    "packages/logger",
+    [
+      {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "logger must not depend on application services",
+      },
     ],
   ],
 ]);
@@ -109,12 +170,22 @@ function inspectFile(path) {
     /(?:import|export)\s+(?:type\s+)?(?:[^'"()]*?\s+from\s+)?["']([^"']+)["']|import\(["']([^"']+)["']\)/g,
   );
 
-  for (const match of imports) {
-    const specifier = match[1] ?? match[2];
+  const fileImports = [...imports].map((match) => match[1] ?? match[2]);
+  const isClientFile = /^\s*["']use client["'];?/mu.test(content);
+
+  for (const specifier of fileImports) {
     for (const rule of rules) {
       if (rule.pattern.test(specifier)) {
         violations.push(`${rel}: ${rule.reason}: ${specifier}`);
       }
+    }
+    if (
+      isClientFile &&
+      /^@senvo\/(?:application|database)($|\/)/.test(specifier)
+    ) {
+      violations.push(
+        `${rel}: client modules must not import server-only packages: ${specifier}`,
+      );
     }
   }
 }

@@ -683,6 +683,28 @@ export const createSalesOrderInputSchema = z
   })
   .strict();
 
+export const createSalesOrderServiceInputSchema = z
+  .object({
+    allocationPolicyId: idSchema.nullable().optional(),
+    channel: salesOrderChannelSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customerEmail: emailSchema,
+    customerName: optionalTextSchema(160),
+    customerPhone: phoneSchema,
+    deliveryAddressLine1: optionalTextSchema(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryMinor: minorUnitAmountSchema.optional(),
+    deliveryPostalCode: optionalTextSchema(120),
+    idempotencyKey: idempotencyKeySchema,
+    lines: salesOrderLinesInputSchema,
+    note: optionalTextSchema(1000),
+    orderDiscountMinor: minorUnitAmountSchema.optional(),
+    orderNumber: codeSchema,
+  })
+  .strict();
+
 const draftSalesOrderMetadataChangesSchema = z
   .object({
     allocationPolicyId: idSchema.nullable().optional(),
@@ -719,11 +741,34 @@ export const updateDraftSalesOrderMetadataInputSchema =
       "At least one metadata field is required.",
     );
 
+export const updateDraftSalesOrderMetadataServiceInputSchema =
+  draftSalesOrderMetadataChangesSchema
+    .extend({
+      expectedVersion: expectedVersionSchema,
+      salesOrderId: idSchema,
+    })
+    .strict()
+    .refine(
+      (input) =>
+        Object.keys(input).some(
+          (key) => !["expectedVersion", "salesOrderId"].includes(key),
+        ),
+      "At least one metadata field is required.",
+    );
+
 export const replaceDraftSalesOrderLinesInputSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
     lines: salesOrderLinesInputSchema,
     organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const replaceDraftSalesOrderLinesServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    lines: salesOrderLinesInputSchema,
     salesOrderId: idSchema,
   })
   .strict();
@@ -734,6 +779,19 @@ export const amendDraftSalesOrderInputSchema = z
     lines: salesOrderLinesInputSchema.optional(),
     metadata: draftSalesOrderMetadataChangesSchema.optional(),
     organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.lines !== undefined || input.metadata !== undefined,
+    "At least one amendment change is required.",
+  );
+
+export const amendDraftSalesOrderServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    lines: salesOrderLinesInputSchema.optional(),
+    metadata: draftSalesOrderMetadataChangesSchema.optional(),
     salesOrderId: idSchema,
   })
   .strict()
@@ -755,6 +813,18 @@ export const reserveSalesOrderInputSchema = z
   })
   .strict();
 
+export const reserveSalesOrderServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    expiresAt: isoTimestampSchema.nullable().optional(),
+    preferredBranchId: idSchema.nullable().optional(),
+    preferredLocationId: idSchema.nullable().optional(),
+    reservationIdempotencyKey: idempotencyKeySchema,
+    reservationNumber: codeSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
 export const confirmSalesOrderInputSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
@@ -764,6 +834,16 @@ export const confirmSalesOrderInputSchema = z
   .strict();
 
 export const cancelSalesOrderInputSchema = confirmSalesOrderInputSchema;
+
+export const confirmSalesOrderServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const cancelSalesOrderServiceInputSchema =
+  confirmSalesOrderServiceInputSchema;
 
 export const fulfillSalesOrderInputSchema = z
   .object({
@@ -777,9 +857,26 @@ export const fulfillSalesOrderInputSchema = z
   })
   .strict();
 
+export const fulfillSalesOrderServiceInputSchema = z
+  .object({
+    consumptionIdempotencyKey: idempotencyKeySchema,
+    expectedVersion: expectedVersionSchema,
+    movementNumber: codeSchema,
+    note: optionalTextSchema(1000),
+    occurredAt: isoTimestampSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
 export const getSalesOrderQuerySchema = z
   .object({
     organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const getSalesOrderServiceInputSchema = z
+  .object({
     salesOrderId: idSchema,
   })
   .strict();
@@ -794,6 +891,17 @@ export const listSalesOrdersQuerySchema = salesOrderCursorPageRequestSchema
     status: salesOrderStatusSchema.optional(),
   })
   .strict();
+
+export const listSalesOrdersServiceInputSchema =
+  salesOrderCursorPageRequestSchema
+    .extend({
+      channel: salesOrderChannelSchema.optional(),
+      createdFrom: isoTimestampSchema.optional(),
+      createdTo: isoTimestampSchema.optional(),
+      customerPhone: z.string().trim().min(1).max(40).optional(),
+      status: salesOrderStatusSchema.optional(),
+    })
+    .strict();
 
 export const updateBranchMetadataInputSchema = z
   .object({
@@ -1133,14 +1241,44 @@ export type PreviewInventoryAllocationInputContract = z.infer<
 export type AllocateAndCreateInventoryReservationInputContract = z.infer<
   typeof allocateAndCreateInventoryReservationInputSchema
 >;
+export type CreateSalesOrderServiceInputContract = z.infer<
+  typeof createSalesOrderServiceInputSchema
+>;
 export type UpdateDraftSalesOrderMetadataInputContract = z.infer<
   typeof updateDraftSalesOrderMetadataInputSchema
+>;
+export type UpdateDraftSalesOrderMetadataServiceInputContract = z.infer<
+  typeof updateDraftSalesOrderMetadataServiceInputSchema
 >;
 export type ReplaceDraftSalesOrderLinesInputContract = z.infer<
   typeof replaceDraftSalesOrderLinesInputSchema
 >;
+export type ReplaceDraftSalesOrderLinesServiceInputContract = z.infer<
+  typeof replaceDraftSalesOrderLinesServiceInputSchema
+>;
 export type AmendDraftSalesOrderInputContract = z.infer<
   typeof amendDraftSalesOrderInputSchema
+>;
+export type AmendDraftSalesOrderServiceInputContract = z.infer<
+  typeof amendDraftSalesOrderServiceInputSchema
+>;
+export type ReserveSalesOrderServiceInputContract = z.infer<
+  typeof reserveSalesOrderServiceInputSchema
+>;
+export type ConfirmSalesOrderServiceInputContract = z.infer<
+  typeof confirmSalesOrderServiceInputSchema
+>;
+export type CancelSalesOrderServiceInputContract = z.infer<
+  typeof cancelSalesOrderServiceInputSchema
+>;
+export type FulfillSalesOrderServiceInputContract = z.infer<
+  typeof fulfillSalesOrderServiceInputSchema
+>;
+export type GetSalesOrderServiceInputContract = z.infer<
+  typeof getSalesOrderServiceInputSchema
+>;
+export type ListSalesOrdersServiceInputContract = z.infer<
+  typeof listSalesOrdersServiceInputSchema
 >;
 export type GetInventoryAllocationPolicyQueryContract = z.infer<
   typeof getInventoryAllocationPolicyQuerySchema
@@ -1384,6 +1522,14 @@ export type AllocateInventoryReservationResultContract = {
   selectedBranchId: string;
   selectedStockLocationId: string;
 };
+
+export type SalesOrderServiceContract = z.infer<
+  typeof salesOrderServiceContractSchema
+>;
+
+export type SalesOrderServicePageContract = z.infer<
+  typeof salesOrderServicePageContractSchema
+>;
 
 export const branchContractSchema = z.object({
   addressLine1: z.string().nullable(),
@@ -1653,6 +1799,11 @@ export const salesOrderContractSchema = z
   })
   .strict();
 
+export const salesOrderServiceContractSchema = salesOrderContractSchema.omit({
+  idempotencyKey: true,
+  payloadSignature: true,
+});
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
@@ -1739,3 +1890,6 @@ export const inventoryAllocationPolicyPageContractSchema =
 export const salesOrderPageContractSchema = salesOrderCursorPageResultSchema(
   salesOrderContractSchema,
 );
+
+export const salesOrderServicePageContractSchema =
+  salesOrderCursorPageResultSchema(salesOrderServiceContractSchema);

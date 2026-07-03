@@ -10,6 +10,7 @@ const targets = [
   "apps/pos/tsconfig.tsbuildinfo",
   "apps/storefront/.next",
   "apps/storefront/tsconfig.tsbuildinfo",
+  "packages/application/dist",
   "packages/contracts/dist",
   "packages/database/dist",
   "packages/database/generated",

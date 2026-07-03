@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
   amendDraftSalesOrderInputSchema,
+  amendDraftSalesOrderServiceInputSchema,
   allocateAndCreateInventoryReservationInputSchema,
   allocateInventoryReservationResultContractSchema,
   branchContractSchema,
   branchPageContractSchema,
   cancelSalesOrderInputSchema,
+  cancelSalesOrderServiceInputSchema,
   confirmSalesOrderInputSchema,
+  confirmSalesOrderServiceInputSchema,
   changeInventoryAllocationPolicyStatusInputSchema,
   changeBranchStatusInputSchema,
   changePosCounterStatusInputSchema,
@@ -20,8 +23,10 @@ import {
   createProductVariantInputSchema,
   createInventoryReservationInputSchema,
   createSalesOrderInputSchema,
+  createSalesOrderServiceInputSchema,
   createStockLocationInputSchema,
   fulfillSalesOrderInputSchema,
+  fulfillSalesOrderServiceInputSchema,
   getInventoryAllocationPolicyQuerySchema,
   getBranchQuerySchema,
   getInventoryMovementQuerySchema,
@@ -30,6 +35,7 @@ import {
   getPosCounterQuerySchema,
   getInventoryReservationQuerySchema,
   getSalesOrderQuerySchema,
+  getSalesOrderServiceInputSchema,
   getStockLocationQuerySchema,
   inventoryAllocationPolicyPageContractSchema,
   inventoryAllocationPreviewContractSchema,
@@ -43,6 +49,7 @@ import {
   listLocationAvailabilityQuerySchema,
   listInventoryReservationsQuerySchema,
   listSalesOrdersQuerySchema,
+  listSalesOrdersServiceInputSchema,
   listPosCountersQuerySchema,
   listStockLocationsQuerySchema,
   posCounterPageContractSchema,
@@ -53,17 +60,22 @@ import {
   expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
   replaceDraftSalesOrderLinesInputSchema,
+  replaceDraftSalesOrderLinesServiceInputSchema,
   replaceInventoryAllocationPolicyLocationsInputSchema,
   reserveSalesOrderInputSchema,
+  reserveSalesOrderServiceInputSchema,
   releaseInventoryReservationInputSchema,
   reverseInventoryMovementInputSchema,
   salesOrderContractSchema,
   salesOrderPageContractSchema,
+  salesOrderServiceContractSchema,
+  salesOrderServicePageContractSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
   updateDraftSalesOrderMetadataInputSchema,
+  updateDraftSalesOrderMetadataServiceInputSchema,
   updateInventoryAllocationPolicyMetadataInputSchema,
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
@@ -1016,6 +1028,27 @@ describe("API contracts", () => {
       }),
     ).toMatchObject({ currencyCode: "BDT" });
     expect(
+      createSalesOrderServiceInputSchema.safeParse({
+        allocationPolicyId,
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        idempotencyKey: "order-123",
+        lines: [{ productVariantId, quantity: 1, unitPriceMinor: 1000 }],
+        orderNumber: "SO-1",
+        organizationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      createSalesOrderServiceInputSchema.parse({
+        allocationPolicyId,
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        idempotencyKey: "order-123",
+        lines: [{ productVariantId, quantity: 1, unitPriceMinor: 1000 }],
+        orderNumber: "SO-1",
+      }),
+    ).toMatchObject({ orderNumber: "SO-1" });
+    expect(
       createSalesOrderInputSchema.safeParse({
         channel: "ONLINE",
         currencyCode: "BDT",
@@ -1064,6 +1097,21 @@ describe("API contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      updateDraftSalesOrderMetadataServiceInputSchema.safeParse({
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+        totalMinor: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      updateDraftSalesOrderMetadataServiceInputSchema.parse({
+        expectedVersion: 1,
+        note: "Call before delivery",
+        salesOrderId,
+      }),
+    ).toMatchObject({ note: "Call before delivery" });
+    expect(
       updateDraftSalesOrderMetadataInputSchema.safeParse({
         expectedVersion: 1,
         organizationId,
@@ -1101,6 +1149,14 @@ describe("API contracts", () => {
           { productVariantId, quantity: 1, unitPriceMinor: 1000 },
           { productVariantId, quantity: 1, unitPriceMinor: 1000 },
         ],
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      replaceDraftSalesOrderLinesServiceInputSchema.safeParse({
+        expectedVersion: 1,
+        lines: [{ productVariantId, quantity: 1, unitPriceMinor: 1000 }],
         organizationId,
         salesOrderId,
       }).success,
@@ -1147,9 +1203,39 @@ describe("API contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      amendDraftSalesOrderServiceInputSchema.safeParse({
+        expectedVersion: 1,
+        metadata: { note: "Tampered", totalMinor: 1 },
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      amendDraftSalesOrderServiceInputSchema.safeParse({
+        expectedVersion: 1,
+        lines: [
+          {
+            productNameSnapshot: "Tampered",
+            productVariantId,
+            quantity: 1,
+            unitPriceMinor: 1000,
+          },
+        ],
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
       reserveSalesOrderInputSchema.safeParse({
         expectedVersion: 1,
         lines: [{ productVariantId, quantity: 1 }],
+        organizationId,
+        reservationIdempotencyKey: "reserve-123",
+        reservationNumber: "RSV-SO-1",
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      reserveSalesOrderServiceInputSchema.safeParse({
+        expectedVersion: 1,
         organizationId,
         reservationIdempotencyKey: "reserve-123",
         reservationNumber: "RSV-SO-1",
@@ -1168,12 +1254,29 @@ describe("API contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      fulfillSalesOrderServiceInputSchema.safeParse({
+        consumptionIdempotencyKey: "consume-123",
+        expectedVersion: 3,
+        movementLines: [{ productVariantId, quantity: 1 }],
+        movementNumber: "MOVE-SO-1",
+        occurredAt: timestamp,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
       confirmSalesOrderInputSchema.parse({
         expectedVersion: 2,
         organizationId,
         salesOrderId,
       }),
     ).toMatchObject({ expectedVersion: 2 });
+    expect(
+      confirmSalesOrderServiceInputSchema.safeParse({
+        expectedVersion: 2,
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
     expect(
       cancelSalesOrderInputSchema.parse({
         expectedVersion: 2,
@@ -1182,8 +1285,21 @@ describe("API contracts", () => {
       }),
     ).toMatchObject({ salesOrderId });
     expect(
+      cancelSalesOrderServiceInputSchema.safeParse({
+        expectedVersion: 2,
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
       getSalesOrderQuerySchema.parse({ organizationId, salesOrderId }),
     ).toMatchObject({ organizationId });
+    expect(
+      getSalesOrderServiceInputSchema.safeParse({
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
     expect(
       listSalesOrdersQuerySchema.parse({
         channel: "ONLINE",
@@ -1192,6 +1308,12 @@ describe("API contracts", () => {
         status: "RESERVED",
       }),
     ).toMatchObject({ status: "RESERVED" });
+    expect(
+      listSalesOrdersServiceInputSchema.safeParse({
+        organizationId,
+        pageSize: 25,
+      }).success,
+    ).toBe(false);
 
     const order = {
       allocationPolicyId,
@@ -1247,6 +1369,15 @@ describe("API contracts", () => {
     expect(salesOrderContractSchema.parse(order)).toMatchObject({
       inventoryReservationId: reservationId,
     });
+    expect(salesOrderServiceContractSchema.safeParse(order).success).toBe(
+      false,
+    );
+    const serviceOrder = { ...order };
+    delete (serviceOrder as Partial<typeof order>).idempotencyKey;
+    delete (serviceOrder as Partial<typeof order>).payloadSignature;
+    expect(salesOrderServiceContractSchema.parse(serviceOrder)).toMatchObject({
+      id: salesOrderId,
+    });
     expect(
       salesOrderPageContractSchema.parse({
         hasMore: false,
@@ -1259,5 +1390,19 @@ describe("API contracts", () => {
         nextCursor: null,
       }),
     ).toMatchObject({ hasMore: false });
+    expect(
+      salesOrderServicePageContractSchema.parse({
+        hasMore: false,
+        items: [serviceOrder],
+        nextCursor: null,
+      }),
+    ).toMatchObject({
+      items: [
+        expect.not.objectContaining({
+          idempotencyKey: "order-123",
+          payloadSignature: "{}",
+        }),
+      ],
+    });
   });
 });
