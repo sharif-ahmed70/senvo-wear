@@ -1965,8 +1965,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       WHERE conname IN (
         'inventory_allocation_policies_version_positive_check',
         'inventory_allocation_policy_locations_priority_positive_check',
-        'inventory_allocation_policy_locations_policy_id_org_fkey',
-        'inventory_allocation_policy_locations_stock_location_org_fkey'
+        'inventory_allocation_policy_locations_policy_id_organizati_fkey',
+        'inventory_allocation_policy_locations_stock_location_id_or_fkey'
       )
       ORDER BY conname
     `;
@@ -1975,18 +1975,18 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       FROM pg_indexes
       WHERE schemaname = 'public'
         AND indexname IN (
-          'inventory_allocation_policies_organization_id_status_created_idx',
-          'inventory_allocation_policy_locations_org_policy_priority_idx',
-          'inventory_allocation_policy_locations_org_stock_location_idx'
+          'inventory_allocation_policies_organization_id_status_create_idx',
+          'inventory_allocation_policy_locations_organization_id_polic_idx',
+          'inventory_allocation_policy_locations_organization_id_stock_idx'
         )
       ORDER BY indexname
     `;
 
     expect(constraints.map((constraint) => constraint.conname)).toEqual([
       "inventory_allocation_policies_version_positive_check",
-      "inventory_allocation_policy_locations_policy_id_org_fkey",
+      "inventory_allocation_policy_locations_policy_id_organizati_fkey",
       "inventory_allocation_policy_locations_priority_positive_check",
-      "inventory_allocation_policy_locations_stock_location_org_fkey",
+      "inventory_allocation_policy_locations_stock_location_id_or_fkey",
     ]);
     expect(indexes).toHaveLength(3);
   });
