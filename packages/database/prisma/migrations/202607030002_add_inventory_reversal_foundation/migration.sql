@@ -14,7 +14,7 @@ ALTER TABLE "inventory_movements"
   );
 
 ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_reverses_movement_id_organizat_fkey"
+  ADD CONSTRAINT "inventory_movements_reverses_movement_id_organization_id_fkey"
   FOREIGN KEY ("reverses_movement_id", "organization_id")
   REFERENCES "inventory_movements"("id", "organization_id")
   ON DELETE RESTRICT
