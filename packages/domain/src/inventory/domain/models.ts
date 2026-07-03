@@ -23,6 +23,7 @@ export type InventoryMovementLine = {
 };
 
 export type InventoryMovement = {
+  consumesReservationId: string | null;
   createdAt: Date;
   destinationLocationId: string | null;
   id: string;
@@ -43,6 +44,7 @@ export type InventoryMovement = {
   type: InventoryMovementType;
   updatedAt: Date;
   version: number;
+  isReservationConsumption: boolean;
   isReversal: boolean;
   isReversed: boolean;
 };
@@ -66,6 +68,7 @@ export type InventoryReservationLine = {
 
 export type InventoryReservation = {
   confirmedAt: Date | null;
+  consumedByMovementId: string | null;
   createdAt: Date;
   expiredAt: Date | null;
   expiresAt: Date | null;
@@ -82,6 +85,7 @@ export type InventoryReservation = {
   stockLocationId: string;
   updatedAt: Date;
   version: number;
+  isConsumed: boolean;
 };
 
 export type InventoryAvailability = {

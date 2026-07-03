@@ -33,6 +33,7 @@ import {
   posCounterPageContractSchema,
   postInventoryMovementInputSchema,
   confirmInventoryReservationInputSchema,
+  consumeInventoryReservationInputSchema,
   expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
   releaseInventoryReservationInputSchema,
@@ -491,6 +492,36 @@ describe("API contracts", () => {
         }).success,
       ).toBe(false);
     }
+
+    expect(
+      consumeInventoryReservationInputSchema.parse({
+        expectedReservationVersion: 1,
+        idempotencyKey: "consume-123",
+        movementNumber: "ISSUE-RSV-1",
+        occurredAt: "2999-01-01T00:00:00.000Z",
+        organizationId,
+        referenceId: "REF-1",
+        referenceType: "MANUAL",
+        reservationId: productVariantId,
+      }),
+    ).toMatchObject({
+      expectedReservationVersion: 1,
+      movementNumber: "ISSUE-RSV-1",
+    });
+    expect(
+      consumeInventoryReservationInputSchema.safeParse({
+        destinationLocationId: null,
+        expectedReservationVersion: 1,
+        idempotencyKey: "consume-123",
+        lines: [{ productVariantId, quantity: 2 }],
+        movementNumber: "ISSUE-RSV-1",
+        occurredAt: "2999-01-01T00:00:00.000Z",
+        organizationId,
+        reservationId: productVariantId,
+        sourceLocationId: stockLocationId,
+        type: "ISSUE",
+      }).success,
+    ).toBe(false);
   });
 
   it("validates inventory read query inputs and paginated outputs", () => {
@@ -545,10 +576,12 @@ describe("API contracts", () => {
         hasMore: true,
         items: [
           {
+            consumesReservationId: null,
             createdAt: "2026-07-03T00:00:00.000Z",
             destinationLocationId: locationId,
             id: movementId,
             idempotencyKey: "request-123",
+            isReservationConsumption: false,
             isReversal: false,
             isReversed: true,
             lines: [
@@ -642,11 +675,13 @@ describe("API contracts", () => {
         items: [
           {
             confirmedAt: null,
+            consumedByMovementId: null,
             createdAt: "2026-07-03T00:00:00.000Z",
             expiredAt: null,
             expiresAt: "2999-01-01T00:00:00.000Z",
             id: reservationId,
             idempotencyKey: "reserve-123",
+            isConsumed: false,
             lines: [
               {
                 createdAt: "2026-07-03T00:00:00.000Z",

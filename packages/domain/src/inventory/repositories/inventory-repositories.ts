@@ -109,6 +109,23 @@ export type ChangeInventoryReservationStatusRecord = {
   status: Exclude<InventoryReservationStatus, "ACTIVE">;
 };
 
+export type ConsumeInventoryReservationRecord = {
+  expectedReservationVersion: number;
+  idempotencyKey: string;
+  movementNumber: string;
+  note: string | null;
+  occurredAt: Date;
+  organizationId: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  reservationId: string;
+};
+
+export type ConsumeInventoryReservationResult = {
+  movement: InventoryMovement;
+  reservation: InventoryReservation;
+};
+
 export type InventoryReservationListFilter = {
   cursor?: string;
   expiresBefore?: Date;
@@ -203,6 +220,13 @@ export type InventoryReservationRepository = {
     productVariantId: string;
     stockLocationId: string;
   }): Promise<number>;
+};
+
+export type InventoryReservationConsumptionRepository = {
+  consume(
+    record: ConsumeInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<ConsumeInventoryReservationResult>;
 };
 
 export type InventoryAvailabilityQueryRepository = {

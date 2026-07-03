@@ -472,6 +472,20 @@ export const releaseInventoryReservationInputSchema =
 export const expireInventoryReservationInputSchema =
   confirmInventoryReservationInputSchema;
 
+export const consumeInventoryReservationInputSchema = z
+  .object({
+    expectedReservationVersion: expectedVersionSchema,
+    idempotencyKey: idempotencyKeySchema,
+    movementNumber: codeSchema,
+    note: optionalTextSchema(1000),
+    occurredAt: isoTimestampSchema,
+    organizationId: idSchema,
+    referenceId: optionalTextSchema(120),
+    referenceType: optionalTextSchema(80),
+    reservationId: idSchema,
+  })
+  .strict();
+
 export const updateBranchMetadataInputSchema = z
   .object({
     addressLine1: optionalTextSchema(240),
@@ -714,6 +728,9 @@ export type ReleaseInventoryReservationInputContract = z.infer<
 export type ExpireInventoryReservationInputContract = z.infer<
   typeof expireInventoryReservationInputSchema
 >;
+export type ConsumeInventoryReservationInputContract = z.infer<
+  typeof consumeInventoryReservationInputSchema
+>;
 export type UpdateBranchMetadataInputContract = z.infer<
   typeof updateBranchMetadataInputSchema
 >;
@@ -890,8 +907,10 @@ export type InventoryMovementLineContract = {
 };
 
 export type InventoryMovementContract = CatalogRecordContract & {
+  consumesReservationId: string | null;
   destinationLocationId: string | null;
   idempotencyKey: string;
+  isReservationConsumption: boolean;
   isReversal: boolean;
   isReversed: boolean;
   lines: InventoryMovementLineContract[];
@@ -930,6 +949,7 @@ export type InventoryReservationLineContract = {
 
 export type InventoryReservationContract = CatalogRecordContract & {
   confirmedAt: string | null;
+  consumedByMovementId: string | null;
   expiredAt: string | null;
   expiresAt: string | null;
   idempotencyKey: string;
@@ -943,6 +963,12 @@ export type InventoryReservationContract = CatalogRecordContract & {
   status: z.infer<typeof inventoryReservationStatusSchema>;
   stockLocationId: string;
   version: number;
+  isConsumed: boolean;
+};
+
+export type ConsumeInventoryReservationResultContract = {
+  movement: InventoryMovementContract;
+  reservation: InventoryReservationContract;
 };
 
 export type InventoryAvailabilityContract = {
@@ -1016,10 +1042,12 @@ export const inventoryMovementLineContractSchema = z
 
 export const inventoryMovementContractSchema = z
   .object({
+    consumesReservationId: idSchema.nullable(),
     createdAt: isoTimestampSchema,
     destinationLocationId: idSchema.nullable(),
     id: idSchema,
     idempotencyKey: idempotencyKeySchema,
+    isReservationConsumption: z.boolean(),
     isReversal: z.boolean(),
     isReversed: z.boolean(),
     lines: z.array(inventoryMovementLineContractSchema),
@@ -1065,11 +1093,13 @@ export const inventoryReservationLineContractSchema = z
 export const inventoryReservationContractSchema = z
   .object({
     confirmedAt: isoTimestampSchema.nullable(),
+    consumedByMovementId: idSchema.nullable(),
     createdAt: isoTimestampSchema,
     expiredAt: isoTimestampSchema.nullable(),
     expiresAt: isoTimestampSchema.nullable(),
     id: idSchema,
     idempotencyKey: idempotencyKeySchema,
+    isConsumed: z.boolean(),
     lines: z.array(inventoryReservationLineContractSchema),
     note: z.string().nullable(),
     organizationId: idSchema,
@@ -1081,6 +1111,13 @@ export const inventoryReservationContractSchema = z
     stockLocationId: idSchema,
     updatedAt: isoTimestampSchema,
     version: expectedVersionSchema,
+  })
+  .strict();
+
+export const consumeInventoryReservationResultContractSchema = z
+  .object({
+    movement: inventoryMovementContractSchema,
+    reservation: inventoryReservationContractSchema,
   })
   .strict();
 

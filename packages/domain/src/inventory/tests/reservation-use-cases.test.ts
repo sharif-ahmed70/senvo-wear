@@ -410,6 +410,7 @@ class InMemoryInventoryReservationRepository
     const reservation: InventoryReservation = {
       ...record,
       confirmedAt: null,
+      consumedByMovementId: null,
       createdAt: now,
       expiredAt: null,
       id,
@@ -423,6 +424,7 @@ class InMemoryInventoryReservationRepository
         organizationId: record.organizationId,
         reservationId: id,
       })),
+      isConsumed: false,
       releasedAt: null,
       status: "ACTIVE",
       updatedAt: now,

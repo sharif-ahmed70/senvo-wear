@@ -2,6 +2,7 @@ import {
   createInventoryMovement,
   createInventoryReservation,
   confirmInventoryReservation,
+  consumeInventoryReservation,
   expireInventoryReservation,
   getAvailableToSell,
   getOnHandBalance,
@@ -21,6 +22,7 @@ import {
   PrismaInventoryBalanceQueryRepository,
   PrismaInventoryMovementRepository,
   PrismaInventoryAvailabilityQueryRepository,
+  PrismaInventoryReservationConsumptionRepository,
   PrismaInventoryReservationRepository,
 } from "./repositories.js";
 
@@ -33,6 +35,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   let movements: PrismaInventoryMovementRepository;
   let balances: PrismaInventoryBalanceQueryRepository;
   let reservations: PrismaInventoryReservationRepository;
+  let consumption: PrismaInventoryReservationConsumptionRepository;
   let availability: PrismaInventoryAvailabilityQueryRepository;
 
   beforeAll(() => {
@@ -41,6 +44,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     movements = new PrismaInventoryMovementRepository(prisma);
     balances = new PrismaInventoryBalanceQueryRepository(prisma);
     reservations = new PrismaInventoryReservationRepository(prisma);
+    consumption = new PrismaInventoryReservationConsumptionRepository(prisma);
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
   });
 
@@ -935,6 +939,382 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ).rejects.toThrow("Idempotency key");
   });
 
+  it("consumes an active reservation as a posted issue and preserves the ATS invariant", async () => {
+    const base = await createInventoryBase("RSV-CONSUME");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME",
+    });
+    await expectAvailability(base, 10, 4, 6);
+
+    const result = await consume(base, reservation, {
+      idempotencyKey: "consume-rsv",
+      movementNumber: "ISSUE-RSV",
+    });
+
+    expect(result.movement).toMatchObject({
+      consumesReservationId: reservation.id,
+      destinationLocationId: null,
+      isReservationConsumption: true,
+      sourceLocationId: base.primaryLocation.id,
+      status: "POSTED",
+      type: "ISSUE",
+    });
+    expect(result.movement.lines).toMatchObject([
+      {
+        lineNumber: 1,
+        note: null,
+        productVariantId: base.variant.id,
+        quantity: 4,
+      },
+    ]);
+    expect(result.reservation).toMatchObject({
+      consumedByMovementId: result.movement.id,
+      isConsumed: true,
+      status: "CONFIRMED",
+      version: reservation.version + 1,
+    });
+    expect(result.reservation.confirmedAt).toBeInstanceOf(Date);
+    await expectBalance(base, base.primaryLocation.id, 6);
+    await expectAvailability(base, 6, 0, 6);
+  });
+
+  it("consumes multiple reservation lines atomically", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-MULTI");
+    const secondVariant = await createSecondVariant(base, "RSV-CONSUME-MULTI");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "RSV-CONSUME-MULTI-OPEN-A",
+      quantity: 7,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "RSV-CONSUME-MULTI-OPEN-B",
+      quantity: 5,
+      variantId: secondVariant.id,
+    });
+    const reservation = await reserve(base, {
+      lines: [
+        { productVariantId: base.variant.id, quantity: 3 },
+        { productVariantId: secondVariant.id, quantity: 2 },
+      ],
+      reservationNumber: "RSV-CONSUME-MULTI",
+    });
+
+    const result = await consume(base, reservation, {
+      idempotencyKey: "consume-multi",
+      movementNumber: "ISSUE-RSV-MULTI",
+    });
+
+    expect(result.movement.lines.map((line) => line.productVariantId)).toEqual([
+      base.variant.id,
+      secondVariant.id,
+    ]);
+    await expectBalance(base, base.primaryLocation.id, 4);
+    await expect(
+      getOnHandBalance(balances, {
+        organizationId: base.organization.id,
+        productVariantId: secondVariant.id,
+        stockLocationId: base.primaryLocation.id,
+      }),
+    ).resolves.toMatchObject({ quantity: 3 });
+  });
+
+  it("rejects insufficient physical stock without confirming or creating a movement", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-NOSTOCK");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 4,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME-NOSTOCK",
+    });
+    await createAndPost("ISSUE", base, {
+      movementNumber: "RSV-CONSUME-NOSTOCK-ISSUE",
+      quantity: 1,
+      sourceLocationId: base.primaryLocation.id,
+    });
+
+    await expect(
+      consume(base, reservation, {
+        idempotencyKey: "consume-nostock",
+        movementNumber: "ISSUE-RSV-NOSTOCK",
+      }),
+    ).rejects.toThrow("Insufficient physical stock");
+
+    await expect(
+      reservations.findById(reservation.id, base.organization.id),
+    ).resolves.toMatchObject({
+      consumedByMovementId: null,
+      status: "ACTIVE",
+    });
+    await expect(
+      movements.findByIdempotencyKey(base.organization.id, "consume-nostock"),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects released, expired, past-expiry, stale, and cross-organization consumption", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-REJECT");
+    const other = await createInventoryBase("RSV-CONSUME-OTHER");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    const released = await reserve(base, {
+      idempotencyKey: "consume-reject-release",
+      quantity: 1,
+      reservationNumber: "RSV-CONSUME-RELEASE",
+    });
+    await releaseInventoryReservation(reservations, {
+      expectedVersion: released.version,
+      organizationId: base.organization.id,
+      reservationId: released.id,
+    });
+    await expect(
+      consume(base, released, {
+        idempotencyKey: "consume-released",
+        movementNumber: "ISSUE-RELEASED",
+      }),
+    ).rejects.toThrow("active");
+
+    const expired = await reserve(base, {
+      expiresAt: "2999-01-01T00:00:00.000Z",
+      idempotencyKey: "consume-reject-expired",
+      quantity: 1,
+      reservationNumber: "RSV-CONSUME-EXPIRED",
+    });
+    await expireInventoryReservation(reservations, {
+      expectedVersion: expired.version,
+      organizationId: base.organization.id,
+      reservationId: expired.id,
+    });
+    await expect(
+      consume(base, expired, {
+        idempotencyKey: "consume-expired",
+        movementNumber: "ISSUE-EXPIRED",
+      }),
+    ).rejects.toThrow("active");
+
+    const pastExpiry = await reserve(base, {
+      idempotencyKey: "consume-reject-past",
+      quantity: 1,
+      reservationNumber: "RSV-CONSUME-PAST",
+    });
+    await prisma.inventoryReservation.update({
+      data: { expiresAt: new Date("2000-01-01T00:00:00.000Z") },
+      where: { id: pastExpiry.id },
+    });
+    await expect(
+      consume(base, pastExpiry, {
+        idempotencyKey: "consume-past",
+        movementNumber: "ISSUE-PAST",
+      }),
+    ).rejects.toThrow("expired");
+
+    const stale = await reserve(base, {
+      idempotencyKey: "consume-reject-stale",
+      quantity: 1,
+      reservationNumber: "RSV-CONSUME-STALE",
+    });
+    await expect(
+      consume(base, stale, {
+        expectedReservationVersion: stale.version + 1,
+        idempotencyKey: "consume-stale",
+        movementNumber: "ISSUE-STALE",
+      }),
+    ).rejects.toThrow("changed");
+
+    await expect(
+      consumeInventoryReservation(consumption, {
+        expectedReservationVersion: stale.version,
+        idempotencyKey: "consume-cross-org",
+        movementNumber: "ISSUE-CROSS-ORG",
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        organizationId: other.organization.id,
+        reservationId: stale.id,
+      }),
+    ).rejects.toThrow("not found");
+  });
+
+  it("keeps consumption idempotent and rejects conflicting reuse", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-IDEMP");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME-IDEMP",
+    });
+
+    const first = await consume(base, reservation, {
+      idempotencyKey: "consume-idempotent",
+      movementNumber: "ISSUE-IDEMPOTENT",
+    });
+    const second = await consume(base, reservation, {
+      idempotencyKey: "consume-idempotent",
+      movementNumber: "ISSUE-IDEMPOTENT",
+    });
+
+    expect(second.movement.id).toBe(first.movement.id);
+    expect(second.reservation.id).toBe(first.reservation.id);
+    await expectAvailability(base, 6, 0, 6);
+
+    await expect(
+      consume(base, reservation, {
+        idempotencyKey: "consume-idempotent",
+        movementNumber: "ISSUE-CONFLICT",
+      }),
+    ).rejects.toThrow("Idempotency key");
+  });
+
+  it("serializes concurrent duplicate consumption into one ledger effect", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-CONCURRENT");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME-CONCURRENT",
+    });
+
+    const [first, second] = await Promise.all([
+      consume(base, reservation, {
+        idempotencyKey: "consume-concurrent",
+        movementNumber: "ISSUE-CONCURRENT",
+      }),
+      consume(base, reservation, {
+        idempotencyKey: "consume-concurrent",
+        movementNumber: "ISSUE-CONCURRENT",
+      }),
+    ]);
+
+    expect(second.movement.id).toBe(first.movement.id);
+    const page = await listInventoryMovements(movements, {
+      organizationId: base.organization.id,
+      pageSize: 10,
+      type: "ISSUE",
+    });
+    expect(
+      page.items.filter((item) => item.id === first.movement.id),
+    ).toHaveLength(1);
+    await expectAvailability(base, 6, 0, 6);
+  });
+
+  it("serializes consumption against concurrent physical stock issues", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-RACE");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME-RACE",
+    });
+
+    const results = await Promise.allSettled([
+      consume(base, reservation, {
+        idempotencyKey: "consume-race",
+        movementNumber: "ISSUE-RACE-CONSUME",
+      }),
+      createAndPost("ISSUE", base, {
+        movementNumber: "ISSUE-RACE-INDEPENDENT",
+        quantity: 2,
+        sourceLocationId: base.primaryLocation.id,
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const balance = await getOnHandBalance(balances, {
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.primaryLocation.id,
+    });
+    expect(balance.quantity).toBeGreaterThanOrEqual(0);
+  });
+
+  it("enforces same-organization consumption linkage and restrictive deletion", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-LINK");
+    const other = await createInventoryBase("RSV-CONSUME-LINK-OTHER");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 5,
+    });
+    await createAndPost("OPENING", other, {
+      destinationLocationId: other.primaryLocation.id,
+      quantity: 5,
+    });
+    const reservation = await reserve(base, {
+      reservationNumber: "RSV-CONSUME-LINK",
+    });
+    const otherReservation = await reserve(other, {
+      idempotencyKey: "consume-link-other",
+      reservationNumber: "RSV-CONSUME-LINK-OTHER",
+    });
+    const result = await consume(base, reservation, {
+      idempotencyKey: "consume-link",
+      movementNumber: "ISSUE-LINK",
+    });
+
+    await expect(
+      prisma.inventoryReservation.update({
+        data: {
+          consumedByMovementId: result.movement.id,
+          status: "CONFIRMED",
+        },
+        where: { id: otherReservation.id },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.inventoryMovement.delete({ where: { id: result.movement.id } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.inventoryReservation.delete({
+        where: { id: result.reservation.id },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("reverses a consumption movement without reactivating the reservation", async () => {
+    const base = await createInventoryBase("RSV-CONSUME-REV");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+    const reservation = await reserve(base, {
+      quantity: 4,
+      reservationNumber: "RSV-CONSUME-REV",
+    });
+    const consumed = await consume(base, reservation, {
+      idempotencyKey: "consume-reversal",
+      movementNumber: "ISSUE-REV",
+    });
+    await expectAvailability(base, 6, 0, 6);
+
+    await reversePosted(base, consumed.movement.id, {
+      idempotencyKey: "reverse-consumption",
+      movementNumber: "REV-CONSUMPTION",
+    });
+
+    await expectAvailability(base, 10, 0, 10);
+    await expect(
+      reservations.findById(reservation.id, base.organization.id),
+    ).resolves.toMatchObject({
+      consumedByMovementId: consumed.movement.id,
+      isConsumed: true,
+      status: "CONFIRMED",
+    });
+  });
+
   it("enforces organization, location, and variant eligibility", async () => {
     const base = await createInventoryBase("RSV-ELIG-A");
     const other = await createInventoryBase("RSV-ELIG-B");
@@ -1200,6 +1580,26 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       referenceType: input?.referenceType,
       reservationNumber: input?.reservationNumber ?? "RESERVATION",
       stockLocationId: input?.stockLocationId ?? base.primaryLocation.id,
+    });
+  }
+
+  async function consume(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    reservation: Awaited<ReturnType<typeof reserve>>,
+    input: {
+      expectedReservationVersion?: number;
+      idempotencyKey: string;
+      movementNumber: string;
+    },
+  ) {
+    return consumeInventoryReservation(consumption, {
+      expectedReservationVersion:
+        input.expectedReservationVersion ?? reservation.version,
+      idempotencyKey: input.idempotencyKey,
+      movementNumber: input.movementNumber,
+      occurredAt: "2026-07-03T00:00:00.000Z",
+      organizationId: base.organization.id,
+      reservationId: reservation.id,
     });
   }
 

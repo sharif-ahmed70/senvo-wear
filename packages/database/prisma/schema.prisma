@@ -365,6 +365,7 @@ model InventoryMovement {
   destinationLocation StockLocation?            @relation("InventoryMovementDestinationLocation", fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   reversesMovement    InventoryMovement?        @relation("InventoryMovementReversal", fields: [reversesMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   reversedByMovements InventoryMovement[]       @relation("InventoryMovementReversal")
+  consumedReservation InventoryReservation?     @relation("InventoryReservationConsumption")
   lines               InventoryMovementLine[]
 
   @@unique([id, organizationId])
@@ -410,6 +411,7 @@ model InventoryReservation {
   stockLocationId   String                     @map("stock_location_id") @db.Uuid
   referenceType     String?                    @map("reference_type") @db.VarChar(80)
   referenceId       String?                    @map("reference_id") @db.VarChar(120)
+  consumedByMovementId String?                 @map("consumed_by_movement_id") @db.Uuid
   expiresAt         DateTime?                  @map("expires_at") @db.Timestamptz(6)
   confirmedAt       DateTime?                  @map("confirmed_at") @db.Timestamptz(6)
   releasedAt        DateTime?                  @map("released_at") @db.Timestamptz(6)
@@ -421,11 +423,13 @@ model InventoryReservation {
 
   organization  Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   stockLocation StockLocation              @relation(fields: [stockLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  consumedByMovement InventoryMovement?    @relation("InventoryReservationConsumption", fields: [consumedByMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   lines         InventoryReservationLine[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, reservationNumber])
   @@unique([organizationId, idempotencyKey])
+  @@unique([consumedByMovementId, organizationId], map: "inventory_reservations_consumed_by_movement_id_organization_key")
   @@index([organizationId, status, createdAt, id])
   @@index([organizationId, stockLocationId, status])
   @@index([organizationId, referenceType, referenceId])

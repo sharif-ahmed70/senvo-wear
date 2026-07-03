@@ -2,12 +2,15 @@ import {
   BusinessRuleError,
   ConcurrencyError,
   ConflictError,
+  NotFoundError,
   type CursorPageResult,
   encodeAvailabilityCursor,
   encodeBalanceCursor,
   encodeMovementCursor,
   encodeReservationCursor,
   type CreateInventoryReservationRecord,
+  type ConsumeInventoryReservationRecord,
+  type ConsumeInventoryReservationResult,
   type CreateInventoryMovementRecord,
   type InventoryAvailability,
   type InventoryAvailabilityFilter,
@@ -19,6 +22,7 @@ import {
   type InventoryMovementRepository,
   type InventoryReservation,
   type InventoryReservationListFilter,
+  type InventoryReservationConsumptionRepository,
   type InventoryReservationRepository,
   type OnHandBalance,
   parseAvailabilityCursor,
@@ -48,6 +52,7 @@ type InventoryTransaction = Omit<InventoryPrismaClient, "$transaction">;
 
 type MovementWithLines = Prisma.InventoryMovementGetPayload<{
   include: {
+    consumedReservation: { select: { id: true } };
     lines: { orderBy: { lineNumber: "asc" } };
     reversedByMovements: { select: { id: true }; take: 1 };
   };
@@ -768,6 +773,223 @@ export class PrismaInventoryReservationRepository implements InventoryReservatio
   }
 }
 
+export class PrismaInventoryReservationConsumptionRepository implements InventoryReservationConsumptionRepository {
+  constructor(private readonly prisma: InventoryPrismaClient) {}
+
+  async consume(
+    record: ConsumeInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<ConsumeInventoryReservationResult> {
+    try {
+      const result = await this.prisma.$transaction(async (transaction) => {
+        const existing = await transaction.inventoryMovement.findUnique({
+          include: movementInclude,
+          where: {
+            organizationId_idempotencyKey: {
+              idempotencyKey: record.idempotencyKey,
+              organizationId: record.organizationId,
+            },
+          },
+        });
+        if (existing) {
+          const existingSignature = await getPayloadSignatureInTransaction(
+            transaction,
+            existing.id,
+            existing.organizationId,
+          );
+          if (existingSignature !== payloadSignature) {
+            throw new ConflictError("Idempotency key was already used.");
+          }
+          const existingReservation =
+            await transaction.inventoryReservation.findFirst({
+              include: reservationInclude,
+              where: {
+                consumedByMovementId: existing.id,
+                organizationId: record.organizationId,
+              },
+            });
+          if (!existingReservation) {
+            throw new ConflictError(
+              "Idempotency key was already used by a non-consumption movement.",
+            );
+          }
+          return {
+            movement: existing,
+            reservation: existingReservation,
+          };
+        }
+
+        await lockReservationRow(transaction, record);
+        const reservation = await transaction.inventoryReservation.findFirst({
+          include: reservationInclude,
+          where: {
+            id: record.reservationId,
+            organizationId: record.organizationId,
+          },
+        });
+        if (!reservation) {
+          throw new NotFoundError("Inventory reservation was not found.");
+        }
+        if (reservation.consumedByMovementId) {
+          const existingConsumption =
+            await transaction.inventoryMovement.findFirst({
+              include: movementInclude,
+              where: {
+                id: reservation.consumedByMovementId,
+                idempotencyKey: record.idempotencyKey,
+                organizationId: record.organizationId,
+              },
+            });
+          if (existingConsumption) {
+            const existingSignature = await getPayloadSignatureInTransaction(
+              transaction,
+              existingConsumption.id,
+              existingConsumption.organizationId,
+            );
+            if (existingSignature === payloadSignature) {
+              return {
+                movement: existingConsumption,
+                reservation,
+              };
+            }
+          }
+          throw new ConflictError(
+            "Inventory reservation has already been consumed.",
+          );
+        }
+        if (reservation.status !== "ACTIVE") {
+          throw new BusinessRuleError(
+            "Only active inventory reservations can be consumed.",
+          );
+        }
+        if (reservation.version !== record.expectedReservationVersion) {
+          throw new ConcurrencyError();
+        }
+        if (reservation.expiresAt && reservation.expiresAt <= new Date()) {
+          throw new BusinessRuleError("Inventory reservation has expired.");
+        }
+        if (reservation.lines.length === 0) {
+          throw new BusinessRuleError(
+            "Inventory reservation requires at least one line.",
+          );
+        }
+
+        await assertConsumptionEligibility(transaction, reservation);
+        await lockReservationBalanceKeys(transaction, {
+          lines: reservation.lines,
+          organizationId: reservation.organizationId,
+          stockLocationId: reservation.stockLocationId,
+        });
+        await assertSufficientConsumptionStock(transaction, reservation);
+
+        const now = new Date();
+        const movement = await transaction.inventoryMovement.create({
+          data: {
+            destinationLocationId: null,
+            idempotencyKey: record.idempotencyKey,
+            movementNumber: record.movementNumber,
+            note: record.note,
+            occurredAt: record.occurredAt,
+            organizationId: record.organizationId,
+            payloadSignature,
+            postedAt: now,
+            referenceId: record.referenceId,
+            referenceType: record.referenceType,
+            sourceLocationId: reservation.stockLocationId,
+            status: "POSTED",
+            type: "ISSUE",
+            version: 2,
+          },
+        });
+        await transaction.inventoryMovementLine.createMany({
+          data: reservation.lines.map((line, index) => ({
+            lineNumber: index + 1,
+            movementId: movement.id,
+            note: null,
+            organizationId: record.organizationId,
+            productVariantId: line.productVariantId,
+            quantity: line.quantity,
+          })),
+        });
+        const confirmedReservation =
+          await transaction.inventoryReservation.update({
+            data: {
+              confirmedAt: now,
+              consumedByMovementId: movement.id,
+              expiredAt: null,
+              releasedAt: null,
+              status: "CONFIRMED",
+              version: { increment: 1 },
+            },
+            include: reservationInclude,
+            where: { id: reservation.id },
+          });
+        const postedMovement =
+          await transaction.inventoryMovement.findUniqueOrThrow({
+            include: movementInclude,
+            where: { id: movement.id },
+          });
+        return {
+          movement: postedMovement,
+          reservation: confirmedReservation,
+        };
+      });
+      return {
+        movement: mapMovement(result.movement),
+        reservation: mapReservation(result.reservation),
+      };
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.findConsumedMovementByIdempotencyKey(
+          record.organizationId,
+          record.idempotencyKey,
+        );
+        if (existing) {
+          const existingSignature = await getPayloadSignatureInTransaction(
+            this.prisma,
+            existing.movement.id,
+            existing.movement.organizationId,
+          );
+          if (existingSignature === payloadSignature) {
+            return {
+              movement: mapMovement(existing.movement),
+              reservation: mapReservation(existing.reservation),
+            };
+          }
+        }
+        throw new ConflictError(
+          "Inventory reservation consumption identity or idempotency key already exists.",
+          error,
+        );
+      }
+      mapInventoryReservationIntegrityError(error);
+    }
+  }
+
+  private async findConsumedMovementByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<{
+    movement: MovementWithLines;
+    reservation: ReservationWithLines;
+  } | null> {
+    const movement = await this.prisma.inventoryMovement.findUnique({
+      include: movementInclude,
+      where: {
+        organizationId_idempotencyKey: { idempotencyKey, organizationId },
+      },
+    });
+    if (!movement) {
+      return null;
+    }
+    const reservation = await this.prisma.inventoryReservation.findFirst({
+      include: reservationInclude,
+      where: { consumedByMovementId: movement.id, organizationId },
+    });
+    return reservation ? { movement, reservation } : null;
+  }
+}
+
 export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvailabilityQueryRepository {
   constructor(private readonly prisma: InventoryPrismaClient) {}
 
@@ -860,6 +1082,7 @@ export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvai
 }
 
 const movementInclude = {
+  consumedReservation: { select: { id: true } },
   lines: { orderBy: { lineNumber: "asc" as const } },
   reversedByMovements: { select: { id: true }, take: 1 },
 };
@@ -1041,7 +1264,10 @@ async function lockAffectedBalanceKeys(
 
 async function lockReservationBalanceKeys(
   transaction: InventoryTransaction,
-  record: CreateInventoryReservationRecord,
+  record: Pick<
+    CreateInventoryReservationRecord,
+    "lines" | "organizationId" | "stockLocationId"
+  >,
 ): Promise<void> {
   const keys = [
     ...new Set(
@@ -1056,6 +1282,65 @@ async function lockReservationBalanceKeys(
     await transaction.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
     `;
+  }
+}
+
+async function assertConsumptionEligibility(
+  transaction: InventoryTransaction,
+  reservation: ReservationWithLines,
+): Promise<void> {
+  const organization = await transaction.organization.findFirst({
+    where: { id: reservation.organizationId, status: "ACTIVE" },
+  });
+  if (!organization) {
+    throw new BusinessRuleError(
+      "Inventory reservation organization must be active.",
+    );
+  }
+
+  const location = await transaction.stockLocation.findFirst({
+    where: {
+      id: reservation.stockLocationId,
+      organizationId: reservation.organizationId,
+      status: "ACTIVE",
+    },
+  });
+  if (!location) {
+    throw new BusinessRuleError(
+      "Inventory reservation location must be active and in the same organization.",
+    );
+  }
+
+  const variantIds = reservation.lines.map((line) => line.productVariantId);
+  const eligibleVariants = await transaction.productVariant.findMany({
+    where: {
+      id: { in: variantIds },
+      organizationId: reservation.organizationId,
+      status: { not: "ARCHIVED" },
+    },
+  });
+  if (eligibleVariants.length !== new Set(variantIds).size) {
+    throw new BusinessRuleError(
+      "Inventory reservation variants must be in the same organization and not archived.",
+    );
+  }
+}
+
+async function assertSufficientConsumptionStock(
+  transaction: InventoryTransaction,
+  reservation: ReservationWithLines,
+): Promise<void> {
+  for (const line of reservation.lines) {
+    const currentOnHand = await getBalance(transaction, {
+      organizationId: reservation.organizationId,
+      productVariantId: line.productVariantId,
+      stockLocationId: reservation.stockLocationId,
+    });
+    if (currentOnHand < line.quantity) {
+      throw new BusinessRuleError(
+        `Insufficient physical stock for variant ${line.productVariantId} at location ${reservation.stockLocationId}: currentOnHand ${currentOnHand}, requiredQuantity ${line.quantity}.`,
+      );
+    }
   }
 }
 
@@ -1273,6 +1558,7 @@ function toAvailabilityCursorPage(
 
 function mapMovement(record: MovementWithLines): InventoryMovement {
   return {
+    consumesReservationId: record.consumedReservation?.id ?? null,
     createdAt: record.createdAt,
     destinationLocationId: record.destinationLocationId,
     id: record.id,
@@ -1302,6 +1588,7 @@ function mapMovement(record: MovementWithLines): InventoryMovement {
     type: record.type,
     updatedAt: record.updatedAt,
     version: record.version,
+    isReservationConsumption: record.consumedReservation !== null,
     isReversal: record.reversesMovementId !== null,
     isReversed: record.reversedByMovements.length > 0,
   };
@@ -1310,6 +1597,7 @@ function mapMovement(record: MovementWithLines): InventoryMovement {
 function mapReservation(record: ReservationWithLines): InventoryReservation {
   return {
     confirmedAt: record.confirmedAt,
+    consumedByMovementId: record.consumedByMovementId,
     createdAt: record.createdAt,
     expiredAt: record.expiredAt,
     expiresAt: record.expiresAt,
@@ -1334,6 +1622,7 @@ function mapReservation(record: ReservationWithLines): InventoryReservation {
     stockLocationId: record.stockLocationId,
     updatedAt: record.updatedAt,
     version: record.version,
+    isConsumed: record.consumedByMovementId !== null,
   };
 }
 

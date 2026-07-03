@@ -107,6 +107,7 @@ export {
   listStockLocations,
   parseCursor,
 } from "./organization/application/read-use-cases.js";
+export { consumeInventoryReservation } from "./inventory/application/consumption-use-cases.js";
 export {
   createInventoryMovement,
   encodeBalanceCursor,
@@ -157,6 +158,7 @@ export type {
   ListPosCountersInput,
   ListStockLocationsInput,
 } from "./organization/application/read-use-cases.js";
+export type { ConsumeInventoryReservationInput } from "./inventory/application/consumption-use-cases.js";
 export type {
   CreateInventoryMovementInput,
   GetInventoryMovementByIdInput,
@@ -211,6 +213,8 @@ export type {
   StockLocationRepository,
 } from "./organization/repositories/organization-repositories.js";
 export type {
+  ConsumeInventoryReservationRecord,
+  ConsumeInventoryReservationResult,
   CreateInventoryMovementRecord,
   CursorPageRequest as InventoryCursorPageRequest,
   CursorPageResult as InventoryCursorPageResult,
@@ -219,6 +223,7 @@ export type {
   InventoryAvailabilityQueryRepository,
   InventoryReservationLineInput,
   InventoryReservationListFilter,
+  InventoryReservationConsumptionRepository,
   InventoryReservationRepository,
   InventoryBalanceQueryRepository,
   InventoryMovementLineDraft,

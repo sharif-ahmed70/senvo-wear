@@ -516,6 +516,7 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
     const now = new Date("2026-07-03T00:00:00.000Z");
     const movement: InventoryMovement = {
       ...record,
+      consumesReservationId: null,
       createdAt: now,
       id,
       lines: record.lines.map((line, index) => ({
@@ -535,6 +536,7 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
       status: "DRAFT",
       updatedAt: now,
       version: 1,
+      isReservationConsumption: false,
       isReversal: false,
       isReversed: false,
     };
@@ -698,6 +700,7 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
     const now = new Date("2026-07-03T00:02:00.000Z");
     const reversal: InventoryMovement = {
       ...record,
+      consumesReservationId: null,
       createdAt: now,
       id,
       lines: record.lines.map((line, index) => ({
@@ -716,6 +719,7 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
       status: "POSTED",
       updatedAt: now,
       version: 2,
+      isReservationConsumption: false,
       isReversal: true,
       isReversed: false,
     };
