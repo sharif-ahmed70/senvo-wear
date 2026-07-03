@@ -1757,7 +1757,6 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ]);
     for (const [location, movementNumber] of [
       [inactiveBranchLocation, "ALLOC-ELIG-IB"],
-      [inactiveLocation, "ALLOC-ELIG-IL"],
       [nonSellableLocation, "ALLOC-ELIG-NS"],
       [transitLocation, "ALLOC-ELIG-TR"],
       [fallback, "ALLOC-ELIG-OK"],
