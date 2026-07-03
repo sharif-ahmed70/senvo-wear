@@ -290,6 +290,12 @@ export const inventoryReservationStatusSchema = z.enum([
   "RELEASED",
   "EXPIRED",
 ]);
+export const inventoryAllocationPolicyStatusSchema = z.enum([
+  "ACTIVE",
+  "INACTIVE",
+  "ARCHIVED",
+]);
+export const inventoryAllocationStrategySchema = z.enum(["PRIORITY_ORDER"]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -444,6 +450,57 @@ export const inventoryReservationLineInputSchema = z
   })
   .strict();
 
+export const inventoryAllocationLineInputSchema = z
+  .object({
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+  })
+  .strict();
+
+export const inventoryAllocationLinesInputSchema = z
+  .array(inventoryAllocationLineInputSchema)
+  .min(1)
+  .max(500)
+  .refine(
+    (lines) =>
+      new Set(lines.map((line) => line.productVariantId)).size === lines.length,
+    "productVariantId must be unique per allocation.",
+  );
+
+export const inventoryAllocationPolicyLocationInputSchema = z
+  .object({
+    isEnabled: z.boolean().optional(),
+    priority: z.number().int().positive(),
+    stockLocationId: idSchema,
+  })
+  .strict();
+
+export const inventoryAllocationPolicyLocationsInputSchema = z
+  .array(inventoryAllocationPolicyLocationInputSchema)
+  .max(100)
+  .superRefine((locations, context) => {
+    const locationIds = new Set<string>();
+    const priorities = new Set<number>();
+    for (const [index, location] of locations.entries()) {
+      if (locationIds.has(location.stockLocationId)) {
+        context.addIssue({
+          code: "custom",
+          message: "stockLocationId must be unique per policy.",
+          path: [index, "stockLocationId"],
+        });
+      }
+      if (priorities.has(location.priority)) {
+        context.addIssue({
+          code: "custom",
+          message: "priority must be unique per policy.",
+          path: [index, "priority"],
+        });
+      }
+      locationIds.add(location.stockLocationId);
+      priorities.add(location.priority);
+    }
+  });
+
 export const createInventoryReservationInputSchema = z
   .object({
     expiresAt: isoTimestampSchema.nullable().optional(),
@@ -483,6 +540,69 @@ export const consumeInventoryReservationInputSchema = z
     referenceId: optionalTextSchema(120),
     referenceType: optionalTextSchema(80),
     reservationId: idSchema,
+  })
+  .strict();
+
+export const createInventoryAllocationPolicyInputSchema = z
+  .object({
+    code: codeSchema,
+    name: displayNameSchema,
+    organizationId: idSchema,
+    requireSellableLocation: z.boolean().optional(),
+  })
+  .strict();
+
+export const updateInventoryAllocationPolicyMetadataInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    name: displayNameSchema,
+    organizationId: idSchema,
+    policyId: idSchema,
+    requireSellableLocation: z.boolean().optional(),
+  })
+  .strict();
+
+export const replaceInventoryAllocationPolicyLocationsInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    locations: inventoryAllocationPolicyLocationsInputSchema,
+    organizationId: idSchema,
+    policyId: idSchema,
+  })
+  .strict();
+
+export const changeInventoryAllocationPolicyStatusInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    organizationId: idSchema,
+    policyId: idSchema,
+    status: inventoryAllocationPolicyStatusSchema,
+  })
+  .strict();
+
+export const previewInventoryAllocationInputSchema = z
+  .object({
+    lines: inventoryAllocationLinesInputSchema,
+    organizationId: idSchema,
+    policyId: idSchema,
+    preferredBranchId: idSchema.nullable().optional(),
+    preferredLocationId: idSchema.nullable().optional(),
+  })
+  .strict();
+
+export const allocateAndCreateInventoryReservationInputSchema = z
+  .object({
+    expiresAt: isoTimestampSchema.nullable().optional(),
+    idempotencyKey: idempotencyKeySchema,
+    lines: inventoryAllocationLinesInputSchema,
+    note: optionalTextSchema(1000),
+    organizationId: idSchema,
+    policyId: idSchema,
+    preferredBranchId: idSchema.nullable().optional(),
+    preferredLocationId: idSchema.nullable().optional(),
+    referenceId: optionalTextSchema(120),
+    referenceType: optionalTextSchema(80),
+    reservationNumber: codeSchema,
   })
   .strict();
 
@@ -680,6 +800,22 @@ export const listLocationAvailabilityQuerySchema =
     })
     .strict();
 
+export const getInventoryAllocationPolicyQuerySchema = z
+  .object({
+    organizationId: idSchema,
+    policyId: idSchema,
+  })
+  .strict();
+
+export const listInventoryAllocationPoliciesQuerySchema =
+  cursorPageRequestSchema
+    .extend({
+      organizationId: idSchema,
+      search: z.string().trim().min(1).max(160).optional(),
+      status: inventoryAllocationPolicyStatusSchema.optional(),
+    })
+    .strict();
+
 export type CreateOrganizationInputContract = z.infer<
   typeof createOrganizationInputSchema
 >;
@@ -789,6 +925,30 @@ export type GetAvailableToSellQueryContract = z.infer<
 >;
 export type ListLocationAvailabilityQueryContract = z.infer<
   typeof listLocationAvailabilityQuerySchema
+>;
+export type CreateInventoryAllocationPolicyInputContract = z.infer<
+  typeof createInventoryAllocationPolicyInputSchema
+>;
+export type UpdateInventoryAllocationPolicyMetadataInputContract = z.infer<
+  typeof updateInventoryAllocationPolicyMetadataInputSchema
+>;
+export type ReplaceInventoryAllocationPolicyLocationsInputContract = z.infer<
+  typeof replaceInventoryAllocationPolicyLocationsInputSchema
+>;
+export type ChangeInventoryAllocationPolicyStatusInputContract = z.infer<
+  typeof changeInventoryAllocationPolicyStatusInputSchema
+>;
+export type PreviewInventoryAllocationInputContract = z.infer<
+  typeof previewInventoryAllocationInputSchema
+>;
+export type AllocateAndCreateInventoryReservationInputContract = z.infer<
+  typeof allocateAndCreateInventoryReservationInputSchema
+>;
+export type GetInventoryAllocationPolicyQueryContract = z.infer<
+  typeof getInventoryAllocationPolicyQuerySchema
+>;
+export type ListInventoryAllocationPoliciesQueryContract = z.infer<
+  typeof listInventoryAllocationPoliciesQuerySchema
 >;
 
 export type CatalogRecordContract = {
@@ -980,6 +1140,53 @@ export type InventoryAvailabilityContract = {
   stockLocationId: string;
 };
 
+export type InventoryAllocationPolicyLocationContract = {
+  createdAt: string;
+  id: string;
+  isEnabled: boolean;
+  organizationId: string;
+  policyId: string;
+  priority: number;
+  stockLocationId: string;
+  updatedAt: string;
+};
+
+export type InventoryAllocationPolicyContract = CatalogRecordContract & {
+  code: string;
+  locations: InventoryAllocationPolicyLocationContract[];
+  name: string;
+  organizationId: string;
+  requireSellableLocation: boolean;
+  status: z.infer<typeof inventoryAllocationPolicyStatusSchema>;
+  strategy: z.infer<typeof inventoryAllocationStrategySchema>;
+  version: number;
+};
+
+export type InventoryAllocationLineAvailabilityContract = {
+  availableQuantity: number;
+  onHandQuantity: number;
+  productVariantId: string;
+  quantity: number;
+  reservedQuantity: number;
+};
+
+export type InventoryAllocationPreviewContract = {
+  canFulfill: boolean;
+  evaluatedAt: string;
+  failureReason: string | null;
+  lines: Array<z.infer<typeof inventoryAllocationLineInputSchema>>;
+  policyId: string;
+  selectedBranchId: string | null;
+  selectedLines: InventoryAllocationLineAvailabilityContract[];
+  selectedStockLocationId: string | null;
+};
+
+export type AllocateInventoryReservationResultContract = {
+  reservation: InventoryReservationContract;
+  selectedBranchId: string;
+  selectedStockLocationId: string;
+};
+
 export const branchContractSchema = z.object({
   addressLine1: z.string().nullable(),
   addressLine2: z.string().nullable(),
@@ -1132,6 +1339,66 @@ export const inventoryAvailabilityContractSchema = z
   })
   .strict();
 
+export const inventoryAllocationPolicyLocationContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    isEnabled: z.boolean(),
+    organizationId: idSchema,
+    policyId: idSchema,
+    priority: expectedVersionSchema,
+    stockLocationId: idSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const inventoryAllocationPolicyContractSchema = z
+  .object({
+    code: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    locations: z.array(inventoryAllocationPolicyLocationContractSchema),
+    name: z.string(),
+    organizationId: idSchema,
+    requireSellableLocation: z.boolean(),
+    status: inventoryAllocationPolicyStatusSchema,
+    strategy: inventoryAllocationStrategySchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const inventoryAllocationLineAvailabilityContractSchema = z
+  .object({
+    availableQuantity: z.number().int(),
+    onHandQuantity: z.number().int(),
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+    reservedQuantity: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const inventoryAllocationPreviewContractSchema = z
+  .object({
+    canFulfill: z.boolean(),
+    evaluatedAt: isoTimestampSchema,
+    failureReason: z.string().nullable(),
+    lines: z.array(inventoryAllocationLineInputSchema).min(1).max(500),
+    policyId: idSchema,
+    selectedBranchId: idSchema.nullable(),
+    selectedLines: z.array(inventoryAllocationLineAvailabilityContractSchema),
+    selectedStockLocationId: idSchema.nullable(),
+  })
+  .strict();
+
+export const allocateInventoryReservationResultContractSchema = z
+  .object({
+    reservation: inventoryReservationContractSchema,
+    selectedBranchId: idSchema,
+    selectedStockLocationId: idSchema,
+  })
+  .strict();
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
@@ -1202,3 +1469,5 @@ export const inventoryReservationPageContractSchema =
   reservationCursorPageResultSchema(inventoryReservationContractSchema);
 export const locationAvailabilityPageContractSchema =
   availabilityCursorPageResultSchema(inventoryAvailabilityContractSchema);
+export const inventoryAllocationPolicyPageContractSchema =
+  cursorPageResultSchema(inventoryAllocationPolicyContractSchema);

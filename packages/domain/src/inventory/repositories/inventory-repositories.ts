@@ -3,6 +3,12 @@ import type {
   InventoryMovementLine,
   InventoryMovementStatus,
   InventoryMovementType,
+  InventoryAllocationLine,
+  InventoryAllocationPolicy,
+  InventoryAllocationPolicyLocation,
+  InventoryAllocationPolicyStatus,
+  InventoryAllocationPreview,
+  InventoryAllocationStrategy,
   InventoryAvailability,
   InventoryReservation,
   InventoryReservationStatus,
@@ -138,6 +144,78 @@ export type InventoryReservationListFilter = {
   stockLocationId?: string;
 };
 
+export type InventoryAllocationPolicyLocationInput = {
+  isEnabled: boolean;
+  priority: number;
+  stockLocationId: string;
+};
+
+export type CreateInventoryAllocationPolicyRecord = {
+  code: string;
+  name: string;
+  organizationId: string;
+  requireSellableLocation: boolean;
+  strategy: InventoryAllocationStrategy;
+};
+
+export type InventoryAllocationPolicyMetadataPatch = {
+  name: string;
+  requireSellableLocation?: boolean;
+};
+
+export type ReplaceInventoryAllocationPolicyLocationsRecord = {
+  expectedVersion: number;
+  locations: InventoryAllocationPolicyLocationInput[];
+  organizationId: string;
+  policyId: string;
+};
+
+export type ChangeInventoryAllocationPolicyStatusRecord = {
+  expectedVersion: number;
+  organizationId: string;
+  policyId: string;
+  status: Exclude<InventoryAllocationPolicyStatus, "ACTIVE"> | "ACTIVE";
+};
+
+export type UpdateInventoryAllocationPolicyMetadataRecord = {
+  expectedVersion: number;
+  metadata: InventoryAllocationPolicyMetadataPatch;
+  organizationId: string;
+  policyId: string;
+};
+
+export type InventoryAllocationPolicyListFilter = {
+  cursor?: string;
+  organizationId: string;
+  pageSize: number;
+  search?: string;
+  status?: InventoryAllocationPolicyStatus;
+};
+
+export type PreviewInventoryAllocationRecord = {
+  lines: InventoryAllocationLine[];
+  organizationId: string;
+  policyId: string;
+  preferredBranchId: string | null;
+  preferredLocationId: string | null;
+};
+
+export type AllocateInventoryReservationRecord =
+  PreviewInventoryAllocationRecord & {
+    expiresAt: Date | null;
+    idempotencyKey: string;
+    note: string | null;
+    referenceId: string | null;
+    referenceType: string | null;
+    reservationNumber: string;
+  };
+
+export type AllocateInventoryReservationResult = {
+  reservation: InventoryReservation;
+  selectedBranchId: string;
+  selectedStockLocationId: string;
+};
+
 export type InventoryAvailabilityFilter = {
   cursor?: string;
   onlyAvailable?: boolean;
@@ -229,6 +307,42 @@ export type InventoryReservationConsumptionRepository = {
   ): Promise<ConsumeInventoryReservationResult>;
 };
 
+export type InventoryAllocationPolicyRepository = {
+  changeStatus(
+    record: ChangeInventoryAllocationPolicyStatusRecord,
+  ): Promise<InventoryAllocationPolicy>;
+  create(
+    record: CreateInventoryAllocationPolicyRecord,
+  ): Promise<InventoryAllocationPolicy>;
+  findByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<InventoryAllocationPolicy | null>;
+  findById(
+    id: string,
+    organizationId: string,
+  ): Promise<InventoryAllocationPolicy | null>;
+  list(
+    filter: InventoryAllocationPolicyListFilter,
+  ): Promise<CursorPageResult<InventoryAllocationPolicy>>;
+  replaceLocations(
+    record: ReplaceInventoryAllocationPolicyLocationsRecord,
+  ): Promise<InventoryAllocationPolicy>;
+  updateMetadata(
+    record: UpdateInventoryAllocationPolicyMetadataRecord,
+  ): Promise<InventoryAllocationPolicy>;
+};
+
+export type InventoryAllocationQueryRepository = {
+  allocateAndReserve(
+    record: AllocateInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<AllocateInventoryReservationResult>;
+  preview(
+    record: PreviewInventoryAllocationRecord,
+  ): Promise<InventoryAllocationPreview>;
+};
+
 export type InventoryAvailabilityQueryRepository = {
   getAvailability(input: {
     organizationId: string;
@@ -243,4 +357,9 @@ export type InventoryAvailabilityQueryRepository = {
 export type InventoryMovementLineDraft = Pick<
   InventoryMovementLine,
   "note" | "productVariantId" | "quantity"
+>;
+
+export type InventoryAllocationPolicyLocationDraft = Pick<
+  InventoryAllocationPolicyLocation,
+  "isEnabled" | "priority" | "stockLocationId"
 >;

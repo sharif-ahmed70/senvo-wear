@@ -11,6 +11,11 @@ export type InventoryMovementStatus = "DRAFT" | "POSTED";
 export type InventoryReservationStatus =
   "ACTIVE" | "CONFIRMED" | "RELEASED" | "EXPIRED";
 
+export type InventoryAllocationPolicyStatus =
+  "ACTIVE" | "INACTIVE" | "ARCHIVED";
+
+export type InventoryAllocationStrategy = "PRIORITY_ORDER";
+
 export type InventoryMovementLine = {
   createdAt: Date;
   id: string;
@@ -95,4 +100,51 @@ export type InventoryAvailability = {
   productVariantId: string;
   reservedQuantity: number;
   stockLocationId: string;
+};
+
+export type InventoryAllocationPolicyLocation = {
+  createdAt: Date;
+  id: string;
+  isEnabled: boolean;
+  organizationId: string;
+  policyId: string;
+  priority: number;
+  stockLocationId: string;
+  updatedAt: Date;
+};
+
+export type InventoryAllocationPolicy = {
+  code: string;
+  createdAt: Date;
+  id: string;
+  locations: InventoryAllocationPolicyLocation[];
+  name: string;
+  organizationId: string;
+  requireSellableLocation: boolean;
+  status: InventoryAllocationPolicyStatus;
+  strategy: InventoryAllocationStrategy;
+  updatedAt: Date;
+  version: number;
+};
+
+export type InventoryAllocationLine = {
+  productVariantId: string;
+  quantity: number;
+};
+
+export type InventoryAllocationLineAvailability = InventoryAllocationLine & {
+  availableQuantity: number;
+  onHandQuantity: number;
+  reservedQuantity: number;
+};
+
+export type InventoryAllocationPreview = {
+  canFulfill: boolean;
+  evaluatedAt: Date;
+  failureReason: string | null;
+  lines: InventoryAllocationLine[];
+  policyId: string;
+  selectedBranchId: string | null;
+  selectedLines: InventoryAllocationLineAvailability[];
+  selectedStockLocationId: string | null;
 };

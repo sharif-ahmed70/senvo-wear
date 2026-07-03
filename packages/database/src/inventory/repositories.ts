@@ -6,11 +6,16 @@ import {
   type CursorPageResult,
   encodeAvailabilityCursor,
   encodeBalanceCursor,
+  encodeCursor as encodePolicyCursor,
   encodeMovementCursor,
   encodeReservationCursor,
   type CreateInventoryReservationRecord,
+  type AllocateInventoryReservationRecord,
+  type AllocateInventoryReservationResult,
+  type ChangeInventoryAllocationPolicyStatusRecord,
   type ConsumeInventoryReservationRecord,
   type ConsumeInventoryReservationResult,
+  type CreateInventoryAllocationPolicyRecord,
   type CreateInventoryMovementRecord,
   type InventoryAvailability,
   type InventoryAvailabilityFilter,
@@ -20,6 +25,11 @@ import {
   type InventoryMovement,
   type InventoryMovementListFilter,
   type InventoryMovementRepository,
+  type InventoryAllocationPolicy,
+  type InventoryAllocationPolicyListFilter,
+  type InventoryAllocationPolicyRepository,
+  type InventoryAllocationPreview,
+  type InventoryAllocationQueryRepository,
   type InventoryReservation,
   type InventoryReservationListFilter,
   type InventoryReservationConsumptionRepository,
@@ -28,11 +38,15 @@ import {
   parseAvailabilityCursor,
   parseBalanceCursor,
   parseMovementCursor,
+  parseCursor as parsePolicyCursor,
   parseReservationCursor,
+  type PreviewInventoryAllocationRecord,
+  type ReplaceInventoryAllocationPolicyLocationsRecord,
   type ReplaceInventoryMovementLinesRecord,
   type ReverseInventoryMovementRecord,
+  type UpdateInventoryAllocationPolicyMetadataRecord,
 } from "@senvo/domain";
-import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
+import { Prisma, type PrismaClient } from "../../generated/prisma/client.js";
 
 type InventoryPrismaClient = Pick<
   PrismaClient,
@@ -43,7 +57,10 @@ type InventoryPrismaClient = Pick<
   | "inventoryMovementLine"
   | "inventoryReservation"
   | "inventoryReservationLine"
+  | "inventoryAllocationPolicy"
+  | "inventoryAllocationPolicyLocation"
   | "organization"
+  | "branch"
   | "productVariant"
   | "stockLocation"
 >;
@@ -63,6 +80,20 @@ type ReservationWithLines = Prisma.InventoryReservationGetPayload<{
     lines: { orderBy: { lineNumber: "asc" } };
   };
 }>;
+
+type AllocationPolicyWithLocations =
+  Prisma.InventoryAllocationPolicyGetPayload<{
+    include: {
+      locations: { orderBy: { priority: "asc" } };
+    };
+  }>;
+
+type AllocationPolicyCandidate =
+  Prisma.InventoryAllocationPolicyLocationGetPayload<{
+    include: {
+      stockLocation: { include: { branch: true } };
+    };
+  }>;
 
 type KnownPrismaError = {
   code?: string;
@@ -990,6 +1021,425 @@ export class PrismaInventoryReservationConsumptionRepository implements Inventor
   }
 }
 
+export class PrismaInventoryAllocationPolicyRepository implements InventoryAllocationPolicyRepository {
+  constructor(private readonly prisma: InventoryPrismaClient) {}
+
+  async create(
+    record: CreateInventoryAllocationPolicyRecord,
+  ): Promise<InventoryAllocationPolicy> {
+    try {
+      return mapAllocationPolicy(
+        await this.prisma.inventoryAllocationPolicy.create({
+          data: record,
+          include: allocationPolicyInclude,
+        }),
+      );
+    } catch (error) {
+      mapInventoryAllocationIntegrityError(error);
+    }
+  }
+
+  async findByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<InventoryAllocationPolicy | null> {
+    const record = await this.prisma.inventoryAllocationPolicy.findUnique({
+      include: allocationPolicyInclude,
+      where: { organizationId_code: { code, organizationId } },
+    });
+    return record ? mapAllocationPolicy(record) : null;
+  }
+
+  async findById(
+    id: string,
+    organizationId: string,
+  ): Promise<InventoryAllocationPolicy | null> {
+    const record = await this.prisma.inventoryAllocationPolicy.findFirst({
+      include: allocationPolicyInclude,
+      where: { id, organizationId },
+    });
+    return record ? mapAllocationPolicy(record) : null;
+  }
+
+  async list(
+    filter: InventoryAllocationPolicyListFilter,
+  ): Promise<CursorPageResult<InventoryAllocationPolicy>> {
+    const cursor = filter.cursor ? parsePolicyCursor(filter.cursor) : undefined;
+    const records = await this.prisma.inventoryAllocationPolicy.findMany({
+      include: allocationPolicyInclude,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: filter.pageSize + 1,
+      where: {
+        organizationId: filter.organizationId,
+        ...(filter.status
+          ? { status: filter.status }
+          : { status: { in: ["ACTIVE", "INACTIVE"] } }),
+        ...allocationPolicyReadPredicates(filter.search, cursor),
+      },
+    });
+    return toAllocationPolicyCursorPage(
+      records.map(mapAllocationPolicy),
+      filter.pageSize,
+    );
+  }
+
+  async updateMetadata(
+    record: UpdateInventoryAllocationPolicyMetadataRecord,
+  ): Promise<InventoryAllocationPolicy> {
+    try {
+      const policy = await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.inventoryAllocationPolicy.findFirst({
+          where: {
+            id: record.policyId,
+            organizationId: record.organizationId,
+          },
+        });
+        if (!current) {
+          return null;
+        }
+        if (current.status === "ARCHIVED") {
+          throw new BusinessRuleError(
+            "Archived allocation policies cannot change.",
+          );
+        }
+        if (current.version !== record.expectedVersion) {
+          throw new ConcurrencyError();
+        }
+        return transaction.inventoryAllocationPolicy.update({
+          data: {
+            name: record.metadata.name,
+            requireSellableLocation: record.metadata.requireSellableLocation,
+            version: { increment: 1 },
+          },
+          include: allocationPolicyInclude,
+          where: { id: current.id },
+        });
+      });
+      if (!policy) {
+        throw new NotFoundError("Inventory allocation policy was not found.");
+      }
+      return mapAllocationPolicy(policy);
+    } catch (error) {
+      mapInventoryAllocationIntegrityError(error);
+    }
+  }
+
+  async replaceLocations(
+    record: ReplaceInventoryAllocationPolicyLocationsRecord,
+  ): Promise<InventoryAllocationPolicy> {
+    try {
+      const policy = await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.inventoryAllocationPolicy.findFirst({
+          where: {
+            id: record.policyId,
+            organizationId: record.organizationId,
+          },
+        });
+        if (!current) {
+          return null;
+        }
+        if (current.status === "ARCHIVED") {
+          throw new BusinessRuleError(
+            "Archived allocation policies cannot change.",
+          );
+        }
+        if (current.version !== record.expectedVersion) {
+          throw new ConcurrencyError();
+        }
+        await assertAllocationLocationsBelongToOrganization(
+          transaction,
+          record,
+        );
+        await transaction.inventoryAllocationPolicyLocation.deleteMany({
+          where: {
+            organizationId: record.organizationId,
+            policyId: record.policyId,
+          },
+        });
+        if (record.locations.length > 0) {
+          await transaction.inventoryAllocationPolicyLocation.createMany({
+            data: record.locations.map((location) => ({
+              isEnabled: location.isEnabled,
+              organizationId: record.organizationId,
+              policyId: record.policyId,
+              priority: location.priority,
+              stockLocationId: location.stockLocationId,
+            })),
+          });
+        }
+        return transaction.inventoryAllocationPolicy.update({
+          data: { version: { increment: 1 } },
+          include: allocationPolicyInclude,
+          where: { id: current.id },
+        });
+      });
+      if (!policy) {
+        throw new NotFoundError("Inventory allocation policy was not found.");
+      }
+      return mapAllocationPolicy(policy);
+    } catch (error) {
+      mapInventoryAllocationIntegrityError(error);
+    }
+  }
+
+  async changeStatus(
+    record: ChangeInventoryAllocationPolicyStatusRecord,
+  ): Promise<InventoryAllocationPolicy> {
+    try {
+      const policy = await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.inventoryAllocationPolicy.findFirst({
+          where: {
+            id: record.policyId,
+            organizationId: record.organizationId,
+          },
+        });
+        if (!current) {
+          return null;
+        }
+        if (current.status === "ARCHIVED") {
+          throw new BusinessRuleError(
+            "Archived allocation policies cannot transition.",
+          );
+        }
+        if (current.version !== record.expectedVersion) {
+          throw new ConcurrencyError();
+        }
+        return transaction.inventoryAllocationPolicy.update({
+          data: {
+            status: record.status,
+            version: { increment: 1 },
+          },
+          include: allocationPolicyInclude,
+          where: { id: current.id },
+        });
+      });
+      if (!policy) {
+        throw new NotFoundError("Inventory allocation policy was not found.");
+      }
+      return mapAllocationPolicy(policy);
+    } catch (error) {
+      mapInventoryAllocationIntegrityError(error);
+    }
+  }
+}
+
+export class PrismaInventoryAllocationQueryRepository implements InventoryAllocationQueryRepository {
+  constructor(private readonly prisma: InventoryPrismaClient) {}
+
+  async preview(
+    record: PreviewInventoryAllocationRecord,
+  ): Promise<InventoryAllocationPreview> {
+    const evaluatedAt = new Date();
+    const policy = await this.prisma.inventoryAllocationPolicy.findFirst({
+      where: { id: record.policyId, organizationId: record.organizationId },
+    });
+    if (!policy) {
+      throw new NotFoundError("Inventory allocation policy was not found.");
+    }
+    if (policy.status !== "ACTIVE") {
+      throw new BusinessRuleError(
+        "Only active allocation policies can allocate.",
+      );
+    }
+    await assertAllocationVariantsActive(this.prisma, record);
+    const candidates = orderAllocationCandidates(
+      await loadAllocationCandidates(this.prisma, record),
+      record,
+    );
+    const availability = await getAllocationAvailability(
+      this.prisma,
+      record.organizationId,
+      candidates.map((candidate) => candidate.stockLocationId),
+      record.lines,
+    );
+    const selected = selectFirstEligibleCandidate({
+      availability,
+      candidates,
+      lines: record.lines,
+      policy,
+    });
+
+    return {
+      canFulfill: selected !== null,
+      evaluatedAt,
+      failureReason: selected
+        ? null
+        : "No eligible location can fulfill all allocation lines.",
+      lines: record.lines,
+      policyId: record.policyId,
+      selectedBranchId: selected?.candidate.stockLocation.branchId ?? null,
+      selectedLines: selected?.lineAvailability ?? [],
+      selectedStockLocationId: selected?.candidate.stockLocationId ?? null,
+    };
+  }
+
+  async allocateAndReserve(
+    record: AllocateInventoryReservationRecord,
+    payloadSignature: string,
+  ): Promise<AllocateInventoryReservationResult> {
+    try {
+      const result = await this.prisma.$transaction(async (transaction) => {
+        const existing = await transaction.inventoryReservation.findUnique({
+          include: reservationInclude,
+          where: {
+            organizationId_idempotencyKey: {
+              idempotencyKey: record.idempotencyKey,
+              organizationId: record.organizationId,
+            },
+          },
+        });
+        if (existing) {
+          const existingSignature =
+            await getReservationPayloadSignatureInTransaction(
+              transaction,
+              existing.id,
+              existing.organizationId,
+            );
+          if (existingSignature === payloadSignature) {
+            return {
+              reservation: existing,
+              selectedBranchId: await getLocationBranchId(transaction, {
+                organizationId: existing.organizationId,
+                stockLocationId: existing.stockLocationId,
+              }),
+              selectedStockLocationId: existing.stockLocationId,
+            };
+          }
+          throw new ConflictError("Idempotency key was already used.");
+        }
+
+        const policy = await transaction.inventoryAllocationPolicy.findFirst({
+          where: {
+            id: record.policyId,
+            organizationId: record.organizationId,
+          },
+        });
+        if (!policy) {
+          throw new NotFoundError("Inventory allocation policy was not found.");
+        }
+        if (policy.status !== "ACTIVE") {
+          throw new BusinessRuleError(
+            "Only active allocation policies can allocate.",
+          );
+        }
+
+        await assertAllocationVariantsActive(transaction, record);
+        const candidates = orderAllocationCandidates(
+          await loadAllocationCandidates(transaction, record),
+          record,
+        );
+
+        for (const candidate of candidates) {
+          if (!isCandidateLocationEligible(candidate, policy)) {
+            continue;
+          }
+          await lockAllocationBalanceKeys(transaction, {
+            lines: record.lines,
+            organizationId: record.organizationId,
+            stockLocationId: candidate.stockLocationId,
+          });
+          const availability = await getAllocationAvailability(
+            transaction,
+            record.organizationId,
+            [candidate.stockLocationId],
+            record.lines,
+          );
+          const selected = selectFirstEligibleCandidate({
+            availability,
+            candidates: [candidate],
+            lines: record.lines,
+            policy,
+          });
+          if (!selected) {
+            continue;
+          }
+
+          const reservation = await transaction.inventoryReservation.create({
+            data: {
+              expiresAt: record.expiresAt,
+              idempotencyKey: record.idempotencyKey,
+              note: record.note,
+              organizationId: record.organizationId,
+              payloadSignature,
+              referenceId: record.referenceId,
+              referenceType: record.referenceType,
+              reservationNumber: record.reservationNumber,
+              stockLocationId: candidate.stockLocationId,
+            },
+          });
+          await transaction.inventoryReservationLine.createMany({
+            data: record.lines.map((line, index) => ({
+              lineNumber: index + 1,
+              organizationId: record.organizationId,
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+              reservationId: reservation.id,
+            })),
+          });
+          const fullReservation =
+            await transaction.inventoryReservation.findUniqueOrThrow({
+              include: reservationInclude,
+              where: { id: reservation.id },
+            });
+          return {
+            reservation: fullReservation,
+            selectedBranchId: candidate.stockLocation.branchId,
+            selectedStockLocationId: candidate.stockLocationId,
+          };
+        }
+
+        throw new BusinessRuleError(
+          "No eligible location can fulfill all allocation lines.",
+        );
+      });
+      return {
+        reservation: mapReservation(result.reservation),
+        selectedBranchId: result.selectedBranchId,
+        selectedStockLocationId: result.selectedStockLocationId,
+      };
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.prisma.inventoryReservation.findUnique({
+          include: reservationInclude,
+          where: {
+            organizationId_idempotencyKey: {
+              idempotencyKey: record.idempotencyKey,
+              organizationId: record.organizationId,
+            },
+          },
+        });
+        const existingSignature = existing
+          ? await this.prisma.$queryRaw<PayloadSignatureRow[]>`
+              SELECT payload_signature
+              FROM inventory_reservations
+              WHERE id = ${existing.id}::uuid
+                AND organization_id = ${existing.organizationId}::uuid
+              LIMIT 1
+            `
+          : [];
+        if (
+          existing &&
+          existingSignature.at(0)?.payload_signature === payloadSignature
+        ) {
+          return {
+            reservation: mapReservation(existing),
+            selectedBranchId: await getLocationBranchId(this.prisma, {
+              organizationId: existing.organizationId,
+              stockLocationId: existing.stockLocationId,
+            }),
+            selectedStockLocationId: existing.stockLocationId,
+          };
+        }
+        throw new ConflictError(
+          "Inventory allocation reservation identity or idempotency key already exists.",
+          error,
+        );
+      }
+      mapInventoryAllocationIntegrityError(error);
+    }
+  }
+}
+
 export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvailabilityQueryRepository {
   constructor(private readonly prisma: InventoryPrismaClient) {}
 
@@ -1089,6 +1539,10 @@ const movementInclude = {
 
 const reservationInclude = {
   lines: { orderBy: { lineNumber: "asc" as const } },
+};
+
+const allocationPolicyInclude = {
+  locations: { orderBy: { priority: "asc" as const } },
 };
 
 async function lockMovementRow(
@@ -1283,6 +1737,311 @@ async function lockReservationBalanceKeys(
       SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
     `;
   }
+}
+
+async function lockAllocationBalanceKeys(
+  transaction: InventoryTransaction,
+  record: {
+    lines: Array<{ productVariantId: string }>;
+    organizationId: string;
+    stockLocationId: string;
+  },
+): Promise<void> {
+  const keys = [
+    ...new Set(
+      record.lines.map(
+        (line) =>
+          `${record.organizationId}:${record.stockLocationId}:${line.productVariantId}`,
+      ),
+    ),
+  ].sort();
+
+  for (const key of keys) {
+    await transaction.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))
+    `;
+  }
+}
+
+async function assertAllocationLocationsBelongToOrganization(
+  transaction: InventoryTransaction,
+  record: ReplaceInventoryAllocationPolicyLocationsRecord,
+): Promise<void> {
+  if (record.locations.length === 0) {
+    return;
+  }
+  const locations = await transaction.stockLocation.findMany({
+    where: {
+      id: { in: record.locations.map((location) => location.stockLocationId) },
+      organizationId: record.organizationId,
+    },
+  });
+  if (locations.length !== record.locations.length) {
+    throw new BusinessRuleError(
+      "Allocation policy locations must belong to the same organization.",
+    );
+  }
+}
+
+async function assertAllocationVariantsActive(
+  transaction: Pick<InventoryPrismaClient, "productVariant">,
+  record: Pick<PreviewInventoryAllocationRecord, "lines" | "organizationId">,
+): Promise<void> {
+  const variantIds = record.lines.map((line) => line.productVariantId);
+  const variants = await transaction.productVariant.findMany({
+    where: {
+      id: { in: variantIds },
+      organizationId: record.organizationId,
+      status: "ACTIVE",
+    },
+  });
+  if (variants.length !== new Set(variantIds).size) {
+    throw new BusinessRuleError(
+      "Allocation variants must be active and in the same organization.",
+    );
+  }
+}
+
+async function loadAllocationCandidates(
+  transaction: Pick<InventoryPrismaClient, "inventoryAllocationPolicyLocation">,
+  record: Pick<PreviewInventoryAllocationRecord, "organizationId" | "policyId">,
+): Promise<AllocationPolicyCandidate[]> {
+  return transaction.inventoryAllocationPolicyLocation.findMany({
+    include: { stockLocation: { include: { branch: true } } },
+    orderBy: [{ priority: "asc" }, { stockLocationId: "asc" }],
+    where: {
+      isEnabled: true,
+      organizationId: record.organizationId,
+      policyId: record.policyId,
+    },
+  });
+}
+
+function orderAllocationCandidates(
+  candidates: AllocationPolicyCandidate[],
+  record: Pick<
+    PreviewInventoryAllocationRecord,
+    "preferredBranchId" | "preferredLocationId"
+  >,
+): AllocationPolicyCandidate[] {
+  const ordered = [...candidates].sort(compareAllocationCandidate);
+  const preferredLocation = record.preferredLocationId
+    ? ordered.filter(
+        (candidate) => candidate.stockLocationId === record.preferredLocationId,
+      )
+    : [];
+  const preferredBranch = record.preferredBranchId
+    ? ordered.filter(
+        (candidate) =>
+          candidate.stockLocationId !== record.preferredLocationId &&
+          candidate.stockLocation.branchId === record.preferredBranchId,
+      )
+    : [];
+  const remaining = ordered.filter(
+    (candidate) =>
+      candidate.stockLocationId !== record.preferredLocationId &&
+      candidate.stockLocation.branchId !== record.preferredBranchId,
+  );
+  return [...preferredLocation, ...preferredBranch, ...remaining];
+}
+
+function compareAllocationCandidate(
+  left: AllocationPolicyCandidate,
+  right: AllocationPolicyCandidate,
+): number {
+  return (
+    left.priority - right.priority ||
+    left.stockLocationId.localeCompare(right.stockLocationId)
+  );
+}
+
+function isCandidateLocationEligible(
+  candidate: AllocationPolicyCandidate,
+  policy: Pick<AllocationPolicyWithLocations, "requireSellableLocation">,
+): boolean {
+  if (candidate.stockLocation.status !== "ACTIVE") {
+    return false;
+  }
+  if (candidate.stockLocation.branch.status !== "ACTIVE") {
+    return false;
+  }
+  if (policy.requireSellableLocation && !candidate.stockLocation.isSellable) {
+    return false;
+  }
+  return !["QC_HOLD", "DAMAGE_HOLD", "RETURN_HOLD", "TRANSIT"].includes(
+    candidate.stockLocation.type,
+  );
+}
+
+type AllocationAvailabilityKey = `${string}:${string}`;
+type AllocationAvailabilityMap = Map<
+  AllocationAvailabilityKey,
+  {
+    availableQuantity: number;
+    onHandQuantity: number;
+    reservedQuantity: number;
+  }
+>;
+
+async function getAllocationAvailability(
+  client: Pick<InventoryPrismaClient, "$queryRaw">,
+  organizationId: string,
+  stockLocationIds: string[],
+  lines: Array<{ productVariantId: string }>,
+): Promise<AllocationAvailabilityMap> {
+  const uniqueLocationIds = [...new Set(stockLocationIds)];
+  const uniqueVariantIds = [
+    ...new Set(lines.map((line) => line.productVariantId)),
+  ];
+  if (uniqueLocationIds.length === 0 || uniqueVariantIds.length === 0) {
+    return new Map();
+  }
+  const rows = await client.$queryRaw<
+    Array<{
+      available_quantity: bigint | number;
+      on_hand_quantity: bigint | number;
+      product_variant_id: string;
+      reserved_quantity: bigint | number;
+      stock_location_id: string;
+    }>
+  >`
+    WITH requested_locations AS (
+      SELECT unnest(ARRAY[${Prisma.join(uniqueLocationIds)}]::uuid[]) AS stock_location_id
+    ),
+    requested_variants AS (
+      SELECT unnest(ARRAY[${Prisma.join(uniqueVariantIds)}]::uuid[]) AS product_variant_id
+    ),
+    requested_pairs AS (
+      SELECT stock_location_id, product_variant_id
+      FROM requested_locations
+      CROSS JOIN requested_variants
+    ),
+    on_hand AS (
+      SELECT stock_location_id, product_variant_id, SUM(quantity_delta)::bigint AS on_hand_quantity
+      FROM (
+        SELECT movement.destination_location_id AS stock_location_id, line.product_variant_id, line.quantity AS quantity_delta
+        FROM inventory_movement_lines line
+        INNER JOIN inventory_movements movement
+          ON movement.id = line.movement_id
+         AND movement.organization_id = line.organization_id
+        WHERE movement.status = 'POSTED'
+          AND line.organization_id = ${organizationId}::uuid
+          AND movement.destination_location_id = ANY(ARRAY[${Prisma.join(uniqueLocationIds)}]::uuid[])
+          AND line.product_variant_id = ANY(ARRAY[${Prisma.join(uniqueVariantIds)}]::uuid[])
+        UNION ALL
+        SELECT movement.source_location_id AS stock_location_id, line.product_variant_id, -line.quantity AS quantity_delta
+        FROM inventory_movement_lines line
+        INNER JOIN inventory_movements movement
+          ON movement.id = line.movement_id
+         AND movement.organization_id = line.organization_id
+        WHERE movement.status = 'POSTED'
+          AND line.organization_id = ${organizationId}::uuid
+          AND movement.source_location_id = ANY(ARRAY[${Prisma.join(uniqueLocationIds)}]::uuid[])
+          AND line.product_variant_id = ANY(ARRAY[${Prisma.join(uniqueVariantIds)}]::uuid[])
+      ) balance
+      GROUP BY stock_location_id, product_variant_id
+    ),
+    reserved AS (
+      SELECT reservation.stock_location_id, line.product_variant_id, SUM(line.quantity)::bigint AS reserved_quantity
+      FROM inventory_reservation_lines line
+      INNER JOIN inventory_reservations reservation
+        ON reservation.id = line.reservation_id
+       AND reservation.organization_id = line.organization_id
+      WHERE reservation.status = 'ACTIVE'
+        AND line.organization_id = ${organizationId}::uuid
+        AND reservation.stock_location_id = ANY(ARRAY[${Prisma.join(uniqueLocationIds)}]::uuid[])
+        AND line.product_variant_id = ANY(ARRAY[${Prisma.join(uniqueVariantIds)}]::uuid[])
+      GROUP BY reservation.stock_location_id, line.product_variant_id
+    )
+    SELECT
+      requested_pairs.stock_location_id,
+      requested_pairs.product_variant_id,
+      COALESCE(on_hand.on_hand_quantity, 0)::bigint AS on_hand_quantity,
+      COALESCE(reserved.reserved_quantity, 0)::bigint AS reserved_quantity,
+      (COALESCE(on_hand.on_hand_quantity, 0) - COALESCE(reserved.reserved_quantity, 0))::bigint AS available_quantity
+    FROM requested_pairs
+    LEFT JOIN on_hand
+      ON on_hand.stock_location_id = requested_pairs.stock_location_id
+     AND on_hand.product_variant_id = requested_pairs.product_variant_id
+    LEFT JOIN reserved
+      ON reserved.stock_location_id = requested_pairs.stock_location_id
+     AND reserved.product_variant_id = requested_pairs.product_variant_id
+  `;
+  return new Map(
+    rows.map((row) => [
+      allocationAvailabilityKey(row.stock_location_id, row.product_variant_id),
+      {
+        availableQuantity: Number(row.available_quantity),
+        onHandQuantity: Number(row.on_hand_quantity),
+        reservedQuantity: Number(row.reserved_quantity),
+      },
+    ]),
+  );
+}
+
+function selectFirstEligibleCandidate(input: {
+  availability: AllocationAvailabilityMap;
+  candidates: AllocationPolicyCandidate[];
+  lines: Array<{ productVariantId: string; quantity: number }>;
+  policy: Pick<AllocationPolicyWithLocations, "requireSellableLocation">;
+}): {
+  candidate: AllocationPolicyCandidate;
+  lineAvailability: Array<{
+    availableQuantity: number;
+    onHandQuantity: number;
+    productVariantId: string;
+    quantity: number;
+    reservedQuantity: number;
+  }>;
+} | null {
+  for (const candidate of input.candidates) {
+    if (!isCandidateLocationEligible(candidate, input.policy)) {
+      continue;
+    }
+    const lineAvailability = input.lines.map((line) => ({
+      ...line,
+      ...(input.availability.get(
+        allocationAvailabilityKey(
+          candidate.stockLocationId,
+          line.productVariantId,
+        ),
+      ) ?? {
+        availableQuantity: 0,
+        onHandQuantity: 0,
+        reservedQuantity: 0,
+      }),
+    }));
+    if (
+      lineAvailability.every((line) => line.availableQuantity >= line.quantity)
+    ) {
+      return { candidate, lineAvailability };
+    }
+  }
+  return null;
+}
+
+function allocationAvailabilityKey(
+  stockLocationId: string,
+  productVariantId: string,
+): AllocationAvailabilityKey {
+  return `${stockLocationId}:${productVariantId}`;
+}
+
+async function getLocationBranchId(
+  client: Pick<InventoryPrismaClient, "stockLocation">,
+  input: { organizationId: string; stockLocationId: string },
+): Promise<string> {
+  const location = await client.stockLocation.findFirst({
+    select: { branchId: true },
+    where: {
+      id: input.stockLocationId,
+      organizationId: input.organizationId,
+    },
+  });
+  if (!location) {
+    throw new BusinessRuleError("Allocated stock location was not found.");
+  }
+  return location.branchId;
 }
 
 async function assertConsumptionEligibility(
@@ -1556,6 +2315,75 @@ function toAvailabilityCursorPage(
   };
 }
 
+function toAllocationPolicyCursorPage(
+  records: InventoryAllocationPolicy[],
+  pageSize: number,
+): CursorPageResult<InventoryAllocationPolicy> {
+  const items = records.slice(0, pageSize);
+  const hasMore = records.length > pageSize;
+  const lastItem = items.at(-1);
+  return {
+    hasMore,
+    items,
+    nextCursor:
+      hasMore && lastItem
+        ? encodePolicyCursor(lastItem.createdAt, lastItem.id)
+        : null,
+  };
+}
+
+function allocationPolicyReadPredicates(
+  search?: string,
+  cursor?: ReturnType<typeof parsePolicyCursor>,
+): Record<string, unknown> {
+  const predicates = [
+    search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { code: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {},
+    cursor
+      ? {
+          OR: [
+            { createdAt: { gt: cursor.createdAt } },
+            { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+          ],
+        }
+      : {},
+  ].filter((predicate) => Object.keys(predicate).length > 0);
+  return predicates.length > 0 ? { AND: predicates } : {};
+}
+
+function mapAllocationPolicy(
+  record: AllocationPolicyWithLocations,
+): InventoryAllocationPolicy {
+  return {
+    code: record.code,
+    createdAt: record.createdAt,
+    id: record.id,
+    locations: record.locations.map((location) => ({
+      createdAt: location.createdAt,
+      id: location.id,
+      isEnabled: location.isEnabled,
+      organizationId: location.organizationId,
+      policyId: location.policyId,
+      priority: location.priority,
+      stockLocationId: location.stockLocationId,
+      updatedAt: location.updatedAt,
+    })),
+    name: record.name,
+    organizationId: record.organizationId,
+    requireSellableLocation: record.requireSellableLocation,
+    status: record.status,
+    strategy: record.strategy,
+    updatedAt: record.updatedAt,
+    version: record.version,
+  };
+}
+
 function mapMovement(record: MovementWithLines): InventoryMovement {
   return {
     consumesReservationId: record.consumedReservation?.id ?? null,
@@ -1664,6 +2492,28 @@ function mapInventoryReservationIntegrityError(error: unknown): never {
   if (isCheckConstraintError(error)) {
     throw new BusinessRuleError(
       "Inventory reservation database rule was violated.",
+      error,
+    );
+  }
+  throw error;
+}
+
+function mapInventoryAllocationIntegrityError(error: unknown): never {
+  if (isUniqueConstraintError(error)) {
+    throw new ConflictError(
+      "Inventory allocation policy uniqueness was violated.",
+      error,
+    );
+  }
+  if (isForeignKeyConstraintError(error)) {
+    throw new BusinessRuleError(
+      "Inventory allocation policy reference integrity was violated.",
+      error,
+    );
+  }
+  if (isCheckConstraintError(error)) {
+    throw new BusinessRuleError(
+      "Inventory allocation policy database rule was violated.",
       error,
     );
   }

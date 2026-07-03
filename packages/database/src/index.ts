@@ -40,6 +40,8 @@ export {
   PrismaStockLocationRepository,
 } from "./organization/repositories.js";
 export {
+  PrismaInventoryAllocationPolicyRepository,
+  PrismaInventoryAllocationQueryRepository,
   PrismaInventoryAvailabilityQueryRepository,
   PrismaInventoryBalanceQueryRepository,
   PrismaInventoryMovementRepository,

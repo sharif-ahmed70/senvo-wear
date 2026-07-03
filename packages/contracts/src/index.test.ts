@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
+  allocateAndCreateInventoryReservationInputSchema,
+  allocateInventoryReservationResultContractSchema,
   branchContractSchema,
   branchPageContractSchema,
+  changeInventoryAllocationPolicyStatusInputSchema,
   changeBranchStatusInputSchema,
   changePosCounterStatusInputSchema,
   changeStockLocationStatusInputSchema,
   createBranchInputSchema,
+  createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
   createColorInputSchema,
   createPosCounterInputSchema,
   createProductVariantInputSchema,
   createInventoryReservationInputSchema,
   createStockLocationInputSchema,
+  getInventoryAllocationPolicyQuerySchema,
   getBranchQuerySchema,
   getInventoryMovementQuerySchema,
   getOnHandBalanceQuerySchema,
@@ -20,9 +25,12 @@ import {
   getPosCounterQuerySchema,
   getInventoryReservationQuerySchema,
   getStockLocationQuerySchema,
+  inventoryAllocationPolicyPageContractSchema,
+  inventoryAllocationPreviewContractSchema,
   inventoryReservationPageContractSchema,
   locationAvailabilityPageContractSchema,
   inventoryMovementPageContractSchema,
+  listInventoryAllocationPoliciesQuerySchema,
   listInventoryMovementsQuerySchema,
   listBranchesQuerySchema,
   listLocationBalancesQuerySchema,
@@ -32,16 +40,19 @@ import {
   listStockLocationsQuerySchema,
   posCounterPageContractSchema,
   postInventoryMovementInputSchema,
+  previewInventoryAllocationInputSchema,
   confirmInventoryReservationInputSchema,
   consumeInventoryReservationInputSchema,
   expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
+  replaceInventoryAllocationPolicyLocationsInputSchema,
   releaseInventoryReservationInputSchema,
   reverseInventoryMovementInputSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
+  updateInventoryAllocationPolicyMetadataInputSchema,
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
   updateStockLocationMetadataInputSchema,
@@ -724,5 +735,241 @@ describe("API contracts", () => {
         nextCursor: availabilityCursor,
       }),
     ).toMatchObject({ hasMore: true });
+  });
+
+  it("validates inventory allocation policy commands and strict boundaries", () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const policyId = "22222222-2222-4222-8222-222222222222";
+    const stockLocationId = "33333333-3333-4333-8333-333333333333";
+    const productVariantId = "44444444-4444-4444-8444-444444444444";
+
+    expect(
+      createInventoryAllocationPolicyInputSchema.parse({
+        code: "WEB-FIRST",
+        name: "Web First",
+        organizationId,
+        requireSellableLocation: true,
+      }),
+    ).toMatchObject({ code: "WEB-FIRST" });
+    expect(
+      createInventoryAllocationPolicyInputSchema.safeParse({
+        code: "WEB-FIRST",
+        name: "Web First",
+        organizationId,
+        strategy: "PRIORITY_ORDER",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateInventoryAllocationPolicyMetadataInputSchema.safeParse({
+        code: "NEW-CODE",
+        expectedVersion: 1,
+        name: "Updated",
+        organizationId,
+        policyId,
+      }).success,
+    ).toBe(false);
+    expect(
+      replaceInventoryAllocationPolicyLocationsInputSchema.parse({
+        expectedVersion: 1,
+        locations: [
+          { priority: 1, stockLocationId },
+          {
+            isEnabled: false,
+            priority: 2,
+            stockLocationId: "55555555-5555-4555-8555-555555555555",
+          },
+        ],
+        organizationId,
+        policyId,
+      }),
+    ).toMatchObject({ expectedVersion: 1 });
+    expect(
+      replaceInventoryAllocationPolicyLocationsInputSchema.safeParse({
+        expectedVersion: 1,
+        locations: [
+          { priority: 1, stockLocationId },
+          {
+            priority: 1,
+            stockLocationId: "55555555-5555-4555-8555-555555555555",
+          },
+        ],
+        organizationId,
+        policyId,
+      }).success,
+    ).toBe(false);
+    expect(
+      changeInventoryAllocationPolicyStatusInputSchema.parse({
+        expectedVersion: 2,
+        organizationId,
+        policyId,
+        status: "INACTIVE",
+      }),
+    ).toMatchObject({ status: "INACTIVE" });
+
+    const allocationLines = [{ productVariantId, quantity: 2 }];
+    expect(
+      previewInventoryAllocationInputSchema.parse({
+        lines: allocationLines,
+        organizationId,
+        policyId,
+        preferredLocationId: stockLocationId,
+      }),
+    ).toMatchObject({ preferredLocationId: stockLocationId });
+    expect(
+      previewInventoryAllocationInputSchema.safeParse({
+        lines: [
+          { productVariantId, quantity: 1 },
+          { productVariantId, quantity: 1 },
+        ],
+        organizationId,
+        policyId,
+      }).success,
+    ).toBe(false);
+    expect(
+      allocateAndCreateInventoryReservationInputSchema.safeParse({
+        idempotencyKey: "allocate-123",
+        lines: allocationLines,
+        organizationId,
+        policyId,
+        reservationNumber: "ALLOC-1",
+        selectedStockLocationId: stockLocationId,
+      }).success,
+    ).toBe(false);
+    expect(
+      allocateAndCreateInventoryReservationInputSchema.parse({
+        expiresAt: "2999-01-01T00:00:00.000Z",
+        idempotencyKey: "allocate-123",
+        lines: allocationLines,
+        note: "Hold for checkout",
+        organizationId,
+        policyId,
+        preferredBranchId: null,
+        preferredLocationId: stockLocationId,
+        referenceId: "CART-1",
+        referenceType: "CHECKOUT",
+        reservationNumber: "ALLOC-1",
+      }),
+    ).toMatchObject({ reservationNumber: "ALLOC-1" });
+
+    expect(
+      getInventoryAllocationPolicyQuerySchema.parse({
+        organizationId,
+        policyId,
+      }),
+    ).toMatchObject({ policyId });
+    expect(
+      listInventoryAllocationPoliciesQuerySchema.safeParse({
+        cursor: "bad",
+        organizationId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates inventory allocation result contracts without client ATS inputs", () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const policyId = "22222222-2222-4222-8222-222222222222";
+    const stockLocationId = "33333333-3333-4333-8333-333333333333";
+    const branchId = "55555555-5555-4555-8555-555555555555";
+    const productVariantId = "44444444-4444-4444-8444-444444444444";
+    const reservationId = "66666666-6666-4666-8666-666666666666";
+    const timestamp = "2026-07-03T00:00:00.000Z";
+
+    const preview = {
+      canFulfill: true,
+      evaluatedAt: timestamp,
+      failureReason: null,
+      lines: [{ productVariantId, quantity: 2 }],
+      policyId,
+      selectedBranchId: branchId,
+      selectedLines: [
+        {
+          availableQuantity: 8,
+          onHandQuantity: 10,
+          productVariantId,
+          quantity: 2,
+          reservedQuantity: 2,
+        },
+      ],
+      selectedStockLocationId: stockLocationId,
+    };
+
+    expect(
+      inventoryAllocationPreviewContractSchema.parse(preview),
+    ).toMatchObject({ canFulfill: true });
+    expect(
+      inventoryAllocationPolicyPageContractSchema.parse({
+        hasMore: false,
+        items: [
+          {
+            code: "WEB-FIRST",
+            createdAt: timestamp,
+            id: policyId,
+            locations: [
+              {
+                createdAt: timestamp,
+                id: reservationId,
+                isEnabled: true,
+                organizationId,
+                policyId,
+                priority: 1,
+                stockLocationId,
+                updatedAt: timestamp,
+              },
+            ],
+            name: "Web First",
+            organizationId,
+            requireSellableLocation: true,
+            status: "ACTIVE",
+            strategy: "PRIORITY_ORDER",
+            updatedAt: timestamp,
+            version: 1,
+          },
+        ],
+        nextCursor: null,
+      }),
+    ).toMatchObject({ hasMore: false });
+    expect(
+      allocateInventoryReservationResultContractSchema.safeParse({
+        reservation: {
+          confirmedAt: null,
+          consumedByMovementId: null,
+          createdAt: timestamp,
+          expiredAt: null,
+          expiresAt: null,
+          id: reservationId,
+          idempotencyKey: "allocate-123",
+          isConsumed: false,
+          lines: [
+            {
+              createdAt: timestamp,
+              id: productVariantId,
+              lineNumber: 1,
+              organizationId,
+              productVariantId,
+              quantity: 2,
+              reservationId,
+            },
+          ],
+          note: null,
+          organizationId,
+          referenceId: null,
+          referenceType: null,
+          releasedAt: null,
+          reservationNumber: "ALLOC-1",
+          status: "ACTIVE",
+          stockLocationId,
+          updatedAt: timestamp,
+          version: 1,
+        },
+        selectedBranchId: branchId,
+        selectedStockLocationId: stockLocationId,
+      }).success,
+    ).toBe(true);
+    expect(
+      inventoryAllocationPreviewContractSchema.safeParse({
+        ...preview,
+        clientSuppliedAts: 999,
+      }).success,
+    ).toBe(false);
   });
 });

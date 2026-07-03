@@ -87,6 +87,16 @@ enum InventoryReservationStatus {
   EXPIRED
 }
 
+enum InventoryAllocationPolicyStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum InventoryAllocationStrategy {
+  PRIORITY_ORDER
+}
+
 model Organization {
   id        String             @id @default(uuid()) @db.Uuid
   name      String             @db.VarChar(160)
@@ -108,6 +118,8 @@ model Organization {
   inventoryMovementLines InventoryMovementLine[]
   inventoryReservations InventoryReservation[]
   inventoryReservationLines InventoryReservationLine[]
+  inventoryAllocationPolicies InventoryAllocationPolicy[]
+  inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
 
   @@map("organizations")
 }
@@ -161,6 +173,7 @@ model StockLocation {
   sourceInventoryMovements InventoryMovement[] @relation("InventoryMovementSourceLocation")
   destinationInventoryMovements InventoryMovement[] @relation("InventoryMovementDestinationLocation")
   inventoryReservations InventoryReservation[]
+  inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -454,4 +467,46 @@ model InventoryReservationLine {
   @@index([organizationId, productVariantId])
   @@index([reservationId])
   @@map("inventory_reservation_lines")
+}
+
+model InventoryAllocationPolicy {
+  id                      String                          @id @default(uuid()) @db.Uuid
+  organizationId          String                          @map("organization_id") @db.Uuid
+  name                    String                          @db.VarChar(160)
+  code                    String                          @db.VarChar(64)
+  status                  InventoryAllocationPolicyStatus @default(ACTIVE)
+  strategy                InventoryAllocationStrategy     @default(PRIORITY_ORDER)
+  requireSellableLocation Boolean                         @default(true) @map("require_sellable_location")
+  version                 Int                             @default(1)
+  createdAt               DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  locations    InventoryAllocationPolicyLocation[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@index([organizationId, status, createdAt, id])
+  @@map("inventory_allocation_policies")
+}
+
+model InventoryAllocationPolicyLocation {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  policyId        String   @map("policy_id") @db.Uuid
+  stockLocationId String   @map("stock_location_id") @db.Uuid
+  priority        Int
+  isEnabled       Boolean  @default(true) @map("is_enabled")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  policy        InventoryAllocationPolicy @relation(fields: [policyId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  stockLocation StockLocation             @relation(fields: [stockLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([policyId, stockLocationId])
+  @@unique([policyId, priority])
+  @@index([organizationId, policyId, priority])
+  @@index([organizationId, stockLocationId])
+  @@map("inventory_allocation_policy_locations")
 }

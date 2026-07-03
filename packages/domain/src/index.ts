@@ -59,6 +59,13 @@ export type {
   InventoryMovementLine,
   InventoryMovementStatus,
   InventoryMovementType,
+  InventoryAllocationLine,
+  InventoryAllocationLineAvailability,
+  InventoryAllocationPolicy,
+  InventoryAllocationPolicyLocation,
+  InventoryAllocationPolicyStatus,
+  InventoryAllocationPreview,
+  InventoryAllocationStrategy,
   InventoryAvailability,
   InventoryReservation,
   InventoryReservationLine,
@@ -108,6 +115,16 @@ export {
   parseCursor,
 } from "./organization/application/read-use-cases.js";
 export { consumeInventoryReservation } from "./inventory/application/consumption-use-cases.js";
+export {
+  allocateAndCreateInventoryReservation,
+  changeInventoryAllocationPolicyStatus,
+  createInventoryAllocationPolicy,
+  getInventoryAllocationPolicyById,
+  listInventoryAllocationPolicies,
+  previewInventoryAllocation,
+  replaceInventoryAllocationPolicyLocations,
+  updateInventoryAllocationPolicyMetadata,
+} from "./inventory/application/allocation-use-cases.js";
 export {
   createInventoryMovement,
   encodeBalanceCursor,
@@ -159,6 +176,16 @@ export type {
   ListStockLocationsInput,
 } from "./organization/application/read-use-cases.js";
 export type { ConsumeInventoryReservationInput } from "./inventory/application/consumption-use-cases.js";
+export type {
+  AllocateAndCreateInventoryReservationInput,
+  ChangeInventoryAllocationPolicyStatusInput,
+  CreateInventoryAllocationPolicyInput,
+  GetInventoryAllocationPolicyByIdInput,
+  ListInventoryAllocationPoliciesInput,
+  PreviewInventoryAllocationInput,
+  ReplaceInventoryAllocationPolicyLocationsInput,
+  UpdateInventoryAllocationPolicyMetadataInput,
+} from "./inventory/application/allocation-use-cases.js";
 export type {
   CreateInventoryMovementInput,
   GetInventoryMovementByIdInput,
@@ -213,12 +240,22 @@ export type {
   StockLocationRepository,
 } from "./organization/repositories/organization-repositories.js";
 export type {
+  AllocateInventoryReservationRecord,
+  AllocateInventoryReservationResult,
+  ChangeInventoryAllocationPolicyStatusRecord,
   ConsumeInventoryReservationRecord,
   ConsumeInventoryReservationResult,
+  CreateInventoryAllocationPolicyRecord,
   CreateInventoryMovementRecord,
   CursorPageRequest as InventoryCursorPageRequest,
   CursorPageResult as InventoryCursorPageResult,
   InventoryBalanceFilter,
+  InventoryAllocationPolicyListFilter,
+  InventoryAllocationPolicyLocationDraft,
+  InventoryAllocationPolicyLocationInput,
+  InventoryAllocationPolicyMetadataPatch,
+  InventoryAllocationPolicyRepository,
+  InventoryAllocationQueryRepository,
   InventoryAvailabilityFilter,
   InventoryAvailabilityQueryRepository,
   InventoryReservationLineInput,
@@ -230,8 +267,11 @@ export type {
   InventoryMovementLineInput,
   InventoryMovementListFilter,
   InventoryMovementRepository,
+  PreviewInventoryAllocationRecord,
+  ReplaceInventoryAllocationPolicyLocationsRecord,
   ReplaceInventoryMovementLinesRecord,
   ReverseInventoryMovementRecord,
+  UpdateInventoryAllocationPolicyMetadataRecord,
   ChangeInventoryReservationStatusRecord,
   CreateInventoryReservationRecord,
 } from "./inventory/repositories/inventory-repositories.js";

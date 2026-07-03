@@ -1,4 +1,7 @@
 import {
+  allocateAndCreateInventoryReservation,
+  changeInventoryAllocationPolicyStatus,
+  createInventoryAllocationPolicy,
   createInventoryMovement,
   createInventoryReservation,
   confirmInventoryReservation,
@@ -11,7 +14,9 @@ import {
   listLocationAvailability,
   listLocationBalances,
   postInventoryMovement,
+  previewInventoryAllocation,
   replaceDraftMovementLines,
+  replaceInventoryAllocationPolicyLocations,
   releaseInventoryReservation,
   reverseInventoryMovement,
   type InventoryMovementType,
@@ -22,6 +27,8 @@ import {
   PrismaInventoryBalanceQueryRepository,
   PrismaInventoryMovementRepository,
   PrismaInventoryAvailabilityQueryRepository,
+  PrismaInventoryAllocationPolicyRepository,
+  PrismaInventoryAllocationQueryRepository,
   PrismaInventoryReservationConsumptionRepository,
   PrismaInventoryReservationRepository,
 } from "./repositories.js";
@@ -37,6 +44,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   let reservations: PrismaInventoryReservationRepository;
   let consumption: PrismaInventoryReservationConsumptionRepository;
   let availability: PrismaInventoryAvailabilityQueryRepository;
+  let allocationPolicies: PrismaInventoryAllocationPolicyRepository;
+  let allocation: PrismaInventoryAllocationQueryRepository;
 
   beforeAll(() => {
     process.env.DATABASE_URL = testDatabaseUrl;
@@ -46,6 +55,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     reservations = new PrismaInventoryReservationRepository(prisma);
     consumption = new PrismaInventoryReservationConsumptionRepository(prisma);
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
+    allocationPolicies = new PrismaInventoryAllocationPolicyRepository(prisma);
+    allocation = new PrismaInventoryAllocationQueryRepository(prisma);
   });
 
   beforeEach(async () => {
@@ -53,6 +64,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     await prisma.inventoryReservation.deleteMany();
     await prisma.inventoryMovementLine.deleteMany();
     await prisma.inventoryMovement.deleteMany();
+    await prisma.inventoryAllocationPolicyLocation.deleteMany();
+    await prisma.inventoryAllocationPolicy.deleteMany();
     await prisma.productCollection.deleteMany();
     await prisma.productVariant.deleteMany();
     await prisma.product.deleteMany();
@@ -1467,6 +1480,518 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ).rejects.toThrow();
   });
 
+  it("creates and manages allocation policies with optimistic replacement rules", async () => {
+    const base = await createInventoryBase("ALLOC-POLICY");
+    const other = await createInventoryBase("ALLOC-POLICY-OTHER");
+
+    const policy = await createPolicy(base, "ALLOC-POLICY");
+    expect(policy).toMatchObject({
+      code: "ALLOC-POLICY",
+      requireSellableLocation: true,
+      status: "ACTIVE",
+      strategy: "PRIORITY_ORDER",
+      version: 1,
+    });
+    await expect(createPolicy(base, "ALLOC-POLICY")).rejects.toThrow(
+      "already exists",
+    );
+
+    const withLocations = await replacePolicyLocations(base, policy.id, 1, [
+      { priority: 1, stockLocationId: base.primaryLocation.id },
+      {
+        isEnabled: false,
+        priority: 2,
+        stockLocationId: base.secondaryLocation.id,
+      },
+    ]);
+    expect(withLocations.locations).toHaveLength(2);
+    expect(withLocations.version).toBe(2);
+
+    await expect(
+      replacePolicyLocations(base, policy.id, 1, [
+        { priority: 1, stockLocationId: base.primaryLocation.id },
+      ]),
+    ).rejects.toThrow("changed");
+    await expect(
+      replacePolicyLocations(base, policy.id, 2, [
+        { priority: 1, stockLocationId: base.primaryLocation.id },
+        { priority: 1, stockLocationId: base.secondaryLocation.id },
+      ]),
+    ).rejects.toThrow("uniqueness");
+    await expect(
+      replacePolicyLocations(base, policy.id, 2, [
+        { priority: 1, stockLocationId: base.primaryLocation.id },
+        { priority: 2, stockLocationId: base.primaryLocation.id },
+      ]),
+    ).rejects.toThrow("uniqueness");
+    await expect(
+      replacePolicyLocations(base, policy.id, 2, [
+        { priority: 1, stockLocationId: other.primaryLocation.id },
+      ]),
+    ).rejects.toThrow("same organization");
+
+    const inactive = await changeInventoryAllocationPolicyStatus(
+      allocationPolicies,
+      {
+        expectedVersion: withLocations.version,
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        status: "INACTIVE",
+      },
+    );
+    await expect(
+      allocate(base, policy.id, { idempotencyKey: "alloc-inactive" }),
+    ).rejects.toThrow("active");
+    const archived = await changeInventoryAllocationPolicyStatus(
+      allocationPolicies,
+      {
+        expectedVersion: inactive.version,
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        status: "ARCHIVED",
+      },
+    );
+    await expect(
+      changeInventoryAllocationPolicyStatus(allocationPolicies, {
+        expectedVersion: archived.version,
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        status: "ACTIVE",
+      }),
+    ).rejects.toThrow("Archived");
+  });
+
+  it("previews and allocates from the highest-priority sufficient location", async () => {
+    const base = await createInventoryBase("ALLOC-SELECT");
+    const highPriorityLowStock = await createStockLocation(base, "HIGH", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const lowerPrioritySufficient = await createStockLocation(base, "LOW", {
+      isSellable: true,
+      type: "SHOWROOM",
+    });
+    const secondVariant = await createSecondVariant(base, "ALLOC-SELECT");
+    const policy = await createPolicy(base, "ALLOC-SELECT");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: highPriorityLowStock.id },
+      { priority: 2, stockLocationId: lowerPrioritySufficient.id },
+      { priority: 3, stockLocationId: base.primaryLocation.id },
+    ]);
+    await createAndPost("OPENING", base, {
+      destinationLocationId: highPriorityLowStock.id,
+      movementNumber: "ALLOC-SELECT-HIGH-A",
+      quantity: 5,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: highPriorityLowStock.id,
+      movementNumber: "ALLOC-SELECT-HIGH-B",
+      quantity: 1,
+      variantId: secondVariant.id,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: lowerPrioritySufficient.id,
+      movementNumber: "ALLOC-SELECT-LOW-A",
+      quantity: 5,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: lowerPrioritySufficient.id,
+      movementNumber: "ALLOC-SELECT-LOW-B",
+      quantity: 5,
+      variantId: secondVariant.id,
+    });
+
+    const preview = await previewInventoryAllocation(allocation, {
+      lines: [
+        { productVariantId: base.variant.id, quantity: 3 },
+        { productVariantId: secondVariant.id, quantity: 2 },
+      ],
+      organizationId: base.organization.id,
+      policyId: policy.id,
+    });
+    expect(preview).toMatchObject({
+      canFulfill: true,
+      selectedBranchId: base.branch.id,
+      selectedStockLocationId: lowerPrioritySufficient.id,
+    });
+    expect(preview.selectedLines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          availableQuantity: 5,
+          productVariantId: secondVariant.id,
+        }),
+      ]),
+    );
+    await expect(
+      listInventoryReservations(reservations, {
+        organizationId: base.organization.id,
+      }),
+    ).resolves.toMatchObject({ items: [] });
+
+    const result = await allocate(base, policy.id, {
+      lines: [
+        { productVariantId: base.variant.id, quantity: 3 },
+        { productVariantId: secondVariant.id, quantity: 2 },
+      ],
+      reservationNumber: "ALLOC-SELECT",
+    });
+    expect(result.selectedStockLocationId).toBe(lowerPrioritySufficient.id);
+    expect(result.reservation).toMatchObject({
+      stockLocationId: lowerPrioritySufficient.id,
+      status: "ACTIVE",
+    });
+    await expect(
+      getAvailableToSell(availability, {
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        stockLocationId: lowerPrioritySufficient.id,
+      }),
+    ).resolves.toMatchObject({
+      availableQuantity: 2,
+      onHandQuantity: 5,
+      reservedQuantity: 3,
+    });
+  });
+
+  it("honors preferred location and preferred branch when eligible", async () => {
+    const base = await createInventoryBase("ALLOC-PREF");
+    const first = await createStockLocation(base, "FIRST", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const preferredBranch = await prisma.branch.create({
+      data: {
+        code: "BRANCH-ALLOC-PREF-2",
+        name: "Preferred Branch",
+        organizationId: base.organization.id,
+      },
+    });
+    const branchLocation = await createStockLocation(base, "BRANCH", {
+      branchId: preferredBranch.id,
+      isSellable: true,
+      type: "SHOWROOM",
+    });
+    const preferredLocation = await createStockLocation(base, "LOCATION", {
+      isSellable: true,
+      type: "OTHER",
+    });
+    const policy = await createPolicy(base, "ALLOC-PREF");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: first.id },
+      { priority: 2, stockLocationId: branchLocation.id },
+      { priority: 3, stockLocationId: preferredLocation.id },
+    ]);
+    for (const [location, movementNumber] of [
+      [first, "ALLOC-PREF-FIRST"],
+      [branchLocation, "ALLOC-PREF-BRANCH"],
+      [preferredLocation, "ALLOC-PREF-LOCATION"],
+    ] as const) {
+      await createAndPost("OPENING", base, {
+        destinationLocationId: location.id,
+        movementNumber,
+        quantity: 5,
+      });
+    }
+
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 2 }],
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        preferredLocationId: preferredLocation.id,
+      }),
+    ).resolves.toMatchObject({
+      selectedStockLocationId: preferredLocation.id,
+    });
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 2 }],
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        preferredBranchId: preferredBranch.id,
+      }),
+    ).resolves.toMatchObject({
+      selectedStockLocationId: branchLocation.id,
+    });
+  });
+
+  it("excludes ineligible allocation locations and variants", async () => {
+    const base = await createInventoryBase("ALLOC-ELIG");
+    const inactiveBranch = await prisma.branch.create({
+      data: {
+        code: "BRANCH-ALLOC-ELIG-INACTIVE",
+        name: "Inactive Branch",
+        organizationId: base.organization.id,
+        status: "INACTIVE",
+      },
+    });
+    const inactiveBranchLocation = await createStockLocation(base, "IB", {
+      branchId: inactiveBranch.id,
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const inactiveLocation = await createStockLocation(base, "IL", {
+      isSellable: true,
+      status: "INACTIVE",
+      type: "WAREHOUSE",
+    });
+    const nonSellableLocation = await createStockLocation(base, "NS", {
+      isSellable: false,
+      type: "WAREHOUSE",
+    });
+    const transitLocation = await createStockLocation(base, "TR", {
+      isSellable: true,
+      type: "TRANSIT",
+    });
+    const fallback = await createStockLocation(base, "OK", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const policy = await createPolicy(base, "ALLOC-ELIG");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: inactiveBranchLocation.id },
+      { priority: 2, stockLocationId: inactiveLocation.id },
+      { priority: 3, stockLocationId: nonSellableLocation.id },
+      { priority: 4, stockLocationId: transitLocation.id },
+      { priority: 5, stockLocationId: fallback.id },
+    ]);
+    for (const [location, movementNumber] of [
+      [inactiveBranchLocation, "ALLOC-ELIG-IB"],
+      [inactiveLocation, "ALLOC-ELIG-IL"],
+      [nonSellableLocation, "ALLOC-ELIG-NS"],
+      [transitLocation, "ALLOC-ELIG-TR"],
+      [fallback, "ALLOC-ELIG-OK"],
+    ] as const) {
+      await createAndPost("OPENING", base, {
+        destinationLocationId: location.id,
+        movementNumber,
+        quantity: 5,
+      });
+    }
+
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 2 }],
+        organizationId: base.organization.id,
+        policyId: policy.id,
+        preferredLocationId: inactiveBranchLocation.id,
+      }),
+    ).resolves.toMatchObject({
+      selectedStockLocationId: fallback.id,
+    });
+    await prisma.productVariant.update({
+      data: { status: "INACTIVE" },
+      where: { id: base.variant.id },
+    });
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 1 }],
+        organizationId: base.organization.id,
+        policyId: policy.id,
+      }),
+    ).rejects.toThrow("variants must be active");
+  });
+
+  it("rejects split allocation and keeps one reservation per successful allocation", async () => {
+    const base = await createInventoryBase("ALLOC-SPLIT");
+    const first = await createStockLocation(base, "FIRST", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const second = await createStockLocation(base, "SECOND", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const policy = await createPolicy(base, "ALLOC-SPLIT");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: first.id },
+      { priority: 2, stockLocationId: second.id },
+    ]);
+    await createAndPost("OPENING", base, {
+      destinationLocationId: first.id,
+      movementNumber: "ALLOC-SPLIT-FIRST",
+      quantity: 2,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: second.id,
+      movementNumber: "ALLOC-SPLIT-SECOND",
+      quantity: 2,
+    });
+
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 3 }],
+        organizationId: base.organization.id,
+        policyId: policy.id,
+      }),
+    ).resolves.toMatchObject({
+      canFulfill: false,
+      selectedStockLocationId: null,
+    });
+    await expect(
+      allocate(base, policy.id, {
+        idempotencyKey: "alloc-split",
+        quantity: 3,
+        reservationNumber: "ALLOC-SPLIT",
+      }),
+    ).rejects.toThrow("No eligible location");
+    await expect(
+      listInventoryReservations(reservations, {
+        organizationId: base.organization.id,
+      }),
+    ).resolves.toMatchObject({ items: [] });
+  });
+
+  it("keeps allocation idempotent and rejects conflicting reuse", async () => {
+    const base = await createInventoryBase("ALLOC-IDEMP");
+    const policy = await createPolicy(base, "ALLOC-IDEMP");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: base.primaryLocation.id },
+    ]);
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "ALLOC-IDEMP-OPEN",
+      quantity: 10,
+    });
+
+    const input = {
+      idempotencyKey: "alloc-idempotent",
+      quantity: 4,
+      reservationNumber: "ALLOC-IDEMP",
+    };
+    const first = await allocate(base, policy.id, input);
+    const second = await allocate(base, policy.id, input);
+    expect(second.reservation.id).toBe(first.reservation.id);
+    await expectAvailability(base, 10, 4, 6);
+
+    await expect(
+      allocate(base, policy.id, {
+        ...input,
+        quantity: 5,
+      }),
+    ).rejects.toThrow("Idempotency key");
+  });
+
+  it("serializes concurrent allocation and may use another sufficient location", async () => {
+    const base = await createInventoryBase("ALLOC-RACE");
+    const first = await createStockLocation(base, "FIRST", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const second = await createStockLocation(base, "SECOND", {
+      isSellable: true,
+      type: "WAREHOUSE",
+    });
+    const policy = await createPolicy(base, "ALLOC-RACE");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: first.id },
+      { priority: 2, stockLocationId: second.id },
+    ]);
+    await createAndPost("OPENING", base, {
+      destinationLocationId: first.id,
+      movementNumber: "ALLOC-RACE-FIRST",
+      quantity: 5,
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: second.id,
+      movementNumber: "ALLOC-RACE-SECOND",
+      quantity: 5,
+    });
+
+    const results = await Promise.allSettled([
+      allocate(base, policy.id, {
+        idempotencyKey: "alloc-race-a",
+        quantity: 5,
+        reservationNumber: "ALLOC-RACE-A",
+      }),
+      allocate(base, policy.id, {
+        idempotencyKey: "alloc-race-b",
+        quantity: 5,
+        reservationNumber: "ALLOC-RACE-B",
+      }),
+    ]);
+    const fulfilled = results.filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof allocate>>
+      > => result.status === "fulfilled",
+    );
+    expect(fulfilled).toHaveLength(2);
+    expect(
+      new Set(fulfilled.map((result) => result.value.selectedStockLocationId))
+        .size,
+    ).toBe(2);
+  });
+
+  it("enforces allocation organization isolation and restrictive deletion", async () => {
+    const base = await createInventoryBase("ALLOC-ORG");
+    const other = await createInventoryBase("ALLOC-ORG-OTHER");
+    const policy = await createPolicy(base, "ALLOC-ORG");
+    await replacePolicyLocations(base, policy.id, policy.version, [
+      { priority: 1, stockLocationId: base.primaryLocation.id },
+    ]);
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "ALLOC-ORG-OPEN",
+      quantity: 5,
+    });
+
+    await expect(
+      previewInventoryAllocation(allocation, {
+        lines: [{ productVariantId: base.variant.id, quantity: 1 }],
+        organizationId: other.organization.id,
+        policyId: policy.id,
+      }),
+    ).rejects.toThrow("not found");
+    await expect(
+      allocate(other, policy.id, {
+        idempotencyKey: "alloc-cross-org",
+        lines: [{ productVariantId: base.variant.id, quantity: 1 }],
+        reservationNumber: "ALLOC-CROSS-ORG",
+      }),
+    ).rejects.toThrow("not found");
+    await expect(
+      prisma.stockLocation.delete({ where: { id: base.primaryLocation.id } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.inventoryAllocationPolicy.delete({ where: { id: policy.id } }),
+    ).rejects.toThrow();
+  });
+
+  it("exposes allocation constraints and indexes for migration review", async () => {
+    const constraints = await prisma.$queryRaw<Array<{ conname: string }>>`
+      SELECT conname
+      FROM pg_constraint
+      WHERE conname IN (
+        'inventory_allocation_policies_version_positive_check',
+        'inventory_allocation_policy_locations_priority_positive_check',
+        'inventory_allocation_policy_locations_policy_id_org_fkey',
+        'inventory_allocation_policy_locations_stock_location_org_fkey'
+      )
+      ORDER BY conname
+    `;
+    const indexes = await prisma.$queryRaw<Array<{ indexname: string }>>`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname IN (
+          'inventory_allocation_policies_organization_id_status_created_idx',
+          'inventory_allocation_policy_locations_org_policy_priority_idx',
+          'inventory_allocation_policy_locations_org_stock_location_idx'
+        )
+      ORDER BY indexname
+    `;
+
+    expect(constraints.map((constraint) => constraint.conname)).toEqual([
+      "inventory_allocation_policies_version_positive_check",
+      "inventory_allocation_policy_locations_policy_id_org_fkey",
+      "inventory_allocation_policy_locations_priority_positive_check",
+      "inventory_allocation_policy_locations_stock_location_org_fkey",
+    ]);
+    expect(indexes).toHaveLength(3);
+  });
+
   it("exposes inventory constraints and indexes for migration review", async () => {
     const constraints = await prisma.$queryRaw<Array<{ conname: string }>>`
       SELECT conname
@@ -1503,6 +2028,90 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ]);
     expect(indexes).toHaveLength(5);
   });
+
+  async function createPolicy(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    code: string,
+  ) {
+    return createInventoryAllocationPolicy(allocationPolicies, {
+      code,
+      name: `Policy ${code}`,
+      organizationId: base.organization.id,
+    });
+  }
+
+  async function replacePolicyLocations(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    policyId: string,
+    expectedVersion: number,
+    locations: Array<{
+      isEnabled?: boolean;
+      priority: number;
+      stockLocationId: string;
+    }>,
+  ) {
+    return replaceInventoryAllocationPolicyLocations(allocationPolicies, {
+      expectedVersion,
+      locations,
+      organizationId: base.organization.id,
+      policyId,
+    });
+  }
+
+  async function allocate(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    policyId: string,
+    input?: {
+      idempotencyKey?: string;
+      lines?: { productVariantId: string; quantity: number }[];
+      preferredBranchId?: string | null;
+      preferredLocationId?: string | null;
+      quantity?: number;
+      reservationNumber?: string;
+    },
+  ) {
+    return allocateAndCreateInventoryReservation(allocation, {
+      idempotencyKey: input?.idempotencyKey ?? "allocation-key",
+      lines: input?.lines ?? [
+        { productVariantId: base.variant.id, quantity: input?.quantity ?? 4 },
+      ],
+      organizationId: base.organization.id,
+      policyId,
+      preferredBranchId: input?.preferredBranchId,
+      preferredLocationId: input?.preferredLocationId,
+      reservationNumber: input?.reservationNumber ?? "ALLOCATION",
+    });
+  }
+
+  async function createStockLocation(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    suffix: string,
+    input?: {
+      branchId?: string;
+      isSellable?: boolean;
+      status?: "ACTIVE" | "INACTIVE" | "ARCHIVED";
+      type?:
+        | "WAREHOUSE"
+        | "SHOWROOM"
+        | "QC_HOLD"
+        | "DAMAGE_HOLD"
+        | "RETURN_HOLD"
+        | "TRANSIT"
+        | "OTHER";
+    },
+  ) {
+    return prisma.stockLocation.create({
+      data: {
+        branchId: input?.branchId ?? base.branch.id,
+        code: `LOC-${suffix}-${base.organization.code}`,
+        isSellable: input?.isSellable ?? true,
+        name: `Location ${suffix}`,
+        organizationId: base.organization.id,
+        status: input?.status ?? "ACTIVE",
+        type: input?.type ?? "WAREHOUSE",
+      },
+    });
+  }
 
   async function createAndPost(
     type: InventoryMovementType,
