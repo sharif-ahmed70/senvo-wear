@@ -628,7 +628,7 @@ export const allocateAndCreateInventoryReservationInputSchema = z
   .strict();
 
 const salesOrderCurrencyCodeSchema = z.literal("BDT");
-const minorUnitAmountSchema = z.number().int().nonnegative();
+const minorUnitAmountSchema = z.number().int().nonnegative().max(2_147_483_647);
 const salesOrderLineInputSchema = z
   .object({
     discountMinor: minorUnitAmountSchema.optional(),
@@ -636,7 +636,11 @@ const salesOrderLineInputSchema = z
     quantity: positiveInventoryQuantitySchema,
     unitPriceMinor: minorUnitAmountSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (line) => (line.discountMinor ?? 0) <= line.quantity * line.unitPriceMinor,
+    "Line discount cannot exceed line gross.",
+  );
 
 const salesOrderLinesInputSchema = z
   .array(salesOrderLineInputSchema)
@@ -678,6 +682,65 @@ export const createSalesOrderInputSchema = z
     organizationId: idSchema,
   })
   .strict();
+
+const draftSalesOrderMetadataChangesSchema = z
+  .object({
+    allocationPolicyId: idSchema.nullable().optional(),
+    customerEmail: emailSchema,
+    customerName: optionalTextSchema(160),
+    customerPhone: phoneSchema,
+    deliveryAddressLine1: optionalTextSchema(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryMinor: minorUnitAmountSchema.optional(),
+    deliveryPostalCode: optionalTextSchema(120),
+    note: optionalTextSchema(1000),
+    orderDiscountMinor: minorUnitAmountSchema.optional(),
+  })
+  .strict();
+
+export const updateDraftSalesOrderMetadataInputSchema =
+  draftSalesOrderMetadataChangesSchema
+    .extend({
+      expectedVersion: expectedVersionSchema,
+      organizationId: idSchema,
+      salesOrderId: idSchema,
+    })
+    .strict()
+    .refine(
+      (input) =>
+        Object.keys(input).some(
+          (key) =>
+            !["expectedVersion", "organizationId", "salesOrderId"].includes(
+              key,
+            ),
+        ),
+      "At least one metadata field is required.",
+    );
+
+export const replaceDraftSalesOrderLinesInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    lines: salesOrderLinesInputSchema,
+    organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
+export const amendDraftSalesOrderInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    lines: salesOrderLinesInputSchema.optional(),
+    metadata: draftSalesOrderMetadataChangesSchema.optional(),
+    organizationId: idSchema,
+    salesOrderId: idSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.lines !== undefined || input.metadata !== undefined,
+    "At least one amendment change is required.",
+  );
 
 export const reserveSalesOrderInputSchema = z
   .object({
@@ -1069,6 +1132,15 @@ export type PreviewInventoryAllocationInputContract = z.infer<
 >;
 export type AllocateAndCreateInventoryReservationInputContract = z.infer<
   typeof allocateAndCreateInventoryReservationInputSchema
+>;
+export type UpdateDraftSalesOrderMetadataInputContract = z.infer<
+  typeof updateDraftSalesOrderMetadataInputSchema
+>;
+export type ReplaceDraftSalesOrderLinesInputContract = z.infer<
+  typeof replaceDraftSalesOrderLinesInputSchema
+>;
+export type AmendDraftSalesOrderInputContract = z.infer<
+  typeof amendDraftSalesOrderInputSchema
 >;
 export type GetInventoryAllocationPolicyQueryContract = z.infer<
   typeof getInventoryAllocationPolicyQuerySchema

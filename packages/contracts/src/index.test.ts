@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
+  amendDraftSalesOrderInputSchema,
   allocateAndCreateInventoryReservationInputSchema,
   allocateInventoryReservationResultContractSchema,
   branchContractSchema,
@@ -51,6 +52,7 @@ import {
   consumeInventoryReservationInputSchema,
   expireInventoryReservationInputSchema,
   replaceDraftMovementLinesInputSchema,
+  replaceDraftSalesOrderLinesInputSchema,
   replaceInventoryAllocationPolicyLocationsInputSchema,
   reserveSalesOrderInputSchema,
   releaseInventoryReservationInputSchema,
@@ -61,6 +63,7 @@ import {
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
+  updateDraftSalesOrderMetadataInputSchema,
   updateInventoryAllocationPolicyMetadataInputSchema,
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
@@ -1034,6 +1037,113 @@ describe("API contracts", () => {
         orderNumber: "SO-1",
         organizationId,
         totalMinor: 1000,
+      }).success,
+    ).toBe(false);
+    expect(
+      updateDraftSalesOrderMetadataInputSchema.parse({
+        allocationPolicyId: null,
+        customerName: null,
+        deliveryMinor: 150,
+        expectedVersion: 1,
+        note: "Call before delivery",
+        orderDiscountMinor: 25,
+        organizationId,
+        salesOrderId,
+      }),
+    ).toMatchObject({
+      allocationPolicyId: null,
+      expectedVersion: 1,
+      orderDiscountMinor: 25,
+    });
+    expect(
+      updateDraftSalesOrderMetadataInputSchema.safeParse({
+        channel: "POS",
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      updateDraftSalesOrderMetadataInputSchema.safeParse({
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+        status: "CONFIRMED",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateDraftSalesOrderMetadataInputSchema.safeParse({
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+        totalMinor: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      replaceDraftSalesOrderLinesInputSchema.parse({
+        expectedVersion: 1,
+        lines: [
+          {
+            discountMinor: 100,
+            productVariantId,
+            quantity: 2,
+            unitPriceMinor: 1000,
+          },
+        ],
+        organizationId,
+        salesOrderId,
+      }),
+    ).toMatchObject({ expectedVersion: 1 });
+    expect(
+      replaceDraftSalesOrderLinesInputSchema.safeParse({
+        expectedVersion: 1,
+        lines: [
+          { productVariantId, quantity: 1, unitPriceMinor: 1000 },
+          { productVariantId, quantity: 1, unitPriceMinor: 1000 },
+        ],
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      replaceDraftSalesOrderLinesInputSchema.safeParse({
+        expectedVersion: 1,
+        lines: [
+          {
+            lineTotalMinor: 1000,
+            productNameSnapshot: "Tampered",
+            productVariantId,
+            quantity: 1,
+            unitPriceMinor: 1000,
+          },
+        ],
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      amendDraftSalesOrderInputSchema.parse({
+        expectedVersion: 1,
+        lines: [{ productVariantId, quantity: 1, unitPriceMinor: 1000 }],
+        metadata: { allocationPolicyId, deliveryMinor: 100 },
+        organizationId,
+        salesOrderId,
+      }),
+    ).toMatchObject({ expectedVersion: 1 });
+    expect(
+      amendDraftSalesOrderInputSchema.safeParse({
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+      }).success,
+    ).toBe(false);
+    expect(
+      amendDraftSalesOrderInputSchema.safeParse({
+        expectedVersion: 1,
+        fulfillmentMovementId: movementId,
+        metadata: { note: "Tampered" },
+        organizationId,
+        salesOrderId,
       }).success,
     ).toBe(false);
     expect(

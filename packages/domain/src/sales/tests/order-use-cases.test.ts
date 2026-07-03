@@ -1,17 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { BusinessRuleError, ConflictError } from "../../errors.js";
 import {
+  BusinessRuleError,
+  ConcurrencyError,
+  ConflictError,
+} from "../../errors.js";
+import {
+  amendDraftSalesOrder,
   cancelSalesOrder,
   confirmSalesOrder,
   createSalesOrder,
   fulfillSalesOrder,
+  replaceDraftSalesOrderLines,
   reserveSalesOrder,
+  updateDraftSalesOrderMetadata,
 } from "../application/order-use-cases.js";
 import type { SalesOrder } from "../domain/models.js";
 import type {
   CreateDraftSalesOrderRecord,
   CursorPageResult,
   FulfillSalesOrderRecord,
+  AmendDraftSalesOrderRecord,
   ReserveSalesOrderRecord,
   SalesOrderRepository,
 } from "../repositories/sales-order-repositories.js";
@@ -198,11 +206,287 @@ describe("sales order use cases", () => {
     });
     expect(cancelled.status).toBe("CANCELLED");
   });
+
+  it("amends draft metadata, clears nullable fields, and recalculates totals", async () => {
+    const repository = new FakeSalesOrderRepository();
+    await createSalesOrder(repository, {
+      channel: "ONLINE",
+      currencyCode: "BDT",
+      customerName: "Original",
+      deliveryMinor: 50,
+      idempotencyKey: "order-amend-meta",
+      lines: [
+        { productVariantId: variantId, quantity: 2, unitPriceMinor: 1000 },
+      ],
+      orderDiscountMinor: 100,
+      orderNumber: "SO-AMEND-META",
+      organizationId,
+    });
+
+    const amended = await updateDraftSalesOrderMetadata(repository, {
+      allocationPolicyId: null,
+      customerName: null,
+      deliveryMinor: 75,
+      expectedVersion: 1,
+      note: "Updated",
+      orderDiscountMinor: 125,
+      organizationId,
+      salesOrderId,
+    });
+
+    expect(amended).toMatchObject({
+      allocationPolicyId: null,
+      customerName: null,
+      deliveryMinor: 75,
+      discountMinor: 125,
+      note: "Updated",
+      subtotalMinor: 2000,
+      totalMinor: 1950,
+      version: 2,
+    });
+  });
+
+  it("replaces draft lines atomically and refreshes server-side totals", async () => {
+    const repository = new FakeSalesOrderRepository();
+    await createSalesOrder(repository, {
+      channel: "ONLINE",
+      currencyCode: "BDT",
+      idempotencyKey: "order-amend-lines",
+      lines: [
+        { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+      ],
+      orderNumber: "SO-AMEND-LINES",
+      organizationId,
+    });
+
+    const amended = await replaceDraftSalesOrderLines(repository, {
+      expectedVersion: 1,
+      lines: [
+        {
+          discountMinor: 50,
+          productVariantId: variantId,
+          quantity: 3,
+          unitPriceMinor: 700,
+        },
+      ],
+      organizationId,
+      salesOrderId,
+    });
+
+    expect(amended).toMatchObject({
+      subtotalMinor: 2050,
+      totalMinor: 2050,
+      version: 2,
+    });
+    expect(amended.lines).toMatchObject([
+      { lineTotalMinor: 2050, quantity: 3, unitPriceMinor: 700 },
+    ]);
+  });
+
+  it("combines metadata and line replacement with one version increment", async () => {
+    const repository = new FakeSalesOrderRepository();
+    await createSalesOrder(repository, {
+      channel: "ONLINE",
+      currencyCode: "BDT",
+      idempotencyKey: "order-amend-combined",
+      lines: [
+        { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+      ],
+      orderNumber: "SO-AMEND-COMBINED",
+      organizationId,
+    });
+
+    const amended = await amendDraftSalesOrder(repository, {
+      expectedVersion: 1,
+      lines: [
+        { productVariantId: variantId, quantity: 2, unitPriceMinor: 800 },
+      ],
+      metadata: {
+        deliveryMinor: 100,
+        orderDiscountMinor: 50,
+      },
+      organizationId,
+      salesOrderId,
+    });
+
+    expect(amended).toMatchObject({
+      deliveryMinor: 100,
+      discountMinor: 50,
+      subtotalMinor: 1600,
+      totalMinor: 1650,
+      version: 2,
+    });
+  });
+
+  it("rejects invalid amendment input before persistence", async () => {
+    const repository = new FakeSalesOrderRepository();
+    await expect(
+      amendDraftSalesOrder(repository, {
+        expectedVersion: 1,
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toThrow("at least one change");
+    await expect(
+      replaceDraftSalesOrderLines(repository, {
+        expectedVersion: 1,
+        lines: [
+          { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+          { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+        ],
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(
+      replaceDraftSalesOrderLines(repository, {
+        expectedVersion: 1,
+        lines: [
+          { productVariantId: variantId, quantity: 0, unitPriceMinor: 1000 },
+        ],
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toThrow("quantity");
+    await expect(
+      replaceDraftSalesOrderLines(repository, {
+        expectedVersion: 1,
+        lines: [
+          {
+            discountMinor: 1001,
+            productVariantId: variantId,
+            quantity: 1,
+            unitPriceMinor: 1000,
+          },
+        ],
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    await createSalesOrder(repository, {
+      channel: "ONLINE",
+      currencyCode: "BDT",
+      idempotencyKey: "order-amend-invalid-total",
+      lines: [
+        { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+      ],
+      orderNumber: "SO-AMEND-INVALID-TOTAL",
+      organizationId,
+    });
+    await expect(
+      updateDraftSalesOrderMetadata(repository, {
+        expectedVersion: 1,
+        orderDiscountMinor: 1001,
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+  });
+
+  it("rejects non-draft and stale amendment attempts", async () => {
+    const repository = new FakeSalesOrderRepository();
+    await createSalesOrder(repository, {
+      channel: "ONLINE",
+      currencyCode: "BDT",
+      idempotencyKey: "order-amend-rules",
+      lines: [
+        { productVariantId: variantId, quantity: 1, unitPriceMinor: 1000 },
+      ],
+      orderNumber: "SO-AMEND-RULES",
+      organizationId,
+    });
+    await expect(
+      updateDraftSalesOrderMetadata(repository, {
+        expectedVersion: 99,
+        note: "Stale",
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toBeInstanceOf(ConcurrencyError);
+    await reserveSalesOrder(repository, {
+      expectedVersion: 1,
+      organizationId,
+      reservationIdempotencyKey: "reserve-amend-rules",
+      reservationNumber: "RSV-AMEND-RULES",
+      salesOrderId,
+    });
+    await expect(
+      updateDraftSalesOrderMetadata(repository, {
+        expectedVersion: 2,
+        note: "Reserved",
+        organizationId,
+        salesOrderId,
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+  });
 });
 
 class FakeSalesOrderRepository implements SalesOrderRepository {
   private orders = new Map<string, SalesOrder>();
   private idempotency = new Map<string, SalesOrder>();
+
+  amendDraft(record: AmendDraftSalesOrderRecord): Promise<SalesOrder> {
+    const current = this.orders.get(record.salesOrderId);
+    if (!current || current.organizationId !== record.organizationId) {
+      throw new Error("missing fake order");
+    }
+    if (current.status !== "DRAFT") {
+      throw new BusinessRuleError("Only draft sales orders can be amended.");
+    }
+    if (current.version !== record.expectedVersion) {
+      throw new ConcurrencyError();
+    }
+    const lines = record.lines
+      ? record.lines.map((line, index) => ({
+          colorSnapshot: `Color ${index + 1}`,
+          createdAt: current.createdAt,
+          discountMinor: line.discountMinor,
+          id: `77777777-7777-4777-8777-77777777777${index}`,
+          lineNumber: index + 1,
+          lineTotalMinor: line.lineTotalMinor,
+          organizationId: record.organizationId,
+          productNameSnapshot: `Product ${index + 1}`,
+          productVariantId: line.productVariantId,
+          quantity: line.quantity,
+          salesOrderId: current.id,
+          sizeSnapshot: `Size ${index + 1}`,
+          skuSnapshot: `SKU-${index + 1}`,
+          unitPriceMinor: line.unitPriceMinor,
+        }))
+      : current.lines;
+    const discountMinor =
+      record.metadata && "discountMinor" in record.metadata
+        ? (record.metadata.discountMinor ?? 0)
+        : current.discountMinor;
+    const deliveryMinor =
+      record.metadata && "deliveryMinor" in record.metadata
+        ? (record.metadata.deliveryMinor ?? 0)
+        : current.deliveryMinor;
+    const subtotalMinor = lines.reduce(
+      (sum, line) => sum + line.lineTotalMinor,
+      0,
+    );
+    const totalMinor = subtotalMinor - discountMinor + deliveryMinor;
+    if (totalMinor < 0) {
+      throw new BusinessRuleError("Sales order total must not be negative.");
+    }
+    const updated: SalesOrder = {
+      ...current,
+      ...record.metadata,
+      allocationPolicyId:
+        record.metadata && "allocationPolicyId" in record.metadata
+          ? (record.metadata.allocationPolicyId ?? null)
+          : current.allocationPolicyId,
+      deliveryMinor,
+      discountMinor,
+      lines,
+      subtotalMinor,
+      totalMinor,
+      version: current.version + 1,
+    };
+    this.orders.set(current.id, updated);
+    return Promise.resolve(updated);
+  }
 
   createDraft(
     record: CreateDraftSalesOrderRecord,

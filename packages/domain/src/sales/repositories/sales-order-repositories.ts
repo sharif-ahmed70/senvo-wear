@@ -23,6 +23,31 @@ export type CreateSalesOrderLineRecord = {
   unitPriceMinor: number;
 };
 
+export type ReplaceSalesOrderLineRecord = CreateSalesOrderLineRecord;
+
+export type DraftSalesOrderMetadataChanges = {
+  allocationPolicyId?: string | null;
+  customerEmail?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  deliveryAddressLine1?: string | null;
+  deliveryAddressLine2?: string | null;
+  deliveryCity?: string | null;
+  deliveryDistrict?: string | null;
+  deliveryMinor?: number;
+  deliveryPostalCode?: string | null;
+  discountMinor?: number;
+  note?: string | null;
+};
+
+export type AmendDraftSalesOrderRecord = {
+  expectedVersion: number;
+  lines?: ReplaceSalesOrderLineRecord[];
+  metadata?: DraftSalesOrderMetadataChanges;
+  organizationId: string;
+  salesOrderId: string;
+};
+
 export type CreateDraftSalesOrderRecord = {
   allocationPolicyId: string | null;
   channel: SalesOrderChannel;
@@ -87,6 +112,7 @@ export type SalesOrderListFilter = {
 };
 
 export type SalesOrderRepository = {
+  amendDraft(record: AmendDraftSalesOrderRecord): Promise<SalesOrder>;
   cancel(record: CancelSalesOrderRecord): Promise<SalesOrder>;
   confirm(record: ConfirmSalesOrderRecord): Promise<SalesOrder>;
   createDraft(

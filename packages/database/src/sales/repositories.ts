@@ -3,8 +3,10 @@ import {
   ConcurrencyError,
   ConflictError,
   NotFoundError,
+  calculateSalesOrderTotals,
   encodeSalesOrderCursor,
   parseSalesOrderCursor,
+  type AmendDraftSalesOrderRecord,
   type CreateDraftSalesOrderRecord,
   type FulfillSalesOrderRecord,
   type ReserveSalesOrderRecord,
@@ -57,12 +59,126 @@ type KnownPrismaError = {
   code?: string;
 };
 
+type SalesOrderMetadataTextField =
+  | "customerEmail"
+  | "customerName"
+  | "customerPhone"
+  | "deliveryAddressLine1"
+  | "deliveryAddressLine2"
+  | "deliveryCity"
+  | "deliveryDistrict"
+  | "deliveryPostalCode"
+  | "note";
+
 const orderInclude = {
   lines: { orderBy: { lineNumber: "asc" as const } },
 };
 
 export class PrismaSalesOrderRepository implements SalesOrderRepository {
   constructor(private readonly prisma: SalesPrismaClient) {}
+
+  async amendDraft(record: AmendDraftSalesOrderRecord): Promise<SalesOrder> {
+    try {
+      return mapOrder(
+        await this.prisma.$transaction(async (transaction) => {
+          await lockOrderRow(
+            transaction,
+            record.organizationId,
+            record.salesOrderId,
+          );
+          const order = await getOrderForUpdate(transaction, record);
+          if (order.status !== "DRAFT") {
+            throw new BusinessRuleError(
+              "Only draft sales orders can be amended.",
+            );
+          }
+          assertOrderVersion(order, record.expectedVersion);
+
+          const allocationPolicyId =
+            record.metadata && "allocationPolicyId" in record.metadata
+              ? record.metadata.allocationPolicyId
+              : order.allocationPolicyId;
+          if (allocationPolicyId) {
+            await assertActiveAllocationPolicy(
+              transaction,
+              record.organizationId,
+              allocationPolicyId,
+            );
+          }
+
+          const finalLines = record.lines ?? order.lines;
+          const discountMinor =
+            record.metadata && "discountMinor" in record.metadata
+              ? record.metadata.discountMinor
+              : order.discountMinor;
+          const deliveryMinor =
+            record.metadata && "deliveryMinor" in record.metadata
+              ? record.metadata.deliveryMinor
+              : order.deliveryMinor;
+          const totals = calculateSalesOrderTotals({
+            deliveryMinor: deliveryMinor ?? 0,
+            discountMinor: discountMinor ?? 0,
+            lines: finalLines,
+          });
+
+          if (record.lines) {
+            const snapshots = await loadVariantSnapshots(transaction, {
+              lines: record.lines,
+              organizationId: record.organizationId,
+            });
+            await transaction.salesOrderLine.deleteMany({
+              where: {
+                organizationId: record.organizationId,
+                salesOrderId: order.id,
+              },
+            });
+            await transaction.salesOrderLine.createMany({
+              data: record.lines.map((line, index) => {
+                const snapshot = snapshots.get(line.productVariantId);
+                if (!snapshot) {
+                  throw new NotFoundError("Product variant was not found.");
+                }
+                return {
+                  colorSnapshot: snapshot.color.name,
+                  discountMinor: line.discountMinor,
+                  lineNumber: index + 1,
+                  lineTotalMinor: line.lineTotalMinor,
+                  organizationId: record.organizationId,
+                  productNameSnapshot: snapshot.product.name,
+                  productVariantId: line.productVariantId,
+                  quantity: line.quantity,
+                  salesOrderId: order.id,
+                  sizeSnapshot: snapshot.size.name,
+                  skuSnapshot: snapshot.sku,
+                  unitPriceMinor: line.unitPriceMinor,
+                };
+              }),
+            });
+          }
+
+          const updateData: Prisma.SalesOrderUncheckedUpdateInput = {
+            ...toMetadataUpdateData(record.metadata),
+            deliveryMinor: deliveryMinor ?? 0,
+            discountMinor: discountMinor ?? 0,
+            subtotalMinor: totals.subtotalMinor,
+            totalMinor: totals.totalMinor,
+            version: { increment: 1 },
+          };
+          if (record.metadata && "allocationPolicyId" in record.metadata) {
+            updateData.allocationPolicyId = allocationPolicyId;
+          }
+
+          return transaction.salesOrder.update({
+            data: updateData,
+            include: orderInclude,
+            where: { id: order.id },
+          });
+        }),
+      );
+    } catch (error) {
+      mapSalesOrderIntegrityError(error);
+    }
+  }
 
   async createDraft(
     record: CreateDraftSalesOrderRecord,
@@ -566,7 +682,10 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
 
 async function loadVariantSnapshots(
   transaction: SalesTransaction,
-  record: CreateDraftSalesOrderRecord,
+  record: {
+    lines: readonly { productVariantId: string }[];
+    organizationId: string;
+  },
 ): Promise<Map<string, VariantSnapshot>> {
   const variants = await transaction.productVariant.findMany({
     include: { color: true, product: true, size: true },
@@ -588,6 +707,53 @@ async function loadVariantSnapshots(
     snapshots.set(variant.id, variant);
   }
   return snapshots;
+}
+
+async function assertActiveAllocationPolicy(
+  transaction: SalesTransaction,
+  organizationId: string,
+  allocationPolicyId: string,
+): Promise<void> {
+  const policy = await transaction.inventoryAllocationPolicy.findFirst({
+    where: { id: allocationPolicyId, organizationId },
+  });
+  if (!policy) {
+    throw new NotFoundError("Inventory allocation policy was not found.");
+  }
+  if (policy.status !== "ACTIVE") {
+    throw new BusinessRuleError(
+      "Only active allocation policies can be assigned to draft sales orders.",
+    );
+  }
+}
+
+function toMetadataUpdateData(
+  metadata: AmendDraftSalesOrderRecord["metadata"],
+): Prisma.SalesOrderUncheckedUpdateInput {
+  if (!metadata) {
+    return {};
+  }
+  const data: Prisma.SalesOrderUncheckedUpdateInput = {};
+  copyMetadataField(data, metadata, "customerEmail");
+  copyMetadataField(data, metadata, "customerName");
+  copyMetadataField(data, metadata, "customerPhone");
+  copyMetadataField(data, metadata, "deliveryAddressLine1");
+  copyMetadataField(data, metadata, "deliveryAddressLine2");
+  copyMetadataField(data, metadata, "deliveryCity");
+  copyMetadataField(data, metadata, "deliveryDistrict");
+  copyMetadataField(data, metadata, "deliveryPostalCode");
+  copyMetadataField(data, metadata, "note");
+  return data;
+}
+
+function copyMetadataField(
+  data: Prisma.SalesOrderUncheckedUpdateInput,
+  metadata: AmendDraftSalesOrderRecord["metadata"],
+  field: SalesOrderMetadataTextField,
+): void {
+  if (metadata && field in metadata) {
+    data[field] = metadata[field] ?? null;
+  }
 }
 
 async function getOrderForUpdate(

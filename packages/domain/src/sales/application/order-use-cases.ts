@@ -12,9 +12,11 @@ import type {
 import type {
   ConfirmSalesOrderRecord,
   CreateDraftSalesOrderRecord,
+  DraftSalesOrderMetadataChanges,
   CursorPageRequest,
   CursorPageResult,
   FulfillSalesOrderRecord,
+  ReplaceSalesOrderLineRecord,
   ReserveSalesOrderRecord,
   SalesOrderListFilter,
   SalesOrderRepository,
@@ -33,6 +35,7 @@ const orderStatuses = [
   "FULFILLED",
 ] as const;
 const orderChannels = ["ONLINE", "POS", "MANUAL"] as const;
+const maxIntegerMinorUnit = 2_147_483_647;
 
 export type CreateSalesOrderInput = {
   allocationPolicyId?: string | null;
@@ -75,6 +78,90 @@ export async function createSalesOrder(
     return existing;
   }
   return repository.createDraft(record, payloadSignature);
+}
+
+export type UpdateDraftSalesOrderMetadataInput = {
+  allocationPolicyId?: string | null;
+  customerEmail?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  deliveryAddressLine1?: string | null;
+  deliveryAddressLine2?: string | null;
+  deliveryCity?: string | null;
+  deliveryDistrict?: string | null;
+  deliveryMinor?: number;
+  deliveryPostalCode?: string | null;
+  expectedVersion: number;
+  note?: string | null;
+  orderDiscountMinor?: number;
+  organizationId: string;
+  salesOrderId: string;
+};
+
+export async function updateDraftSalesOrderMetadata(
+  repository: SalesOrderRepository,
+  input: UpdateDraftSalesOrderMetadataInput,
+): Promise<SalesOrder> {
+  return repository.amendDraft({
+    expectedVersion: normalizeExpectedVersion(input.expectedVersion),
+    metadata: normalizeMetadataChanges(input),
+    organizationId: assertEntityId(input.organizationId, "organizationId"),
+    salesOrderId: assertEntityId(input.salesOrderId, "salesOrderId"),
+  });
+}
+
+export type ReplaceDraftSalesOrderLinesInput = {
+  expectedVersion: number;
+  lines: CreateSalesOrderInput["lines"];
+  organizationId: string;
+  salesOrderId: string;
+};
+
+export async function replaceDraftSalesOrderLines(
+  repository: SalesOrderRepository,
+  input: ReplaceDraftSalesOrderLinesInput,
+): Promise<SalesOrder> {
+  return repository.amendDraft({
+    expectedVersion: normalizeExpectedVersion(input.expectedVersion),
+    lines: normalizeCreateLines(input.lines),
+    organizationId: assertEntityId(input.organizationId, "organizationId"),
+    salesOrderId: assertEntityId(input.salesOrderId, "salesOrderId"),
+  });
+}
+
+export type AmendDraftSalesOrderInput = {
+  expectedVersion: number;
+  lines?: CreateSalesOrderInput["lines"];
+  metadata?: Omit<
+    UpdateDraftSalesOrderMetadataInput,
+    "expectedVersion" | "organizationId" | "salesOrderId"
+  >;
+  organizationId: string;
+  salesOrderId: string;
+};
+
+export async function amendDraftSalesOrder(
+  repository: SalesOrderRepository,
+  input: AmendDraftSalesOrderInput,
+): Promise<SalesOrder> {
+  const metadata =
+    input.metadata === undefined
+      ? undefined
+      : normalizeMetadataChanges(input.metadata);
+  const lines =
+    input.lines === undefined ? undefined : normalizeCreateLines(input.lines);
+  if (!metadata && !lines) {
+    throw new ValidationApplicationError(
+      "Draft sales order amendment requires at least one change.",
+    );
+  }
+  return repository.amendDraft({
+    expectedVersion: normalizeExpectedVersion(input.expectedVersion),
+    lines,
+    metadata,
+    organizationId: assertEntityId(input.organizationId, "organizationId"),
+    salesOrderId: assertEntityId(input.salesOrderId, "salesOrderId"),
+  });
 }
 
 export type ReserveSalesOrderInput = {
@@ -198,10 +285,6 @@ function normalizeCreateOrderInput(
   input: CreateSalesOrderInput,
 ): CreateDraftSalesOrderRecord {
   const lines = normalizeCreateLines(input.lines);
-  const subtotalMinor = lines.reduce(
-    (sum, line) => sum + line.lineTotalMinor,
-    0,
-  );
   const discountMinor = normalizeMinorUnit(
     input.orderDiscountMinor ?? 0,
     "orderDiscountMinor",
@@ -210,10 +293,11 @@ function normalizeCreateOrderInput(
     input.deliveryMinor ?? 0,
     "deliveryMinor",
   );
-  const totalMinor = subtotalMinor - discountMinor + deliveryMinor;
-  if (totalMinor < 0) {
-    throw new BusinessRuleError("Sales order total must not be negative.");
-  }
+  const totals = calculateSalesOrderTotals({
+    deliveryMinor,
+    discountMinor,
+    lines,
+  });
   return {
     allocationPolicyId:
       normalizeOptionalId(input.allocationPolicyId, "allocationPolicyId") ??
@@ -267,14 +351,14 @@ function normalizeCreateOrderInput(
     note: normalizeOptionalText(input.note, "note", 1000),
     orderNumber: normalizeCode(input.orderNumber),
     organizationId: assertEntityId(input.organizationId, "organizationId"),
-    subtotalMinor,
-    totalMinor,
+    subtotalMinor: totals.subtotalMinor,
+    totalMinor: totals.totalMinor,
   };
 }
 
 function normalizeCreateLines(
   lines: CreateSalesOrderInput["lines"],
-): CreateDraftSalesOrderRecord["lines"] {
+): ReplaceSalesOrderLineRecord[] {
   if (lines.length === 0) {
     throw new BusinessRuleError("Sales order requires at least one line.");
   }
@@ -304,7 +388,7 @@ function normalizeCreateLines(
       line.discountMinor ?? 0,
       "discountMinor",
     );
-    const gross = quantity * unitPriceMinor;
+    const gross = multiplyMinorUnit(quantity, unitPriceMinor, "line gross");
     const lineTotalMinor = gross - discountMinor;
     if (lineTotalMinor < 0) {
       throw new BusinessRuleError(
@@ -319,6 +403,111 @@ function normalizeCreateLines(
       unitPriceMinor,
     };
   });
+}
+
+function normalizeMetadataChanges(
+  input:
+    | UpdateDraftSalesOrderMetadataInput
+    | NonNullable<AmendDraftSalesOrderInput["metadata"]>,
+): DraftSalesOrderMetadataChanges {
+  const changes: DraftSalesOrderMetadataChanges = {};
+  copyOptionalIdChange(
+    input,
+    changes,
+    "allocationPolicyId",
+    "allocationPolicyId",
+  );
+  copyOptionalEmailChange(input, changes, "customerEmail");
+  copyOptionalTextChange(input, changes, "customerName", 160);
+  copyOptionalTextChange(input, changes, "customerPhone", 40);
+  copyOptionalTextChange(input, changes, "deliveryAddressLine1", 240);
+  copyOptionalTextChange(input, changes, "deliveryAddressLine2", 240);
+  copyOptionalTextChange(input, changes, "deliveryCity", 120);
+  copyOptionalTextChange(input, changes, "deliveryDistrict", 120);
+  copyOptionalTextChange(input, changes, "deliveryPostalCode", 120);
+  copyOptionalTextChange(input, changes, "note", 1000);
+  if (Object.hasOwn(input, "deliveryMinor")) {
+    changes.deliveryMinor = normalizeMinorUnit(
+      input.deliveryMinor ?? 0,
+      "deliveryMinor",
+    );
+  }
+  if (Object.hasOwn(input, "orderDiscountMinor")) {
+    changes.discountMinor = normalizeMinorUnit(
+      input.orderDiscountMinor ?? 0,
+      "orderDiscountMinor",
+    );
+  }
+  if (Object.keys(changes).length === 0) {
+    throw new ValidationApplicationError(
+      "Draft sales order metadata update requires at least one change.",
+    );
+  }
+  return changes;
+}
+
+function copyOptionalTextChange<
+  T extends object,
+  K extends keyof DraftSalesOrderMetadataChanges,
+>(input: T, changes: DraftSalesOrderMetadataChanges, field: K, max: number) {
+  if (Object.hasOwn(input, field)) {
+    changes[field] = normalizeOptionalText(
+      (input as Record<string, string | null | undefined>)[field as string],
+      field,
+      max,
+    ) as DraftSalesOrderMetadataChanges[K];
+  }
+}
+
+function copyOptionalEmailChange<T extends object>(
+  input: T,
+  changes: DraftSalesOrderMetadataChanges,
+  field: "customerEmail",
+) {
+  if (Object.hasOwn(input, field)) {
+    changes[field] = normalizeOptionalEmail(
+      (input as Record<string, string | null | undefined>)[field],
+    );
+  }
+}
+
+function copyOptionalIdChange<T extends object>(
+  input: T,
+  changes: DraftSalesOrderMetadataChanges,
+  field: "allocationPolicyId",
+  label: string,
+) {
+  if (Object.hasOwn(input, field)) {
+    changes[field] = normalizeOptionalId(
+      (input as Record<string, string | null | undefined>)[field],
+      label,
+    );
+  }
+}
+
+export function calculateSalesOrderTotals(input: {
+  deliveryMinor: number;
+  discountMinor: number;
+  lines: readonly { lineTotalMinor: number }[];
+}): { subtotalMinor: number; totalMinor: number } {
+  const subtotalMinor = input.lines.reduce(
+    (sum, line) => addMinorUnit(sum, line.lineTotalMinor, "subtotalMinor"),
+    0,
+  );
+  if (input.discountMinor > subtotalMinor + input.deliveryMinor) {
+    throw new BusinessRuleError(
+      "Sales order discount cannot make the total negative.",
+    );
+  }
+  const totalMinor = addMinorUnit(
+    subtotalMinor - input.discountMinor,
+    input.deliveryMinor,
+    "totalMinor",
+  );
+  if (totalMinor < 0) {
+    throw new BusinessRuleError("Sales order total must not be negative.");
+  }
+  return { subtotalMinor, totalMinor };
 }
 
 function normalizeVersionedOrderInput(
@@ -449,12 +638,33 @@ function normalizePositiveInteger(value: number, field: string): number {
 }
 
 function normalizeMinorUnit(value: number, field: string): number {
-  if (!Number.isInteger(value) || value < 0) {
+  if (
+    !Number.isSafeInteger(value) ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > maxIntegerMinorUnit
+  ) {
     throw new ValidationApplicationError(
       `${field} must be a non-negative integer minor-unit amount.`,
     );
   }
   return value;
+}
+
+function addMinorUnit(left: number, right: number, field: string): number {
+  const sum = left + right;
+  if (!Number.isSafeInteger(sum) || sum > maxIntegerMinorUnit) {
+    throw new ValidationApplicationError(`${field} exceeds supported range.`);
+  }
+  return sum;
+}
+
+function multiplyMinorUnit(left: number, right: number, field: string): number {
+  const product = left * right;
+  if (!Number.isSafeInteger(product) || product > maxIntegerMinorUnit) {
+    throw new ValidationApplicationError(`${field} exceeds supported range.`);
+  }
+  return product;
 }
 
 function normalizePageSize(pageSize?: number): number {

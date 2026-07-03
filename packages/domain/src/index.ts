@@ -162,14 +162,18 @@ export {
 } from "./inventory/application/reservation-use-cases.js";
 export {
   cancelSalesOrder,
+  amendDraftSalesOrder,
+  calculateSalesOrderTotals,
   confirmSalesOrder,
   createSalesOrder,
   encodeSalesOrderCursor,
   fulfillSalesOrder,
   getSalesOrderById,
   listSalesOrders,
+  replaceDraftSalesOrderLines,
   parseSalesOrderCursor,
   reserveSalesOrder,
+  updateDraftSalesOrderMetadata,
 } from "./sales/application/order-use-cases.js";
 export type {
   CreateBranchInput,
@@ -224,11 +228,14 @@ export type {
 } from "./inventory/application/reservation-use-cases.js";
 export type {
   ConfirmSalesOrderInput,
+  AmendDraftSalesOrderInput,
   CreateSalesOrderInput,
   FulfillSalesOrderInput,
   GetSalesOrderByIdInput,
   ListSalesOrdersInput,
+  ReplaceDraftSalesOrderLinesInput,
   ReserveSalesOrderInput,
+  UpdateDraftSalesOrderMetadataInput,
 } from "./sales/application/order-use-cases.js";
 export type {
   CategoryRepository,
@@ -302,13 +309,16 @@ export type {
 } from "./inventory/repositories/inventory-repositories.js";
 export type {
   CancelSalesOrderRecord,
+  AmendDraftSalesOrderRecord,
   ConfirmSalesOrderRecord,
   CreateDraftSalesOrderRecord,
   CreateSalesOrderLineRecord,
+  DraftSalesOrderMetadataChanges,
   CursorPageRequest as SalesCursorPageRequest,
   CursorPageResult as SalesCursorPageResult,
   FulfillSalesOrderRecord,
   ReserveSalesOrderRecord,
+  ReplaceSalesOrderLineRecord,
   SalesOrderListFilter,
   SalesOrderRepository,
 } from "./sales/repositories/sales-order-repositories.js";
