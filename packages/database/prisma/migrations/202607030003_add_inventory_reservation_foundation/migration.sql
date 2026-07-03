@@ -114,7 +114,7 @@ CREATE UNIQUE INDEX "inventory_reservations_organization_id_reservation_number_k
 CREATE UNIQUE INDEX "inventory_reservations_organization_id_idempotency_key_key"
   ON "inventory_reservations"("organization_id", "idempotency_key");
 
-CREATE UNIQUE INDEX "inventory_reservation_lines_reservation_id_product_variant_id_key"
+CREATE UNIQUE INDEX "inventory_reservation_lines_reservation_id_product_variant__key"
   ON "inventory_reservation_lines"("reservation_id", "product_variant_id");
 
 CREATE UNIQUE INDEX "inventory_reservation_lines_reservation_id_line_number_key"
@@ -123,13 +123,13 @@ CREATE UNIQUE INDEX "inventory_reservation_lines_reservation_id_line_number_key"
 CREATE INDEX "inventory_reservations_organization_id_status_created_at_id_idx"
   ON "inventory_reservations"("organization_id", "status", "created_at", "id");
 
-CREATE INDEX "inventory_reservations_organization_id_stock_location_id_status_idx"
+CREATE INDEX "inventory_reservations_organization_id_stock_location_id_st_idx"
   ON "inventory_reservations"("organization_id", "stock_location_id", "status");
 
-CREATE INDEX "inventory_reservations_organization_id_reference_type_reference_id_idx"
+CREATE INDEX "inventory_reservations_organization_id_reference_type_refer_idx"
   ON "inventory_reservations"("organization_id", "reference_type", "reference_id");
 
-CREATE INDEX "inventory_reservation_lines_organization_id_product_variant_id_idx"
+CREATE INDEX "inventory_reservation_lines_organization_id_product_variant_idx"
   ON "inventory_reservation_lines"("organization_id", "product_variant_id");
 
 CREATE INDEX "inventory_reservation_lines_reservation_id_idx"
