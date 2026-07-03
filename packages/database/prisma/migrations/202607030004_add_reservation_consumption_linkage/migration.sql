@@ -9,7 +9,7 @@ CREATE UNIQUE INDEX "inventory_reservations_consumed_by_movement_id_organization
   ON "inventory_reservations"("consumed_by_movement_id", "organization_id");
 
 ALTER TABLE "inventory_reservations"
-  ADD CONSTRAINT "inventory_reservations_consumed_by_movement_org_fkey"
+  ADD CONSTRAINT "inventory_reservations_consumed_by_movement_id_organizatio_fkey"
   FOREIGN KEY ("consumed_by_movement_id", "organization_id")
   REFERENCES "inventory_movements"("id", "organization_id")
   ON DELETE RESTRICT

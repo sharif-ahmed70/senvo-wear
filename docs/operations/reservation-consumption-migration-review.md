@@ -7,7 +7,7 @@ Changes:
 - Adds nullable `inventory_reservations.consumed_by_movement_id`.
 - Adds a check that only `CONFIRMED` reservations may carry a consumption linkage.
 - Adds a unique index on `(consumed_by_movement_id, organization_id)` so one movement can consume at most one reservation.
-- Adds a composite same-organization foreign key to `inventory_movements(id, organization_id)`.
+- Adds composite same-organization foreign key `inventory_reservations_consumed_by_movement_id_organizatio_fkey` to `inventory_movements(id, organization_id)`.
 - Uses `ON DELETE RESTRICT` and `ON UPDATE CASCADE`.
 
 No existing migration is edited. No UUID database default is added. No generated, environment, or secret file is required.
