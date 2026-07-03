@@ -310,7 +310,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
       {
         lineNumber: 2,
         lineTotalMinor: 1500,
-        productNameSnapshot: "Oxford AMEND-LINES",
+        productNameSnapshot: "Refreshed Oxford",
         skuSnapshot: "SKU-AMEND-LINES-2",
       },
     ]);
