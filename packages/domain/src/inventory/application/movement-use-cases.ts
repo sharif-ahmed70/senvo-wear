@@ -27,11 +27,13 @@ import type {
   InventoryMovementLineInput,
   InventoryMovementListFilter,
   InventoryMovementRepository,
+  ReverseInventoryMovementRecord,
 } from "../repositories/inventory-repositories.js";
 
 const defaultPageSize = 25;
 const maxPageSize = 100;
 const maxLinesPerMovement = 500;
+const maxReversalReasonLength = 1000;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -139,6 +141,58 @@ export async function postInventoryMovement(
   return repository.post({ movementId, organizationId });
 }
 
+export type ReverseInventoryMovementInput = {
+  idempotencyKey: string;
+  occurredAt?: Date | string;
+  organizationId: string;
+  originalMovementId: string;
+  reason: string;
+  referenceId?: string | null;
+  referenceType?: string | null;
+  reversalMovementNumber: string;
+};
+
+export async function reverseInventoryMovement(
+  repository: InventoryMovementRepository,
+  input: ReverseInventoryMovementInput,
+): Promise<InventoryMovement> {
+  const organizationId = assertEntityId(input.organizationId, "organizationId");
+  const originalMovementId = assertEntityId(
+    input.originalMovementId,
+    "originalMovementId",
+  );
+  const original = await repository.findById(
+    originalMovementId,
+    organizationId,
+  );
+  if (!original) {
+    throw new NotFoundError("Inventory movement was not found.");
+  }
+  if (original.status !== "POSTED") {
+    throw new BusinessRuleError(
+      "Only posted inventory movement can be reversed.",
+    );
+  }
+  if (original.reversesMovementId) {
+    throw new BusinessRuleError("A reversal movement cannot be reversed.");
+  }
+
+  const record = normalizeReverseMovementInput(input, original);
+  const payloadSignature = createPayloadSignature(record);
+  const existing = await repository.findByIdempotencyKey(
+    record.organizationId,
+    record.idempotencyKey,
+  );
+  if (existing) {
+    assertIdempotentPayload(existing, payloadSignature);
+    return existing;
+  }
+  if (original.reversedByMovementId) {
+    throw new ConflictError("Inventory movement has already been reversed.");
+  }
+  return repository.reversePostedMovement(record, payloadSignature);
+}
+
 export type GetInventoryMovementByIdInput = {
   movementId: string;
   organizationId: string;
@@ -166,6 +220,8 @@ export type ListInventoryMovementsInput = CursorPageRequest & {
   sourceLocationId?: string;
   status?: InventoryMovementStatus;
   type?: InventoryMovementType;
+  isReversal?: boolean;
+  isReversed?: boolean;
 };
 
 export async function listInventoryMovements(
@@ -279,6 +335,98 @@ function normalizeLines(
   });
 }
 
+function normalizeReverseMovementInput(
+  input: ReverseInventoryMovementInput,
+  original: InventoryMovement,
+): ReverseInventoryMovementRecord {
+  const referencePair = normalizeReferencePair(
+    input.referenceType,
+    input.referenceId,
+  );
+  const compensating = deriveCompensatingMovement(original);
+  return {
+    ...compensating,
+    idempotencyKey: normalizeIdempotencyKey(input.idempotencyKey),
+    lines: original.lines.map((line) => ({
+      note: line.note,
+      productVariantId: line.productVariantId,
+      quantity: normalizeLineQuantity(line.quantity),
+    })),
+    movementNumber: normalizeMovementNumber(input.reversalMovementNumber),
+    note: null,
+    occurredAt: normalizeOccurredAt(input.occurredAt),
+    organizationId: original.organizationId,
+    referenceId: referencePair.referenceId,
+    referenceType: referencePair.referenceType,
+    reversalReason: normalizeRequiredInventoryText(
+      input.reason,
+      "reason",
+      maxReversalReasonLength,
+    ),
+    reversesMovementId: original.id,
+  };
+}
+
+export function deriveCompensatingMovement(
+  original: InventoryMovement,
+): Pick<
+  ReverseInventoryMovementRecord,
+  "destinationLocationId" | "sourceLocationId" | "type"
+> {
+  switch (original.type) {
+    case "OPENING":
+    case "RECEIPT":
+    case "ADJUSTMENT_IN":
+      return {
+        destinationLocationId: null,
+        sourceLocationId: requireLocation(
+          original.destinationLocationId,
+          original.type,
+          "destination",
+        ),
+        type: "ADJUSTMENT_OUT",
+      };
+    case "ISSUE":
+    case "ADJUSTMENT_OUT":
+      return {
+        destinationLocationId: requireLocation(
+          original.sourceLocationId,
+          original.type,
+          "source",
+        ),
+        sourceLocationId: null,
+        type: "ADJUSTMENT_IN",
+      };
+    case "TRANSFER":
+      return {
+        destinationLocationId: requireLocation(
+          original.sourceLocationId,
+          original.type,
+          "source",
+        ),
+        sourceLocationId: requireLocation(
+          original.destinationLocationId,
+          original.type,
+          "destination",
+        ),
+        type: "TRANSFER",
+      };
+  }
+}
+
+function requireLocation(
+  locationId: string | null,
+  type: InventoryMovementType,
+  field: string,
+): string {
+  if (!locationId) {
+    throw new BusinessRuleError(
+      `${type} cannot be reversed because its ${field} location is missing.`,
+    );
+  }
+  return locationId;
+}
+
 function normalizeMovementListFilter(
   input: ListInventoryMovementsInput,
 ): InventoryMovementListFilter {
@@ -306,6 +454,8 @@ function normalizeMovementListFilter(
     occurredTo,
     organizationId: assertEntityId(input.organizationId, "organizationId"),
     pageSize: normalizePageSize(input.pageSize),
+    isReversal: input.isReversal,
+    isReversed: input.isReversed,
     sourceLocationId:
       normalizeOptionalId(input.sourceLocationId, "sourceLocationId") ??
       undefined,
@@ -405,6 +555,8 @@ function createPayloadSignature(record: {
   organizationId: string;
   referenceId: string | null;
   referenceType: string | null;
+  reversalReason?: string | null;
+  reversesMovementId?: string | null;
   sourceLocationId: string | null;
   type: InventoryMovementType;
 }): string {
@@ -426,6 +578,8 @@ function createPayloadSignature(record: {
     organizationId: record.organizationId,
     referenceId: record.referenceId,
     referenceType: record.referenceType,
+    reversalReason: record.reversalReason ?? null,
+    reversesMovementId: record.reversesMovementId ?? null,
     sourceLocationId: record.sourceLocationId,
     type: record.type,
   });
@@ -445,12 +599,26 @@ function assertIdempotentPayload(
     organizationId: movement.organizationId,
     referenceId: movement.referenceId,
     referenceType: movement.referenceType,
+    reversalReason: movement.reversalReason,
+    reversesMovementId: movement.reversesMovementId,
     sourceLocationId: movement.sourceLocationId,
     type: movement.type,
   });
   if (existingSignature !== payloadSignature) {
     throw new ConflictError("Idempotency key was already used.");
   }
+}
+
+function normalizeRequiredInventoryText(
+  value: string,
+  field: string,
+  maxLength: number,
+): string {
+  const normalized = normalizeOptionalInventoryText(value, field, maxLength);
+  if (!normalized) {
+    throw new ValidationApplicationError(`${field} must not be blank.`);
+  }
+  return normalized;
 }
 
 function normalizePageSize(pageSize?: number): number {

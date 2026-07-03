@@ -37,6 +37,22 @@ export type CreateInventoryMovementRecord = {
   type: InventoryMovementType;
 };
 
+export type ReverseInventoryMovementRecord = {
+  idempotencyKey: string;
+  lines: InventoryMovementLineInput[];
+  movementNumber: string;
+  note: string | null;
+  occurredAt: Date;
+  organizationId: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  reversalReason: string;
+  reversesMovementId: string;
+  sourceLocationId: string | null;
+  destinationLocationId: string | null;
+  type: InventoryMovementType;
+};
+
 export type ReplaceInventoryMovementLinesRecord = {
   lines: InventoryMovementLineInput[];
   movementId: string;
@@ -46,6 +62,8 @@ export type ReplaceInventoryMovementLinesRecord = {
 export type InventoryMovementListFilter = {
   cursor?: string;
   destinationLocationId?: string;
+  isReversal?: boolean;
+  isReversed?: boolean;
   occurredFrom?: Date;
   occurredTo?: Date;
   organizationId: string;
@@ -90,6 +108,10 @@ export type InventoryMovementRepository = {
   }): Promise<InventoryMovement>;
   replaceDraftLines(
     record: ReplaceInventoryMovementLinesRecord,
+    payloadSignature: string,
+  ): Promise<InventoryMovement>;
+  reversePostedMovement(
+    record: ReverseInventoryMovementRecord,
     payloadSignature: string,
   ): Promise<InventoryMovement>;
 };

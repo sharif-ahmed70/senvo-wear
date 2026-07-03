@@ -5,6 +5,7 @@ import {
   listLocationBalances,
   postInventoryMovement,
   replaceDraftMovementLines,
+  reverseInventoryMovement,
   type InventoryMovementType,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -129,6 +130,235 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     });
 
     await expectBalance(base, base.primaryLocation.id, 4);
+  });
+
+  it.each([
+    ["OPENING", "ADJUSTMENT_OUT", "primary", null],
+    ["RECEIPT", "ADJUSTMENT_OUT", "primary", null],
+    ["ISSUE", "ADJUSTMENT_IN", null, "primary"],
+    ["TRANSFER", "TRANSFER", "secondary", "primary"],
+    ["ADJUSTMENT_IN", "ADJUSTMENT_OUT", "primary", null],
+    ["ADJUSTMENT_OUT", "ADJUSTMENT_IN", null, "primary"],
+  ] as const)(
+    "reverses posted %s with a compensating posted movement",
+    async (originalType, reversalType, expectedSource, expectedDestination) => {
+      const base = await createInventoryBase(`REV-${originalType}`);
+      if (originalType === "ISSUE" || originalType === "ADJUSTMENT_OUT") {
+        await createAndPost("OPENING", base, {
+          destinationLocationId: base.primaryLocation.id,
+          movementNumber: `SEED-${originalType}`,
+          quantity: 9,
+        });
+      }
+      if (originalType === "TRANSFER") {
+        await createAndPost("OPENING", base, {
+          destinationLocationId: base.primaryLocation.id,
+          movementNumber: "SEED-TRANSFER",
+          quantity: 9,
+        });
+      }
+
+      const original = await createAndPost(originalType, base, {
+        destinationLocationId:
+          originalType === "TRANSFER"
+            ? base.secondaryLocation.id
+            : originalType === "OPENING" ||
+                originalType === "RECEIPT" ||
+                originalType === "ADJUSTMENT_IN"
+              ? base.primaryLocation.id
+              : undefined,
+        movementNumber: `ORIGINAL-${originalType}`,
+        quantity: 4,
+        sourceLocationId:
+          originalType === "TRANSFER" ||
+          originalType === "ISSUE" ||
+          originalType === "ADJUSTMENT_OUT"
+            ? base.primaryLocation.id
+            : undefined,
+      });
+
+      const reversal = await reversePosted(base, original.id, {
+        idempotencyKey: `reverse-${originalType}`,
+        movementNumber: `REVERSAL-${originalType}`,
+      });
+
+      expect(reversal).toMatchObject({
+        destinationLocationId: expectedDestination
+          ? base.primaryLocation.id
+          : null,
+        isReversal: true,
+        reversalReason: "Inventory audit correction",
+        reversesMovementId: original.id,
+        sourceLocationId: expectedSource
+          ? expectedSource === "primary"
+            ? base.primaryLocation.id
+            : base.secondaryLocation.id
+          : null,
+        status: "POSTED",
+        type: reversalType,
+      });
+      expect(reversal.lines).toMatchObject([
+        { productVariantId: base.variant.id, quantity: 4 },
+      ]);
+
+      const rereadOriginal = await movements.findById(
+        original.id,
+        base.organization.id,
+      );
+      expect(rereadOriginal).toMatchObject({
+        id: original.id,
+        isReversed: true,
+        reversedByMovementId: reversal.id,
+        status: "POSTED",
+      });
+    },
+  );
+
+  it("returns balance to the previous value when no later movements exist", async () => {
+    const base = await createInventoryBase("REV-BALANCE");
+    const original = await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 6,
+    });
+
+    await expectBalance(base, base.primaryLocation.id, 6);
+    await reversePosted(base, original.id);
+
+    await expectBalance(base, base.primaryLocation.id, 0);
+  });
+
+  it("rejects reversal when current stock is insufficient", async () => {
+    const base = await createInventoryBase("REV-NEGATIVE");
+    const receipt = await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "REV-NEGATIVE-RECEIPT",
+      quantity: 5,
+    });
+    await createAndPost("ISSUE", base, {
+      movementNumber: "REV-NEGATIVE-ISSUE",
+      quantity: 4,
+      sourceLocationId: base.primaryLocation.id,
+    });
+
+    await expect(
+      reversePosted(base, receipt.id, {
+        idempotencyKey: "reverse-negative-stock",
+        movementNumber: "REV-NEGATIVE-STOCK",
+      }),
+    ).rejects.toThrow("Insufficient stock");
+    await expectBalance(base, base.primaryLocation.id, 1);
+  });
+
+  it("rejects draft movement, reversal movement, and duplicate reversal", async () => {
+    const base = await createInventoryBase("REV-RULES");
+    const draft = await createInventoryMovement(movements, {
+      destinationLocationId: base.primaryLocation.id,
+      idempotencyKey: "draft-reversal-source",
+      lines: [{ productVariantId: base.variant.id, quantity: 2 }],
+      movementNumber: "DRAFT-REVERSAL-SOURCE",
+      organizationId: base.organization.id,
+      type: "OPENING",
+    });
+    await expect(
+      reversePosted(base, draft.id, {
+        idempotencyKey: "reverse-draft",
+        movementNumber: "REV-DRAFT",
+      }),
+    ).rejects.toThrow("Only posted");
+
+    const original = await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "REV-RULES-OPEN",
+      quantity: 3,
+    });
+    const reversal = await reversePosted(base, original.id, {
+      idempotencyKey: "reverse-rules",
+      movementNumber: "REV-RULES",
+    });
+
+    await expect(
+      reversePosted(base, reversal.id, {
+        idempotencyKey: "reverse-reversal",
+        movementNumber: "REV-REVERSAL",
+      }),
+    ).rejects.toThrow("cannot be reversed");
+    await expect(
+      reversePosted(base, original.id, {
+        idempotencyKey: "reverse-rules-second",
+        movementNumber: "REV-RULES-SECOND",
+      }),
+    ).rejects.toThrow("already been reversed");
+  });
+
+  it("handles reversal idempotency and concurrent duplicate reversal", async () => {
+    const base = await createInventoryBase("REV-IDEMPOTENT");
+    const original = await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 8,
+    });
+    const input = {
+      idempotencyKey: "same-reversal-key",
+      movementNumber: "SAME-REVERSAL",
+    };
+
+    const [first, second] = await Promise.all([
+      reversePosted(base, original.id, input),
+      reversePosted(base, original.id, input),
+    ]);
+    expect(second.id).toBe(first.id);
+    await expectBalance(base, base.primaryLocation.id, 0);
+
+    await expect(
+      reverseInventoryMovement(movements, {
+        idempotencyKey: "same-reversal-key",
+        occurredAt: "2026-07-03T01:00:00.000Z",
+        organizationId: base.organization.id,
+        originalMovementId: original.id,
+        reason: "Different correction",
+        reversalMovementNumber: "SAME-REVERSAL",
+      }),
+    ).rejects.toThrow("Idempotency key");
+  });
+
+  it("rejects cross-organization reversal as not found", async () => {
+    const base = await createInventoryBase("REV-CROSS-A");
+    const other = await createInventoryBase("REV-CROSS-B");
+    const original = await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 2,
+    });
+
+    await expect(
+      reverseInventoryMovement(movements, {
+        idempotencyKey: "cross-reversal",
+        organizationId: other.organization.id,
+        originalMovementId: original.id,
+        reason: "Cross org",
+        reversalMovementNumber: "CROSS-REVERSAL",
+      }),
+    ).rejects.toThrow("not found");
+  });
+
+  it("enforces reversal self-reference and restrictive deletion constraints", async () => {
+    const base = await createInventoryBase("REV-CONSTRAINT");
+    const original = await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 2,
+    });
+    const reversal = await reversePosted(base, original.id, {
+      idempotencyKey: "constraint-reversal",
+      movementNumber: "CONSTRAINT-REVERSAL",
+    });
+
+    await expect(
+      prisma.inventoryMovement.update({
+        data: { reversesMovementId: reversal.id },
+        where: { id: reversal.id },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.inventoryMovement.delete({ where: { id: original.id } }),
+    ).rejects.toThrow();
   });
 
   it("excludes draft movements from balance", async () => {
@@ -558,6 +788,26 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     return postInventoryMovement(movements, {
       movementId: movement.id,
       organizationId: base.organization.id,
+    });
+  }
+
+  async function reversePosted(
+    base: Awaited<ReturnType<typeof createInventoryBase>>,
+    originalMovementId: string,
+    input?: {
+      idempotencyKey?: string;
+      movementNumber?: string;
+    },
+  ) {
+    return reverseInventoryMovement(movements, {
+      idempotencyKey: input?.idempotencyKey ?? "reverse-posted-key",
+      occurredAt: "2026-07-03T01:00:00.000Z",
+      organizationId: base.organization.id,
+      originalMovementId,
+      reason: "Inventory audit correction",
+      referenceId: "AUDIT-1",
+      referenceType: "AUDIT",
+      reversalMovementNumber: input?.movementNumber ?? "REV-POSTED",
     });
   }
 

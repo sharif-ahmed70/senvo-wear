@@ -12,6 +12,7 @@ import {
   parseMovementCursor,
   postInventoryMovement,
   replaceDraftMovementLines,
+  reverseInventoryMovement,
   type CreateInventoryMovementRecord,
   type CursorPageResult,
   type InventoryBalanceFilter,
@@ -21,6 +22,7 @@ import {
   type InventoryMovementRepository,
   type OnHandBalance,
   type ReplaceInventoryMovementLinesRecord,
+  type ReverseInventoryMovementRecord,
 } from "../../index.js";
 import { describe, expect, it } from "vitest";
 
@@ -210,6 +212,216 @@ describe("inventory movement use cases", () => {
     expect(retry.id).toBe(posted.id);
   });
 
+  it.each([
+    [
+      "OPENING",
+      null,
+      destinationLocationId,
+      "ADJUSTMENT_OUT",
+      destinationLocationId,
+      null,
+    ],
+    [
+      "RECEIPT",
+      null,
+      destinationLocationId,
+      "ADJUSTMENT_OUT",
+      destinationLocationId,
+      null,
+    ],
+    ["ISSUE", sourceLocationId, null, "ADJUSTMENT_IN", null, sourceLocationId],
+    [
+      "TRANSFER",
+      sourceLocationId,
+      destinationLocationId,
+      "TRANSFER",
+      destinationLocationId,
+      sourceLocationId,
+    ],
+    [
+      "ADJUSTMENT_IN",
+      null,
+      destinationLocationId,
+      "ADJUSTMENT_OUT",
+      destinationLocationId,
+      null,
+    ],
+    [
+      "ADJUSTMENT_OUT",
+      sourceLocationId,
+      null,
+      "ADJUSTMENT_IN",
+      null,
+      sourceLocationId,
+    ],
+  ] as const)(
+    "reverses %s with a compensating posted movement",
+    async (
+      type,
+      source,
+      destination,
+      reversalType,
+      reversalSource,
+      reversalDestination,
+    ) => {
+      const repository = new InMemoryInventoryMovementRepository();
+      const original = await createInventoryMovement(repository, {
+        destinationLocationId: destination,
+        idempotencyKey: `original-${type}`,
+        lines: [{ productVariantId: variantId, quantity: 5 }],
+        movementNumber: `ORIGINAL-${type.replaceAll("_", "-")}`,
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        organizationId,
+        sourceLocationId: source,
+        type,
+      });
+      const posted = await postInventoryMovement(repository, {
+        movementId: original.id,
+        organizationId,
+      });
+      if (reversalSource) {
+        repository.setBalance(reversalSource, variantId, 5);
+      }
+
+      const reversal = await reverseInventoryMovement(repository, {
+        idempotencyKey: `reverse-${type}`,
+        occurredAt: "2026-07-03T01:00:00.000Z",
+        organizationId,
+        originalMovementId: posted.id,
+        reason: "Audit correction",
+        reversalMovementNumber: `REV-${type.replaceAll("_", "-")}`,
+      });
+
+      expect(reversal).toMatchObject({
+        destinationLocationId: reversalDestination,
+        isReversal: true,
+        reversalReason: "Audit correction",
+        reversesMovementId: posted.id,
+        sourceLocationId: reversalSource,
+        status: "POSTED",
+        type: reversalType,
+      });
+      expect(reversal.lines).toMatchObject([
+        { productVariantId: variantId, quantity: 5 },
+      ]);
+      await expect(
+        getInventoryMovementById(repository, {
+          movementId: posted.id,
+          organizationId,
+        }),
+      ).resolves.toMatchObject({
+        isReversed: true,
+        reversedByMovementId: reversal.id,
+      });
+    },
+  );
+
+  it("rejects invalid reversal state, idempotency conflicts, and negative stock", async () => {
+    const repository = new InMemoryInventoryMovementRepository();
+    const draft = await createOpening(repository);
+
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-draft",
+        organizationId,
+        originalMovementId: draft.id,
+        reason: "Not posted",
+        reversalMovementNumber: "REV-DRAFT",
+      }),
+    ).rejects.toThrow("Only posted");
+
+    const posted = await postInventoryMovement(repository, {
+      movementId: draft.id,
+      organizationId,
+    });
+    repository.setBalance(destinationLocationId, variantId, 4);
+
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-negative",
+        organizationId,
+        originalMovementId: posted.id,
+        reason: "Count correction",
+        reversalMovementNumber: "REV-NEGATIVE",
+      }),
+    ).rejects.toThrow("Insufficient stock");
+
+    repository.setBalance(destinationLocationId, variantId, 5);
+    const reversal = await reverseInventoryMovement(repository, {
+      idempotencyKey: "reverse-same",
+      occurredAt: "2026-07-03T01:00:00.000Z",
+      organizationId,
+      originalMovementId: posted.id,
+      reason: "Count correction",
+      reversalMovementNumber: "REV-SAME",
+    });
+    const retry = await reverseInventoryMovement(repository, {
+      idempotencyKey: "reverse-same",
+      occurredAt: "2026-07-03T01:00:00.000Z",
+      organizationId,
+      originalMovementId: posted.id,
+      reason: "Count correction",
+      reversalMovementNumber: "REV-SAME",
+    });
+
+    expect(retry.id).toBe(reversal.id);
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-reversal",
+        organizationId,
+        originalMovementId: reversal.id,
+        reason: "No reversal of reversal",
+        reversalMovementNumber: "REV-REVERSAL",
+      }),
+    ).rejects.toThrow("cannot be reversed");
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-other",
+        organizationId,
+        originalMovementId: posted.id,
+        reason: "Duplicate",
+        reversalMovementNumber: "REV-OTHER",
+      }),
+    ).rejects.toThrow("already been reversed");
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-same",
+        occurredAt: "2026-07-03T01:00:00.000Z",
+        organizationId,
+        originalMovementId: posted.id,
+        reason: "Different",
+        reversalMovementNumber: "REV-SAME",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("requires reversal reason and organization ownership", async () => {
+    const repository = new InMemoryInventoryMovementRepository();
+    const posted = await postInventoryMovement(repository, {
+      movementId: (await createOpening(repository)).id,
+      organizationId,
+    });
+
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-blank",
+        organizationId,
+        originalMovementId: posted.id,
+        reason: " ",
+        reversalMovementNumber: "REV-BLANK",
+      }),
+    ).rejects.toThrow("reason");
+    await expect(
+      reverseInventoryMovement(repository, {
+        idempotencyKey: "reverse-cross",
+        organizationId: otherOrganizationId,
+        originalMovementId: posted.id,
+        reason: "Cross org",
+        reversalMovementNumber: "REV-CROSS",
+      }),
+    ).rejects.toThrow("not found");
+  });
+
   it("rejects cross-organization reads and normalizes list filters", async () => {
     const repository = new InMemoryInventoryMovementRepository();
     const draft = await createOpening(repository);
@@ -287,7 +499,12 @@ async function createOpening(repository: InventoryMovementRepository) {
 
 class InMemoryInventoryMovementRepository implements InventoryMovementRepository {
   private counter = 0;
+  private readonly balances = new Map<string, number>();
   private readonly movements = new Map<string, InventoryMovement>();
+
+  setBalance(locationId: string, productVariantId: string, quantity: number) {
+    this.balances.set(this.balanceKey(locationId, productVariantId), quantity);
+  }
 
   async createDraft(
     record: CreateInventoryMovementRecord,
@@ -312,9 +529,14 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
         organizationId: record.organizationId,
       })),
       postedAt: null,
+      reversedByMovementId: null,
+      reversalReason: null,
+      reversesMovementId: null,
       status: "DRAFT",
       updatedAt: now,
       version: 1,
+      isReversal: false,
+      isReversed: false,
     };
     this.movements.set(id, movement);
     return movement;
@@ -326,7 +548,9 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
   ): Promise<InventoryMovement | null> {
     await Promise.resolve();
     const movement = this.movements.get(id);
-    return movement?.organizationId === organizationId ? movement : null;
+    return movement?.organizationId === organizationId
+      ? this.withReversalState(movement)
+      : null;
   }
 
   async findByIdempotencyKey(
@@ -334,12 +558,12 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
     idempotencyKey: string,
   ): Promise<InventoryMovement | null> {
     await Promise.resolve();
-    return (
+    return this.withReversalState(
       [...this.movements.values()].find(
         (movement) =>
           movement.organizationId === organizationId &&
           movement.idempotencyKey === idempotencyKey,
-      ) ?? null
+      ) ?? null,
     );
   }
 
@@ -354,12 +578,19 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
     await Promise.resolve();
     return {
       hasMore: false,
-      items: [...this.movements.values()].filter(
-        (movement) =>
-          movement.organizationId === filter.organizationId &&
-          (!filter.status || movement.status === filter.status) &&
-          (!filter.type || movement.type === filter.type),
-      ),
+      items: [...this.movements.values()]
+        .map((movement) => this.withReversalState(movement))
+        .filter(
+          (movement): movement is InventoryMovement =>
+            movement !== null &&
+            movement.organizationId === filter.organizationId &&
+            (!filter.status || movement.status === filter.status) &&
+            (!filter.type || movement.type === filter.type) &&
+            (filter.isReversal === undefined ||
+              movement.isReversal === filter.isReversal) &&
+            (filter.isReversed === undefined ||
+              movement.isReversed === filter.isReversed),
+        ),
       nextCursor: null,
     };
   }
@@ -385,7 +616,7 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
       version: movement.version + 1,
     };
     this.movements.set(posted.id, posted);
-    return posted;
+    return this.withReversalState(posted) ?? posted;
   }
 
   async replaceDraftLines(
@@ -417,6 +648,101 @@ class InMemoryInventoryMovementRepository implements InventoryMovementRepository
     };
     this.movements.set(replaced.id, replaced);
     return replaced;
+  }
+
+  async reversePostedMovement(
+    record: ReverseInventoryMovementRecord,
+  ): Promise<InventoryMovement> {
+    const original = await this.findById(
+      record.reversesMovementId,
+      record.organizationId,
+    );
+    if (!original) {
+      throw new BusinessRuleError("same organization");
+    }
+    if (original.status !== "POSTED") {
+      throw new BusinessRuleError(
+        "Only posted inventory movement can be reversed.",
+      );
+    }
+    if (original.reversesMovementId) {
+      throw new BusinessRuleError("A reversal movement cannot be reversed.");
+    }
+    if (original.reversedByMovementId) {
+      throw new ConflictError("Inventory movement has already been reversed.");
+    }
+    const existing = await this.findByIdempotencyKey(
+      record.organizationId,
+      record.idempotencyKey,
+    );
+    if (existing) {
+      return existing;
+    }
+    if (record.sourceLocationId) {
+      for (const line of record.lines) {
+        const available =
+          this.balances.get(
+            this.balanceKey(record.sourceLocationId, line.productVariantId),
+          ) ?? 0;
+        if (available < line.quantity) {
+          throw new BusinessRuleError(
+            `Insufficient stock for variant ${line.productVariantId} at source location ${record.sourceLocationId}: available ${available}, requested ${line.quantity}.`,
+          );
+        }
+      }
+    }
+
+    const id = `77777777-7777-4777-8777-${(++this.counter)
+      .toString()
+      .padStart(12, "0")}`;
+    const now = new Date("2026-07-03T00:02:00.000Z");
+    const reversal: InventoryMovement = {
+      ...record,
+      createdAt: now,
+      id,
+      lines: record.lines.map((line, index) => ({
+        ...line,
+        createdAt: now,
+        id: `88888888-8888-4888-8888-${(index + this.counter)
+          .toString()
+          .padStart(12, "0")}`,
+        lineNumber: index + 1,
+        movementId: id,
+        organizationId: record.organizationId,
+      })),
+      note: null,
+      postedAt: now,
+      reversedByMovementId: null,
+      status: "POSTED",
+      updatedAt: now,
+      version: 2,
+      isReversal: true,
+      isReversed: false,
+    };
+    this.movements.set(id, reversal);
+    return reversal;
+  }
+
+  private withReversalState(
+    movement: InventoryMovement | null,
+  ): InventoryMovement | null {
+    if (!movement) {
+      return null;
+    }
+    const reversedBy =
+      [...this.movements.values()].find(
+        (candidate) => candidate.reversesMovementId === movement.id,
+      )?.id ?? null;
+    return {
+      ...movement,
+      isReversal: movement.reversesMovementId !== null,
+      isReversed: reversedBy !== null,
+      reversedByMovementId: reversedBy,
+    };
+  }
+
+  private balanceKey(locationId: string, productVariantId: string) {
+    return `${locationId}:${productVariantId}`;
   }
 }
 

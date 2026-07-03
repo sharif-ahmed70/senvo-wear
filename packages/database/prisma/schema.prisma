@@ -340,6 +340,8 @@ model InventoryMovement {
   referenceId           String?                 @map("reference_id") @db.VarChar(120)
   idempotencyKey        String                  @map("idempotency_key") @db.VarChar(128)
   payloadSignature      String                  @map("payload_signature") @db.Text
+  reversesMovementId    String?                 @map("reverses_movement_id") @db.Uuid
+  reversalReason        String?                 @map("reversal_reason") @db.VarChar(1000)
   occurredAt            DateTime                @map("occurred_at") @db.Timestamptz(6)
   postedAt              DateTime?               @map("posted_at") @db.Timestamptz(6)
   note                  String?                 @db.VarChar(1000)
@@ -350,15 +352,19 @@ model InventoryMovement {
   organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   sourceLocation      StockLocation?            @relation("InventoryMovementSourceLocation", fields: [sourceLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   destinationLocation StockLocation?            @relation("InventoryMovementDestinationLocation", fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  reversesMovement    InventoryMovement?        @relation("InventoryMovementReversal", fields: [reversesMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  reversedByMovements InventoryMovement[]       @relation("InventoryMovementReversal")
   lines               InventoryMovementLine[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, movementNumber])
   @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, reversesMovementId])
   @@index([organizationId, status, occurredAt, id])
   @@index([organizationId, type, occurredAt, id])
   @@index([organizationId, sourceLocationId, occurredAt])
   @@index([organizationId, destinationLocationId, occurredAt])
+  @@index([organizationId, reversesMovementId])
   @@map("inventory_movements")
 }
 

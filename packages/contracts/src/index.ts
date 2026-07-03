@@ -392,6 +392,19 @@ export const postInventoryMovementInputSchema = z
   })
   .strict();
 
+export const reverseInventoryMovementInputSchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    occurredAt: isoTimestampSchema.optional(),
+    organizationId: idSchema,
+    originalMovementId: idSchema,
+    reason: z.string().trim().min(1).max(1000),
+    referenceId: optionalTextSchema(120),
+    referenceType: optionalTextSchema(80),
+    reversalMovementNumber: codeSchema,
+  })
+  .strict();
+
 export const updateBranchMetadataInputSchema = z
   .object({
     addressLine1: optionalTextSchema(240),
@@ -518,6 +531,8 @@ export const getInventoryMovementQuerySchema = z
 export const listInventoryMovementsQuerySchema = movementCursorPageRequestSchema
   .extend({
     destinationLocationId: idSchema.optional(),
+    isReversal: z.boolean().optional(),
+    isReversed: z.boolean().optional(),
     occurredFrom: isoTimestampSchema.optional(),
     occurredTo: isoTimestampSchema.optional(),
     organizationId: idSchema,
@@ -576,6 +591,9 @@ export type ReplaceDraftMovementLinesInputContract = z.infer<
 >;
 export type PostInventoryMovementInputContract = z.infer<
   typeof postInventoryMovementInputSchema
+>;
+export type ReverseInventoryMovementInputContract = z.infer<
+  typeof reverseInventoryMovementInputSchema
 >;
 export type UpdateBranchMetadataInputContract = z.infer<
   typeof updateBranchMetadataInputSchema
@@ -740,6 +758,8 @@ export type InventoryMovementLineContract = {
 export type InventoryMovementContract = CatalogRecordContract & {
   destinationLocationId: string | null;
   idempotencyKey: string;
+  isReversal: boolean;
+  isReversed: boolean;
   lines: InventoryMovementLineContract[];
   movementNumber: string;
   note: string | null;
@@ -748,6 +768,9 @@ export type InventoryMovementContract = CatalogRecordContract & {
   postedAt: string | null;
   referenceId: string | null;
   referenceType: string | null;
+  reversedByMovementId: string | null;
+  reversalReason: string | null;
+  reversesMovementId: string | null;
   sourceLocationId: string | null;
   status: z.infer<typeof inventoryMovementStatusSchema>;
   type: z.infer<typeof inventoryMovementTypeSchema>;
@@ -827,6 +850,8 @@ export const inventoryMovementContractSchema = z
     destinationLocationId: idSchema.nullable(),
     id: idSchema,
     idempotencyKey: idempotencyKeySchema,
+    isReversal: z.boolean(),
+    isReversed: z.boolean(),
     lines: z.array(inventoryMovementLineContractSchema),
     movementNumber: z.string(),
     note: z.string().nullable(),
@@ -835,6 +860,9 @@ export const inventoryMovementContractSchema = z
     postedAt: isoTimestampSchema.nullable(),
     referenceId: z.string().nullable(),
     referenceType: z.string().nullable(),
+    reversedByMovementId: idSchema.nullable(),
+    reversalReason: z.string().nullable(),
+    reversesMovementId: idSchema.nullable(),
     sourceLocationId: idSchema.nullable(),
     status: inventoryMovementStatusSchema,
     type: inventoryMovementTypeSchema,

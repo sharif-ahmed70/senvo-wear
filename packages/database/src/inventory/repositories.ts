@@ -14,6 +14,7 @@ import {
   parseBalanceCursor,
   parseMovementCursor,
   type ReplaceInventoryMovementLinesRecord,
+  type ReverseInventoryMovementRecord,
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
@@ -32,7 +33,10 @@ type InventoryPrismaClient = Pick<
 type InventoryTransaction = Omit<InventoryPrismaClient, "$transaction">;
 
 type MovementWithLines = Prisma.InventoryMovementGetPayload<{
-  include: { lines: { orderBy: { lineNumber: "asc" } } };
+  include: {
+    lines: { orderBy: { lineNumber: "asc" } };
+    reversedByMovements: { select: { id: true }; take: 1 };
+  };
 }>;
 
 type KnownPrismaError = {
@@ -253,6 +257,160 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
     }
   }
 
+  async reversePostedMovement(
+    record: ReverseInventoryMovementRecord,
+    payloadSignature: string,
+  ): Promise<InventoryMovement> {
+    try {
+      return mapMovement(
+        await this.prisma.$transaction(async (transaction) => {
+          await lockMovementRow(transaction, {
+            movementId: record.reversesMovementId,
+            organizationId: record.organizationId,
+          });
+          const original = await transaction.inventoryMovement.findFirst({
+            include: movementInclude,
+            where: {
+              id: record.reversesMovementId,
+              organizationId: record.organizationId,
+            },
+          });
+          if (!original) {
+            throw new BusinessRuleError(
+              "Inventory movement must belong to the same organization.",
+            );
+          }
+          if (original.status !== "POSTED") {
+            throw new BusinessRuleError(
+              "Only posted inventory movement can be reversed.",
+            );
+          }
+          if (original.reversesMovementId) {
+            throw new BusinessRuleError(
+              "A reversal movement cannot be reversed.",
+            );
+          }
+
+          const existing = await transaction.inventoryMovement.findUnique({
+            include: movementInclude,
+            where: {
+              organizationId_idempotencyKey: {
+                idempotencyKey: record.idempotencyKey,
+                organizationId: record.organizationId,
+              },
+            },
+          });
+          if (existing) {
+            const existingSignature = await getPayloadSignatureInTransaction(
+              transaction,
+              existing.id,
+              existing.organizationId,
+            );
+            if (existingSignature === payloadSignature) {
+              return existing;
+            }
+            throw new ConflictError("Idempotency key was already used.");
+          }
+          if (original.reversedByMovements.length > 0) {
+            throw new ConflictError(
+              "Inventory movement has already been reversed.",
+            );
+          }
+
+          await assertPostingEligibility(transaction, {
+            ...original,
+            destinationLocationId: record.destinationLocationId,
+            lines: record.lines.map((line, index) => ({
+              createdAt: original.createdAt,
+              id: original.lines.at(index)?.id ?? original.id,
+              lineNumber: index + 1,
+              movementId: original.id,
+              note: line.note,
+              organizationId: record.organizationId,
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+            })),
+            sourceLocationId: record.sourceLocationId,
+            type: record.type,
+          });
+          await lockAffectedBalanceKeys(transaction, {
+            ...original,
+            destinationLocationId: record.destinationLocationId,
+            lines: original.lines.map((line) => ({
+              ...line,
+              movementId: original.id,
+            })),
+            sourceLocationId: record.sourceLocationId,
+            type: record.type,
+          });
+          await assertNonNegativeSourceBalances(transaction, {
+            ...original,
+            destinationLocationId: record.destinationLocationId,
+            lines: original.lines.map((line) => ({
+              ...line,
+              movementId: original.id,
+            })),
+            sourceLocationId: record.sourceLocationId,
+            type: record.type,
+          });
+
+          const movement = await transaction.inventoryMovement.create({
+            data: {
+              destinationLocationId: record.destinationLocationId,
+              idempotencyKey: record.idempotencyKey,
+              movementNumber: record.movementNumber,
+              note: null,
+              occurredAt: record.occurredAt,
+              organizationId: record.organizationId,
+              payloadSignature,
+              postedAt: new Date(),
+              referenceId: record.referenceId,
+              referenceType: record.referenceType,
+              reversalReason: record.reversalReason,
+              reversesMovementId: record.reversesMovementId,
+              sourceLocationId: record.sourceLocationId,
+              status: "POSTED",
+              type: record.type,
+              version: 2,
+            },
+          });
+          await transaction.inventoryMovementLine.createMany({
+            data: record.lines.map((line, index) => ({
+              lineNumber: index + 1,
+              movementId: movement.id,
+              note: line.note,
+              organizationId: record.organizationId,
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+            })),
+          });
+          return transaction.inventoryMovement.findUniqueOrThrow({
+            include: movementInclude,
+            where: { id: movement.id },
+          });
+        }),
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.findByIdempotencyKey(
+          record.organizationId,
+          record.idempotencyKey,
+        );
+        const existingSignature = existing
+          ? await this.getPayloadSignature(existing.id, existing.organizationId)
+          : null;
+        if (existing && existingSignature === payloadSignature) {
+          return existing;
+        }
+        throw new ConflictError(
+          "Inventory movement reversal already exists or idempotency key was already used.",
+          error,
+        );
+      }
+      mapInventoryIntegrityError(error);
+    }
+  }
+
   async list(
     filter: InventoryMovementListFilter,
   ): Promise<CursorPageResult<InventoryMovement>> {
@@ -268,6 +426,16 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
         ...(filter.destinationLocationId
           ? { destinationLocationId: filter.destinationLocationId }
           : {}),
+        ...(filter.isReversal === undefined
+          ? {}
+          : filter.isReversal
+            ? { reversesMovementId: { not: null } }
+            : { reversesMovementId: null }),
+        ...(filter.isReversed === undefined
+          ? {}
+          : filter.isReversed
+            ? { reversedByMovements: { some: {} } }
+            : { reversedByMovements: { none: {} } }),
         ...occurredAtRange(filter),
         ...(filter.sourceLocationId
           ? { sourceLocationId: filter.sourceLocationId }
@@ -348,6 +516,7 @@ export class PrismaInventoryBalanceQueryRepository implements InventoryBalanceQu
 
 const movementInclude = {
   lines: { orderBy: { lineNumber: "asc" as const } },
+  reversedByMovements: { select: { id: true }, take: 1 },
 };
 
 async function lockMovementRow(
@@ -361,6 +530,21 @@ async function lockMovementRow(
       AND organization_id = ${record.organizationId}::uuid
     FOR UPDATE
   `;
+}
+
+async function getPayloadSignatureInTransaction(
+  transaction: InventoryTransaction,
+  movementId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const rows = await transaction.$queryRaw<PayloadSignatureRow[]>`
+    SELECT payload_signature
+    FROM inventory_movements
+    WHERE id = ${movementId}::uuid
+      AND organization_id = ${organizationId}::uuid
+    LIMIT 1
+  `;
+  return rows.at(0)?.payload_signature ?? null;
 }
 
 async function assertPostingEligibility(
@@ -575,11 +759,16 @@ function mapMovement(record: MovementWithLines): InventoryMovement {
     postedAt: record.postedAt,
     referenceId: record.referenceId,
     referenceType: record.referenceType,
+    reversedByMovementId: record.reversedByMovements.at(0)?.id ?? null,
+    reversalReason: record.reversalReason,
+    reversesMovementId: record.reversesMovementId,
     sourceLocationId: record.sourceLocationId,
     status: record.status,
     type: record.type,
     updatedAt: record.updatedAt,
     version: record.version,
+    isReversal: record.reversesMovementId !== null,
+    isReversed: record.reversedByMovements.length > 0,
   };
 }
 

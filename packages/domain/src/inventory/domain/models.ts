@@ -32,11 +32,16 @@ export type InventoryMovement = {
   postedAt: Date | null;
   referenceId: string | null;
   referenceType: string | null;
+  reversedByMovementId: string | null;
+  reversalReason: string | null;
+  reversesMovementId: string | null;
   sourceLocationId: string | null;
   status: InventoryMovementStatus;
   type: InventoryMovementType;
   updatedAt: Date;
   version: number;
+  isReversal: boolean;
+  isReversed: boolean;
 };
 
 export type OnHandBalance = {

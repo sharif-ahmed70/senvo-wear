@@ -26,6 +26,7 @@ import {
   posCounterPageContractSchema,
   postInventoryMovementInputSchema,
   replaceDraftMovementLinesInputSchema,
+  reverseInventoryMovementInputSchema,
   createApiFailure,
   createApiSuccess,
   paginationMetaSchema,
@@ -396,6 +397,29 @@ describe("API contracts", () => {
         organizationId,
       }),
     ).toMatchObject({ organizationId });
+    expect(
+      reverseInventoryMovementInputSchema.parse({
+        idempotencyKey: "reverse-123",
+        occurredAt: "2026-07-03T01:00:00.000Z",
+        organizationId,
+        originalMovementId: productVariantId,
+        reason: "Incorrect receipt count",
+        referenceId: "AUDIT-1",
+        referenceType: "AUDIT",
+        reversalMovementNumber: "REV-1",
+      }),
+    ).toMatchObject({ reason: "Incorrect receipt count" });
+    expect(
+      reverseInventoryMovementInputSchema.safeParse({
+        idempotencyKey: "reverse-123",
+        lines: [{ productVariantId, quantity: 1 }],
+        organizationId,
+        originalMovementId: productVariantId,
+        reason: "Tampered",
+        reversalMovementNumber: "REV-1",
+        type: "ISSUE",
+      }).success,
+    ).toBe(false);
     expect(sourceLocationId).toBeDefined();
   });
 
@@ -455,6 +479,8 @@ describe("API contracts", () => {
             destinationLocationId: locationId,
             id: movementId,
             idempotencyKey: "request-123",
+            isReversal: false,
+            isReversed: true,
             lines: [
               {
                 createdAt: "2026-07-03T00:00:00.000Z",
@@ -474,6 +500,9 @@ describe("API contracts", () => {
             postedAt: "2026-07-03T00:01:00.000Z",
             referenceId: null,
             referenceType: null,
+            reversedByMovementId: productVariantId,
+            reversalReason: null,
+            reversesMovementId: null,
             sourceLocationId: null,
             status: "POSTED",
             type: "OPENING",

@@ -115,6 +115,7 @@ export {
   parseMovementCursor,
   postInventoryMovement,
   replaceDraftMovementLines,
+  reverseInventoryMovement,
 } from "./inventory/application/movement-use-cases.js";
 export type {
   CreateBranchInput,
@@ -145,6 +146,7 @@ export type {
   ListLocationBalancesInput,
   PostInventoryMovementInput,
   ReplaceDraftMovementLinesInput,
+  ReverseInventoryMovementInput,
 } from "./inventory/application/movement-use-cases.js";
 export type {
   CategoryRepository,
@@ -191,4 +193,5 @@ export type {
   InventoryMovementListFilter,
   InventoryMovementRepository,
   ReplaceInventoryMovementLinesRecord,
+  ReverseInventoryMovementRecord,
 } from "./inventory/repositories/inventory-repositories.js";
