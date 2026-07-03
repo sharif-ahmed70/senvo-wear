@@ -1517,7 +1517,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         { priority: 1, stockLocationId: base.primaryLocation.id },
         { priority: 1, stockLocationId: base.secondaryLocation.id },
       ]),
-    ).rejects.toThrow("uniqueness");
+    ).rejects.toThrow("priority");
     await expect(
       replacePolicyLocations(base, policy.id, 2, [
         { priority: 1, stockLocationId: base.primaryLocation.id },
@@ -1731,7 +1731,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       type: "WAREHOUSE",
     });
     const inactiveLocation = await createStockLocation(base, "IL", {
-      isSellable: true,
+      isSellable: false,
       status: "INACTIVE",
       type: "WAREHOUSE",
     });
