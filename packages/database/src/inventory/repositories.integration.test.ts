@@ -142,11 +142,12 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   ] as const)(
     "reverses posted %s with a compensating posted movement",
     async (originalType, reversalType, expectedSource, expectedDestination) => {
-      const base = await createInventoryBase(`REV-${originalType}`);
+      const movementLabel = originalType.replaceAll("_", "-");
+      const base = await createInventoryBase(`REV-${movementLabel}`);
       if (originalType === "ISSUE" || originalType === "ADJUSTMENT_OUT") {
         await createAndPost("OPENING", base, {
           destinationLocationId: base.primaryLocation.id,
-          movementNumber: `SEED-${originalType}`,
+          movementNumber: `SEED-${movementLabel}`,
           quantity: 9,
         });
       }
@@ -167,7 +168,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
                 originalType === "ADJUSTMENT_IN"
               ? base.primaryLocation.id
               : undefined,
-        movementNumber: `ORIGINAL-${originalType}`,
+        movementNumber: `ORIGINAL-${movementLabel}`,
         quantity: 4,
         sourceLocationId:
           originalType === "TRANSFER" ||
@@ -178,8 +179,8 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       });
 
       const reversal = await reversePosted(base, original.id, {
-        idempotencyKey: `reverse-${originalType}`,
-        movementNumber: `REVERSAL-${originalType}`,
+        idempotencyKey: `reverse-${movementLabel}`,
+        movementNumber: `REVERSAL-${movementLabel}`,
       });
 
       expect(reversal).toMatchObject({
