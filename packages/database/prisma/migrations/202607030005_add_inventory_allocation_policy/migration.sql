@@ -44,19 +44,19 @@ CREATE UNIQUE INDEX "inventory_allocation_policies_id_organization_id_key"
 CREATE UNIQUE INDEX "inventory_allocation_policies_organization_id_code_key"
   ON "inventory_allocation_policies"("organization_id", "code");
 
-CREATE INDEX "inventory_allocation_policies_organization_id_status_created_idx"
+CREATE INDEX "inventory_allocation_policies_organization_id_status_create_idx"
   ON "inventory_allocation_policies"("organization_id", "status", "created_at", "id");
 
-CREATE UNIQUE INDEX "inventory_allocation_policy_locations_policy_id_stock_l_key"
+CREATE UNIQUE INDEX "inventory_allocation_policy_locations_policy_id_stock_locat_key"
   ON "inventory_allocation_policy_locations"("policy_id", "stock_location_id");
 
 CREATE UNIQUE INDEX "inventory_allocation_policy_locations_policy_id_priority_key"
   ON "inventory_allocation_policy_locations"("policy_id", "priority");
 
-CREATE INDEX "inventory_allocation_policy_locations_org_policy_priority_idx"
+CREATE INDEX "inventory_allocation_policy_locations_organization_id_polic_idx"
   ON "inventory_allocation_policy_locations"("organization_id", "policy_id", "priority");
 
-CREATE INDEX "inventory_allocation_policy_locations_org_stock_location_idx"
+CREATE INDEX "inventory_allocation_policy_locations_organization_id_stock_idx"
   ON "inventory_allocation_policy_locations"("organization_id", "stock_location_id");
 
 ALTER TABLE "inventory_allocation_policies"
@@ -74,14 +74,14 @@ ALTER TABLE "inventory_allocation_policy_locations"
   ON UPDATE CASCADE;
 
 ALTER TABLE "inventory_allocation_policy_locations"
-  ADD CONSTRAINT "inventory_allocation_policy_locations_policy_id_org_fkey"
+  ADD CONSTRAINT "inventory_allocation_policy_locations_policy_id_organizati_fkey"
   FOREIGN KEY ("policy_id", "organization_id")
   REFERENCES "inventory_allocation_policies"("id", "organization_id")
   ON DELETE RESTRICT
   ON UPDATE CASCADE;
 
 ALTER TABLE "inventory_allocation_policy_locations"
-  ADD CONSTRAINT "inventory_allocation_policy_locations_stock_location_org_fkey"
+  ADD CONSTRAINT "inventory_allocation_policy_locations_stock_location_id_or_fkey"
   FOREIGN KEY ("stock_location_id", "organization_id")
   REFERENCES "stock_locations"("id", "organization_id")
   ON DELETE RESTRICT
