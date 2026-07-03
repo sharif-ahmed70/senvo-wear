@@ -529,7 +529,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       type: "OPENING",
     });
     await prisma.stockLocation.update({
-      data: { status: "INACTIVE" },
+      data: { isSellable: false, status: "INACTIVE" },
       where: { id: base.primaryLocation.id },
     });
 
@@ -955,7 +955,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ).rejects.toThrow("same organization");
 
     await prisma.stockLocation.update({
-      data: { status: "INACTIVE" },
+      data: { isSellable: false, status: "INACTIVE" },
       where: { id: base.primaryLocation.id },
     });
     await expect(
@@ -965,7 +965,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       }),
     ).rejects.toThrow("active");
     await prisma.stockLocation.update({
-      data: { isSellable: false, status: "ACTIVE" },
+      data: { status: "ACTIVE" },
       where: { id: base.primaryLocation.id },
     });
     await expect(
