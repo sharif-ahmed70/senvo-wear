@@ -430,7 +430,9 @@ function safeMetadata(
     operation,
     organizationId: context.organizationId,
     requestId: context.requestId,
+    role: context.role ?? null,
     source: context.source ?? "INTERNAL",
+    userId: context.userId ?? null,
     ...extra,
   };
 }

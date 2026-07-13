@@ -22,13 +22,16 @@ const allocationPolicyId = "44444444-4444-4444-8444-444444444444";
 const reservationId = "55555555-5555-4555-8555-555555555555";
 const movementId = "66666666-6666-4666-8666-666666666666";
 const actorId = "77777777-7777-4777-8777-777777777777";
+const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 const context: ApplicationExecutionContext = {
   actorId,
   actorType: "INTERNAL",
   organizationId,
+  role: "ADMIN",
   requestId: "req_sales_app_1",
   source: "ADMIN",
+  userId,
 };
 
 describe("SalesApplicationService", () => {
@@ -84,6 +87,41 @@ describe("SalesApplicationService", () => {
     expect(logger.entries.at(-1)).toMatchObject({
       context: { requestId: "generated_request_1" },
       metadata: { requestId: "generated_request_1" },
+    });
+  });
+
+  it("validates future identity context without authentication transport", async () => {
+    await expectError(
+      service.getOrderById(
+        {
+          organizationId,
+          requestId: "req_sales_app_1",
+          role: "OWNER",
+          userId: "not-a-user-id",
+        },
+        { salesOrderId },
+      ),
+      "VALIDATION_ERROR",
+      false,
+    );
+    await expectError(
+      service.getOrderById(
+        {
+          organizationId,
+          requestId: "req_sales_app_1",
+          role: "SUPERUSER" as "OWNER",
+          userId,
+        },
+        { salesOrderId },
+      ),
+      "VALIDATION_ERROR",
+      false,
+    );
+
+    await service.getOrderById(context, { salesOrderId });
+
+    expect(logger.entries.at(-1)).toMatchObject({
+      metadata: { role: "ADMIN", userId },
     });
   });
 

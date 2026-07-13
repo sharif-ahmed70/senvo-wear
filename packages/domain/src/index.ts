@@ -78,6 +78,14 @@ export type {
   SalesOrderLine,
   SalesOrderStatus,
 } from "./sales/domain/models.js";
+export type {
+  OrganizationMembership,
+  OrganizationMembershipStatus,
+  Permission,
+  Role,
+  User,
+  UserStatus,
+} from "./identity/domain/models.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -175,6 +183,13 @@ export {
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
 } from "./sales/application/order-use-cases.js";
+export {
+  assignOrganizationMembershipRole,
+  createOrganizationMembership,
+  createUser,
+  updateOrganizationMembershipStatus,
+  validateOrganizationAccess,
+} from "./identity/application/identity-use-cases.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
@@ -226,6 +241,13 @@ export type {
   ListInventoryReservationsInput,
   ListLocationAvailabilityInput,
 } from "./inventory/application/reservation-use-cases.js";
+export type {
+  AssignRoleInput,
+  CreateOrganizationMembershipInput,
+  CreateUserInput,
+  UpdateMembershipStatusInput,
+  ValidateOrganizationAccessInput,
+} from "./identity/application/identity-use-cases.js";
 export type {
   ConfirmSalesOrderInput,
   AmendDraftSalesOrderInput,
@@ -307,6 +329,12 @@ export type {
   ChangeInventoryReservationStatusRecord,
   CreateInventoryReservationRecord,
 } from "./inventory/repositories/inventory-repositories.js";
+export type {
+  CreateOrganizationMembershipRecord,
+  CreateUserRecord,
+  OrganizationMembershipRepository,
+  UserRepository,
+} from "./identity/repositories/identity-repositories.js";
 export type {
   CancelSalesOrderRecord,
   AmendDraftSalesOrderRecord,

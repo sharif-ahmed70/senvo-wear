@@ -111,6 +111,24 @@ enum SalesOrderChannel {
   MANUAL
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum OrganizationMembershipStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+}
+
 model Organization {
   id        String             @id @default(uuid()) @db.Uuid
   name      String             @db.VarChar(160)
@@ -136,8 +154,45 @@ model Organization {
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
   salesOrders SalesOrder[]
   salesOrderLines SalesOrderLine[]
+  memberships OrganizationMembership[]
 
   @@map("organizations")
+}
+
+model User {
+  id        String     @id @default(uuid()) @db.Uuid
+  email     String     @unique @db.VarChar(254)
+  name      String?    @db.VarChar(160)
+  status    UserStatus @default(ACTIVE)
+  version   Int        @default(1)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships OrganizationMembership[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model OrganizationMembership {
+  id             String                       @id @default(uuid()) @db.Uuid
+  userId         String                       @map("user_id") @db.Uuid
+  organizationId String                       @map("organization_id") @db.Uuid
+  role           Role
+  status         OrganizationMembershipStatus @default(ACTIVE)
+  version        Int                          @default(1)
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([userId, organizationId])
+  @@unique([id, organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, status])
+  @@index([userId, status])
+  @@map("organization_memberships")
 }
 
 model Branch {

@@ -25,6 +25,8 @@ import {
   createSalesOrderInputSchema,
   createSalesOrderServiceInputSchema,
   createStockLocationInputSchema,
+  createOrganizationMembershipInputSchema,
+  createUserInputSchema,
   fulfillSalesOrderInputSchema,
   fulfillSalesOrderServiceInputSchema,
   getInventoryAllocationPolicyQuerySchema,
@@ -74,6 +76,8 @@ import {
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
+  assignOrganizationMembershipRoleInputSchema,
+  updateOrganizationMembershipStatusInputSchema,
   updateDraftSalesOrderMetadataInputSchema,
   updateDraftSalesOrderMetadataServiceInputSchema,
   updateInventoryAllocationPolicyMetadataInputSchema,
@@ -167,6 +171,64 @@ describe("API contracts", () => {
         code: "COUNTER-1",
         name: "",
         organizationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates identity command inputs without password or auth transport fields", () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const organizationId = "22222222-2222-4222-8222-222222222222";
+    const membershipId = "33333333-3333-4333-8333-333333333333";
+
+    expect(
+      createUserInputSchema.parse({
+        email: "Owner@Senvo.Test",
+        name: "Owner User",
+        status: "ACTIVE",
+      }),
+    ).toMatchObject({ email: "Owner@Senvo.Test" });
+    expect(
+      createUserInputSchema.safeParse({
+        email: "owner@senvo.test",
+        password: "not-in-scope",
+      }).success,
+    ).toBe(false);
+    expect(
+      createOrganizationMembershipInputSchema.parse({
+        organizationId,
+        role: "OWNER",
+        userId,
+      }),
+    ).toMatchObject({ role: "OWNER" });
+    expect(
+      createOrganizationMembershipInputSchema.safeParse({
+        organizationId,
+        role: "SUPERUSER",
+        userId,
+      }).success,
+    ).toBe(false);
+    expect(
+      updateOrganizationMembershipStatusInputSchema.parse({
+        expectedVersion: 1,
+        membershipId,
+        organizationId,
+        status: "INACTIVE",
+      }),
+    ).toMatchObject({ status: "INACTIVE" });
+    expect(
+      assignOrganizationMembershipRoleInputSchema.parse({
+        expectedVersion: 2,
+        membershipId,
+        organizationId,
+        role: "MANAGER",
+      }),
+    ).toMatchObject({ role: "MANAGER" });
+    expect(
+      assignOrganizationMembershipRoleInputSchema.safeParse({
+        expectedVersion: 0,
+        membershipId,
+        organizationId,
+        role: "ADMIN",
       }).success,
     ).toBe(false);
   });

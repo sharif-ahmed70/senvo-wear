@@ -68,6 +68,8 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await prisma.posCounter.deleteMany();
     await prisma.stockLocation.deleteMany();
     await prisma.branch.deleteMany();
+    await prisma.organizationMembership.deleteMany();
+    await prisma.user.deleteMany();
     await prisma.organization.deleteMany();
   });
 

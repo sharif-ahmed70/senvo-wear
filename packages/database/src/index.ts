@@ -40,6 +40,10 @@ export {
   PrismaStockLocationRepository,
 } from "./organization/repositories.js";
 export {
+  PrismaOrganizationMembershipRepository,
+  PrismaUserRepository,
+} from "./identity/repositories.js";
+export {
   PrismaInventoryAllocationPolicyRepository,
   PrismaInventoryAllocationQueryRepository,
   PrismaInventoryAvailabilityQueryRepository,

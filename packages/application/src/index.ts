@@ -8,6 +8,7 @@ export { systemClock } from "./context/clock.js";
 export type {
   ApplicationActorType,
   ApplicationExecutionContext,
+  ApplicationRole,
   ApplicationSource,
   ValidatedApplicationExecutionContext,
 } from "./context/execution-context.js";

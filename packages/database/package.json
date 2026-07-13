@@ -24,7 +24,7 @@
     "db:migrate:create": "node ./scripts/require-database-url.mjs && prisma migrate dev --create-only",
     "db:migrate:deploy": "node ./scripts/require-production-database-url.mjs && prisma migrate deploy",
     "db:push:dev": "node ./scripts/require-development-db-push.mjs && prisma db push",
-    "test:integration": "vitest run --fileParallelism=false src/catalog/repositories.integration.test.ts src/organization/repositories.integration.test.ts src/inventory/repositories.integration.test.ts src/sales/repositories.integration.test.ts",
+    "test:integration": "vitest run --fileParallelism=false src/catalog/repositories.integration.test.ts src/organization/repositories.integration.test.ts src/identity/repositories.integration.test.ts src/inventory/repositories.integration.test.ts src/sales/repositories.integration.test.ts",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('generated',{recursive:true,force:true})\""
   },
   "dependencies": {

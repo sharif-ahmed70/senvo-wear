@@ -1,6 +1,7 @@
 import { ValidationApplicationServiceError } from "../errors/application-error.js";
 
 export type ApplicationActorType = "ANONYMOUS" | "INTERNAL" | "SYSTEM";
+export type ApplicationRole = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
 export type ApplicationSource =
   "ADMIN" | "JOB" | "POS" | "STOREFRONT" | "INTERNAL";
 
@@ -8,16 +9,20 @@ export type ApplicationExecutionContext = {
   actorId?: string | null;
   actorType?: ApplicationActorType;
   organizationId: string;
+  role?: ApplicationRole | null;
   requestId?: string;
   source?: ApplicationSource;
+  userId?: string | null;
 };
 
 export type ValidatedApplicationExecutionContext = {
   actorId: string | null;
   actorType: ApplicationActorType;
   organizationId: string;
+  role: ApplicationRole | null;
   requestId: string;
   source: ApplicationSource;
+  userId: string | null;
 };
 
 const uuidPattern =
@@ -27,6 +32,12 @@ const actorTypes: readonly ApplicationActorType[] = [
   "ANONYMOUS",
   "INTERNAL",
   "SYSTEM",
+];
+const roles: readonly ApplicationRole[] = [
+  "OWNER",
+  "ADMIN",
+  "MANAGER",
+  "STAFF",
 ];
 const sources: readonly ApplicationSource[] = [
   "ADMIN",
@@ -55,9 +66,19 @@ export function validateExecutionContext(
       "Application context actorId must be a valid UUID.",
     );
   }
+  if (context.userId && !uuidPattern.test(context.userId)) {
+    throw new ValidationApplicationServiceError(
+      "Application context userId must be a valid UUID.",
+    );
+  }
   if (context.actorType && !actorTypes.includes(context.actorType)) {
     throw new ValidationApplicationServiceError(
       "Application context actorType is invalid.",
+    );
+  }
+  if (context.role && !roles.includes(context.role)) {
+    throw new ValidationApplicationServiceError(
+      "Application context role is invalid.",
     );
   }
   if (context.source && !sources.includes(context.source)) {
@@ -69,7 +90,9 @@ export function validateExecutionContext(
     actorId: context.actorId ?? null,
     actorType: context.actorType ?? "ANONYMOUS",
     organizationId: context.organizationId,
+    role: context.role ?? null,
     requestId: requestId ?? "",
     source: context.source ?? "INTERNAL",
+    userId: context.userId ?? null,
   };
 }

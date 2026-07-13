@@ -317,6 +317,12 @@ export const salesOrderStatusSchema = z.enum([
   "FULFILLED",
 ]);
 export const salesOrderChannelSchema = z.enum(["ONLINE", "POS", "MANUAL"]);
+export const userStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LOCKED"]);
+export const organizationMembershipStatusSchema = z.enum([
+  "ACTIVE",
+  "INACTIVE",
+]);
+export const roleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "STAFF"]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -331,6 +337,41 @@ export const createOrganizationInputSchema = z.object({
   name: displayNameSchema,
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
+
+export const createUserInputSchema = z
+  .object({
+    email: z.string().trim().email().max(254),
+    name: optionalTextSchema(160),
+    status: userStatusSchema.optional(),
+  })
+  .strict();
+
+export const createOrganizationMembershipInputSchema = z
+  .object({
+    organizationId: idSchema,
+    role: roleSchema,
+    status: organizationMembershipStatusSchema.optional(),
+    userId: idSchema,
+  })
+  .strict();
+
+export const updateOrganizationMembershipStatusInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    membershipId: idSchema,
+    organizationId: idSchema,
+    status: organizationMembershipStatusSchema,
+  })
+  .strict();
+
+export const assignOrganizationMembershipRoleInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    membershipId: idSchema,
+    organizationId: idSchema,
+    role: roleSchema,
+  })
+  .strict();
 
 export const createCategoryInputSchema = z.object({
   description: descriptionSchema,
@@ -1240,6 +1281,16 @@ export type PreviewInventoryAllocationInputContract = z.infer<
 >;
 export type AllocateAndCreateInventoryReservationInputContract = z.infer<
   typeof allocateAndCreateInventoryReservationInputSchema
+>;
+export type CreateUserInputContract = z.infer<typeof createUserInputSchema>;
+export type CreateOrganizationMembershipInputContract = z.infer<
+  typeof createOrganizationMembershipInputSchema
+>;
+export type UpdateOrganizationMembershipStatusInputContract = z.infer<
+  typeof updateOrganizationMembershipStatusInputSchema
+>;
+export type AssignOrganizationMembershipRoleInputContract = z.infer<
+  typeof assignOrganizationMembershipRoleInputSchema
 >;
 export type CreateSalesOrderServiceInputContract = z.infer<
   typeof createSalesOrderServiceInputSchema
