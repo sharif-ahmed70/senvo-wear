@@ -5,7 +5,7 @@ CREATE TYPE "public"."OrganizationMembershipStatus" AS ENUM ('ACTIVE', 'INACTIVE
 CREATE TYPE "public"."Role" AS ENUM ('OWNER', 'ADMIN', 'MANAGER', 'STAFF');
 
 CREATE TABLE "public"."users" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "email" VARCHAR(254) NOT NULL,
     "name" VARCHAR(160),
     "status" "public"."UserStatus" NOT NULL DEFAULT 'ACTIVE',
@@ -17,7 +17,7 @@ CREATE TABLE "public"."users" (
 );
 
 CREATE TABLE "public"."organization_memberships" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
     "organization_id" UUID NOT NULL,
     "role" "public"."Role" NOT NULL,
