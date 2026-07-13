@@ -1,4 +1,5 @@
 import { ValidationApplicationServiceError } from "../errors/application-error.js";
+import type { PermissionKey } from "@senvo/domain";
 
 export type ApplicationActorType = "ANONYMOUS" | "INTERNAL" | "SYSTEM";
 export type ApplicationRole = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
@@ -9,6 +10,7 @@ export type ApplicationExecutionContext = {
   actorId?: string | null;
   actorType?: ApplicationActorType;
   organizationId: string;
+  permissions?: readonly PermissionKey[] | null;
   role?: ApplicationRole | null;
   requestId?: string;
   source?: ApplicationSource;
@@ -19,6 +21,7 @@ export type ValidatedApplicationExecutionContext = {
   actorId: string | null;
   actorType: ApplicationActorType;
   organizationId: string;
+  permissions: readonly PermissionKey[] | null;
   role: ApplicationRole | null;
   requestId: string;
   source: ApplicationSource;
@@ -38,6 +41,24 @@ const roles: readonly ApplicationRole[] = [
   "ADMIN",
   "MANAGER",
   "STAFF",
+];
+const permissionResources: readonly PermissionKey["resource"][] = [
+  "ORGANIZATION",
+  "USER",
+  "CATALOG",
+  "INVENTORY",
+  "RESERVATION",
+  "SALES_ORDER",
+  "REPORT",
+];
+const permissionActions: readonly PermissionKey["action"][] = [
+  "CREATE",
+  "READ",
+  "UPDATE",
+  "DELETE",
+  "APPROVE",
+  "CANCEL",
+  "FULFILL",
 ];
 const sources: readonly ApplicationSource[] = [
   "ADMIN",
@@ -81,6 +102,18 @@ export function validateExecutionContext(
       "Application context role is invalid.",
     );
   }
+  if (context.permissions) {
+    for (const permission of context.permissions) {
+      if (
+        !permissionResources.includes(permission.resource) ||
+        !permissionActions.includes(permission.action)
+      ) {
+        throw new ValidationApplicationServiceError(
+          "Application context permissions are invalid.",
+        );
+      }
+    }
+  }
   if (context.source && !sources.includes(context.source)) {
     throw new ValidationApplicationServiceError(
       "Application context source is invalid.",
@@ -90,6 +123,7 @@ export function validateExecutionContext(
     actorId: context.actorId ?? null,
     actorType: context.actorType ?? "ANONYMOUS",
     organizationId: context.organizationId,
+    permissions: context.permissions ?? null,
     role: context.role ?? null,
     requestId: requestId ?? "",
     source: context.source ?? "INTERNAL",

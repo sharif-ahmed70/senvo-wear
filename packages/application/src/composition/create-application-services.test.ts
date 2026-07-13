@@ -1,13 +1,17 @@
-import type { SalesOrderRepository } from "@senvo/domain";
+import type {
+  InventoryMovementRepository,
+  SalesOrderRepository,
+} from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import { createApplicationServices } from "./create-application-services.js";
 
 describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
+      inventoryMovementRepository: fakeInventoryMovementRepository,
       logger: nullLogger,
       requestIdGenerator: () => "generated_request_1",
-      salesOrderRepository: fakeRepository,
+      salesOrderRepository: fakeSalesOrderRepository,
     });
 
     const result = await services.sales.getOrderById(
@@ -26,7 +30,18 @@ describe("createApplicationServices", () => {
   });
 });
 
-const fakeRepository: SalesOrderRepository = {
+const fakeInventoryMovementRepository: InventoryMovementRepository = {
+  createDraft: () => Promise.reject(unreachableError()),
+  findById: () => Promise.resolve(null),
+  findByIdempotencyKey: () => Promise.resolve(null),
+  getPayloadSignature: () => Promise.resolve(null),
+  list: () => Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
+  post: () => Promise.reject(unreachableError()),
+  replaceDraftLines: () => Promise.reject(unreachableError()),
+  reversePostedMovement: () => Promise.reject(unreachableError()),
+};
+
+const fakeSalesOrderRepository: SalesOrderRepository = {
   amendDraft: () => Promise.reject(unreachableError()),
   cancel: () => Promise.reject(unreachableError()),
   confirm: () => Promise.reject(unreachableError()),

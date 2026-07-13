@@ -323,6 +323,25 @@ export const organizationMembershipStatusSchema = z.enum([
   "INACTIVE",
 ]);
 export const roleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "STAFF"]);
+export const permissionResourceSchema = z.enum([
+  "ORGANIZATION",
+  "USER",
+  "CATALOG",
+  "INVENTORY",
+  "RESERVATION",
+  "SALES_ORDER",
+  "REPORT",
+]);
+export const permissionActionSchema = z.enum([
+  "CREATE",
+  "READ",
+  "UPDATE",
+  "DELETE",
+  "APPROVE",
+  "CANCEL",
+  "FULFILL",
+]);
+export const permissionStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -370,6 +389,23 @@ export const assignOrganizationMembershipRoleInputSchema = z
     membershipId: idSchema,
     organizationId: idSchema,
     role: roleSchema,
+  })
+  .strict();
+
+export const createPermissionInputSchema = z
+  .object({
+    action: permissionActionSchema,
+    description: optionalTextSchema(240),
+    resource: permissionResourceSchema,
+    status: permissionStatusSchema.optional(),
+  })
+  .strict();
+
+export const assignRolePermissionInputSchema = z
+  .object({
+    permissionId: idSchema,
+    role: roleSchema,
+    status: permissionStatusSchema.optional(),
   })
   .strict();
 
@@ -491,6 +527,9 @@ export const postInventoryMovementInputSchema = z
     organizationId: idSchema,
   })
   .strict();
+
+export const postInventoryMovementServiceInputSchema =
+  postInventoryMovementInputSchema.omit({ organizationId: true }).strict();
 
 export const reverseInventoryMovementInputSchema = z
   .object({
@@ -1187,6 +1226,9 @@ export type ReplaceDraftMovementLinesInputContract = z.infer<
 export type PostInventoryMovementInputContract = z.infer<
   typeof postInventoryMovementInputSchema
 >;
+export type PostInventoryMovementServiceInputContract = z.infer<
+  typeof postInventoryMovementServiceInputSchema
+>;
 export type ReverseInventoryMovementInputContract = z.infer<
   typeof reverseInventoryMovementInputSchema
 >;
@@ -1291,6 +1333,12 @@ export type UpdateOrganizationMembershipStatusInputContract = z.infer<
 >;
 export type AssignOrganizationMembershipRoleInputContract = z.infer<
   typeof assignOrganizationMembershipRoleInputSchema
+>;
+export type CreatePermissionInputContract = z.infer<
+  typeof createPermissionInputSchema
+>;
+export type AssignRolePermissionInputContract = z.infer<
+  typeof assignRolePermissionInputSchema
 >;
 export type CreateSalesOrderServiceInputContract = z.infer<
   typeof createSalesOrderServiceInputSchema

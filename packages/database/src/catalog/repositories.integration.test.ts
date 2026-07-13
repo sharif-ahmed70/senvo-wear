@@ -70,6 +70,8 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await prisma.branch.deleteMany();
     await prisma.organizationMembership.deleteMany();
     await prisma.user.deleteMany();
+    await prisma.rolePermission.deleteMany();
+    await prisma.permission.deleteMany();
     await prisma.organization.deleteMany();
   });
 

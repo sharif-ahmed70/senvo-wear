@@ -5,6 +5,7 @@ export type {
 } from "./composition/create-application-services.js";
 export type { Clock } from "./context/clock.js";
 export { systemClock } from "./context/clock.js";
+export type { ApplicationAuthorizationService } from "./context/authorization.js";
 export type {
   ApplicationActorType,
   ApplicationExecutionContext,
@@ -22,6 +23,11 @@ export type {
   ApplicationServiceErrorShape,
   ApplicationServiceResult,
 } from "./errors/application-error.js";
+export { InventoryApplicationService } from "./inventory/inventory-application-service.js";
+export type {
+  InventoryApplicationServiceDependencies,
+  PostInventoryMovementServiceInputContract,
+} from "./inventory/inventory-application-service.js";
 export { SalesApplicationService } from "./sales/sales-application-service.js";
 export type {
   SalesApplicationServiceDependencies,

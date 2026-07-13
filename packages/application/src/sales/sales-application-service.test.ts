@@ -1,4 +1,5 @@
 import {
+  AuthorizationError,
   BusinessRuleError,
   ConcurrencyError,
   type CreateDraftSalesOrderRecord,
@@ -10,6 +11,7 @@ import {
 } from "@senvo/domain";
 import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import type { Clock } from "../context/clock.js";
 import type { ApplicationExecutionContext } from "../context/execution-context.js";
 import { SalesApplicationService } from "./sales-application-service.js";
@@ -62,6 +64,46 @@ describe("SalesApplicationService", () => {
     expect(result.data.createdAt).toBe("2026-07-03T00:00:00.000Z");
     expect(result.data).not.toHaveProperty("idempotencyKey");
     expect(result.data).not.toHaveProperty("payloadSignature");
+  });
+
+  it("checks authorization for protected order creation and returns safe denials", async () => {
+    const authorization = new FakeAuthorizationService();
+    const authorizedService = new SalesApplicationService({
+      authorizationService: authorization,
+      clock: new StepClock(),
+      logger,
+      requestIdGenerator: () => "generated_request_1",
+      salesOrderRepository: repository,
+    });
+
+    const allowed = await authorizedService.createOrder(
+      context,
+      createOrderPayload(),
+    );
+
+    expect(allowed.ok).toBe(true);
+    expect(authorization.calls).toEqual([
+      {
+        organizationId,
+        permission: { action: "CREATE", resource: "SALES_ORDER" },
+        role: "ADMIN",
+        userId,
+      },
+    ]);
+
+    authorization.error = new AuthorizationError("Permission denied.");
+    const denied = await authorizedService.createOrder(
+      context,
+      createOrderPayload(),
+    );
+
+    expect(denied).toMatchObject({
+      error: {
+        code: "FORBIDDEN",
+        message: "You are not allowed to perform this action.",
+      },
+      ok: false,
+    });
   });
 
   it("rejects caller-supplied organizationId in service payloads", async () => {
@@ -473,6 +515,32 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
         status: "RESERVED",
       }),
     );
+  }
+}
+
+class FakeAuthorizationService implements ApplicationAuthorizationService {
+  calls: {
+    organizationId: string;
+    permission: { action: string; resource: string };
+    role: string | null;
+    userId: string | null;
+  }[] = [];
+  error: Error | null = null;
+
+  authorize(
+    authContext: Parameters<ApplicationAuthorizationService["authorize"]>[0],
+    permission: Parameters<ApplicationAuthorizationService["authorize"]>[1],
+  ): Promise<void> {
+    this.calls.push({
+      organizationId: authContext.organizationId,
+      permission,
+      role: authContext.role,
+      userId: authContext.userId,
+    });
+    if (this.error) {
+      return Promise.reject(this.error);
+    }
+    return Promise.resolve();
   }
 }
 

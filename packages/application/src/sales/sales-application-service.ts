@@ -1,5 +1,6 @@
 import {
   ApplicationError,
+  AuthorizationError,
   BusinessRuleError,
   ConcurrencyError,
   ConflictError,
@@ -45,6 +46,10 @@ import {
 } from "@senvo/contracts";
 import type { Logger, LogMetadata } from "@senvo/logger";
 import type { Clock } from "../context/clock.js";
+import {
+  requireAuthorization,
+  type ApplicationAuthorizationService,
+} from "../context/authorization.js";
 import { systemClock } from "../context/clock.js";
 import {
   validateExecutionContext,
@@ -75,6 +80,7 @@ type SafeParseSchema<T> = {
 };
 
 export type SalesApplicationServiceDependencies = {
+  authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   logger?: Logger;
   requestIdGenerator?: RequestIdGenerator;
@@ -83,11 +89,13 @@ export type SalesApplicationServiceDependencies = {
 
 export class SalesApplicationService {
   private readonly clock: Clock;
+  private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly logger: Logger;
   private readonly requestIdGenerator: RequestIdGenerator;
   private readonly salesOrderRepository: SalesOrderRepository;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
+    this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
     this.logger = dependencies.logger ?? nullLogger;
     this.requestIdGenerator =
@@ -99,15 +107,27 @@ export class SalesApplicationService {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
-    return this.execute("sales.createOrder", context, (validatedContext) => {
-      const input = parsePayload(createSalesOrderServiceInputSchema, payload);
-      return createSalesOrder(this.salesOrderRepository, {
-        ...input,
-        organizationId: validatedContext.organizationId,
-      }).then((order) =>
-        salesOrderServiceContractSchema.parse(mapSalesOrder(order)),
-      );
-    });
+    return this.execute(
+      "sales.createOrder",
+      context,
+      async (validatedContext) => {
+        const input = parsePayload(createSalesOrderServiceInputSchema, payload);
+        await requireAuthorization(
+          this.authorizationService,
+          validatedContext,
+          {
+            action: "CREATE",
+            resource: "SALES_ORDER",
+          },
+        );
+        return createSalesOrder(this.salesOrderRepository, {
+          ...input,
+          organizationId: validatedContext.organizationId,
+        }).then((order) =>
+          salesOrderServiceContractSchema.parse(mapSalesOrder(order)),
+        );
+      },
+    );
   }
 
   amendDraftOrder(
@@ -364,6 +384,12 @@ function normalizeError(error: unknown): ApplicationServiceError {
     return new ApplicationServiceError({
       code: "VALIDATION_ERROR",
       message: "Input is invalid.",
+    });
+  }
+  if (error instanceof AuthorizationError) {
+    return new ApplicationServiceError({
+      code: "FORBIDDEN",
+      message: "You are not allowed to perform this action.",
     });
   }
   if (error instanceof NotFoundError) {

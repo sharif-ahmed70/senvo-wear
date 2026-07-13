@@ -129,6 +129,31 @@ enum Role {
   STAFF
 }
 
+enum PermissionResource {
+  ORGANIZATION
+  USER
+  CATALOG
+  INVENTORY
+  RESERVATION
+  SALES_ORDER
+  REPORT
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  CANCEL
+  FULFILL
+}
+
+enum PermissionStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model Organization {
   id        String             @id @default(uuid()) @db.Uuid
   name      String             @db.VarChar(160)
@@ -193,6 +218,38 @@ model OrganizationMembership {
   @@index([organizationId, status])
   @@index([userId, status])
   @@map("organization_memberships")
+}
+
+model Permission {
+  id          String             @id @default(uuid()) @db.Uuid
+  resource    PermissionResource
+  action      PermissionAction
+  description String?            @db.VarChar(240)
+  status      PermissionStatus   @default(ACTIVE)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@index([status])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String           @id @default(uuid()) @db.Uuid
+  role         Role
+  permissionId String           @map("permission_id") @db.Uuid
+  status       PermissionStatus @default(ACTIVE)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([permissionId])
+  @@index([role, status])
+  @@map("role_permissions")
 }
 
 model Branch {

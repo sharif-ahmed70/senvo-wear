@@ -86,6 +86,16 @@ export type {
   User,
   UserStatus,
 } from "./identity/domain/models.js";
+export type {
+  AuthorizationContext,
+  AuthorizationDecision,
+  Permission as AuthorizationPermission,
+  PermissionAction,
+  PermissionKey,
+  PermissionResource,
+  PermissionStatus,
+  RolePermission,
+} from "./authorization/domain/models.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -190,6 +200,15 @@ export {
   updateOrganizationMembershipStatus,
   validateOrganizationAccess,
 } from "./identity/application/identity-use-cases.js";
+export {
+  assignRolePermission,
+  authorize,
+  createPermission,
+} from "./authorization/application/authorization-service.js";
+export {
+  defaultRolePermissions,
+  roleAllowsPermission,
+} from "./authorization/application/role-permission-policy.js";
 export type {
   CreateBranchInput,
   CreatePosCounterInput,
@@ -248,6 +267,13 @@ export type {
   UpdateMembershipStatusInput,
   ValidateOrganizationAccessInput,
 } from "./identity/application/identity-use-cases.js";
+export type {
+  AssignRolePermissionInput,
+  AuthorizationRepositories,
+  AuthorizationService,
+  AuthorizeInput,
+  CreatePermissionInput,
+} from "./authorization/application/authorization-service.js";
 export type {
   ConfirmSalesOrderInput,
   AmendDraftSalesOrderInput,
@@ -335,6 +361,12 @@ export type {
   OrganizationMembershipRepository,
   UserRepository,
 } from "./identity/repositories/identity-repositories.js";
+export type {
+  CreatePermissionRecord,
+  CreateRolePermissionRecord,
+  PermissionRepository,
+  RolePermissionRepository,
+} from "./authorization/repositories/authorization-repositories.js";
 export type {
   CancelSalesOrderRecord,
   AmendDraftSalesOrderRecord,

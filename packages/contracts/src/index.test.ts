@@ -77,6 +77,8 @@ import {
   paginationMetaSchema,
   stockLocationPageContractSchema,
   assignOrganizationMembershipRoleInputSchema,
+  assignRolePermissionInputSchema,
+  createPermissionInputSchema,
   updateOrganizationMembershipStatusInputSchema,
   updateDraftSalesOrderMetadataInputSchema,
   updateDraftSalesOrderMetadataServiceInputSchema,
@@ -229,6 +231,43 @@ describe("API contracts", () => {
         membershipId,
         organizationId,
         role: "ADMIN",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates authorization command inputs without auth transport fields", () => {
+    const permissionId = "11111111-1111-4111-8111-111111111111";
+
+    expect(
+      createPermissionInputSchema.parse({
+        action: "CREATE",
+        description: "Create sales orders",
+        resource: "SALES_ORDER",
+      }),
+    ).toMatchObject({ action: "CREATE", resource: "SALES_ORDER" });
+    expect(
+      createPermissionInputSchema.safeParse({
+        action: "CREATE",
+        resource: "SALES_ORDER",
+        token: "not-in-scope",
+      }).success,
+    ).toBe(false);
+    expect(
+      createPermissionInputSchema.safeParse({
+        action: "EXPORT",
+        resource: "REPORT",
+      }).success,
+    ).toBe(false);
+    expect(
+      assignRolePermissionInputSchema.parse({
+        permissionId,
+        role: "ADMIN",
+      }),
+    ).toMatchObject({ role: "ADMIN" });
+    expect(
+      assignRolePermissionInputSchema.safeParse({
+        permissionId,
+        role: "SUPERUSER",
       }).success,
     ).toBe(false);
   });
