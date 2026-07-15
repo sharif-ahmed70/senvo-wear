@@ -65,6 +65,31 @@ const forbiddenByPackage = new Map([
     ],
   ],
   [
+    "packages/api",
+    [
+      {
+        pattern: /^@senvo\/database($|\/)/,
+        reason: "API gateway must not depend on database infrastructure",
+      },
+      {
+        pattern: /^@senvo\/ui($|\/)/,
+        reason: "API gateway must not depend on UI",
+      },
+      {
+        pattern: /^@prisma\//,
+        reason: "API gateway must not depend on Prisma",
+      },
+      {
+        pattern: /^next($|\/)/,
+        reason: "API gateway must remain transport-independent",
+      },
+      {
+        pattern: /^react($|\/)/,
+        reason: "API gateway must not depend on React",
+      },
+    ],
+  ],
+  [
     "packages/database",
     [
       {
