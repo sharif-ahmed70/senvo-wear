@@ -4,10 +4,7 @@ import type {
   AuditMetadata,
   CreateAuditEntryRecord,
 } from "@senvo/domain";
-import type {
-  Prisma,
-  PrismaClient,
-} from "../../generated/prisma/client.js";
+import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type AuditPrismaClient = Pick<PrismaClient, "auditEntry">;
 
