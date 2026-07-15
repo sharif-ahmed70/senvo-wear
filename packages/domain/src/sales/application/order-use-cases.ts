@@ -19,6 +19,7 @@ import type {
   ReplaceSalesOrderLineRecord,
   ReserveSalesOrderRecord,
   SalesOrderListFilter,
+  SalesOrderCreationRepository,
   SalesOrderRepository,
 } from "../repositories/sales-order-repositories.js";
 
@@ -64,7 +65,7 @@ export type CreateSalesOrderInput = {
 };
 
 export async function createSalesOrder(
-  repository: SalesOrderRepository,
+  repository: SalesOrderCreationRepository,
   input: CreateSalesOrderInput,
 ): Promise<SalesOrder> {
   const record = normalizeCreateOrderInput(input);

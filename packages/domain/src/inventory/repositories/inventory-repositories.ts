@@ -259,6 +259,11 @@ export type InventoryMovementRepository = {
   ): Promise<InventoryMovement>;
 };
 
+export type InventoryMovementPostingRepository = Pick<
+  InventoryMovementRepository,
+  "findById" | "post"
+>;
+
 export type InventoryBalanceQueryRepository = {
   getOnHand(input: {
     organizationId: string;

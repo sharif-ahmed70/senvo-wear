@@ -17,7 +17,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import type { Clock } from "../context/clock.js";
-import type { ApplicationExecutionContext } from "../context/execution-context.js";
+import type {
+  ApplicationExecutionContext,
+  ValidatedApplicationExecutionContext,
+} from "../context/execution-context.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { SalesApplicationService } from "./sales-application-service.js";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -52,11 +56,11 @@ describe("SalesApplicationService", () => {
     repository = new FakeSalesOrderRepository();
     logger = new MemoryLogger();
     service = new SalesApplicationService({
-      auditWriter,
       clock: new StepClock(),
       logger,
       requestIdGenerator: () => "generated_request_1",
       salesOrderRepository: repository,
+      transactionManager: new FakeTransactionManager(repository, auditWriter),
     });
   });
 
@@ -86,12 +90,12 @@ describe("SalesApplicationService", () => {
   it("checks authorization for protected order creation and returns safe denials", async () => {
     const authorization = new FakeAuthorizationService();
     const authorizedService = new SalesApplicationService({
-      auditWriter,
       authorizationService: authorization,
       clock: new StepClock(),
       logger,
       requestIdGenerator: () => "generated_request_1",
       salesOrderRepository: repository,
+      transactionManager: new FakeTransactionManager(repository, auditWriter),
     });
 
     const allowed = await authorizedService.createOrder(
@@ -127,12 +131,12 @@ describe("SalesApplicationService", () => {
   it("checks authentication before protected order creation and returns safe denials", async () => {
     const authentication = new FakeAuthenticationService();
     const authenticatedService = new SalesApplicationService({
-      auditWriter,
       authenticationService: authentication,
       clock: new StepClock(),
       logger,
       requestIdGenerator: () => "generated_request_1",
       salesOrderRepository: repository,
+      transactionManager: new FakeTransactionManager(repository, auditWriter),
     });
 
     const allowed = await authenticatedService.createOrder(
@@ -588,6 +592,32 @@ class FakeAuditWriter implements AuditWriter {
       userId: input.actor.userId,
     });
   }
+
+  recordWithinTransaction(input: RecordAuditEntryInput) {
+    return this.record(input);
+  }
+}
+
+class FakeTransactionManager implements ApplicationTransactionManager {
+  constructor(
+    private readonly salesOrderRepository: SalesOrderRepository,
+    private readonly auditWriter: AuditWriter,
+  ) {}
+
+  execute<TResult>(
+    applicationContext: ValidatedApplicationExecutionContext,
+    operation: Parameters<ApplicationTransactionManager["execute"]>[1],
+  ): Promise<TResult> {
+    return operation({
+      applicationContext,
+      auditWriter: this.auditWriter,
+      inventoryMovementRepository: {
+        findById: () => Promise.reject(unreachableError()),
+        post: () => Promise.reject(unreachableError()),
+      },
+      salesOrderRepository: this.salesOrderRepository,
+    }) as Promise<TResult>;
+  }
 }
 
 class FakeAuthorizationService implements ApplicationAuthorizationService {
@@ -668,4 +698,8 @@ class MemoryLogger implements Logger {
   warn(message: string, metadata?: LogMetadata, context?: LogContext): void {
     this.entries.push({ context, level: "warn", message, metadata });
   }
+}
+
+function unreachableError(): Error {
+  return new Error("Unexpected transaction repository call.");
 }

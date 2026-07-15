@@ -355,6 +355,7 @@ export type {
   InventoryMovementLineDraft,
   InventoryMovementLineInput,
   InventoryMovementListFilter,
+  InventoryMovementPostingRepository,
   InventoryMovementRepository,
   PreviewInventoryAllocationRecord,
   ReplaceInventoryAllocationPolicyLocationsRecord,
@@ -404,8 +405,13 @@ export type {
   ReserveSalesOrderRecord,
   ReplaceSalesOrderLineRecord,
   SalesOrderListFilter,
+  SalesOrderCreationRepository,
   SalesOrderRepository,
 } from "./sales/repositories/sales-order-repositories.js";
+export type {
+  TransactionContext,
+  TransactionManager,
+} from "./transaction/transaction-context.js";
 export { RepositoryAuditWriter } from "./audit/application/audit-writer.js";
 export type { AuditWriter } from "./audit/application/audit-writer.js";
 export type {

@@ -16,4 +16,4 @@ The domain owns audit actions, resources, metadata safety validation, and the re
 
 ## Current consistency boundary
 
-Audit writing is composed beside the existing repositories. Cross-repository transaction coordination is deferred; callers must treat an audit-write failure as an operation failure even though the business repository may already have committed.
+Sales order creation and inventory movement posting use the transactional audit boundary documented in `transactional-audit.md`. Their business and audit writes commit or roll back together. Other future audited operations must opt into that boundary explicitly.

@@ -24,6 +24,7 @@ import {
   type InventoryBalanceQueryRepository,
   type InventoryMovement,
   type InventoryMovementListFilter,
+  type InventoryMovementPostingRepository,
   type InventoryMovementRepository,
   type InventoryAllocationPolicy,
   type InventoryAllocationPolicyListFilter,
@@ -65,7 +66,11 @@ type InventoryPrismaClient = Pick<
   | "stockLocation"
 >;
 
-type InventoryTransaction = Omit<InventoryPrismaClient, "$transaction">;
+export type InventoryTransactionClient = Omit<
+  InventoryPrismaClient,
+  "$transaction"
+>;
+type InventoryTransaction = InventoryTransactionClient;
 
 type MovementWithLines = Prisma.InventoryMovementGetPayload<{
   include: {
@@ -277,43 +282,9 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
   }): Promise<InventoryMovement> {
     try {
       return mapMovement(
-        await this.prisma.$transaction(async (transaction) => {
-          await lockMovementRow(transaction, record);
-          const movement = await transaction.inventoryMovement.findFirst({
-            include: movementInclude,
-            where: {
-              id: record.movementId,
-              organizationId: record.organizationId,
-            },
-          });
-          if (!movement) {
-            throw new BusinessRuleError(
-              "Inventory movement must belong to the same organization.",
-            );
-          }
-          if (movement.status === "POSTED") {
-            return movement;
-          }
-          if (movement.lines.length === 0) {
-            throw new BusinessRuleError(
-              "Inventory movement requires at least one line.",
-            );
-          }
-
-          await assertPostingEligibility(transaction, movement);
-          await lockAffectedBalanceKeys(transaction, movement);
-          await assertNonNegativeSourceBalances(transaction, movement);
-
-          return transaction.inventoryMovement.update({
-            data: {
-              postedAt: new Date(),
-              status: "POSTED",
-              version: { increment: 1 },
-            },
-            include: movementInclude,
-            where: { id: movement.id },
-          });
-        }),
+        await this.prisma.$transaction((transaction) =>
+          postMovementWithinTransaction(transaction, record),
+        ),
       );
     } catch (error) {
       mapInventoryIntegrityError(error);
@@ -1531,11 +1502,80 @@ export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvai
   }
 }
 
+export class PrismaTransactionalInventoryMovementPostingRepository implements InventoryMovementPostingRepository {
+  constructor(private readonly transaction: InventoryTransactionClient) {}
+
+  async findById(
+    id: string,
+    organizationId: string,
+  ): Promise<InventoryMovement | null> {
+    const record = await this.transaction.inventoryMovement.findFirst({
+      include: movementInclude,
+      where: { id, organizationId },
+    });
+    return record ? mapMovement(record) : null;
+  }
+
+  async post(record: {
+    movementId: string;
+    organizationId: string;
+  }): Promise<InventoryMovement> {
+    try {
+      return mapMovement(
+        await postMovementWithinTransaction(this.transaction, record),
+      );
+    } catch (error) {
+      mapInventoryIntegrityError(error);
+    }
+  }
+}
+
 const movementInclude = {
   consumedReservation: { select: { id: true } },
   lines: { orderBy: { lineNumber: "asc" as const } },
   reversedByMovements: { select: { id: true }, take: 1 },
 };
+
+async function postMovementWithinTransaction(
+  transaction: InventoryTransaction,
+  record: { movementId: string; organizationId: string },
+): Promise<MovementWithLines> {
+  await lockMovementRow(transaction, record);
+  const movement = await transaction.inventoryMovement.findFirst({
+    include: movementInclude,
+    where: {
+      id: record.movementId,
+      organizationId: record.organizationId,
+    },
+  });
+  if (!movement) {
+    throw new BusinessRuleError(
+      "Inventory movement must belong to the same organization.",
+    );
+  }
+  if (movement.status === "POSTED") {
+    return movement;
+  }
+  if (movement.lines.length === 0) {
+    throw new BusinessRuleError(
+      "Inventory movement requires at least one line.",
+    );
+  }
+
+  await assertPostingEligibility(transaction, movement);
+  await lockAffectedBalanceKeys(transaction, movement);
+  await assertNonNegativeSourceBalances(transaction, movement);
+
+  return transaction.inventoryMovement.update({
+    data: {
+      postedAt: new Date(),
+      status: "POSTED",
+      version: { increment: 1 },
+    },
+    include: movementInclude,
+    where: { id: movement.id },
+  });
+}
 
 const reservationInclude = {
   lines: { orderBy: { lineNumber: "asc" as const } },

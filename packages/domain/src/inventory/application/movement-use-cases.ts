@@ -26,6 +26,7 @@ import type {
   InventoryBalanceQueryRepository,
   InventoryMovementLineInput,
   InventoryMovementListFilter,
+  InventoryMovementPostingRepository,
   InventoryMovementRepository,
   ReverseInventoryMovementRecord,
 } from "../repositories/inventory-repositories.js";
@@ -121,7 +122,7 @@ export type PostInventoryMovementInput = {
 };
 
 export async function postInventoryMovement(
-  repository: InventoryMovementRepository,
+  repository: InventoryMovementPostingRepository,
   input: PostInventoryMovementInput,
 ): Promise<InventoryMovement> {
   const organizationId = assertEntityId(input.organizationId, "organizationId");

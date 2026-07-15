@@ -138,3 +138,8 @@ export type SalesOrderRepository = {
     payloadSignature: string,
   ): Promise<SalesOrder>;
 };
+
+export type SalesOrderCreationRepository = Pick<
+  SalesOrderRepository,
+  "createDraft" | "findByIdempotencyKey"
+>;

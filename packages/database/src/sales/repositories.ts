@@ -12,6 +12,7 @@ import {
   type ReserveSalesOrderRecord,
   type SalesOrder,
   type SalesOrderListFilter,
+  type SalesOrderCreationRepository,
   type SalesOrderRepository,
   type CursorPageResult,
 } from "@senvo/domain";
@@ -33,7 +34,8 @@ type SalesPrismaClient = Pick<
   | "salesOrderLine"
 >;
 
-type SalesTransaction = Omit<SalesPrismaClient, "$transaction">;
+export type SalesTransactionClient = Omit<SalesPrismaClient, "$transaction">;
+type SalesTransaction = SalesTransactionClient;
 
 type OrderWithLines = Prisma.SalesOrderGetPayload<{
   include: { lines: { orderBy: { lineNumber: "asc" } } };
@@ -186,76 +188,9 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
   ): Promise<SalesOrder> {
     try {
       return mapOrder(
-        await this.prisma.$transaction(async (transaction) => {
-          const existing = await transaction.salesOrder.findUnique({
-            include: orderInclude,
-            where: {
-              organizationId_idempotencyKey: {
-                idempotencyKey: record.idempotencyKey,
-                organizationId: record.organizationId,
-              },
-            },
-          });
-          if (existing) {
-            if (existing.payloadSignature === payloadSignature) {
-              return existing;
-            }
-            throw new ConflictError("Idempotency key was already used.");
-          }
-
-          const snapshots = await loadVariantSnapshots(transaction, record);
-          const order = await transaction.salesOrder.create({
-            data: {
-              allocationPolicyId: record.allocationPolicyId,
-              channel: record.channel,
-              currencyCode: record.currencyCode,
-              customerEmail: record.customerEmail,
-              customerName: record.customerName,
-              customerPhone: record.customerPhone,
-              deliveryAddressLine1: record.deliveryAddressLine1,
-              deliveryAddressLine2: record.deliveryAddressLine2,
-              deliveryCity: record.deliveryCity,
-              deliveryDistrict: record.deliveryDistrict,
-              deliveryMinor: record.deliveryMinor,
-              deliveryPostalCode: record.deliveryPostalCode,
-              discountMinor: record.discountMinor,
-              idempotencyKey: record.idempotencyKey,
-              note: record.note,
-              orderNumber: record.orderNumber,
-              organizationId: record.organizationId,
-              payloadSignature,
-              status: "DRAFT",
-              subtotalMinor: record.subtotalMinor,
-              totalMinor: record.totalMinor,
-            },
-          });
-          await transaction.salesOrderLine.createMany({
-            data: record.lines.map((line, index) => {
-              const snapshot = snapshots.get(line.productVariantId);
-              if (!snapshot) {
-                throw new NotFoundError("Product variant was not found.");
-              }
-              return {
-                colorSnapshot: snapshot.color.name,
-                discountMinor: line.discountMinor,
-                lineNumber: index + 1,
-                lineTotalMinor: line.lineTotalMinor,
-                organizationId: record.organizationId,
-                productNameSnapshot: snapshot.product.name,
-                productVariantId: line.productVariantId,
-                quantity: line.quantity,
-                salesOrderId: order.id,
-                sizeSnapshot: snapshot.size.name,
-                skuSnapshot: snapshot.sku,
-                unitPriceMinor: line.unitPriceMinor,
-              };
-            }),
-          });
-          return transaction.salesOrder.findUniqueOrThrow({
-            include: orderInclude,
-            where: { id: order.id },
-          });
-        }),
+        await this.prisma.$transaction((transaction) =>
+          createDraftWithinTransaction(transaction, record, payloadSignature),
+        ),
       );
     } catch (error) {
       mapSalesOrderIntegrityError(error);
@@ -678,6 +613,115 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
       mapSalesOrderIntegrityError(error);
     }
   }
+}
+
+export class PrismaTransactionalSalesOrderCreationRepository implements SalesOrderCreationRepository {
+  constructor(private readonly transaction: SalesTransactionClient) {}
+
+  async createDraft(
+    record: CreateDraftSalesOrderRecord,
+    payloadSignature: string,
+  ): Promise<SalesOrder> {
+    try {
+      return mapOrder(
+        await createDraftWithinTransaction(
+          this.transaction,
+          record,
+          payloadSignature,
+        ),
+      );
+    } catch (error) {
+      mapSalesOrderIntegrityError(error);
+    }
+  }
+
+  async findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<SalesOrder | null> {
+    const order = await this.transaction.salesOrder.findUnique({
+      include: orderInclude,
+      where: {
+        organizationId_idempotencyKey: { idempotencyKey, organizationId },
+      },
+    });
+    return order ? mapOrder(order) : null;
+  }
+}
+
+async function createDraftWithinTransaction(
+  transaction: SalesTransaction,
+  record: CreateDraftSalesOrderRecord,
+  payloadSignature: string,
+): Promise<OrderWithLines> {
+  const existing = await transaction.salesOrder.findUnique({
+    include: orderInclude,
+    where: {
+      organizationId_idempotencyKey: {
+        idempotencyKey: record.idempotencyKey,
+        organizationId: record.organizationId,
+      },
+    },
+  });
+  if (existing) {
+    if (existing.payloadSignature === payloadSignature) {
+      return existing;
+    }
+    throw new ConflictError("Idempotency key was already used.");
+  }
+
+  const snapshots = await loadVariantSnapshots(transaction, record);
+  const order = await transaction.salesOrder.create({
+    data: {
+      allocationPolicyId: record.allocationPolicyId,
+      channel: record.channel,
+      currencyCode: record.currencyCode,
+      customerEmail: record.customerEmail,
+      customerName: record.customerName,
+      customerPhone: record.customerPhone,
+      deliveryAddressLine1: record.deliveryAddressLine1,
+      deliveryAddressLine2: record.deliveryAddressLine2,
+      deliveryCity: record.deliveryCity,
+      deliveryDistrict: record.deliveryDistrict,
+      deliveryMinor: record.deliveryMinor,
+      deliveryPostalCode: record.deliveryPostalCode,
+      discountMinor: record.discountMinor,
+      idempotencyKey: record.idempotencyKey,
+      note: record.note,
+      orderNumber: record.orderNumber,
+      organizationId: record.organizationId,
+      payloadSignature,
+      status: "DRAFT",
+      subtotalMinor: record.subtotalMinor,
+      totalMinor: record.totalMinor,
+    },
+  });
+  await transaction.salesOrderLine.createMany({
+    data: record.lines.map((line, index) => {
+      const snapshot = snapshots.get(line.productVariantId);
+      if (!snapshot) {
+        throw new NotFoundError("Product variant was not found.");
+      }
+      return {
+        colorSnapshot: snapshot.color.name,
+        discountMinor: line.discountMinor,
+        lineNumber: index + 1,
+        lineTotalMinor: line.lineTotalMinor,
+        organizationId: record.organizationId,
+        productNameSnapshot: snapshot.product.name,
+        productVariantId: line.productVariantId,
+        quantity: line.quantity,
+        salesOrderId: order.id,
+        sizeSnapshot: snapshot.size.name,
+        skuSnapshot: snapshot.sku,
+        unitPriceMinor: line.unitPriceMinor,
+      };
+    }),
+  });
+  return transaction.salesOrder.findUniqueOrThrow({
+    include: orderInclude,
+    where: { id: order.id },
+  });
 }
 
 async function loadVariantSnapshots(

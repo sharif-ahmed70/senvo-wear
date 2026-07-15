@@ -20,6 +20,10 @@ export type {
   ValidatedApplicationExecutionContext,
 } from "./context/execution-context.js";
 export { validateExecutionContext } from "./context/execution-context.js";
+export type {
+  ApplicationTransactionContext,
+  ApplicationTransactionManager,
+} from "./context/transaction.js";
 export {
   ApplicationServiceError,
   ValidationApplicationServiceError,

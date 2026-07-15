@@ -1,27 +1,25 @@
 import {
-  PrismaAuditEntryRepository,
   PrismaInventoryMovementRepository,
   PrismaSalesOrderRepository,
+  PrismaTransactionManager,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
-import {
-  RepositoryAuditWriter,
-  type AuditWriter,
-  type InventoryMovementRepository,
-  type SalesOrderRepository,
+import type {
+  InventoryMovementRepository,
+  SalesOrderRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import { systemClock, type Clock } from "../context/clock.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
 export type CreateApplicationServicesOptions = {
-  auditWriter?: AuditWriter;
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
@@ -30,6 +28,7 @@ export type CreateApplicationServicesOptions = {
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   salesOrderRepository?: SalesOrderRepository;
+  transactionManager?: ApplicationTransactionManager;
   useSharedPrismaClient?: boolean;
 };
 
@@ -48,9 +47,13 @@ export function createApplicationServices(
   let prismaClient = options.prismaClient;
   let inventoryMovementRepository = options.inventoryMovementRepository;
   let salesOrderRepository = options.salesOrderRepository;
-  let auditWriter = options.auditWriter;
+  let transactionManager = options.transactionManager;
 
-  if (!salesOrderRepository || !inventoryMovementRepository || !auditWriter) {
+  if (
+    !salesOrderRepository ||
+    !inventoryMovementRepository ||
+    !transactionManager
+  ) {
     if (!prismaClient) {
       const useSharedPrismaClient =
         options.useSharedPrismaClient ?? process.env.NODE_ENV !== "production";
@@ -73,14 +76,16 @@ export function createApplicationServices(
     );
   }
 
-  if (!auditWriter && prismaClient) {
-    auditWriter = new RepositoryAuditWriter(
-      new PrismaAuditEntryRepository(requirePrismaClient(prismaClient)),
+  if (!transactionManager && prismaClient) {
+    transactionManager = new PrismaTransactionManager(
+      requirePrismaClient(prismaClient),
     );
   }
 
-  if (!auditWriter) {
-    throw new Error("Audit writer is required for application services.");
+  if (!transactionManager) {
+    throw new Error(
+      "Transaction manager is required for application services.",
+    );
   }
 
   return {
@@ -90,21 +95,21 @@ export function createApplicationServices(
       }
     },
     inventory: new InventoryApplicationService({
-      auditWriter,
       authorizationService: options.authorizationService,
       clock,
       inventoryMovementRepository,
       logger,
       requestIdGenerator: options.requestIdGenerator,
+      transactionManager,
     }),
     sales: new SalesApplicationService({
-      auditWriter,
       authenticationService: options.authenticationService,
       authorizationService: options.authorizationService,
       clock,
       logger,
       requestIdGenerator: options.requestIdGenerator,
       salesOrderRepository,
+      transactionManager,
     }),
   };
 }

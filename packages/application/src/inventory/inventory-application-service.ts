@@ -7,7 +7,6 @@ import {
   NotFoundError,
   ValidationApplicationError,
   postInventoryMovement,
-  type AuditWriter,
   type InventoryMovementRepository,
 } from "@senvo/domain";
 import {
@@ -28,6 +27,7 @@ import {
   type ApplicationExecutionContext,
   type ValidatedApplicationExecutionContext,
 } from "../context/execution-context.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import {
   ApplicationServiceError,
   ValidationApplicationServiceError,
@@ -52,30 +52,30 @@ type SafeParseSchema<T> = {
 };
 
 export type InventoryApplicationServiceDependencies = {
-  auditWriter: AuditWriter;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   inventoryMovementRepository: InventoryMovementRepository;
   logger?: Logger;
   requestIdGenerator?: RequestIdGenerator;
+  transactionManager: ApplicationTransactionManager;
 };
 
 export class InventoryApplicationService {
-  private readonly auditWriter: AuditWriter;
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly clock: Clock;
   private readonly inventoryMovementRepository: InventoryMovementRepository;
   private readonly logger: Logger;
   private readonly requestIdGenerator: RequestIdGenerator;
+  private readonly transactionManager: ApplicationTransactionManager;
 
   constructor(dependencies: InventoryApplicationServiceDependencies) {
-    this.auditWriter = dependencies.auditWriter;
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
     this.inventoryMovementRepository = dependencies.inventoryMovementRepository;
     this.logger = dependencies.logger ?? nullLogger;
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
+    this.transactionManager = dependencies.transactionManager;
   }
 
   postMovement(
@@ -90,27 +90,37 @@ export class InventoryApplicationService {
           postInventoryMovementServiceInputSchema,
           payload,
         );
-        await requireAuthorization(this.authorizationService, validated, {
-          action: "UPDATE",
-          resource: "INVENTORY",
-        });
-        const movement = await postInventoryMovement(
-          this.inventoryMovementRepository,
-          {
-            ...input,
-            organizationId: validated.organizationId,
+        return this.transactionManager.execute(
+          validated,
+          async (transactionContext) => {
+            const applicationContext = transactionContext.applicationContext;
+            await requireAuthorization(
+              this.authorizationService,
+              applicationContext,
+              {
+                action: "UPDATE",
+                resource: "INVENTORY",
+              },
+            );
+            const movement = await postInventoryMovement(
+              transactionContext.inventoryMovementRepository,
+              {
+                ...input,
+                organizationId: applicationContext.organizationId,
+              },
+            );
+            await transactionContext.auditWriter.recordWithinTransaction({
+              action: "INVENTORY_MOVEMENT_POSTED",
+              actor: { userId: applicationContext.userId },
+              metadata: { requestId: applicationContext.requestId },
+              organizationId: applicationContext.organizationId,
+              resource: "INVENTORY_MOVEMENT",
+              resourceId: movement.id,
+            });
+            return inventoryMovementContractSchema.parse(
+              mapInventoryMovement(movement),
+            );
           },
-        );
-        await this.auditWriter.record({
-          action: "INVENTORY_MOVEMENT_POSTED",
-          actor: { userId: validated.userId },
-          metadata: { requestId: validated.requestId },
-          organizationId: validated.organizationId,
-          resource: "INVENTORY_MOVEMENT",
-          resourceId: movement.id,
-        });
-        return inventoryMovementContractSchema.parse(
-          mapInventoryMovement(movement),
         );
       },
     );

@@ -9,7 +9,11 @@ import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import type { Clock } from "../context/clock.js";
-import type { ApplicationExecutionContext } from "../context/execution-context.js";
+import type {
+  ApplicationExecutionContext,
+  ValidatedApplicationExecutionContext,
+} from "../context/execution-context.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { InventoryApplicationService } from "./inventory-application-service.js";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -42,12 +46,12 @@ describe("InventoryApplicationService", () => {
     logger = new MemoryLogger();
     repository = new FakeInventoryMovementRepository();
     service = new InventoryApplicationService({
-      auditWriter,
       authorizationService: authorization,
       clock: new StepClock(),
       inventoryMovementRepository: repository,
       logger,
       requestIdGenerator: () => "generated_request_1",
+      transactionManager: new FakeTransactionManager(repository, auditWriter),
     });
   });
 
@@ -154,6 +158,32 @@ class FakeAuditWriter implements AuditWriter {
       resourceId: input.resourceId,
       userId: input.actor.userId,
     });
+  }
+
+  recordWithinTransaction(input: RecordAuditEntryInput) {
+    return this.record(input);
+  }
+}
+
+class FakeTransactionManager implements ApplicationTransactionManager {
+  constructor(
+    private readonly inventoryMovementRepository: InventoryMovementRepository,
+    private readonly auditWriter: AuditWriter,
+  ) {}
+
+  execute<TResult>(
+    applicationContext: ValidatedApplicationExecutionContext,
+    operation: Parameters<ApplicationTransactionManager["execute"]>[1],
+  ): Promise<TResult> {
+    return operation({
+      applicationContext,
+      auditWriter: this.auditWriter,
+      inventoryMovementRepository: this.inventoryMovementRepository,
+      salesOrderRepository: {
+        createDraft: () => Promise.reject(unreachableError()),
+        findByIdempotencyKey: () => Promise.reject(unreachableError()),
+      },
+    }) as Promise<TResult>;
   }
 }
 

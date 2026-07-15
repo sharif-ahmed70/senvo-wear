@@ -17,7 +17,6 @@ import {
   replaceDraftSalesOrderLines,
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
-  type AuditWriter,
   type SalesOrderRepository,
 } from "@senvo/domain";
 import {
@@ -62,6 +61,7 @@ import {
   type ApplicationExecutionContext,
   type ValidatedApplicationExecutionContext,
 } from "../context/execution-context.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import {
   ApplicationServiceError,
   ValidationApplicationServiceError,
@@ -86,26 +86,25 @@ type SafeParseSchema<T> = {
 };
 
 export type SalesApplicationServiceDependencies = {
-  auditWriter: AuditWriter;
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   logger?: Logger;
   requestIdGenerator?: RequestIdGenerator;
   salesOrderRepository: SalesOrderRepository;
+  transactionManager: ApplicationTransactionManager;
 };
 
 export class SalesApplicationService {
-  private readonly auditWriter: AuditWriter;
   private readonly authenticationService?: ApplicationAuthenticationService;
   private readonly clock: Clock;
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly logger: Logger;
   private readonly requestIdGenerator: RequestIdGenerator;
   private readonly salesOrderRepository: SalesOrderRepository;
+  private readonly transactionManager: ApplicationTransactionManager;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
-    this.auditWriter = dependencies.auditWriter;
     this.authenticationService = dependencies.authenticationService;
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
@@ -113,6 +112,7 @@ export class SalesApplicationService {
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
     this.salesOrderRepository = dependencies.salesOrderRepository;
+    this.transactionManager = dependencies.transactionManager;
   }
 
   createOrder(
@@ -128,27 +128,36 @@ export class SalesApplicationService {
           requestId: validatedContext.requestId,
           userId: validatedContext.userId,
         });
-        await requireAuthorization(
-          this.authorizationService,
+        return this.transactionManager.execute(
           validatedContext,
-          {
-            action: "CREATE",
-            resource: "SALES_ORDER",
+          async (transactionContext) => {
+            const applicationContext = transactionContext.applicationContext;
+            await requireAuthorization(
+              this.authorizationService,
+              applicationContext,
+              {
+                action: "CREATE",
+                resource: "SALES_ORDER",
+              },
+            );
+            const order = await createSalesOrder(
+              transactionContext.salesOrderRepository,
+              {
+                ...input,
+                organizationId: applicationContext.organizationId,
+              },
+            );
+            await transactionContext.auditWriter.recordWithinTransaction({
+              action: "SALES_ORDER_CREATED",
+              actor: { userId: applicationContext.userId },
+              metadata: { requestId: applicationContext.requestId },
+              organizationId: applicationContext.organizationId,
+              resource: "SALES_ORDER",
+              resourceId: order.id,
+            });
+            return salesOrderServiceContractSchema.parse(mapSalesOrder(order));
           },
         );
-        const order = await createSalesOrder(this.salesOrderRepository, {
-          ...input,
-          organizationId: validatedContext.organizationId,
-        });
-        await this.auditWriter.record({
-          action: "SALES_ORDER_CREATED",
-          actor: { userId: validatedContext.userId },
-          metadata: { requestId: validatedContext.requestId },
-          organizationId: validatedContext.organizationId,
-          resource: "SALES_ORDER",
-          resourceId: order.id,
-        });
-        return salesOrderServiceContractSchema.parse(mapSalesOrder(order));
       },
     );
   }
