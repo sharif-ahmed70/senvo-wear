@@ -191,6 +191,7 @@ model Organization {
   salesOrders SalesOrder[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
+  auditEntries AuditEntry[]
 
   @@map("organizations")
 }
@@ -206,6 +207,7 @@ model User {
 
   memberships OrganizationMembership[]
   credentials UserCredential[]
+  auditEntries AuditEntry[]
 
   @@index([status])
   @@map("users")
@@ -249,6 +251,25 @@ model OrganizationMembership {
   @@index([organizationId, status])
   @@index([userId, status])
   @@map("organization_memberships")
+}
+
+model AuditEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  action         String   @db.VarChar(120)
+  resource       String   @db.VarChar(120)
+  resourceId     String   @map("resource_id") @db.Uuid
+  metadata       Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([organizationId, createdAt, id])
+  @@index([organizationId, resource, resourceId])
+  @@index([userId, createdAt])
+  @@map("audit_entries")
 }
 
 model Permission {

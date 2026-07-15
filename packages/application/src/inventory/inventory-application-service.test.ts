@@ -1,7 +1,9 @@
 import {
   AuthorizationError,
+  type AuditWriter,
   type InventoryMovement,
   type InventoryMovementRepository,
+  type RecordAuditEntryInput,
 } from "@senvo/domain";
 import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -19,6 +21,7 @@ const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const context: ApplicationExecutionContext = {
   actorId,
   actorType: "INTERNAL",
+  authenticationState: "AUTHENTICATED",
   organizationId,
   role: "MANAGER",
   requestId: "req_inventory_app_1",
@@ -28,15 +31,18 @@ const context: ApplicationExecutionContext = {
 
 describe("InventoryApplicationService", () => {
   let authorization: FakeAuthorizationService;
+  let auditWriter: FakeAuditWriter;
   let logger: MemoryLogger;
   let repository: FakeInventoryMovementRepository;
   let service: InventoryApplicationService;
 
   beforeEach(() => {
+    auditWriter = new FakeAuditWriter();
     authorization = new FakeAuthorizationService();
     logger = new MemoryLogger();
     repository = new FakeInventoryMovementRepository();
     service = new InventoryApplicationService({
+      auditWriter,
       authorizationService: authorization,
       clock: new StepClock(),
       inventoryMovementRepository: repository,
@@ -57,6 +63,15 @@ describe("InventoryApplicationService", () => {
         role: "MANAGER",
         userId,
       },
+    ]);
+    expect(auditWriter.records).toEqual([
+      expect.objectContaining({
+        action: "INVENTORY_MOVEMENT_POSTED",
+        actor: { userId },
+        organizationId,
+        resource: "INVENTORY_MOVEMENT",
+        resourceId: movementId,
+      }),
     ]);
   });
 
@@ -121,6 +136,24 @@ class FakeInventoryMovementRepository implements InventoryMovementRepository {
 
   reversePostedMovement(): Promise<InventoryMovement> {
     return Promise.reject(unreachableError());
+  }
+}
+
+class FakeAuditWriter implements AuditWriter {
+  readonly records: RecordAuditEntryInput[] = [];
+
+  record(input: RecordAuditEntryInput) {
+    this.records.push(input);
+    return Promise.resolve({
+      action: input.action,
+      createdAt: new Date("2026-07-03T00:00:00.000Z"),
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      metadata: input.metadata ?? {},
+      organizationId: input.organizationId,
+      resource: input.resource,
+      resourceId: input.resourceId,
+      userId: input.actor.userId,
+    });
   }
 }
 

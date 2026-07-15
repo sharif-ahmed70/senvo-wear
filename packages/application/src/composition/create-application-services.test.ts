@@ -1,4 +1,5 @@
 import type {
+  AuditWriter,
   InventoryMovementRepository,
   SalesOrderRepository,
 } from "@senvo/domain";
@@ -8,6 +9,7 @@ import { createApplicationServices } from "./create-application-services.js";
 describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
+      auditWriter: fakeAuditWriter,
       inventoryMovementRepository: fakeInventoryMovementRepository,
       logger: nullLogger,
       requestIdGenerator: () => "generated_request_1",
@@ -39,6 +41,10 @@ const fakeInventoryMovementRepository: InventoryMovementRepository = {
   post: () => Promise.reject(unreachableError()),
   replaceDraftLines: () => Promise.reject(unreachableError()),
   reversePostedMovement: () => Promise.reject(unreachableError()),
+};
+
+const fakeAuditWriter: AuditWriter = {
+  record: () => Promise.reject(unreachableError()),
 };
 
 const fakeSalesOrderRepository: SalesOrderRepository = {

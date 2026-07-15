@@ -12,6 +12,8 @@ export type {
 export type { ApplicationAuthorizationService } from "./context/authorization.js";
 export type {
   ApplicationActorType,
+  ApplicationAuthenticationState,
+  ApplicationContext,
   ApplicationExecutionContext,
   ApplicationRole,
   ApplicationSource,

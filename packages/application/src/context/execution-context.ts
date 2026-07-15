@@ -2,6 +2,8 @@ import { ValidationApplicationServiceError } from "../errors/application-error.j
 import type { PermissionKey } from "@senvo/domain";
 
 export type ApplicationActorType = "ANONYMOUS" | "INTERNAL" | "SYSTEM";
+export type ApplicationAuthenticationState =
+  "ANONYMOUS" | "AUTHENTICATED" | "SYSTEM";
 export type ApplicationRole = "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
 export type ApplicationSource =
   "ADMIN" | "JOB" | "POS" | "STOREFRONT" | "INTERNAL";
@@ -9,6 +11,7 @@ export type ApplicationSource =
 export type ApplicationExecutionContext = {
   actorId?: string | null;
   actorType?: ApplicationActorType;
+  authenticationState?: ApplicationAuthenticationState;
   organizationId: string;
   permissions?: readonly PermissionKey[] | null;
   role?: ApplicationRole | null;
@@ -17,9 +20,10 @@ export type ApplicationExecutionContext = {
   userId?: string | null;
 };
 
-export type ValidatedApplicationExecutionContext = {
+export type ApplicationContext = {
   actorId: string | null;
   actorType: ApplicationActorType;
+  authenticationState: ApplicationAuthenticationState;
   organizationId: string;
   permissions: readonly PermissionKey[] | null;
   role: ApplicationRole | null;
@@ -28,12 +32,19 @@ export type ValidatedApplicationExecutionContext = {
   userId: string | null;
 };
 
+export type ValidatedApplicationExecutionContext = ApplicationContext;
+
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/u;
 const actorTypes: readonly ApplicationActorType[] = [
   "ANONYMOUS",
   "INTERNAL",
+  "SYSTEM",
+];
+const authenticationStates: readonly ApplicationAuthenticationState[] = [
+  "ANONYMOUS",
+  "AUTHENTICATED",
   "SYSTEM",
 ];
 const roles: readonly ApplicationRole[] = [
@@ -97,6 +108,14 @@ export function validateExecutionContext(
       "Application context actorType is invalid.",
     );
   }
+  if (
+    context.authenticationState &&
+    !authenticationStates.includes(context.authenticationState)
+  ) {
+    throw new ValidationApplicationServiceError(
+      "Application context authenticationState is invalid.",
+    );
+  }
   if (context.role && !roles.includes(context.role)) {
     throw new ValidationApplicationServiceError(
       "Application context role is invalid.",
@@ -119,9 +138,22 @@ export function validateExecutionContext(
       "Application context source is invalid.",
     );
   }
+  const authenticationState =
+    context.authenticationState ??
+    (context.userId
+      ? "AUTHENTICATED"
+      : context.actorType === "SYSTEM"
+        ? "SYSTEM"
+        : "ANONYMOUS");
+  if (authenticationState === "AUTHENTICATED" && !context.userId) {
+    throw new ValidationApplicationServiceError(
+      "Authenticated application context requires userId.",
+    );
+  }
   return {
     actorId: context.actorId ?? null,
     actorType: context.actorType ?? "ANONYMOUS",
+    authenticationState,
     organizationId: context.organizationId,
     permissions: context.permissions ?? null,
     role: context.role ?? null,

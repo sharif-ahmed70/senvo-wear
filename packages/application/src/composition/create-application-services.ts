@@ -1,12 +1,15 @@
 import {
+  PrismaAuditEntryRepository,
   PrismaInventoryMovementRepository,
   PrismaSalesOrderRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
-import type {
-  InventoryMovementRepository,
-  SalesOrderRepository,
+import {
+  RepositoryAuditWriter,
+  type AuditWriter,
+  type InventoryMovementRepository,
+  type SalesOrderRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
@@ -18,6 +21,7 @@ import { SalesApplicationService } from "../sales/sales-application-service.js";
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
 export type CreateApplicationServicesOptions = {
+  auditWriter?: AuditWriter;
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
@@ -44,8 +48,9 @@ export function createApplicationServices(
   let prismaClient = options.prismaClient;
   let inventoryMovementRepository = options.inventoryMovementRepository;
   let salesOrderRepository = options.salesOrderRepository;
+  let auditWriter = options.auditWriter;
 
-  if (!salesOrderRepository || !inventoryMovementRepository) {
+  if (!salesOrderRepository || !inventoryMovementRepository || !auditWriter) {
     if (!prismaClient) {
       const useSharedPrismaClient =
         options.useSharedPrismaClient ?? process.env.NODE_ENV !== "production";
@@ -68,6 +73,16 @@ export function createApplicationServices(
     );
   }
 
+  if (!auditWriter && prismaClient) {
+    auditWriter = new RepositoryAuditWriter(
+      new PrismaAuditEntryRepository(requirePrismaClient(prismaClient)),
+    );
+  }
+
+  if (!auditWriter) {
+    throw new Error("Audit writer is required for application services.");
+  }
+
   return {
     disconnect: async () => {
       if (ownsPrismaClient) {
@@ -75,6 +90,7 @@ export function createApplicationServices(
       }
     },
     inventory: new InventoryApplicationService({
+      auditWriter,
       authorizationService: options.authorizationService,
       clock,
       inventoryMovementRepository,
@@ -82,6 +98,7 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
     }),
     sales: new SalesApplicationService({
+      auditWriter,
       authenticationService: options.authenticationService,
       authorizationService: options.authorizationService,
       clock,

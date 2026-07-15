@@ -432,6 +432,52 @@ export const disableCredentialInputSchema = z
   })
   .strict();
 
+export const auditActionSchema = z.enum([
+  "INVENTORY_MOVEMENT_POSTED",
+  "SALES_ORDER_CREATED",
+]);
+
+export const auditResourceSchema = z.enum([
+  "INVENTORY_MOVEMENT",
+  "SALES_ORDER",
+]);
+
+const auditMetadataSchema = z
+  .record(z.string(), z.json())
+  .superRefine((metadata, context) => {
+    if (containsSensitiveAuditKey(metadata)) {
+      context.addIssue({
+        code: "custom",
+        message: "Audit metadata cannot contain sensitive fields.",
+      });
+    }
+  });
+
+export const recordAuditEntryInputSchema = z
+  .object({
+    action: auditActionSchema,
+    metadata: auditMetadataSchema.optional(),
+    organizationId: idSchema,
+    resource: auditResourceSchema,
+    resourceId: idSchema,
+    userId: idSchema.nullable(),
+  })
+  .strict();
+
+function containsSensitiveAuditKey(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(containsSensitiveAuditKey);
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  return Object.entries(value).some(
+    ([key, nestedValue]) =>
+      /(?:authorization|cookie|credential|password|secret|token)/iu.test(key) ||
+      containsSensitiveAuditKey(nestedValue),
+  );
+}
+
 export const createCategoryInputSchema = z.object({
   description: descriptionSchema,
   name: displayNameSchema,
@@ -1368,6 +1414,9 @@ export type CreateCredentialInputContract = z.infer<
 >;
 export type DisableCredentialInputContract = z.infer<
   typeof disableCredentialInputSchema
+>;
+export type RecordAuditEntryInputContract = z.infer<
+  typeof recordAuditEntryInputSchema
 >;
 export type CreateSalesOrderServiceInputContract = z.infer<
   typeof createSalesOrderServiceInputSchema

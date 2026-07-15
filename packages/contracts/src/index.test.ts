@@ -29,6 +29,7 @@ import {
   createOrganizationMembershipInputSchema,
   createUserInputSchema,
   disableCredentialInputSchema,
+  recordAuditEntryInputSchema,
   fulfillSalesOrderInputSchema,
   fulfillSalesOrderServiceInputSchema,
   getInventoryAllocationPolicyQuerySchema,
@@ -300,6 +301,29 @@ describe("API contracts", () => {
         expectedVersion: 1,
       }),
     ).toMatchObject({ expectedVersion: 1 });
+  });
+
+  it("validates strict audit records and rejects sensitive metadata", () => {
+    const record = {
+      action: "SALES_ORDER_CREATED",
+      metadata: { requestId: "req_audit_contract_1" },
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      resource: "SALES_ORDER",
+      resourceId: "22222222-2222-4222-8222-222222222222",
+      userId: null,
+    };
+
+    expect(recordAuditEntryInputSchema.parse(record)).toEqual(record);
+    expect(
+      recordAuditEntryInputSchema.safeParse({
+        ...record,
+        metadata: { nested: { credentialToken: "never-record" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      recordAuditEntryInputSchema.safeParse({ ...record, password: "no" })
+        .success,
+    ).toBe(false);
   });
 
   it("validates organization operation output contracts with ISO timestamps", () => {

@@ -7,6 +7,7 @@ import {
   NotFoundError,
   ValidationApplicationError,
   postInventoryMovement,
+  type AuditWriter,
   type InventoryMovementRepository,
 } from "@senvo/domain";
 import {
@@ -51,6 +52,7 @@ type SafeParseSchema<T> = {
 };
 
 export type InventoryApplicationServiceDependencies = {
+  auditWriter: AuditWriter;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   inventoryMovementRepository: InventoryMovementRepository;
@@ -59,6 +61,7 @@ export type InventoryApplicationServiceDependencies = {
 };
 
 export class InventoryApplicationService {
+  private readonly auditWriter: AuditWriter;
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly clock: Clock;
   private readonly inventoryMovementRepository: InventoryMovementRepository;
@@ -66,6 +69,7 @@ export class InventoryApplicationService {
   private readonly requestIdGenerator: RequestIdGenerator;
 
   constructor(dependencies: InventoryApplicationServiceDependencies) {
+    this.auditWriter = dependencies.auditWriter;
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
     this.inventoryMovementRepository = dependencies.inventoryMovementRepository;
@@ -97,6 +101,14 @@ export class InventoryApplicationService {
             organizationId: validated.organizationId,
           },
         );
+        await this.auditWriter.record({
+          action: "INVENTORY_MOVEMENT_POSTED",
+          actor: { userId: validated.userId },
+          metadata: { requestId: validated.requestId },
+          organizationId: validated.organizationId,
+          resource: "INVENTORY_MOVEMENT",
+          resourceId: movement.id,
+        });
         return inventoryMovementContractSchema.parse(
           mapInventoryMovement(movement),
         );

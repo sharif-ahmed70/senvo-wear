@@ -3,6 +3,8 @@ import {
   AuthorizationError,
   BusinessRuleError,
   ConcurrencyError,
+  type AuditWriter,
+  type RecordAuditEntryInput,
   type CreateDraftSalesOrderRecord,
   type FulfillSalesOrderRecord,
   type ReserveSalesOrderRecord,
@@ -31,6 +33,7 @@ const userId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const context: ApplicationExecutionContext = {
   actorId,
   actorType: "INTERNAL",
+  authenticationState: "AUTHENTICATED",
   organizationId,
   role: "ADMIN",
   requestId: "req_sales_app_1",
@@ -40,13 +43,16 @@ const context: ApplicationExecutionContext = {
 
 describe("SalesApplicationService", () => {
   let repository: FakeSalesOrderRepository;
+  let auditWriter: FakeAuditWriter;
   let logger: MemoryLogger;
   let service: SalesApplicationService;
 
   beforeEach(() => {
+    auditWriter = new FakeAuditWriter();
     repository = new FakeSalesOrderRepository();
     logger = new MemoryLogger();
     service = new SalesApplicationService({
+      auditWriter,
       clock: new StepClock(),
       logger,
       requestIdGenerator: () => "generated_request_1",
@@ -66,11 +72,21 @@ describe("SalesApplicationService", () => {
     expect(result.data.createdAt).toBe("2026-07-03T00:00:00.000Z");
     expect(result.data).not.toHaveProperty("idempotencyKey");
     expect(result.data).not.toHaveProperty("payloadSignature");
+    expect(auditWriter.records).toEqual([
+      expect.objectContaining({
+        action: "SALES_ORDER_CREATED",
+        actor: { userId },
+        organizationId,
+        resource: "SALES_ORDER",
+        resourceId: salesOrderId,
+      }),
+    ]);
   });
 
   it("checks authorization for protected order creation and returns safe denials", async () => {
     const authorization = new FakeAuthorizationService();
     const authorizedService = new SalesApplicationService({
+      auditWriter,
       authorizationService: authorization,
       clock: new StepClock(),
       logger,
@@ -111,6 +127,7 @@ describe("SalesApplicationService", () => {
   it("checks authentication before protected order creation and returns safe denials", async () => {
     const authentication = new FakeAuthenticationService();
     const authenticatedService = new SalesApplicationService({
+      auditWriter,
       authenticationService: authentication,
       clock: new StepClock(),
       logger,
@@ -552,6 +569,24 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
         status: "RESERVED",
       }),
     );
+  }
+}
+
+class FakeAuditWriter implements AuditWriter {
+  readonly records: RecordAuditEntryInput[] = [];
+
+  record(input: RecordAuditEntryInput) {
+    this.records.push(input);
+    return Promise.resolve({
+      action: input.action,
+      createdAt: new Date("2026-07-03T00:00:00.000Z"),
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      metadata: input.metadata ?? {},
+      organizationId: input.organizationId,
+      resource: input.resource,
+      resourceId: input.resourceId,
+      userId: input.actor.userId,
+    });
   }
 }
 

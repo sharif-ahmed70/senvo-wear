@@ -406,3 +406,26 @@ export type {
   SalesOrderListFilter,
   SalesOrderRepository,
 } from "./sales/repositories/sales-order-repositories.js";
+export { RepositoryAuditWriter } from "./audit/application/audit-writer.js";
+export type { AuditWriter } from "./audit/application/audit-writer.js";
+export type {
+  AuditAction,
+  AuditActor,
+  AuditEntry,
+  AuditJsonValue,
+  AuditMetadata,
+  AuditResource,
+  RecordAuditEntryInput,
+} from "./audit/domain/models.js";
+export {
+  auditActions,
+  auditResources,
+  assertAuditId,
+  normalizeAuditAction,
+  normalizeAuditMetadata,
+  normalizeAuditResource,
+} from "./audit/domain/value-objects.js";
+export type {
+  AuditEntryRepository,
+  CreateAuditEntryRecord,
+} from "./audit/repositories/audit-repositories.js";

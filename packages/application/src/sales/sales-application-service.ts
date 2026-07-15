@@ -17,6 +17,7 @@ import {
   replaceDraftSalesOrderLines,
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
+  type AuditWriter,
   type SalesOrderRepository,
 } from "@senvo/domain";
 import {
@@ -85,6 +86,7 @@ type SafeParseSchema<T> = {
 };
 
 export type SalesApplicationServiceDependencies = {
+  auditWriter: AuditWriter;
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
@@ -94,6 +96,7 @@ export type SalesApplicationServiceDependencies = {
 };
 
 export class SalesApplicationService {
+  private readonly auditWriter: AuditWriter;
   private readonly authenticationService?: ApplicationAuthenticationService;
   private readonly clock: Clock;
   private readonly authorizationService?: ApplicationAuthorizationService;
@@ -102,6 +105,7 @@ export class SalesApplicationService {
   private readonly salesOrderRepository: SalesOrderRepository;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
+    this.auditWriter = dependencies.auditWriter;
     this.authenticationService = dependencies.authenticationService;
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
@@ -132,12 +136,19 @@ export class SalesApplicationService {
             resource: "SALES_ORDER",
           },
         );
-        return createSalesOrder(this.salesOrderRepository, {
+        const order = await createSalesOrder(this.salesOrderRepository, {
           ...input,
           organizationId: validatedContext.organizationId,
-        }).then((order) =>
-          salesOrderServiceContractSchema.parse(mapSalesOrder(order)),
-        );
+        });
+        await this.auditWriter.record({
+          action: "SALES_ORDER_CREATED",
+          actor: { userId: validatedContext.userId },
+          metadata: { requestId: validatedContext.requestId },
+          organizationId: validatedContext.organizationId,
+          resource: "SALES_ORDER",
+          resourceId: order.id,
+        });
+        return salesOrderServiceContractSchema.parse(mapSalesOrder(order));
       },
     );
   }
