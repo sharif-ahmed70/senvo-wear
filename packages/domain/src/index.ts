@@ -96,6 +96,15 @@ export type {
   PermissionStatus,
   RolePermission,
 } from "./authorization/domain/models.js";
+export type {
+  AuthenticatedPrincipal,
+  AuthenticationContext,
+  AuthenticationSessionBoundary,
+  CredentialStatus,
+  IdentityProvider,
+  PasswordHasher,
+  UserCredential,
+} from "./authentication/domain/models.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -367,6 +376,21 @@ export type {
   PermissionRepository,
   RolePermissionRepository,
 } from "./authorization/repositories/authorization-repositories.js";
+export {
+  authenticateCredential,
+  createUserCredential,
+  disableUserCredential,
+} from "./authentication/application/authentication-service.js";
+export type {
+  AuthenticationRequest,
+  AuthenticationService,
+  CreateUserCredentialInput,
+  DisableUserCredentialInput,
+} from "./authentication/application/authentication-service.js";
+export type {
+  CreateUserCredentialRecord,
+  UserCredentialRepository,
+} from "./authentication/repositories/authentication-repositories.js";
 export type {
   CancelSalesOrderRecord,
   AmendDraftSalesOrderRecord,

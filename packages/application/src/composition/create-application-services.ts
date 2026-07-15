@@ -9,6 +9,7 @@ import type {
   SalesOrderRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
+import type { ApplicationAuthenticationService } from "../context/authentication.js";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import { systemClock, type Clock } from "../context/clock.js";
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
@@ -17,6 +18,7 @@ import { SalesApplicationService } from "../sales/sales-application-service.js";
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
 export type CreateApplicationServicesOptions = {
+  authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   inventoryMovementRepository?: InventoryMovementRepository;
@@ -80,6 +82,7 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
     }),
     sales: new SalesApplicationService({
+      authenticationService: options.authenticationService,
       authorizationService: options.authorizationService,
       clock,
       logger,

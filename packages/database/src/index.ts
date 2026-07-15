@@ -47,6 +47,7 @@ export {
   PrismaPermissionRepository,
   PrismaRolePermissionRepository,
 } from "./authorization/repositories.js";
+export { PrismaUserCredentialRepository } from "./authentication/repositories.js";
 export {
   PrismaInventoryAllocationPolicyRepository,
   PrismaInventoryAllocationQueryRepository,

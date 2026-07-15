@@ -1,4 +1,5 @@
 import {
+  AuthenticationError,
   AuthorizationError,
   BusinessRuleError,
   ConcurrencyError,
@@ -11,6 +12,7 @@ import {
 } from "@senvo/domain";
 import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ApplicationAuthenticationService } from "../context/authentication.js";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import type { Clock } from "../context/clock.js";
 import type { ApplicationExecutionContext } from "../context/execution-context.js";
@@ -101,6 +103,41 @@ describe("SalesApplicationService", () => {
       error: {
         code: "FORBIDDEN",
         message: "You are not allowed to perform this action.",
+      },
+      ok: false,
+    });
+  });
+
+  it("checks authentication before protected order creation and returns safe denials", async () => {
+    const authentication = new FakeAuthenticationService();
+    const authenticatedService = new SalesApplicationService({
+      authenticationService: authentication,
+      clock: new StepClock(),
+      logger,
+      requestIdGenerator: () => "generated_request_1",
+      salesOrderRepository: repository,
+    });
+
+    const allowed = await authenticatedService.createOrder(
+      context,
+      createOrderPayload(),
+    );
+
+    expect(allowed.ok).toBe(true);
+    expect(authentication.calls).toEqual([
+      { requestId: "req_sales_app_1", userId },
+    ]);
+
+    authentication.error = new AuthenticationError("Missing identity.");
+    const denied = await authenticatedService.createOrder(
+      context,
+      createOrderPayload(),
+    );
+
+    expect(denied).toMatchObject({
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Authentication is required.",
       },
       ok: false,
     });
@@ -541,6 +578,25 @@ class FakeAuthorizationService implements ApplicationAuthorizationService {
       return Promise.reject(this.error);
     }
     return Promise.resolve();
+  }
+}
+
+class FakeAuthenticationService implements ApplicationAuthenticationService {
+  calls: { requestId: string; userId: string | null }[] = [];
+  error: Error | null = null;
+
+  authenticate(
+    request: Parameters<ApplicationAuthenticationService["authenticate"]>[0],
+  ): ReturnType<ApplicationAuthenticationService["authenticate"]> {
+    this.calls.push(request);
+    if (this.error) {
+      return Promise.reject(this.error);
+    }
+    return Promise.resolve({
+      authenticatedUserId: request.userId ?? userId,
+      provider: "PASSWORD",
+      requestId: request.requestId,
+    });
   }
 }
 

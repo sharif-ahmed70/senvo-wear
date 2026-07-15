@@ -5,6 +5,10 @@ export type {
 } from "./composition/create-application-services.js";
 export type { Clock } from "./context/clock.js";
 export { systemClock } from "./context/clock.js";
+export type {
+  ApplicationAuthenticationRequest,
+  ApplicationAuthenticationService,
+} from "./context/authentication.js";
 export type { ApplicationAuthorizationService } from "./context/authorization.js";
 export type {
   ApplicationActorType,

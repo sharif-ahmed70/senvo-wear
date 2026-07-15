@@ -16,6 +16,7 @@ import {
   changePosCounterStatusInputSchema,
   changeStockLocationStatusInputSchema,
   createBranchInputSchema,
+  createCredentialInputSchema,
   createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
   createColorInputSchema,
@@ -27,6 +28,7 @@ import {
   createStockLocationInputSchema,
   createOrganizationMembershipInputSchema,
   createUserInputSchema,
+  disableCredentialInputSchema,
   fulfillSalesOrderInputSchema,
   fulfillSalesOrderServiceInputSchema,
   getInventoryAllocationPolicyQuerySchema,
@@ -270,6 +272,34 @@ describe("API contracts", () => {
         role: "SUPERUSER",
       }).success,
     ).toBe(false);
+  });
+
+  it("validates authentication credential commands without plaintext passwords", () => {
+    expect(
+      createCredentialInputSchema.parse({
+        identifier: "owner@senvo.test",
+        passwordHash: "hashed_password_value_1234567890",
+        provider: "PASSWORD",
+        userId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({
+      identifier: "owner@senvo.test",
+      provider: "PASSWORD",
+    });
+    expect(
+      createCredentialInputSchema.safeParse({
+        identifier: "owner@senvo.test",
+        password: "never-store-plaintext",
+        provider: "PASSWORD",
+        userId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+    expect(
+      disableCredentialInputSchema.parse({
+        credentialId: "22222222-2222-4222-8222-222222222222",
+        expectedVersion: 1,
+      }),
+    ).toMatchObject({ expectedVersion: 1 });
   });
 
   it("validates organization operation output contracts with ISO timestamps", () => {

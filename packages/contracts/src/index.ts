@@ -342,6 +342,12 @@ export const permissionActionSchema = z.enum([
   "FULFILL",
 ]);
 export const permissionStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export const identityProviderSchema = z.enum([
+  "PASSWORD",
+  "GOOGLE",
+  "MICROSOFT",
+]);
+export const credentialStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 
 export const inventoryMovementLineInputSchema = z
   .object({
@@ -406,6 +412,23 @@ export const assignRolePermissionInputSchema = z
     permissionId: idSchema,
     role: roleSchema,
     status: permissionStatusSchema.optional(),
+  })
+  .strict();
+
+export const createCredentialInputSchema = z
+  .object({
+    identifier: z.string().trim().min(3).max(320),
+    passwordHash: z.string().trim().min(20).max(1000).nullable().optional(),
+    provider: identityProviderSchema,
+    status: credentialStatusSchema.optional(),
+    userId: idSchema,
+  })
+  .strict();
+
+export const disableCredentialInputSchema = z
+  .object({
+    credentialId: idSchema,
+    expectedVersion: expectedVersionSchema,
   })
   .strict();
 
@@ -1339,6 +1362,12 @@ export type CreatePermissionInputContract = z.infer<
 >;
 export type AssignRolePermissionInputContract = z.infer<
   typeof assignRolePermissionInputSchema
+>;
+export type CreateCredentialInputContract = z.infer<
+  typeof createCredentialInputSchema
+>;
+export type DisableCredentialInputContract = z.infer<
+  typeof disableCredentialInputSchema
 >;
 export type CreateSalesOrderServiceInputContract = z.infer<
   typeof createSalesOrderServiceInputSchema

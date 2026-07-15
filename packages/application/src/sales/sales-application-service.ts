@@ -1,5 +1,6 @@
 import {
   ApplicationError,
+  AuthenticationError,
   AuthorizationError,
   BusinessRuleError,
   ConcurrencyError,
@@ -47,6 +48,10 @@ import {
 import type { Logger, LogMetadata } from "@senvo/logger";
 import type { Clock } from "../context/clock.js";
 import {
+  requireAuthentication,
+  type ApplicationAuthenticationService,
+} from "../context/authentication.js";
+import {
   requireAuthorization,
   type ApplicationAuthorizationService,
 } from "../context/authorization.js";
@@ -80,6 +85,7 @@ type SafeParseSchema<T> = {
 };
 
 export type SalesApplicationServiceDependencies = {
+  authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   logger?: Logger;
@@ -88,6 +94,7 @@ export type SalesApplicationServiceDependencies = {
 };
 
 export class SalesApplicationService {
+  private readonly authenticationService?: ApplicationAuthenticationService;
   private readonly clock: Clock;
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly logger: Logger;
@@ -95,6 +102,7 @@ export class SalesApplicationService {
   private readonly salesOrderRepository: SalesOrderRepository;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
+    this.authenticationService = dependencies.authenticationService;
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
     this.logger = dependencies.logger ?? nullLogger;
@@ -112,6 +120,10 @@ export class SalesApplicationService {
       context,
       async (validatedContext) => {
         const input = parsePayload(createSalesOrderServiceInputSchema, payload);
+        await requireAuthentication(this.authenticationService, {
+          requestId: validatedContext.requestId,
+          userId: validatedContext.userId,
+        });
         await requireAuthorization(
           this.authorizationService,
           validatedContext,
@@ -384,6 +396,12 @@ function normalizeError(error: unknown): ApplicationServiceError {
     return new ApplicationServiceError({
       code: "VALIDATION_ERROR",
       message: "Input is invalid.",
+    });
+  }
+  if (error instanceof AuthenticationError) {
+    return new ApplicationServiceError({
+      code: "UNAUTHORIZED",
+      message: "Authentication is required.",
     });
   }
   if (error instanceof AuthorizationError) {
