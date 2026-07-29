@@ -7,6 +7,31 @@ const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
 const violations = [];
 
 const forbiddenByPackage = new Map([
+  [
+    "apps/admin",
+    [
+      {
+        pattern: /^@senvo\/application($|\/)/,
+        reason: "admin app must communicate through the API boundary",
+      },
+      {
+        pattern: /^@senvo\/database($|\/)/,
+        reason: "admin app must not access database infrastructure",
+      },
+      {
+        pattern: /^@senvo\/domain($|\/)/,
+        reason: "admin app must not import domain models or rules",
+      },
+      {
+        pattern: /^@senvo\/http($|\/)/,
+        reason: "admin app must not import the server HTTP adapter",
+      },
+      {
+        pattern: /^@prisma\//,
+        reason: "admin app must not depend on Prisma",
+      },
+    ],
+  ],
   ["apps", []],
   [
     "packages/domain",

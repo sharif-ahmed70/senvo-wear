@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { AdminAppFrame } from "./_components/admin-app-frame";
+import { adminFoundationSession } from "./_lib/admin-access";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SENVO Wear Admin",
-  description: "Foundation for the future SENVO Wear admin operations app.",
+  description: "SENVO Wear operations administration.",
 };
 
 export default function RootLayout({
@@ -11,7 +13,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AdminAppFrame session={adminFoundationSession}>
+          {children}
+        </AdminAppFrame>
+      </body>
     </html>
   );
 }
