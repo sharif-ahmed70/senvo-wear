@@ -296,6 +296,11 @@ export type {
 } from "./sales/application/order-use-cases.js";
 export type {
   CategoryRepository,
+  CatalogCategoryManagementRepository,
+  CatalogCollectionManagementRepository,
+  CatalogListFilter,
+  CatalogProductManagementRepository,
+  CatalogProductVariantManagementRepository,
   CollectionRepository,
   ColorRepository,
   CreateCategoryRecord,

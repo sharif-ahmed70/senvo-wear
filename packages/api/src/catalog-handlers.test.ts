@@ -1,0 +1,167 @@
+import type {
+  ApplicationAuthenticationService,
+  ApplicationAuthorizationService,
+  ApplicationExecutionContext,
+  ApplicationServiceResult,
+} from "@senvo/application";
+import type {
+  CategoryContract,
+  CollectionContract,
+  ProductContract,
+  ProductDetailsContract,
+  ProductVariantContract,
+} from "@senvo/contracts";
+import { AuthorizationError } from "@senvo/domain";
+import { describe, expect, it } from "vitest";
+import {
+  createCatalogApiHandlers,
+  type ApiRequestContext,
+  type CatalogManagementApplication,
+} from "./index.js";
+
+const organizationId = "10000000-0000-4000-8000-000000000001";
+const userId = "10000000-0000-4000-8000-000000000002";
+const requestId = "req_catalog_gateway_1";
+const context: ApiRequestContext = {
+  authenticatedUser: { userId },
+  organizationId,
+  permissions: [{ action: "READ", resource: "CATALOG" }],
+  requestId,
+};
+
+describe("catalog API handlers", () => {
+  it("enforces CATALOG.READ and passes trusted organization context", async () => {
+    const authorization = new FakeAuthorization();
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+
+    const response = await handlers.listProducts.handle({
+      context,
+      input: {},
+    });
+
+    expect(response).toMatchObject({ data: [], requestId, success: true });
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "CATALOG",
+    });
+    expect(catalog.context).toMatchObject({ organizationId, userId });
+  });
+
+  it("rejects organizationId injection before calling the application", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+
+    const response = await handlers.createCategory.handle({
+      context,
+      input: {
+        name: "Shirts",
+        organizationId: "20000000-0000-4000-8000-000000000001",
+        slug: "shirts",
+      },
+    });
+
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.context).toBeUndefined();
+  });
+
+  it("returns a safe forbidden response", async () => {
+    const authorization = new FakeAuthorization();
+    authorization.reject = true;
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog: new FakeCatalog(),
+    });
+
+    const response = await handlers.listCategories.handle({
+      context,
+      input: {},
+    });
+
+    expect(response).toEqual({
+      error: {
+        code: "AUTHORIZATION.FORBIDDEN",
+        message: "You are not allowed to perform this action.",
+      },
+      requestId,
+      success: false,
+    });
+  });
+});
+
+const authenticationService: ApplicationAuthenticationService = {
+  authenticate: (request) =>
+    Promise.resolve({
+      authenticatedUserId: request.userId ?? userId,
+      provider: "PASSWORD",
+      requestId: request.requestId,
+    }),
+};
+
+class FakeAuthorization implements ApplicationAuthorizationService {
+  permission?: { action: string; resource: string };
+  reject = false;
+
+  authorize(
+    _context: ApplicationExecutionContext,
+    permission: { action: string; resource: string },
+  ) {
+    this.permission = permission;
+    if (this.reject) {
+      return Promise.reject(new AuthorizationError("Denied."));
+    }
+    return Promise.resolve();
+  }
+}
+
+class FakeCatalog implements CatalogManagementApplication {
+  context?: ApplicationExecutionContext;
+
+  private success<T>(context: ApplicationExecutionContext, data: T) {
+    this.context = context;
+    return Promise.resolve<ApplicationServiceResult<T>>({ data, ok: true });
+  }
+
+  createCategory(context: ApplicationExecutionContext) {
+    return this.success(context, {} as CategoryContract);
+  }
+  createCollection(context: ApplicationExecutionContext) {
+    return this.success(context, {} as CollectionContract);
+  }
+  createProduct(context: ApplicationExecutionContext) {
+    return this.success(context, {} as ProductContract);
+  }
+  createVariant(context: ApplicationExecutionContext) {
+    return this.success(context, {} as ProductVariantContract);
+  }
+  getProduct(context: ApplicationExecutionContext) {
+    return this.success(context, {} as ProductDetailsContract);
+  }
+  listCategories(context: ApplicationExecutionContext) {
+    return this.success(context, [] as CategoryContract[]);
+  }
+  listCollections(context: ApplicationExecutionContext) {
+    return this.success(context, [] as CollectionContract[]);
+  }
+  listProducts(context: ApplicationExecutionContext) {
+    return this.success(context, [] as ProductContract[]);
+  }
+  listVariants(context: ApplicationExecutionContext) {
+    return this.success(context, [] as ProductVariantContract[]);
+  }
+  updateCategoryStatus(context: ApplicationExecutionContext) {
+    return this.success(context, {} as CategoryContract);
+  }
+}

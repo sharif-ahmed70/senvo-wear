@@ -88,4 +88,25 @@ describe("AdminApiClient", () => {
       status: 502,
     });
   });
+
+  it("uses typed catalog endpoints and preserves standard error handling", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        data: [],
+        requestId: "req_catalog_1",
+        success: true,
+      }),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    await client.listProducts({ requestId: "req_catalog_1" });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://admin.example.test/catalog/products",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
 });

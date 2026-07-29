@@ -31,6 +31,7 @@ type CatalogPrismaClient = Pick<
   | "color"
   | "organization"
   | "product"
+  | "productCollection"
   | "productVariant"
   | "size"
 >;
@@ -74,8 +75,13 @@ export class PrismaCategoryRepository implements CategoryRepository {
     );
   }
 
-  async findById(id: string): Promise<Category | null> {
-    const record = await this.prisma.category.findUnique({ where: { id } });
+  async findById(
+    id: string,
+    organizationId?: string,
+  ): Promise<Category | null> {
+    const record = await this.prisma.category.findFirst({
+      where: { id, organizationId },
+    });
     return record ? mapCategory(record) : null;
   }
 
@@ -87,6 +93,29 @@ export class PrismaCategoryRepository implements CategoryRepository {
       where: { organizationId_slug: { organizationId, slug } },
     });
     return record ? mapCategory(record) : null;
+  }
+
+  async list(filter: { organizationId: string }): Promise<Category[]> {
+    const records = await this.prisma.category.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      take: 100,
+      where: { organizationId: filter.organizationId },
+    });
+    return records.map(mapCategory);
+  }
+
+  async updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Category["status"];
+  }): Promise<Category | null> {
+    const result = await this.prisma.category.updateMany({
+      data: { status: record.status },
+      where: { id: record.id, organizationId: record.organizationId },
+    });
+    return result.count === 0
+      ? null
+      : this.findById(record.id, record.organizationId);
   }
 }
 
@@ -109,6 +138,25 @@ export class PrismaCollectionRepository implements CollectionRepository {
       where: { organizationId_slug: { organizationId, slug } },
     });
     return record ? mapCollection(record) : null;
+  }
+
+  async findById(
+    id: string,
+    organizationId?: string,
+  ): Promise<Collection | null> {
+    const record = await this.prisma.collection.findFirst({
+      where: { id, organizationId },
+    });
+    return record ? mapCollection(record) : null;
+  }
+
+  async list(filter: { organizationId: string }): Promise<Collection[]> {
+    const records = await this.prisma.collection.findMany({
+      orderBy: [{ name: "asc" }],
+      take: 100,
+      where: { organizationId: filter.organizationId },
+    });
+    return records.map(mapCollection);
   }
 }
 
@@ -186,6 +234,16 @@ export class PrismaProductRepository implements ProductRepository {
     );
   }
 
+  async assignCollection(record: {
+    collectionId: string;
+    organizationId: string;
+    productId: string;
+  }): Promise<void> {
+    await createWithConflictMapping(() =>
+      this.prisma.productCollection.create({ data: record }),
+    );
+  }
+
   async findByCode(
     organizationId: string,
     productCode: string,
@@ -196,8 +254,10 @@ export class PrismaProductRepository implements ProductRepository {
     return record ? mapProduct(record) : null;
   }
 
-  async findById(id: string): Promise<Product | null> {
-    const record = await this.prisma.product.findUnique({ where: { id } });
+  async findById(id: string, organizationId?: string): Promise<Product | null> {
+    const record = await this.prisma.product.findFirst({
+      where: { id, organizationId },
+    });
     return record ? mapProduct(record) : null;
   }
 
@@ -209,6 +269,27 @@ export class PrismaProductRepository implements ProductRepository {
       where: { organizationId_slug: { organizationId, slug } },
     });
     return record ? mapProduct(record) : null;
+  }
+
+  async list(filter: { organizationId: string }): Promise<Product[]> {
+    const records = await this.prisma.product.findMany({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      where: { organizationId: filter.organizationId },
+    });
+    return records.map(mapProduct);
+  }
+
+  async listCollectionIds(
+    organizationId: string,
+    productId: string,
+  ): Promise<string[]> {
+    const records = await this.prisma.productCollection.findMany({
+      orderBy: { collectionId: "asc" },
+      select: { collectionId: true },
+      where: { organizationId, productId },
+    });
+    return records.map((record) => record.collectionId);
   }
 }
 
@@ -239,6 +320,17 @@ export class PrismaProductVariantRepository implements ProductVariantRepository 
       where: { colorId, productId, sizeId },
     });
     return count > 0;
+  }
+
+  async listByProduct(
+    organizationId: string,
+    productId: string,
+  ): Promise<ProductVariant[]> {
+    const records = await this.prisma.productVariant.findMany({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      where: { organizationId, productId },
+    });
+    return records.map(mapProductVariant);
   }
 }
 

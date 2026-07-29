@@ -1,4 +1,16 @@
 export { createApplicationServices } from "./composition/create-application-services.js";
+export { CatalogApplicationService } from "./catalog/catalog-application-service.js";
+export type {
+  CatalogApplicationServiceDependencies,
+  CreateCategoryServiceInputContract,
+  CreateCollectionServiceInputContract,
+  CreateProductServiceInputContract,
+  CreateProductVariantServiceInputContract,
+  GetProductServiceInputContract,
+  ListCatalogItemsServiceInputContract,
+  ListProductVariantsServiceInputContract,
+  UpdateCategoryStatusServiceInputContract,
+} from "./catalog/catalog-application-service.js";
 export type {
   ApplicationServices,
   CreateApplicationServicesOptions,

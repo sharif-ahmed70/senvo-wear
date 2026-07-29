@@ -5,7 +5,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import type { ApiHandler } from "@senvo/api";
+import type { ApiHandler, CatalogApiHandlers } from "@senvo/api";
 import {
   createApiFailure,
   type ApiFailure,
@@ -30,12 +30,14 @@ const defaultMaximumBodyBytes = 1_048_576;
 
 type HttpRoute = {
   handler: ApiHandler<unknown>;
-  method: "POST";
-  path: string;
+  input(body: unknown, match: RegExpMatchArray): unknown;
+  method: "GET" | "PATCH" | "POST";
+  path: RegExp;
   successStatus: number;
 };
 
 export type SenvoHttpHandlers = {
+  catalog?: CatalogApiHandlers;
   createSalesOrder: ApiHandler<unknown>;
   postInventoryMovement: ApiHandler<unknown>;
 };
@@ -89,8 +91,8 @@ async function handleRequest(input: {
   applySecurityHeaders(input.response, input.securityHeaders);
 
   try {
-    const route = matchRoute(input.routes, input.request);
-    if (!route) {
+    const matchedRoute = matchRoute(input.routes, input.request);
+    if (!matchedRoute) {
       writeJson(
         input.response,
         routeFailure(input.routes, input.request, requestId),
@@ -101,15 +103,20 @@ async function handleRequest(input: {
       headers: input.request.headers,
       requestId,
     });
-    const body = await readJsonBody(input.request, input.maximumBodyBytes);
-    const apiResponse = await route.handler.handle({
+    const body =
+      input.request.method === "GET"
+        ? {}
+        : await readJsonBody(input.request, input.maximumBodyBytes);
+    const apiResponse = await matchedRoute.route.handler.handle({
       context: requestContext,
-      input: body,
+      input: matchedRoute.route.input(body, matchedRoute.match),
     });
     writeJson(
       input.response,
       apiResponse,
-      apiResponse.success ? route.successStatus : statusForFailure(apiResponse),
+      apiResponse.success
+        ? matchedRoute.route.successStatus
+        : statusForFailure(apiResponse),
     );
   } catch (error) {
     writeAdapterFailure(input.response, error, requestId);
@@ -117,33 +124,102 @@ async function handleRequest(input: {
 }
 
 function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
-  return [
+  const routes: HttpRoute[] = [
     {
       handler: handlers.createSalesOrder,
+      input: bodyInput,
       method: "POST",
-      path: "/sales-orders",
+      path: /^\/sales-orders$/u,
       successStatus: 201,
     },
     {
       handler: handlers.postInventoryMovement,
+      input: bodyInput,
       method: "POST",
-      path: "/inventory/movements",
+      path: /^\/inventory\/movements$/u,
       successStatus: 200,
     },
   ];
+  if (handlers.catalog) {
+    routes.push(
+      catalogRoute(
+        "GET",
+        /^\/catalog\/categories$/u,
+        handlers.catalog.listCategories,
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/categories$/u,
+        handlers.catalog.createCategory,
+        201,
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/categories\/(?<id>[0-9a-f-]+)\/status$/iu,
+        handlers.catalog.updateCategoryStatus,
+        200,
+        "categoryId",
+      ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/collections$/u,
+        handlers.catalog.listCollections,
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/collections$/u,
+        handlers.catalog.createCollection,
+        201,
+      ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products$/u,
+        handlers.catalog.listProducts,
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/products$/u,
+        handlers.catalog.createProduct,
+        201,
+      ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.getProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/variants$/iu,
+        handlers.catalog.listVariants,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/variants$/iu,
+        handlers.catalog.createVariant,
+        201,
+        "productId",
+      ),
+    );
+  }
+  return routes;
 }
 
 function matchRoute(
   routes: readonly HttpRoute[],
   request: IncomingMessage,
-): HttpRoute | null {
-  return (
-    routes.find(
-      (route) =>
-        route.method === request.method &&
-        route.path === requestUrlPath(request),
-    ) ?? null
-  );
+): { match: RegExpMatchArray; route: HttpRoute } | null {
+  const path = requestUrlPath(request);
+  for (const route of routes) {
+    const match = path.match(route.path);
+    if (route.method === request.method && match) {
+      return { match, route };
+    }
+  }
+  return null;
 }
 
 function routeFailure(
@@ -151,8 +227,8 @@ function routeFailure(
   request: IncomingMessage,
   requestId: string,
 ): { response: ApiFailure; status: number } {
-  const pathExists = routes.some(
-    (route) => route.path === requestUrlPath(request),
+  const pathExists = routes.some((route) =>
+    route.path.test(requestUrlPath(request)),
   );
   return {
     response: createApiFailure({
@@ -164,6 +240,38 @@ function routeFailure(
     }),
     status: pathExists ? 405 : 404,
   };
+}
+
+function catalogRoute(
+  method: HttpRoute["method"],
+  path: RegExp,
+  handler: ApiHandler<unknown>,
+  successStatus = 200,
+  pathIdField?: "categoryId" | "productId",
+): HttpRoute {
+  return {
+    handler,
+    input: (body, match) =>
+      pathIdField
+        ? {
+            ...(isObject(body) ? body : {}),
+            [pathIdField]: match.groups?.id,
+          }
+        : method === "GET"
+          ? {}
+          : body,
+    method,
+    path,
+    successStatus,
+  };
+}
+
+function bodyInput(body: unknown): unknown {
+  return body;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requestUrlPath(request: IncomingMessage): string {

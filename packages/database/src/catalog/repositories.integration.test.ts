@@ -463,6 +463,38 @@ describeWithDatabase("Prisma catalog repositories", () => {
       "sizes_sort_order_non_negative_check",
     ]);
   });
+
+  it("keeps admin catalog reads and updates organization scoped", async () => {
+    const first = await createBaseCatalog(prisma, "A");
+    const second = await createBaseCatalog(prisma, "B");
+
+    await expect(
+      repositories.products.findById(first.product.id, second.organization.id),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.categories.list({
+        organizationId: first.organization.id,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: first.category.id,
+        organizationId: first.organization.id,
+      }),
+    ]);
+    await expect(
+      repositories.categories.updateStatus({
+        id: first.category.id,
+        organizationId: second.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.categories.findById(
+        first.category.id,
+        first.organization.id,
+      ),
+    ).resolves.toMatchObject({ status: "ACTIVE" });
+  });
 });
 
 async function createBaseCatalog(

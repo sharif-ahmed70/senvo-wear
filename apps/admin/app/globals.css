@@ -542,6 +542,296 @@ a {
   width: 100%;
 }
 
+.catalog-page-header {
+  align-items: center;
+}
+
+.catalog-primary-button,
+.catalog-secondary-button,
+.catalog-icon-button,
+.catalog-text-button {
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 7px;
+  justify-content: center;
+}
+
+.catalog-primary-button {
+  background: var(--admin-accent);
+  border: 1px solid var(--admin-accent);
+  color: #fff;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.catalog-secondary-button {
+  background: #fff;
+  border: 1px solid #cbd4ce;
+  color: #35443d;
+  min-height: 36px;
+  padding: 0 13px;
+}
+
+.catalog-icon-button {
+  background: #fff;
+  border: 1px solid #d6ddd8;
+  color: #52615a;
+  height: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.catalog-text-button {
+  background: transparent;
+  border: 0;
+  color: #25624f;
+  padding: 4px 0;
+}
+
+.catalog-primary-button:focus-visible,
+.catalog-secondary-button:focus-visible,
+.catalog-icon-button:focus-visible,
+.catalog-text-button:focus-visible,
+.catalog-form :is(input, select, textarea):focus-visible {
+  outline: 3px solid #9bc4b4;
+  outline-offset: 2px;
+}
+
+.catalog-primary-button:disabled,
+.catalog-icon-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.catalog-toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--admin-border);
+  display: flex;
+  justify-content: space-between;
+  min-height: 66px;
+  padding: 12px 18px;
+}
+
+.catalog-toolbar h2 {
+  font-size: 0.94rem;
+  margin: 0;
+}
+
+.catalog-toolbar span {
+  color: var(--admin-muted);
+  display: block;
+  font-size: 0.72rem;
+  margin-top: 3px;
+}
+
+.catalog-table-wrap {
+  overflow-x: auto;
+}
+
+.catalog-table {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  min-width: 680px;
+  width: 100%;
+}
+
+.catalog-table th,
+.catalog-table td {
+  border-bottom: 1px solid #e7ebe8;
+  padding: 12px 18px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.catalog-table th {
+  background: #f8f9f7;
+  color: #66716b;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.catalog-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.catalog-table td {
+  color: #5d6963;
+}
+
+.catalog-table td strong {
+  color: var(--admin-ink);
+  font-size: 0.8rem;
+}
+
+.catalog-badge {
+  border: 1px solid #d7ded9;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 750;
+  padding: 3px 7px;
+}
+
+.catalog-badge--active {
+  background: #e8f3ed;
+  border-color: #c9dfd3;
+  color: #2d674f;
+}
+
+.catalog-badge--inactive,
+.catalog-badge--archived {
+  background: #f0f1ef;
+  color: #66716b;
+}
+
+.catalog-badge--draft {
+  background: #fff4df;
+  border-color: #edd9b0;
+  color: #835617;
+}
+
+.catalog-inline-state {
+  align-items: center;
+  color: #647069;
+  display: flex;
+  gap: 14px;
+  min-height: 130px;
+  padding: 22px;
+}
+
+.catalog-inline-state > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-inline-state h3 {
+  color: #34423b;
+  font-size: 0.86rem;
+  margin: 0 0 4px;
+}
+
+.catalog-inline-state p {
+  font-size: 0.76rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog-list-loading {
+  display: grid;
+}
+
+.catalog-list-loading span {
+  animation: admin-pulse 1.4s ease-in-out infinite;
+  border-bottom: 1px solid #e7ebe8;
+  height: 48px;
+  position: relative;
+}
+
+.catalog-list-loading span::before {
+  background: #e4e8e5;
+  border-radius: 4px;
+  content: "";
+  height: 10px;
+  left: 18px;
+  position: absolute;
+  top: 19px;
+  width: min(220px, 42%);
+}
+
+.catalog-form-section .admin-section__heading p {
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+  margin: 4px 0 0;
+}
+
+.catalog-form {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 20px;
+}
+
+.catalog-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.catalog-form label > span {
+  color: #46534d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.catalog-form :is(input, select, textarea) {
+  background: #fff;
+  border: 1px solid #cfd7d2;
+  border-radius: 5px;
+  color: var(--admin-ink);
+  font: inherit;
+  font-size: 0.8rem;
+  min-height: 38px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.catalog-form textarea {
+  resize: vertical;
+}
+
+.catalog-form__wide,
+.catalog-form__divider,
+.catalog-form__error,
+.catalog-form__actions {
+  grid-column: 1 / -1;
+}
+
+.catalog-form__divider {
+  align-items: center;
+  border-top: 1px solid #e2e7e3;
+  display: flex;
+  gap: 8px;
+  padding-top: 16px;
+}
+
+.catalog-form__divider strong {
+  font-size: 0.76rem;
+}
+
+.catalog-form__divider span {
+  color: var(--admin-muted);
+  font-size: 0.68rem;
+}
+
+.catalog-form__error {
+  align-items: center;
+  color: var(--admin-danger);
+  display: flex;
+  font-size: 0.74rem;
+  gap: 7px;
+  margin: 0;
+}
+
+.catalog-form__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.catalog-spin {
+  animation: catalog-spin 0.9s linear infinite;
+}
+
+@keyframes catalog-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes admin-pulse {
   50% {
     opacity: 0.55;
@@ -549,7 +839,9 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .admin-skeleton {
+  .admin-skeleton,
+  .catalog-list-loading span,
+  .catalog-spin {
     animation: none;
   }
 }
@@ -620,12 +912,44 @@ a {
   }
 
   .admin-content {
-    padding-inline: 14px;
+    margin: 0 14px;
+    padding-inline: 0;
+    width: calc(100vw - 28px);
   }
 
   .admin-page-header {
     align-items: flex-start;
     display: block;
+  }
+
+  .catalog-page-header .catalog-primary-button {
+    margin-top: 16px;
+  }
+
+  .catalog-form {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-toolbar {
+    padding-right: 62px;
+    position: relative;
+  }
+
+  .catalog-toolbar .catalog-icon-button {
+    position: absolute;
+    right: 18px;
+    top: 16px;
+  }
+
+  .catalog-inline-state {
+    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .catalog-inline-state .catalog-secondary-button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .admin-module-grid {

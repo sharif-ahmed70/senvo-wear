@@ -531,6 +531,39 @@ export const createProductVariantInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+export const listCatalogItemsServiceInputSchema = z.object({}).strict();
+
+export const createCategoryServiceInputSchema = createCategoryInputSchema
+  .omit({ organizationId: true })
+  .strict();
+
+export const updateCategoryStatusServiceInputSchema = z
+  .object({
+    categoryId: idSchema,
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+  })
+  .strict();
+
+export const createCollectionServiceInputSchema = createCollectionInputSchema
+  .omit({ organizationId: true })
+  .strict();
+
+export const createProductServiceInputSchema = createProductInputSchema
+  .omit({ organizationId: true })
+  .extend({ collectionId: idSchema.optional() })
+  .strict();
+
+export const getProductServiceInputSchema = z
+  .object({ productId: idSchema })
+  .strict();
+
+export const createProductVariantServiceInputSchema =
+  createProductVariantInputSchema.omit({ organizationId: true }).strict();
+
+export const listProductVariantsServiceInputSchema = z
+  .object({ productId: idSchema })
+  .strict();
+
 export const createBranchInputSchema = z.object({
   addressLine1: optionalTextSchema(240),
   addressLine2: optionalTextSchema(240),
@@ -1279,6 +1312,30 @@ export type CreateProductInputContract = z.infer<
 export type CreateProductVariantInputContract = z.infer<
   typeof createProductVariantInputSchema
 >;
+export type ListCatalogItemsServiceInputContract = z.infer<
+  typeof listCatalogItemsServiceInputSchema
+>;
+export type CreateCategoryServiceInputContract = z.infer<
+  typeof createCategoryServiceInputSchema
+>;
+export type UpdateCategoryStatusServiceInputContract = z.infer<
+  typeof updateCategoryStatusServiceInputSchema
+>;
+export type CreateCollectionServiceInputContract = z.infer<
+  typeof createCollectionServiceInputSchema
+>;
+export type CreateProductServiceInputContract = z.infer<
+  typeof createProductServiceInputSchema
+>;
+export type GetProductServiceInputContract = z.infer<
+  typeof getProductServiceInputSchema
+>;
+export type CreateProductVariantServiceInputContract = z.infer<
+  typeof createProductVariantServiceInputSchema
+>;
+export type ListProductVariantsServiceInputContract = z.infer<
+  typeof listProductVariantsServiceInputSchema
+>;
 export type CreateBranchInputContract = z.infer<typeof createBranchInputSchema>;
 export type CreateStockLocationInputContract = z.infer<
   typeof createStockLocationInputSchema
@@ -1530,6 +1587,12 @@ export type ProductVariantContract = CatalogRecordContract & {
   status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
 };
 
+export type ProductDetailsContract = {
+  collectionIds: string[];
+  product: ProductContract;
+  variants: ProductVariantContract[];
+};
+
 export type BranchContract = CatalogRecordContract & {
   addressLine1: string | null;
   addressLine2: string | null;
@@ -1707,6 +1770,71 @@ export type SalesOrderServiceContract = z.infer<
 export type SalesOrderServicePageContract = z.infer<
   typeof salesOrderServicePageContractSchema
 >;
+
+export const categoryContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    description: z.string().nullable(),
+    id: idSchema,
+    name: z.string(),
+    organizationId: idSchema,
+    parentId: idSchema.nullable(),
+    slug: z.string(),
+    sortOrder: z.number().int().nonnegative(),
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const collectionContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    description: z.string().nullable(),
+    id: idSchema,
+    name: z.string(),
+    organizationId: idSchema,
+    slug: z.string(),
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const productContractSchema = z
+  .object({
+    categoryId: idSchema,
+    createdAt: isoTimestampSchema,
+    description: z.string().nullable(),
+    id: idSchema,
+    name: z.string(),
+    organizationId: idSchema,
+    productCode: z.string(),
+    slug: z.string(),
+    status: z.enum(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const productVariantContractSchema = z
+  .object({
+    colorId: idSchema,
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    organizationId: idSchema,
+    productId: idSchema,
+    sizeId: idSchema,
+    sku: z.string(),
+    status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const productDetailsContractSchema = z
+  .object({
+    collectionIds: z.array(idSchema),
+    product: productContractSchema,
+    variants: z.array(productVariantContractSchema),
+  })
+  .strict();
 
 export const branchContractSchema = z.object({
   addressLine1: z.string().nullable(),

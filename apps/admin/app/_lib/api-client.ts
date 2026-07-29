@@ -2,7 +2,17 @@ import type {
   ApiErrorCode,
   ApiFailure,
   ApiResponse,
+  CategoryContract,
+  CollectionContract,
+  CreateCategoryServiceInputContract,
+  CreateCollectionServiceInputContract,
+  CreateProductServiceInputContract,
+  CreateProductVariantServiceInputContract,
+  ProductContract,
+  ProductDetailsContract,
+  ProductVariantContract,
   PublicErrorDetails,
+  UpdateCategoryStatusServiceInputContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -126,6 +136,85 @@ export class AdminApiClient {
       });
     }
     return { data: payload.data, requestId: payload.requestId };
+  }
+
+  listCategories(request?: AdminApiRequest) {
+    return this.request<CategoryContract[]>("/catalog/categories", request);
+  }
+
+  createCategory(
+    input: CreateCategoryServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CategoryContract>("/catalog/categories", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateCategoryStatus(
+    input: UpdateCategoryStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CategoryContract>(
+      `/catalog/categories/${input.categoryId}/status`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
+  listCollections(request?: AdminApiRequest) {
+    return this.request<CollectionContract[]>("/catalog/collections", request);
+  }
+
+  createCollection(
+    input: CreateCollectionServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CollectionContract>("/catalog/collections", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  listProducts(request?: AdminApiRequest) {
+    return this.request<ProductContract[]>("/catalog/products", request);
+  }
+
+  createProduct(
+    input: CreateProductServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ProductContract>("/catalog/products", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  getProduct(productId: string, request?: AdminApiRequest) {
+    return this.request<ProductDetailsContract>(
+      `/catalog/products/${productId}`,
+      request,
+    );
+  }
+
+  listVariants(productId: string, request?: AdminApiRequest) {
+    return this.request<ProductVariantContract[]>(
+      `/catalog/products/${productId}/variants`,
+      request,
+    );
+  }
+
+  createVariant(
+    input: CreateProductVariantServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ProductVariantContract>(
+      `/catalog/products/${input.productId}/variants`,
+      { ...request, body: input, method: "POST" },
+    );
   }
 }
 

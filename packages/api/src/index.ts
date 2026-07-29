@@ -6,8 +6,11 @@ export {
   type StrictInputSchema,
 } from "./api-handler.js";
 export {
+  createCatalogApiHandlers,
   createPostInventoryMovementApiHandler,
   createSalesOrderApiHandler,
+  type CatalogApiHandlers,
+  type CatalogManagementApplication,
   type InventoryMovementPostingApplication,
   type SalesOrderCreationApplication,
 } from "./operation-handlers.js";

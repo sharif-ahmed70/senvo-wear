@@ -1,6 +1,13 @@
 import type {
+  CatalogCategoryManagementRepository,
+  CatalogCollectionManagementRepository,
+  CatalogProductManagementRepository,
+  CatalogProductVariantManagementRepository,
+  ColorRepository,
   InventoryMovementRepository,
+  OrganizationRepository,
   SalesOrderRepository,
+  SizeRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
@@ -10,10 +17,17 @@ describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
       inventoryMovementRepository: fakeInventoryMovementRepository,
+      categoryRepository: fakeCategoryRepository,
+      collectionRepository: fakeCollectionRepository,
+      colorRepository: fakeColorRepository,
       logger: nullLogger,
       requestIdGenerator: () => "generated_request_1",
+      organizationRepository: fakeOrganizationRepository,
+      productRepository: fakeProductRepository,
+      productVariantRepository: fakeProductVariantRepository,
       salesOrderRepository: fakeSalesOrderRepository,
       transactionManager: fakeTransactionManager,
+      sizeRepository: fakeSizeRepository,
     });
 
     const result = await services.sales.getOrderById(
@@ -41,6 +55,58 @@ const fakeInventoryMovementRepository: InventoryMovementRepository = {
   post: () => Promise.reject(unreachableError()),
   replaceDraftLines: () => Promise.reject(unreachableError()),
   reversePostedMovement: () => Promise.reject(unreachableError()),
+};
+
+const fakeCategoryRepository: CatalogCategoryManagementRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findById: () => Promise.resolve(null),
+  findBySlug: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  updateStatus: () => Promise.resolve(null),
+};
+
+const fakeCollectionRepository: CatalogCollectionManagementRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findById: () => Promise.resolve(null),
+  findBySlug: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+};
+
+const fakeColorRepository: ColorRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  findByNormalizedName: () => Promise.resolve(null),
+};
+
+const fakeOrganizationRepository: OrganizationRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+};
+
+const fakeProductRepository: CatalogProductManagementRepository = {
+  assignCollection: () => Promise.reject(unreachableError()),
+  create: () => Promise.reject(unreachableError()),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  findBySlug: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  listCollectionIds: () => Promise.resolve([]),
+};
+
+const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
+  {
+    create: () => Promise.reject(unreachableError()),
+    existsBySku: () => Promise.resolve(false),
+    existsVariantCombination: () => Promise.resolve(false),
+    listByProduct: () => Promise.resolve([]),
+  };
+
+const fakeSizeRepository: SizeRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
 };
 
 const fakeTransactionManager: ApplicationTransactionManager = {

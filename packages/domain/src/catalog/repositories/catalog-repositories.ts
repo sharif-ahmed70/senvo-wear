@@ -55,6 +55,10 @@ export type CreateProductVariantRecord = Pick<
   "colorId" | "organizationId" | "productId" | "sizeId" | "sku" | "status"
 >;
 
+export type CatalogListFilter = {
+  organizationId: string;
+};
+
 export type OrganizationRepository = {
   create(record: CreateOrganizationRecord): Promise<Organization>;
   findByCode(code: string): Promise<Organization | null>;
@@ -107,3 +111,40 @@ export type ProductVariantRepository = {
     sizeId: string,
   ): Promise<boolean>;
 };
+
+export type CatalogCategoryManagementRepository = CategoryRepository & {
+  findById(id: string, organizationId?: string): Promise<Category | null>;
+  list(filter: CatalogListFilter): Promise<Category[]>;
+  updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Category["status"];
+  }): Promise<Category | null>;
+};
+
+export type CatalogCollectionManagementRepository = CollectionRepository & {
+  findById(id: string, organizationId?: string): Promise<Collection | null>;
+  list(filter: CatalogListFilter): Promise<Collection[]>;
+};
+
+export type CatalogProductManagementRepository = ProductRepository & {
+  assignCollection(record: {
+    collectionId: string;
+    organizationId: string;
+    productId: string;
+  }): Promise<void>;
+  findById(id: string, organizationId?: string): Promise<Product | null>;
+  list(filter: CatalogListFilter): Promise<Product[]>;
+  listCollectionIds(
+    organizationId: string,
+    productId: string,
+  ): Promise<string[]>;
+};
+
+export type CatalogProductVariantManagementRepository =
+  ProductVariantRepository & {
+    listByProduct(
+      organizationId: string,
+      productId: string,
+    ): Promise<ProductVariant[]>;
+  };
