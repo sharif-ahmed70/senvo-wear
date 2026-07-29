@@ -90,6 +90,31 @@ const forbiddenByPackage = new Map([
     ],
   ],
   [
+    "packages/http",
+    [
+      {
+        pattern: /^@senvo\/database($|\/)/,
+        reason: "HTTP adapter must not depend on database infrastructure",
+      },
+      {
+        pattern: /^@senvo\/ui($|\/)/,
+        reason: "HTTP adapter must not depend on UI",
+      },
+      {
+        pattern: /^@prisma\//,
+        reason: "HTTP adapter must not depend on Prisma",
+      },
+      {
+        pattern: /^next($|\/)/,
+        reason: "Node HTTP adapter must not depend on Next.js",
+      },
+      {
+        pattern: /^react($|\/)/,
+        reason: "HTTP adapter must not depend on React",
+      },
+    ],
+  ],
+  [
     "packages/database",
     [
       {
