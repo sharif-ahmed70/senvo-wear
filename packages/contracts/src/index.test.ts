@@ -20,6 +20,7 @@ import {
   createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
   createColorInputSchema,
+  createColorServiceInputSchema,
   createPosCounterInputSchema,
   createProductVariantInputSchema,
   createInventoryReservationInputSchema,
@@ -142,6 +143,29 @@ describe("API contracts", () => {
         productId: "11111111-1111-4111-8111-111111111111",
         sizeId: "11111111-1111-4111-8111-111111111111",
         sku: "bad sku",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a valid color hex value at the client service boundary", () => {
+    expect(
+      createColorServiceInputSchema.safeParse({
+        code: "BLACK",
+        hexValue: "#000000",
+        name: "Black",
+      }).success,
+    ).toBe(true);
+    expect(
+      createColorServiceInputSchema.safeParse({
+        code: "BLACK",
+        name: "Black",
+      }).success,
+    ).toBe(false);
+    expect(
+      createColorServiceInputSchema.safeParse({
+        code: "BLACK",
+        hexValue: null,
+        name: "Black",
       }).success,
     ).toBe(false);
   });

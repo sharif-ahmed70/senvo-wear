@@ -122,6 +122,101 @@ describe("catalog API handlers", () => {
     expect(catalog.context).toBeUndefined();
   });
 
+  it("requires color hex values before calling the application", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+
+    const response = await handlers.createColor.handle({
+      context,
+      input: { code: "navy", name: "Navy" },
+    });
+
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.context).toBeUndefined();
+  });
+
+  it("accepts valid color and size creation inputs", async () => {
+    const authorization = new FakeAuthorization();
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+
+    const colorResponse = await handlers.createColor.handle({
+      context,
+      input: { code: "navy", hexValue: "#000080", name: "Navy" },
+    });
+    const sizeResponse = await handlers.createSize.handle({
+      context,
+      input: { code: "xl", name: "Extra Large", sortOrder: 40 },
+    });
+
+    expect(colorResponse.success).toBe(true);
+    expect(sizeResponse.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "CREATE",
+      resource: "CATALOG",
+    });
+    expect(catalog.payloads).toEqual([
+      { code: "navy", hexValue: "#000080", name: "Navy" },
+      { code: "xl", name: "Extra Large", sortOrder: 40 },
+    ]);
+    expect(catalog.context).toMatchObject({ organizationId, userId });
+  });
+
+  it("rejects invalid size sort order before calling the application", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+
+    const response = await handlers.createSize.handle({
+      context,
+      input: { code: "xl", name: "Extra Large", sortOrder: -1 },
+    });
+
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.context).toBeUndefined();
+  });
+
+  it("maps duplicate attribute conflicts to a safe API failure", async () => {
+    const catalog = new FakeCatalog();
+    catalog.rejectColorAsDuplicate = true;
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+
+    const response = await handlers.createColor.handle({
+      context,
+      input: { code: "BLACK", hexValue: "#000000", name: "Black" },
+    });
+
+    expect(response).toEqual({
+      error: {
+        code: "CONFLICT.STATE",
+        message: "Color code already exists.",
+      },
+      requestId,
+      success: false,
+    });
+  });
+
   it("uses CATALOG.UPDATE for organization-scoped size status changes", async () => {
     const authorization = new FakeAuthorization();
     const catalog = new FakeCatalog();
@@ -175,6 +270,8 @@ class FakeAuthorization implements ApplicationAuthorizationService {
 
 class FakeCatalog implements CatalogManagementApplication {
   context?: ApplicationExecutionContext;
+  payloads: unknown[] = [];
+  rejectColorAsDuplicate = false;
 
   private success<T>(context: ApplicationExecutionContext, data: T) {
     this.context = context;
@@ -187,10 +284,24 @@ class FakeCatalog implements CatalogManagementApplication {
   createCollection(context: ApplicationExecutionContext) {
     return this.success(context, {} as CollectionContract);
   }
-  createColor(context: ApplicationExecutionContext) {
+  createColor(context: ApplicationExecutionContext, payload: unknown) {
+    this.context = context;
+    this.payloads.push(payload);
+    if (this.rejectColorAsDuplicate) {
+      return Promise.resolve<ApplicationServiceResult<ColorContract>>({
+        error: {
+          code: "CONFLICT",
+          message: "Color code already exists.",
+          requestId,
+          retryable: false,
+        },
+        ok: false,
+      });
+    }
     return this.success(context, {} as ColorContract);
   }
-  createSize(context: ApplicationExecutionContext) {
+  createSize(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
     return this.success(context, {} as SizeContract);
   }
   createProduct(context: ApplicationExecutionContext) {

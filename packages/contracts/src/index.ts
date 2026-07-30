@@ -147,12 +147,11 @@ const slugSchema = z
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
     "Slugs must be lowercase, URL-safe, and hyphen-separated.",
   );
-const hexValueSchema = z
+const requiredHexValueSchema = z
   .string()
   .trim()
-  .regex(/^#[0-9A-Fa-f]{6}$/, "Hex values must use #RRGGBB format.")
-  .nullable()
-  .optional();
+  .regex(/^#[0-9A-Fa-f]{6}$/, "Hex values must use #RRGGBB format.");
+const hexValueSchema = requiredHexValueSchema.nullable().optional();
 const optionalTextSchema = (maxLength: number) =>
   z.string().trim().min(1).max(maxLength).nullable().optional();
 const countryCodeSchema = z
@@ -549,7 +548,8 @@ export const createCollectionServiceInputSchema = createCollectionInputSchema
   .strict();
 
 export const createColorServiceInputSchema = createColorInputSchema
-  .omit({ organizationId: true })
+  .omit({ hexValue: true, organizationId: true })
+  .extend({ hexValue: requiredHexValueSchema })
   .strict();
 
 export const updateColorStatusServiceInputSchema = z
