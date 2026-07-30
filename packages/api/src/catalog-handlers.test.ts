@@ -7,9 +7,11 @@ import type {
 import type {
   CategoryContract,
   CollectionContract,
+  ColorContract,
   ProductContract,
   ProductDetailsContract,
   ProductVariantContract,
+  SizeContract,
 } from "@senvo/contracts";
 import { AuthorizationError } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
@@ -99,6 +101,51 @@ describe("catalog API handlers", () => {
       success: false,
     });
   });
+
+  it("validates color hex values before calling the application", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+
+    const response = await handlers.createColor.handle({
+      context,
+      input: { code: "navy", hexValue: "navy", name: "Navy" },
+    });
+
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.context).toBeUndefined();
+  });
+
+  it("uses CATALOG.UPDATE for organization-scoped size status changes", async () => {
+    const authorization = new FakeAuthorization();
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+
+    const response = await handlers.updateSizeStatus.handle({
+      context,
+      input: {
+        sizeId: "30000000-0000-4000-8000-000000000001",
+        status: "INACTIVE",
+      },
+    });
+
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "CATALOG",
+    });
+    expect(catalog.context).toMatchObject({ organizationId, userId });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -140,6 +187,12 @@ class FakeCatalog implements CatalogManagementApplication {
   createCollection(context: ApplicationExecutionContext) {
     return this.success(context, {} as CollectionContract);
   }
+  createColor(context: ApplicationExecutionContext) {
+    return this.success(context, {} as ColorContract);
+  }
+  createSize(context: ApplicationExecutionContext) {
+    return this.success(context, {} as SizeContract);
+  }
   createProduct(context: ApplicationExecutionContext) {
     return this.success(context, {} as ProductContract);
   }
@@ -155,13 +208,25 @@ class FakeCatalog implements CatalogManagementApplication {
   listCollections(context: ApplicationExecutionContext) {
     return this.success(context, [] as CollectionContract[]);
   }
+  listColors(context: ApplicationExecutionContext) {
+    return this.success(context, [] as ColorContract[]);
+  }
   listProducts(context: ApplicationExecutionContext) {
     return this.success(context, [] as ProductContract[]);
+  }
+  listSizes(context: ApplicationExecutionContext) {
+    return this.success(context, [] as SizeContract[]);
   }
   listVariants(context: ApplicationExecutionContext) {
     return this.success(context, [] as ProductVariantContract[]);
   }
   updateCategoryStatus(context: ApplicationExecutionContext) {
     return this.success(context, {} as CategoryContract);
+  }
+  updateColorStatus(context: ApplicationExecutionContext) {
+    return this.success(context, {} as ColorContract);
+  }
+  updateSizeStatus(context: ApplicationExecutionContext) {
+    return this.success(context, {} as SizeContract);
   }
 }

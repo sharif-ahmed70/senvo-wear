@@ -4,15 +4,21 @@ import type {
   ApiResponse,
   CategoryContract,
   CollectionContract,
+  ColorContract,
   CreateCategoryServiceInputContract,
   CreateCollectionServiceInputContract,
+  CreateColorServiceInputContract,
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
+  CreateSizeServiceInputContract,
   ProductContract,
   ProductDetailsContract,
   ProductVariantContract,
   PublicErrorDetails,
+  SizeContract,
   UpdateCategoryStatusServiceInputContract,
+  UpdateColorStatusServiceInputContract,
+  UpdateSizeStatusServiceInputContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -175,6 +181,54 @@ export class AdminApiClient {
       ...request,
       body: input,
       method: "POST",
+    });
+  }
+
+  listColors(request?: AdminApiRequest) {
+    return this.request<ColorContract[]>("/catalog/colors", request);
+  }
+
+  createColor(
+    input: CreateColorServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ColorContract>("/catalog/colors", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateColorStatus(
+    input: UpdateColorStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ColorContract>(
+      `/catalog/colors/${input.colorId}/status`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
+  listSizes(request?: AdminApiRequest) {
+    return this.request<SizeContract[]>("/catalog/sizes", request);
+  }
+
+  createSize(input: CreateSizeServiceInputContract, request?: AdminApiRequest) {
+    return this.request<SizeContract>("/catalog/sizes", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateSizeStatus(
+    input: UpdateSizeStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SizeContract>(`/catalog/sizes/${input.sizeId}/status`, {
+      ...request,
+      body: input,
+      method: "PATCH",
     });
   }
 

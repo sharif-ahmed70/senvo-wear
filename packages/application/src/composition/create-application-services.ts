@@ -15,13 +15,13 @@ import {
 import type {
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
+  CatalogColorManagementRepository,
   CatalogProductManagementRepository,
   CatalogProductVariantManagementRepository,
-  ColorRepository,
+  CatalogSizeManagementRepository,
   InventoryMovementRepository,
   OrganizationRepository,
   SalesOrderRepository,
-  SizeRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
@@ -40,7 +40,7 @@ export type CreateApplicationServicesOptions = {
   categoryRepository?: CatalogCategoryManagementRepository;
   clock?: Clock;
   collectionRepository?: CatalogCollectionManagementRepository;
-  colorRepository?: ColorRepository;
+  colorRepository?: CatalogColorManagementRepository;
   inventoryMovementRepository?: InventoryMovementRepository;
   logger?: Logger;
   organizationRepository?: OrganizationRepository;
@@ -50,7 +50,7 @@ export type CreateApplicationServicesOptions = {
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
   transactionManager?: ApplicationTransactionManager;
-  sizeRepository?: SizeRepository;
+  sizeRepository?: CatalogSizeManagementRepository;
   useSharedPrismaClient?: boolean;
 };
 

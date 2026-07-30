@@ -127,6 +127,26 @@ export type CatalogCollectionManagementRepository = CollectionRepository & {
   list(filter: CatalogListFilter): Promise<Collection[]>;
 };
 
+export type CatalogColorManagementRepository = ColorRepository & {
+  findById(id: string, organizationId?: string): Promise<Color | null>;
+  list(filter: CatalogListFilter): Promise<Color[]>;
+  updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Color["status"];
+  }): Promise<Color | null>;
+};
+
+export type CatalogSizeManagementRepository = SizeRepository & {
+  findById(id: string, organizationId?: string): Promise<Size | null>;
+  list(filter: CatalogListFilter): Promise<Size[]>;
+  updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Size["status"];
+  }): Promise<Size | null>;
+};
+
 export type CatalogProductManagementRepository = ProductRepository & {
   assignCollection(record: {
     collectionId: string;

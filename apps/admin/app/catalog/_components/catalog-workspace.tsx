@@ -3,7 +3,9 @@
 import type {
   CategoryContract,
   CollectionContract,
+  ColorContract,
   ProductContract,
+  SizeContract,
 } from "@senvo/contracts";
 import {
   AlertCircle,
@@ -18,8 +20,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 
-type CatalogKind = "categories" | "collections" | "products";
-type CatalogRecord = CategoryContract | CollectionContract | ProductContract;
+type CatalogKind =
+  "categories" | "collections" | "colors" | "products" | "sizes";
+type CatalogRecord =
+  | CategoryContract
+  | CollectionContract
+  | ColorContract
+  | ProductContract
+  | SizeContract;
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
@@ -35,6 +43,8 @@ export function CatalogWorkspace({
   const [records, setRecords] = useState<CatalogRecord[]>([]);
   const [categories, setCategories] = useState<CategoryContract[]>([]);
   const [collections, setCollections] = useState<CollectionContract[]>([]);
+  const [colors, setColors] = useState<ColorContract[]>([]);
+  const [sizes, setSizes] = useState<SizeContract[]>([]);
   const [state, setState] = useState<"error" | "loading" | "ready">("loading");
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -46,20 +56,22 @@ export function CatalogWorkspace({
     setState("loading");
     setError("");
     try {
-      const result =
-        kind === "categories"
-          ? await client.listCategories()
-          : kind === "collections"
-            ? await client.listCollections()
-            : await client.listProducts();
+      const result = await listRecords(kind);
       setRecords(result.data);
       if (kind === "products") {
-        const [categoryResult, collectionResult] = await Promise.all([
-          client.listCategories(),
-          client.listCollections(),
-        ]);
+        const [categoryResult, collectionResult, colorResult, sizeResult] =
+          await Promise.all([
+            client.listCategories(),
+            client.listCollections(),
+            client.listColors(),
+            client.listSizes(),
+          ]);
         setCategories(categoryResult.data);
         setCollections(collectionResult.data);
+        setColors(
+          colorResult.data.filter((color) => color.status === "ACTIVE"),
+        );
+        setSizes(sizeResult.data.filter((size) => size.status === "ACTIVE"));
       }
       setState("ready");
     } catch (caught) {
@@ -98,6 +110,7 @@ export function CatalogWorkspace({
         <CatalogForm
           categories={categories}
           collections={collections}
+          colors={colors}
           kind={kind}
           onCancel={() => setFormOpen(false)}
           onSaved={(record) => {
@@ -106,6 +119,7 @@ export function CatalogWorkspace({
           }}
           saving={saving}
           setSaving={setSaving}
+          sizes={sizes}
         />
       ) : null}
 
@@ -148,19 +162,23 @@ export function CatalogWorkspace({
 function CatalogForm({
   categories,
   collections,
+  colors,
   kind,
   onCancel,
   onSaved,
   saving,
   setSaving,
+  sizes,
 }: {
   categories: CategoryContract[];
   collections: CollectionContract[];
+  colors: ColorContract[];
   kind: CatalogKind;
   onCancel: () => void;
   onSaved: (record: CatalogRecord) => void;
   saving: boolean;
   setSaving: (value: boolean) => void;
+  sizes: SizeContract[];
 }) {
   const [formError, setFormError] = useState("");
 
@@ -186,6 +204,20 @@ function CatalogForm({
           description: optionalValue(formData, "description"),
           name,
           slug: slugify(name),
+        });
+        onSaved(result.data);
+      } else if (kind === "colors") {
+        const result = await client.createColor({
+          code: stringValue(formData, "code"),
+          hexValue: stringValue(formData, "hexValue"),
+          name,
+        });
+        onSaved(result.data);
+      } else if (kind === "sizes") {
+        const result = await client.createSize({
+          code: stringValue(formData, "code"),
+          name,
+          sortOrder: Number(stringValue(formData, "sortOrder")),
         });
         onSaved(result.data);
       } else {
@@ -221,12 +253,23 @@ function CatalogForm({
           <input autoFocus name="name" required />
         </label>
         {kind === "products" ? (
-          <ProductFields categories={categories} collections={collections} />
+          <ProductFields
+            categories={categories}
+            collections={collections}
+            colors={colors}
+            sizes={sizes}
+          />
         ) : null}
-        <label className="catalog-form__wide">
-          <span>Description</span>
-          <textarea name="description" rows={3} />
-        </label>
+        {kind === "colors" ? <ColorFields /> : null}
+        {kind === "sizes" ? <SizeFields /> : null}
+        {kind === "categories" ||
+        kind === "collections" ||
+        kind === "products" ? (
+          <label className="catalog-form__wide">
+            <span>Description</span>
+            <textarea name="description" rows={3} />
+          </label>
+        ) : null}
         {formError ? (
           <p className="catalog-form__error" role="alert">
             <AlertCircle aria-hidden="true" size={15} />
@@ -266,9 +309,13 @@ function CatalogForm({
 function ProductFields({
   categories,
   collections,
+  colors,
+  sizes,
 }: {
   categories: CategoryContract[];
   collections: CollectionContract[];
+  colors: ColorContract[];
+  sizes: SizeContract[];
 }) {
   return (
     <>
@@ -307,12 +354,80 @@ function ProductFields({
         <input name="sku" />
       </label>
       <label>
-        <span>Color ID</span>
-        <input name="colorId" />
+        <span>Color</span>
+        <select name="colorId">
+          <option value="">Select color</option>
+          {colors.map((color) => (
+            <option key={color.id} value={color.id}>
+              {color.name} ({color.code})
+            </option>
+          ))}
+        </select>
       </label>
       <label>
-        <span>Size ID</span>
-        <input name="sizeId" />
+        <span>Size</span>
+        <select name="sizeId">
+          <option value="">Select size</option>
+          {sizes.map((size) => (
+            <option key={size.id} value={size.id}>
+              {size.name} ({size.code})
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+function ColorFields() {
+  const [hexValue, setHexValue] = useState("#111111");
+
+  return (
+    <>
+      <label>
+        <span>Code</span>
+        <input autoCapitalize="characters" name="code" required />
+      </label>
+      <label>
+        <span>Hex value</span>
+        <span className="catalog-color-input">
+          <input
+            aria-label="Choose color"
+            onChange={(event) => setHexValue(event.target.value.toUpperCase())}
+            name="colorPreview"
+            type="color"
+            value={hexValue}
+          />
+          <input
+            onChange={(event) => setHexValue(event.target.value.toUpperCase())}
+            name="hexValue"
+            pattern="^#[0-9A-Fa-f]{6}$"
+            placeholder="#111111"
+            required
+            value={hexValue}
+          />
+        </span>
+      </label>
+    </>
+  );
+}
+
+function SizeFields() {
+  return (
+    <>
+      <label>
+        <span>Code</span>
+        <input autoCapitalize="characters" name="code" required />
+      </label>
+      <label>
+        <span>Sort order</span>
+        <input
+          defaultValue="0"
+          min="0"
+          name="sortOrder"
+          required
+          type="number"
+        />
       </label>
     </>
   );
@@ -339,7 +454,7 @@ async function submitProduct(
     Object.values(variant).some(Boolean) &&
     !Object.values(variant).every(Boolean)
   ) {
-    setFormError("SKU, color ID, and size ID are required for a variant.");
+    setFormError("SKU, color, and size are required for a variant.");
     return;
   }
   const result = await client.createProduct({
@@ -367,6 +482,7 @@ function CatalogTable({
   records: CatalogRecord[];
   setRecords: (records: CatalogRecord[]) => void;
 }) {
+  const [updateError, setUpdateError] = useState("");
   const categoryMap = useMemo(
     () =>
       new Map(
@@ -377,71 +493,107 @@ function CatalogTable({
     [kind, records],
   );
 
-  async function toggleCategory(record: CategoryContract) {
-    const result = await client.updateCategoryStatus({
-      categoryId: record.id,
-      status: record.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-    });
-    setRecords(
-      records.map((current) =>
-        current.id === result.data.id ? result.data : current,
-      ),
-    );
+  async function toggleStatus(record: CatalogRecord) {
+    setUpdateError("");
+    try {
+      const status = record.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+      const result =
+        kind === "categories"
+          ? await client.updateCategoryStatus({
+              categoryId: record.id,
+              status,
+            })
+          : kind === "colors"
+            ? await client.updateColorStatus({ colorId: record.id, status })
+            : await client.updateSizeStatus({ sizeId: record.id, status });
+      setRecords(
+        records.map((current) =>
+          current.id === result.data.id ? result.data : current,
+        ),
+      );
+    } catch (caught) {
+      setUpdateError(messageForError(caught));
+    }
   }
 
   return (
-    <div className="catalog-table-wrap">
-      <table className="catalog-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>{kind === "products" ? "Product code" : "Slug"}</th>
-            {kind === "categories" ? <th>Parent</th> : null}
-            <th>Status</th>
-            {kind === "categories" && canUpdate ? <th>Action</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {records.map((record) => (
-            <tr key={record.id}>
-              <td>
-                <strong>{record.name}</strong>
-              </td>
-              <td>
-                {"productCode" in record ? record.productCode : record.slug}
-              </td>
-              {kind === "categories" ? (
-                <td>
-                  {"parentId" in record && record.parentId
-                    ? (categoryMap.get(record.parentId) ?? "Parent category")
-                    : "Top level"}
-                </td>
-              ) : null}
-              <td>
-                <span
-                  className={`catalog-badge catalog-badge--${record.status.toLowerCase()}`}
-                >
-                  {record.status}
-                </span>
-              </td>
-              {kind === "categories" && canUpdate ? (
-                <td>
-                  <button
-                    className="catalog-text-button"
-                    onClick={() =>
-                      void toggleCategory(record as CategoryContract)
-                    }
-                    type="button"
-                  >
-                    {record.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                  </button>
-                </td>
-              ) : null}
+    <>
+      {updateError ? (
+        <p className="catalog-update-error" role="alert">
+          <AlertCircle aria-hidden="true" size={15} />
+          {updateError}
+        </p>
+      ) : null}
+      <div className="catalog-table-wrap">
+        <table className="catalog-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>{secondaryHeading(kind)}</th>
+              {kind === "categories" ? <th>Parent</th> : null}
+              {kind === "colors" ? <th>Color</th> : null}
+              {kind === "sizes" ? <th>Sort order</th> : null}
+              <th>Status</th>
+              {supportsStatusUpdate(kind) && canUpdate ? <th>Action</th> : null}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {records.map((record) => (
+              <tr key={record.id}>
+                <td>
+                  <strong>{record.name}</strong>
+                </td>
+                <td>{secondaryValue(record)}</td>
+                {kind === "categories" ? (
+                  <td>
+                    {"parentId" in record && record.parentId
+                      ? (categoryMap.get(record.parentId) ?? "Parent category")
+                      : "Top level"}
+                  </td>
+                ) : null}
+                {kind === "colors" ? (
+                  <td>
+                    {"hexValue" in record ? (
+                      <span className="catalog-color-value">
+                        <span
+                          aria-hidden="true"
+                          className="catalog-color-swatch"
+                          style={{
+                            backgroundColor: record.hexValue ?? "transparent",
+                          }}
+                        />
+                        {record.hexValue ?? "No value"}
+                      </span>
+                    ) : null}
+                  </td>
+                ) : null}
+                {kind === "sizes" ? (
+                  <td>{"sortOrder" in record ? record.sortOrder : null}</td>
+                ) : null}
+                <td>
+                  <span
+                    className={`catalog-badge catalog-badge--${record.status.toLowerCase()}`}
+                  >
+                    {record.status}
+                  </span>
+                </td>
+                {supportsStatusUpdate(kind) && canUpdate ? (
+                  <td>
+                    <button
+                      className="catalog-text-button"
+                      onClick={() => void toggleStatus(record)}
+                      type="button"
+                    >
+                      {record.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                    </button>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -507,11 +659,14 @@ function titleFor(kind: CatalogKind) {
 }
 
 function singularFor(kind: CatalogKind) {
-  return kind === "categories"
-    ? "category"
-    : kind === "collections"
-      ? "collection"
-      : "product";
+  const singulars: Record<CatalogKind, string> = {
+    categories: "category",
+    collections: "collection",
+    colors: "color",
+    products: "product",
+    sizes: "size",
+  };
+  return singulars[kind];
 }
 
 function descriptionFor(kind: CatalogKind) {
@@ -519,7 +674,35 @@ function descriptionFor(kind: CatalogKind) {
     return "Organize products into a stable hierarchy.";
   if (kind === "collections")
     return "Maintain seasonal and merchandising product groups.";
+  if (kind === "colors")
+    return "Maintain organization-owned color references for product variants.";
+  if (kind === "sizes")
+    return "Maintain ordered size references for product variants.";
   return "Create products and their SKU, color, and size variants.";
+}
+
+function listRecords(kind: CatalogKind) {
+  if (kind === "categories") return client.listCategories();
+  if (kind === "collections") return client.listCollections();
+  if (kind === "colors") return client.listColors();
+  if (kind === "sizes") return client.listSizes();
+  return client.listProducts();
+}
+
+function supportsStatusUpdate(kind: CatalogKind) {
+  return kind === "categories" || kind === "colors" || kind === "sizes";
+}
+
+function secondaryHeading(kind: CatalogKind) {
+  if (kind === "products") return "Product code";
+  if (kind === "colors" || kind === "sizes") return "Code";
+  return "Slug";
+}
+
+function secondaryValue(record: CatalogRecord) {
+  if ("productCode" in record) return record.productCode;
+  if ("slug" in record) return record.slug;
+  return record.code;
 }
 
 function stringValue(formData: FormData, key: string): string {

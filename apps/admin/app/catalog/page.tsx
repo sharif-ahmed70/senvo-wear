@@ -1,4 +1,11 @@
-import { ArrowRight, FolderTree, PackageOpen, Tags } from "lucide-react";
+import {
+  ArrowRight,
+  FolderTree,
+  PackageOpen,
+  Palette,
+  Ruler,
+  Tags,
+} from "lucide-react";
 import Link from "next/link";
 
 const catalogAreas = [
@@ -19,6 +26,18 @@ const catalogAreas = [
     href: "/catalog/products",
     icon: PackageOpen,
     label: "Products",
+  },
+  {
+    description: "Maintain reusable color names, codes, and hex values.",
+    href: "/catalog/colors",
+    icon: Palette,
+    label: "Colors",
+  },
+  {
+    description: "Maintain ordered size options for product variants.",
+    href: "/catalog/sizes",
+    icon: Ruler,
+    label: "Sizes",
   },
 ] as const;
 

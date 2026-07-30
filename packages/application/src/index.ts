@@ -4,12 +4,16 @@ export type {
   CatalogApplicationServiceDependencies,
   CreateCategoryServiceInputContract,
   CreateCollectionServiceInputContract,
+  CreateColorServiceInputContract,
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
+  CreateSizeServiceInputContract,
   GetProductServiceInputContract,
   ListCatalogItemsServiceInputContract,
   ListProductVariantsServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
+  UpdateColorStatusServiceInputContract,
+  UpdateSizeStatusServiceInputContract,
 } from "./catalog/catalog-application-service.js";
 export type {
   ApplicationServices,

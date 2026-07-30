@@ -1,13 +1,13 @@
 import type {
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
+  CatalogColorManagementRepository,
   CatalogProductManagementRepository,
   CatalogProductVariantManagementRepository,
-  ColorRepository,
+  CatalogSizeManagementRepository,
   InventoryMovementRepository,
   OrganizationRepository,
   SalesOrderRepository,
-  SizeRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
@@ -72,11 +72,13 @@ const fakeCollectionRepository: CatalogCollectionManagementRepository = {
   list: () => Promise.resolve([]),
 };
 
-const fakeColorRepository: ColorRepository = {
+const fakeColorRepository: CatalogColorManagementRepository = {
   create: () => Promise.reject(unreachableError()),
   findByCode: () => Promise.resolve(null),
   findById: () => Promise.resolve(null),
   findByNormalizedName: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  updateStatus: () => Promise.resolve(null),
 };
 
 const fakeOrganizationRepository: OrganizationRepository = {
@@ -103,10 +105,12 @@ const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
     listByProduct: () => Promise.resolve([]),
   };
 
-const fakeSizeRepository: SizeRepository = {
+const fakeSizeRepository: CatalogSizeManagementRepository = {
   create: () => Promise.reject(unreachableError()),
   findByCode: () => Promise.resolve(null),
   findById: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  updateStatus: () => Promise.resolve(null),
 };
 
 const fakeTransactionManager: ApplicationTransactionManager = {

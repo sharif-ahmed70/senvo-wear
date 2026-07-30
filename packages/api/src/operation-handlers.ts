@@ -7,20 +7,27 @@ import type {
 import {
   createCategoryServiceInputSchema,
   createCollectionServiceInputSchema,
+  createColorServiceInputSchema,
   createSalesOrderServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  createSizeServiceInputSchema,
   getProductServiceInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
+  updateColorStatusServiceInputSchema,
+  updateSizeStatusServiceInputSchema,
   type CategoryContract,
   type CollectionContract,
+  type ColorContract,
   type CreateCategoryServiceInputContract,
   type CreateCollectionServiceInputContract,
+  type CreateColorServiceInputContract,
   type CreateProductServiceInputContract,
   type CreateProductVariantServiceInputContract,
+  type CreateSizeServiceInputContract,
   type CreateSalesOrderServiceInputContract,
   type InventoryMovementContract,
   type GetProductServiceInputContract,
@@ -31,7 +38,10 @@ import {
   type ProductDetailsContract,
   type ProductVariantContract,
   type SalesOrderServiceContract,
+  type SizeContract,
   type UpdateCategoryStatusServiceInputContract,
+  type UpdateColorStatusServiceInputContract,
+  type UpdateSizeStatusServiceInputContract,
 } from "@senvo/contracts";
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
@@ -63,6 +73,14 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<CollectionContract>>;
+  createColor(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract>>;
+  createSize(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract>>;
   createProduct(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -83,10 +101,18 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<CollectionContract[]>>;
+  listColors(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract[]>>;
   listProducts(
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductContract[]>>;
+  listSizes(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract[]>>;
   listVariants(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -95,19 +121,33 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<CategoryContract>>;
+  updateColorStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract>>;
+  updateSizeStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract>>;
 };
 
 export type CatalogApiHandlers = {
   createCategory: ApiHandler<CategoryContract>;
   createCollection: ApiHandler<CollectionContract>;
+  createColor: ApiHandler<ColorContract>;
   createProduct: ApiHandler<ProductContract>;
   createVariant: ApiHandler<ProductVariantContract>;
+  createSize: ApiHandler<SizeContract>;
   getProduct: ApiHandler<ProductDetailsContract>;
   listCategories: ApiHandler<CategoryContract[]>;
   listCollections: ApiHandler<CollectionContract[]>;
+  listColors: ApiHandler<ColorContract[]>;
   listProducts: ApiHandler<ProductContract[]>;
+  listSizes: ApiHandler<SizeContract[]>;
   listVariants: ApiHandler<ProductVariantContract[]>;
   updateCategoryStatus: ApiHandler<CategoryContract>;
+  updateColorStatus: ApiHandler<ColorContract>;
+  updateSizeStatus: ApiHandler<SizeContract>;
 };
 
 export function createCatalogApiHandlers(
@@ -152,6 +192,15 @@ export function createCatalogApiHandlers(
         dependencies.catalog.createCollection(context, input),
       inputSchema: createCollectionServiceInputSchema,
     }),
+    createColor: protectedHandler<
+      CreateColorServiceInputContract,
+      ColorContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.catalog.createColor(context, input),
+      inputSchema: createColorServiceInputSchema,
+    }),
     createProduct: protectedHandler<
       CreateProductServiceInputContract,
       ProductContract
@@ -160,6 +209,12 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.createProduct(context, input),
       inputSchema: createProductServiceInputSchema,
+    }),
+    createSize: protectedHandler<CreateSizeServiceInputContract, SizeContract>({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.catalog.createSize(context, input),
+      inputSchema: createSizeServiceInputSchema,
     }),
     createVariant: protectedHandler<
       CreateProductVariantServiceInputContract,
@@ -197,6 +252,15 @@ export function createCatalogApiHandlers(
         dependencies.catalog.listCollections(context, input),
       inputSchema: listCatalogItemsServiceInputSchema,
     }),
+    listColors: protectedHandler<
+      ListCatalogItemsServiceInputContract,
+      ColorContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.listColors(context, input),
+      inputSchema: listCatalogItemsServiceInputSchema,
+    }),
     listProducts: protectedHandler<
       ListCatalogItemsServiceInputContract,
       ProductContract[]
@@ -204,6 +268,15 @@ export function createCatalogApiHandlers(
       action: "READ",
       execute: (context, input) =>
         dependencies.catalog.listProducts(context, input),
+      inputSchema: listCatalogItemsServiceInputSchema,
+    }),
+    listSizes: protectedHandler<
+      ListCatalogItemsServiceInputContract,
+      SizeContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.listSizes(context, input),
       inputSchema: listCatalogItemsServiceInputSchema,
     }),
     listVariants: protectedHandler<
@@ -223,6 +296,24 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.updateCategoryStatus(context, input),
       inputSchema: updateCategoryStatusServiceInputSchema,
+    }),
+    updateColorStatus: protectedHandler<
+      UpdateColorStatusServiceInputContract,
+      ColorContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateColorStatus(context, input),
+      inputSchema: updateColorStatusServiceInputSchema,
+    }),
+    updateSizeStatus: protectedHandler<
+      UpdateSizeStatusServiceInputContract,
+      SizeContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateSizeStatus(context, input),
+      inputSchema: updateSizeStatusServiceInputSchema,
     }),
   };
 }

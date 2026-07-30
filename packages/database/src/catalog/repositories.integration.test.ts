@@ -494,6 +494,46 @@ describeWithDatabase("Prisma catalog repositories", () => {
         first.organization.id,
       ),
     ).resolves.toMatchObject({ status: "ACTIVE" });
+
+    await expect(
+      repositories.colors.list({ organizationId: first.organization.id }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: first.color.id,
+        organizationId: first.organization.id,
+      }),
+    ]);
+    await expect(
+      repositories.colors.updateStatus({
+        id: first.color.id,
+        organizationId: second.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.colors.updateStatus({
+        id: first.color.id,
+        organizationId: first.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toMatchObject({ status: "INACTIVE" });
+
+    await expect(
+      repositories.sizes.list({ organizationId: first.organization.id }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: first.otherSize.id, sortOrder: 20 }),
+      expect.objectContaining({ id: first.size.id, sortOrder: 30 }),
+    ]);
+    await expect(
+      repositories.sizes.findById(first.size.id, second.organization.id),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.sizes.updateStatus({
+        id: first.size.id,
+        organizationId: first.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toMatchObject({ status: "INACTIVE" });
   });
 });
 

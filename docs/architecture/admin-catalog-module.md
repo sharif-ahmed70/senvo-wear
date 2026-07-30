@@ -32,7 +32,8 @@ Client payloads cannot choose an organization.
 
 Each route includes loading, empty, error, and populated states. Product input
 collects name, product code, category, optional collection, and optional SKU,
-color, and size identifiers. Client validation improves feedback only; all
+color, and size selections from managed catalog attributes. Client validation
+improves feedback only; all
 authoritative validation remains behind the API boundary.
 
 ## Data Access

@@ -8,47 +8,63 @@ import {
   ValidationApplicationError,
   createCategory,
   createCollection,
+  createColor,
   createProduct,
   createProductVariant,
+  createSize,
   type Category,
   type CatalogCategoryManagementRepository,
   type CatalogCollectionManagementRepository,
+  type CatalogColorManagementRepository,
   type CatalogProductManagementRepository,
   type CatalogProductVariantManagementRepository,
+  type CatalogSizeManagementRepository,
   type Collection,
-  type ColorRepository,
+  type Color,
   type OrganizationRepository,
   type Product,
   type ProductVariant,
-  type SizeRepository,
+  type Size,
 } from "@senvo/domain";
 import {
   categoryContractSchema,
   collectionContractSchema,
+  colorContractSchema,
   createCategoryServiceInputSchema,
   createCollectionServiceInputSchema,
+  createColorServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  createSizeServiceInputSchema,
   getProductServiceInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
   productContractSchema,
   productDetailsContractSchema,
   productVariantContractSchema,
+  sizeContractSchema,
   updateCategoryStatusServiceInputSchema,
+  updateColorStatusServiceInputSchema,
+  updateSizeStatusServiceInputSchema,
   type CategoryContract,
   type CollectionContract,
+  type ColorContract,
   type CreateCategoryServiceInputContract,
   type CreateCollectionServiceInputContract,
+  type CreateColorServiceInputContract,
   type CreateProductServiceInputContract,
   type CreateProductVariantServiceInputContract,
+  type CreateSizeServiceInputContract,
   type GetProductServiceInputContract,
   type ListCatalogItemsServiceInputContract,
   type ListProductVariantsServiceInputContract,
   type ProductContract,
   type ProductDetailsContract,
   type ProductVariantContract,
+  type SizeContract,
   type UpdateCategoryStatusServiceInputContract,
+  type UpdateColorStatusServiceInputContract,
+  type UpdateSizeStatusServiceInputContract,
 } from "@senvo/contracts";
 import {
   requireAuthorization,
@@ -78,24 +94,24 @@ export type CatalogApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
   categories: CatalogCategoryManagementRepository;
   collections: CatalogCollectionManagementRepository;
-  colors: ColorRepository;
+  colors: CatalogColorManagementRepository;
   organizations: OrganizationRepository;
   products: CatalogProductManagementRepository;
   productVariants: CatalogProductVariantManagementRepository;
   requestIdGenerator?: () => string;
-  sizes: SizeRepository;
+  sizes: CatalogSizeManagementRepository;
 };
 
 export class CatalogApplicationService {
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly categories: CatalogCategoryManagementRepository;
   private readonly collections: CatalogCollectionManagementRepository;
-  private readonly colors: ColorRepository;
+  private readonly colors: CatalogColorManagementRepository;
   private readonly organizations: OrganizationRepository;
   private readonly products: CatalogProductManagementRepository;
   private readonly productVariants: CatalogProductVariantManagementRepository;
   private readonly requestIdGenerator: () => string;
-  private readonly sizes: SizeRepository;
+  private readonly sizes: CatalogSizeManagementRepository;
 
   constructor(dependencies: CatalogApplicationServiceDependencies) {
     this.authorizationService = dependencies.authorizationService;
@@ -195,6 +211,110 @@ export class CatalogApplicationService {
           { ...input, organizationId: validated.organizationId },
         ),
       );
+    });
+  }
+
+  listColors(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract[]>> {
+    return this.execute(context, async (validated) => {
+      parsePayload(listCatalogItemsServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+      const records = await this.colors.list({
+        organizationId: validated.organizationId,
+      });
+      return records.map(mapColor);
+    });
+  }
+
+  createColor(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(createColorServiceInputSchema, payload);
+      await this.authorize(validated, "CREATE");
+      return mapColor(
+        await createColor(
+          {
+            colors: this.colors,
+            organizations: this.organizations,
+          },
+          { ...input, organizationId: validated.organizationId },
+        ),
+      );
+    });
+  }
+
+  updateColorStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ColorContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(updateColorStatusServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+      const color = await this.colors.updateStatus({
+        id: input.colorId,
+        organizationId: validated.organizationId,
+        status: input.status,
+      });
+      if (!color) {
+        throw new NotFoundError("Color was not found.");
+      }
+      return mapColor(color);
+    });
+  }
+
+  listSizes(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract[]>> {
+    return this.execute(context, async (validated) => {
+      parsePayload(listCatalogItemsServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+      const records = await this.sizes.list({
+        organizationId: validated.organizationId,
+      });
+      return records.map(mapSize);
+    });
+  }
+
+  createSize(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(createSizeServiceInputSchema, payload);
+      await this.authorize(validated, "CREATE");
+      return mapSize(
+        await createSize(
+          {
+            organizations: this.organizations,
+            sizes: this.sizes,
+          },
+          { ...input, organizationId: validated.organizationId },
+        ),
+      );
+    });
+  }
+
+  updateSizeStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SizeContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(updateSizeStatusServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+      const size = await this.sizes.updateStatus({
+        id: input.sizeId,
+        organizationId: validated.organizationId,
+        status: input.status,
+      });
+      if (!size) {
+        throw new NotFoundError("Size was not found.");
+      }
+      return mapSize(size);
     });
   }
 
@@ -423,6 +543,14 @@ function mapCollection(record: Collection): CollectionContract {
   return collectionContractSchema.parse(mapRecord(record));
 }
 
+function mapColor(record: Color): ColorContract {
+  return colorContractSchema.parse(mapRecord(record));
+}
+
+function mapSize(record: Size): SizeContract {
+  return sizeContractSchema.parse(mapRecord(record));
+}
+
 function mapProduct(record: Product): ProductContract {
   return productContractSchema.parse(mapRecord(record));
 }
@@ -447,10 +575,14 @@ function mapRecord<T extends { createdAt: Date; updatedAt: Date }>(
 export type {
   CreateCategoryServiceInputContract,
   CreateCollectionServiceInputContract,
+  CreateColorServiceInputContract,
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
+  CreateSizeServiceInputContract,
   GetProductServiceInputContract,
   ListCatalogItemsServiceInputContract,
   ListProductVariantsServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
+  UpdateColorStatusServiceInputContract,
+  UpdateSizeStatusServiceInputContract,
 };

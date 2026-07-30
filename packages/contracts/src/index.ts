@@ -548,6 +548,28 @@ export const createCollectionServiceInputSchema = createCollectionInputSchema
   .omit({ organizationId: true })
   .strict();
 
+export const createColorServiceInputSchema = createColorInputSchema
+  .omit({ organizationId: true })
+  .strict();
+
+export const updateColorStatusServiceInputSchema = z
+  .object({
+    colorId: idSchema,
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+  })
+  .strict();
+
+export const createSizeServiceInputSchema = createSizeInputSchema
+  .omit({ organizationId: true })
+  .strict();
+
+export const updateSizeStatusServiceInputSchema = z
+  .object({
+    sizeId: idSchema,
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+  })
+  .strict();
+
 export const createProductServiceInputSchema = createProductInputSchema
   .omit({ organizationId: true })
   .extend({ collectionId: idSchema.optional() })
@@ -1324,6 +1346,18 @@ export type UpdateCategoryStatusServiceInputContract = z.infer<
 export type CreateCollectionServiceInputContract = z.infer<
   typeof createCollectionServiceInputSchema
 >;
+export type CreateColorServiceInputContract = z.infer<
+  typeof createColorServiceInputSchema
+>;
+export type UpdateColorStatusServiceInputContract = z.infer<
+  typeof updateColorStatusServiceInputSchema
+>;
+export type CreateSizeServiceInputContract = z.infer<
+  typeof createSizeServiceInputSchema
+>;
+export type UpdateSizeStatusServiceInputContract = z.infer<
+  typeof updateSizeStatusServiceInputSchema
+>;
 export type CreateProductServiceInputContract = z.infer<
   typeof createProductServiceInputSchema
 >;
@@ -1794,6 +1828,35 @@ export const collectionContractSchema = z
     name: z.string(),
     organizationId: idSchema,
     slug: z.string(),
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const colorContractSchema = z
+  .object({
+    code: z.string(),
+    createdAt: isoTimestampSchema,
+    hexValue: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/)
+      .nullable(),
+    id: idSchema,
+    name: z.string(),
+    organizationId: idSchema,
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const sizeContractSchema = z
+  .object({
+    code: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    name: z.string(),
+    organizationId: idSchema,
+    sortOrder: z.number().int().nonnegative(),
     status: z.enum(["ACTIVE", "INACTIVE"]),
     updatedAt: isoTimestampSchema,
   })

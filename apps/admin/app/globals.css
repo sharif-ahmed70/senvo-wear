@@ -602,6 +602,27 @@ a {
   outline-offset: 2px;
 }
 
+.catalog-color-input,
+.catalog-color-value {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+}
+
+.catalog-color-input input[type="color"] {
+  flex: 0 0 42px;
+  height: 38px;
+  padding: 3px;
+}
+
+.catalog-color-swatch {
+  border: 1px solid #cfd7d2;
+  border-radius: 4px;
+  display: inline-block;
+  height: 18px;
+  width: 18px;
+}
+
 .catalog-primary-button:disabled,
 .catalog-icon-button:disabled {
   cursor: wait;
@@ -816,6 +837,19 @@ a {
   margin: 0;
 }
 
+.catalog-update-error {
+  align-items: center;
+  background: #fff5f4;
+  border-bottom: 1px solid #ecd7d4;
+  color: var(--admin-danger);
+  display: flex;
+  font-size: 0.74rem;
+  gap: 7px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 10px 18px;
+}
+
 .catalog-form__actions {
   display: flex;
   gap: 8px;
@@ -913,13 +947,23 @@ a {
 
   .admin-content {
     margin: 0 14px;
+    max-width: calc(100% - 28px);
     padding-inline: 0;
-    width: calc(100vw - 28px);
+    width: auto;
   }
 
   .admin-page-header {
     align-items: flex-start;
     display: block;
+    min-width: 0;
+  }
+
+  .admin-page-header__copy,
+  .admin-page-header p:last-child,
+  .admin-section {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .catalog-page-header .catalog-primary-button {

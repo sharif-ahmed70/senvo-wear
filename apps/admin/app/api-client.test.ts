@@ -109,4 +109,41 @@ describe("AdminApiClient", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("uses catalog attribute endpoints for create and status updates", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {},
+          requestId: "req_attributes_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    await client.createColor(
+      { code: "NAVY", hexValue: "#000080", name: "Navy" },
+      { requestId: "req_attributes_1" },
+    );
+    await client.updateSizeStatus(
+      {
+        sizeId: "10000000-0000-4000-8000-000000000001",
+        status: "INACTIVE",
+      },
+      { requestId: "req_attributes_2" },
+    );
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://admin.example.test/catalog/colors",
+    );
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://admin.example.test/catalog/sizes/10000000-0000-4000-8000-000000000001/status",
+    );
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ method: "PATCH" });
+  });
 });

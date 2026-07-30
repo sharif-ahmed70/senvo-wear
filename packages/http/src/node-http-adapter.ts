@@ -171,6 +171,34 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         handlers.catalog.createCollection,
         201,
       ),
+      catalogRoute("GET", /^\/catalog\/colors$/u, handlers.catalog.listColors),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/colors$/u,
+        handlers.catalog.createColor,
+        201,
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/colors\/(?<id>[0-9a-f-]+)\/status$/iu,
+        handlers.catalog.updateColorStatus,
+        200,
+        "colorId",
+      ),
+      catalogRoute("GET", /^\/catalog\/sizes$/u, handlers.catalog.listSizes),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/sizes$/u,
+        handlers.catalog.createSize,
+        201,
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/sizes\/(?<id>[0-9a-f-]+)\/status$/iu,
+        handlers.catalog.updateSizeStatus,
+        200,
+        "sizeId",
+      ),
       catalogRoute(
         "GET",
         /^\/catalog\/products$/u,
@@ -247,7 +275,7 @@ function catalogRoute(
   path: RegExp,
   handler: ApiHandler<unknown>,
   successStatus = 200,
-  pathIdField?: "categoryId" | "productId",
+  pathIdField?: "categoryId" | "colorId" | "productId" | "sizeId",
 ): HttpRoute {
   return {
     handler,

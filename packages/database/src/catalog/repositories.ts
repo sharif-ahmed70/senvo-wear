@@ -4,8 +4,9 @@ import {
   type CategoryRepository,
   type Collection,
   type CollectionRepository,
+  type CatalogColorManagementRepository,
+  type CatalogSizeManagementRepository,
   type Color,
-  type ColorRepository,
   type CreateCategoryRecord,
   type CreateCollectionRecord,
   type CreateColorRecord,
@@ -20,7 +21,6 @@ import {
   type ProductVariant,
   type ProductVariantRepository,
   type Size,
-  type SizeRepository,
 } from "@senvo/domain";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 
@@ -160,7 +160,7 @@ export class PrismaCollectionRepository implements CollectionRepository {
   }
 }
 
-export class PrismaColorRepository implements ColorRepository {
+export class PrismaColorRepository implements CatalogColorManagementRepository {
   constructor(private readonly prisma: CatalogPrismaClient) {}
 
   async create(record: CreateColorRecord): Promise<Color> {
@@ -181,8 +181,10 @@ export class PrismaColorRepository implements ColorRepository {
     return record ? mapColor(record) : null;
   }
 
-  async findById(id: string): Promise<Color | null> {
-    const record = await this.prisma.color.findUnique({ where: { id } });
+  async findById(id: string, organizationId?: string): Promise<Color | null> {
+    const record = await this.prisma.color.findFirst({
+      where: { id, organizationId },
+    });
     return record ? mapColor(record) : null;
   }
 
@@ -197,9 +199,32 @@ export class PrismaColorRepository implements ColorRepository {
     });
     return record ? mapColor(record) : null;
   }
+
+  async list(filter: { organizationId: string }): Promise<Color[]> {
+    const records = await this.prisma.color.findMany({
+      orderBy: [{ name: "asc" }, { code: "asc" }],
+      take: 100,
+      where: { organizationId: filter.organizationId },
+    });
+    return records.map(mapColor);
+  }
+
+  async updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Color["status"];
+  }): Promise<Color | null> {
+    const result = await this.prisma.color.updateMany({
+      data: { status: record.status },
+      where: { id: record.id, organizationId: record.organizationId },
+    });
+    return result.count === 0
+      ? null
+      : this.findById(record.id, record.organizationId);
+  }
 }
 
-export class PrismaSizeRepository implements SizeRepository {
+export class PrismaSizeRepository implements CatalogSizeManagementRepository {
   constructor(private readonly prisma: CatalogPrismaClient) {}
 
   async create(record: CreateSizeRecord): Promise<Size> {
@@ -217,9 +242,34 @@ export class PrismaSizeRepository implements SizeRepository {
     return record ? mapSize(record) : null;
   }
 
-  async findById(id: string): Promise<Size | null> {
-    const record = await this.prisma.size.findUnique({ where: { id } });
+  async findById(id: string, organizationId?: string): Promise<Size | null> {
+    const record = await this.prisma.size.findFirst({
+      where: { id, organizationId },
+    });
     return record ? mapSize(record) : null;
+  }
+
+  async list(filter: { organizationId: string }): Promise<Size[]> {
+    const records = await this.prisma.size.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      take: 100,
+      where: { organizationId: filter.organizationId },
+    });
+    return records.map(mapSize);
+  }
+
+  async updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: Size["status"];
+  }): Promise<Size | null> {
+    const result = await this.prisma.size.updateMany({
+      data: { status: record.status },
+      where: { id: record.id, organizationId: record.organizationId },
+    });
+    return result.count === 0
+      ? null
+      : this.findById(record.id, record.organizationId);
   }
 }
 
