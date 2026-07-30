@@ -655,6 +655,36 @@ export const postInventoryMovementInputSchema = z
 export const postInventoryMovementServiceInputSchema =
   postInventoryMovementInputSchema.omit({ organizationId: true }).strict();
 
+const inventoryReadPageInputShape = {
+  cursor: z.string().trim().min(1).max(1000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+};
+
+export const listInventoryAvailabilityServiceInputSchema = z
+  .object({
+    ...inventoryReadPageInputShape,
+    locationId: idSchema.optional(),
+    search: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
+export const listStockLocationsServiceInputSchema = z
+  .object(inventoryReadPageInputShape)
+  .strict();
+
+export const listInventoryMovementsServiceInputSchema = z
+  .object({
+    ...inventoryReadPageInputShape,
+    locationId: idSchema.optional(),
+    status: inventoryMovementStatusSchema.optional(),
+    type: inventoryMovementTypeSchema.optional(),
+  })
+  .strict();
+
+export const getVariantAvailabilityServiceInputSchema = z
+  .object({ variantId: idSchema })
+  .strict();
+
 export const reverseInventoryMovementInputSchema = z
   .object({
     idempotencyKey: idempotencyKeySchema,
@@ -1389,6 +1419,18 @@ export type PostInventoryMovementInputContract = z.infer<
 export type PostInventoryMovementServiceInputContract = z.infer<
   typeof postInventoryMovementServiceInputSchema
 >;
+export type ListInventoryAvailabilityServiceInputContract = z.infer<
+  typeof listInventoryAvailabilityServiceInputSchema
+>;
+export type ListStockLocationsServiceInputContract = z.infer<
+  typeof listStockLocationsServiceInputSchema
+>;
+export type ListInventoryMovementsServiceInputContract = z.infer<
+  typeof listInventoryMovementsServiceInputSchema
+>;
+export type GetVariantAvailabilityServiceInputContract = z.infer<
+  typeof getVariantAvailabilityServiceInputSchema
+>;
 export type ReverseInventoryMovementInputContract = z.infer<
   typeof reverseInventoryMovementInputSchema
 >;
@@ -1750,6 +1792,68 @@ export type InventoryAvailabilityContract = {
   stockLocationId: string;
 };
 
+export type InventoryVariantReadContract = {
+  color: string;
+  id: string;
+  productId: string;
+  productName: string;
+  size: string;
+  sku: string;
+};
+
+export type InventoryLocationReadContract = {
+  id: string;
+  name: string;
+};
+
+export type InventoryAvailabilityReadContract = {
+  availableToSell: number;
+  location: InventoryLocationReadContract;
+  onHand: number;
+  reserved: number;
+  variant: InventoryVariantReadContract;
+};
+
+export type StockLocationReadContract = {
+  branch: {
+    id: string;
+    name: string;
+    status: z.infer<typeof branchStatusSchema>;
+  };
+  id: string;
+  isSellable: boolean;
+  name: string;
+  status: z.infer<typeof stockLocationStatusSchema>;
+  type: z.infer<typeof stockLocationTypeSchema>;
+};
+
+export type InventoryMovementHistoryContract = {
+  destinationLocation: InventoryLocationReadContract | null;
+  id: string;
+  occurredAt: string;
+  quantity: number;
+  sourceLocation: InventoryLocationReadContract | null;
+  status: z.infer<typeof inventoryMovementStatusSchema>;
+  type: z.infer<typeof inventoryMovementTypeSchema>;
+  variant: InventoryVariantReadContract;
+};
+
+export type InventoryReadPageContract<T> = {
+  hasMore: boolean;
+  items: T[];
+  nextCursor: string | null;
+};
+
+export type VariantInventoryAvailabilityContract = {
+  locations: Array<{
+    availableToSell: number;
+    location: InventoryLocationReadContract;
+    onHand: number;
+    reserved: number;
+  }>;
+  variant: InventoryVariantReadContract;
+};
+
 export type InventoryAllocationPolicyLocationContract = {
   createdAt: string;
   id: string;
@@ -2048,6 +2152,101 @@ export const inventoryAvailabilityContractSchema = z
     productVariantId: idSchema,
     reservedQuantity: z.number().int().nonnegative(),
     stockLocationId: idSchema,
+  })
+  .strict();
+
+export const inventoryVariantReadContractSchema = z
+  .object({
+    color: z.string(),
+    id: idSchema,
+    productId: idSchema,
+    productName: z.string(),
+    size: z.string(),
+    sku: z.string(),
+  })
+  .strict();
+
+export const inventoryLocationReadContractSchema = z
+  .object({
+    id: idSchema,
+    name: z.string(),
+  })
+  .strict();
+
+export const inventoryAvailabilityReadContractSchema = z
+  .object({
+    availableToSell: z.number().int(),
+    location: inventoryLocationReadContractSchema,
+    onHand: z.number().int(),
+    reserved: z.number().int().nonnegative(),
+    variant: inventoryVariantReadContractSchema,
+  })
+  .strict();
+
+export const stockLocationReadContractSchema = z
+  .object({
+    branch: z
+      .object({
+        id: idSchema,
+        name: z.string(),
+        status: branchStatusSchema,
+      })
+      .strict(),
+    id: idSchema,
+    isSellable: z.boolean(),
+    name: z.string(),
+    status: stockLocationStatusSchema,
+    type: stockLocationTypeSchema,
+  })
+  .strict();
+
+export const inventoryMovementHistoryContractSchema = z
+  .object({
+    destinationLocation: inventoryLocationReadContractSchema.nullable(),
+    id: idSchema,
+    occurredAt: isoTimestampSchema,
+    quantity: positiveInventoryQuantitySchema,
+    sourceLocation: inventoryLocationReadContractSchema.nullable(),
+    status: inventoryMovementStatusSchema,
+    type: inventoryMovementTypeSchema,
+    variant: inventoryVariantReadContractSchema,
+  })
+  .strict();
+
+export function inventoryReadPageContractSchema<T extends z.ZodType>(
+  itemSchema: T,
+) {
+  return z
+    .object({
+      hasMore: z.boolean(),
+      items: z.array(itemSchema),
+      nextCursor: z.string().nullable(),
+    })
+    .strict();
+}
+
+export const inventoryAvailabilityPageContractSchema =
+  inventoryReadPageContractSchema(inventoryAvailabilityReadContractSchema);
+
+export const inventoryStockLocationPageContractSchema =
+  inventoryReadPageContractSchema(stockLocationReadContractSchema);
+
+export const inventoryMovementHistoryPageContractSchema =
+  inventoryReadPageContractSchema(inventoryMovementHistoryContractSchema);
+
+export const variantInventoryAvailabilityContractSchema = z
+  .object({
+    locations: z.array(
+      z
+        .object({
+          availableToSell: z.number().int(),
+          location: inventoryLocationReadContractSchema,
+          onHand: z.number().int(),
+          reserved: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    variant: inventoryVariantReadContractSchema,
   })
   .strict();
 

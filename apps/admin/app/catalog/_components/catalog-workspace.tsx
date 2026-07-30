@@ -16,6 +16,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
@@ -541,7 +542,13 @@ function CatalogTable({
             {records.map((record) => (
               <tr key={record.id}>
                 <td>
-                  <strong>{record.name}</strong>
+                  {kind === "products" ? (
+                    <Link href={`/catalog/products/${record.id}`}>
+                      <strong>{record.name}</strong>
+                    </Link>
+                  ) : (
+                    <strong>{record.name}</strong>
+                  )}
                 </td>
                 <td>{secondaryValue(record)}</td>
                 {kind === "categories" ? (

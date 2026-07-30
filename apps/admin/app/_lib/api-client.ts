@@ -11,14 +11,23 @@ import type {
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
   CreateSizeServiceInputContract,
+  GetVariantAvailabilityServiceInputContract,
+  InventoryAvailabilityReadContract,
+  InventoryMovementHistoryContract,
+  InventoryReadPageContract,
+  ListInventoryAvailabilityServiceInputContract,
+  ListInventoryMovementsServiceInputContract,
+  ListStockLocationsServiceInputContract,
   ProductContract,
   ProductDetailsContract,
   ProductVariantContract,
   PublicErrorDetails,
   SizeContract,
+  StockLocationReadContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,
+  VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -270,6 +279,55 @@ export class AdminApiClient {
       { ...request, body: input, method: "POST" },
     );
   }
+
+  listInventoryAvailability(
+    input: ListInventoryAvailabilityServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<
+      InventoryReadPageContract<InventoryAvailabilityReadContract>
+    >(`/inventory/availability${queryString(input)}`, request);
+  }
+
+  listStockLocations(
+    input: ListStockLocationsServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<InventoryReadPageContract<StockLocationReadContract>>(
+      `/inventory/locations${queryString(input)}`,
+      request,
+    );
+  }
+
+  listInventoryMovements(
+    input: ListInventoryMovementsServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<
+      InventoryReadPageContract<InventoryMovementHistoryContract>
+    >(`/inventory/movements${queryString(input)}`, request);
+  }
+
+  getVariantAvailability(
+    input: GetVariantAvailabilityServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<VariantInventoryAvailabilityContract>(
+      `/inventory/variants/${input.variantId}/availability`,
+      request,
+    );
+  }
+}
+
+function queryString(input: object): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  const query = search.toString();
+  return query ? `?${query}` : "";
 }
 
 function isApiResponse<T>(value: unknown): value is ApiResponse<T> {

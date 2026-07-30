@@ -6,14 +6,36 @@ import {
   ConcurrencyError,
   NotFoundError,
   ValidationApplicationError,
+  getVariantAvailability,
+  listInventoryAvailability,
+  listInventoryMovementHistory,
+  listInventoryStockLocations,
   postInventoryMovement,
+  type InventoryReadRepository,
   type InventoryMovementRepository,
 } from "@senvo/domain";
 import {
+  getVariantAvailabilityServiceInputSchema,
+  inventoryAvailabilityPageContractSchema,
+  inventoryMovementHistoryPageContractSchema,
   inventoryMovementContractSchema,
+  listInventoryAvailabilityServiceInputSchema,
+  listInventoryMovementsServiceInputSchema,
+  listStockLocationsServiceInputSchema,
   postInventoryMovementServiceInputSchema,
+  inventoryStockLocationPageContractSchema,
+  variantInventoryAvailabilityContractSchema,
+  type GetVariantAvailabilityServiceInputContract,
+  type InventoryAvailabilityReadContract,
+  type InventoryMovementHistoryContract,
+  type InventoryReadPageContract,
   type InventoryMovementContract,
+  type ListInventoryAvailabilityServiceInputContract,
+  type ListInventoryMovementsServiceInputContract,
+  type ListStockLocationsServiceInputContract,
   type PostInventoryMovementServiceInputContract,
+  type StockLocationReadContract,
+  type VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import type { Logger, LogMetadata } from "@senvo/logger";
 import {
@@ -55,6 +77,7 @@ export type InventoryApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
   clock?: Clock;
   inventoryMovementRepository: InventoryMovementRepository;
+  inventoryReadRepository: InventoryReadRepository;
   logger?: Logger;
   requestIdGenerator?: RequestIdGenerator;
   transactionManager: ApplicationTransactionManager;
@@ -64,6 +87,7 @@ export class InventoryApplicationService {
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly clock: Clock;
   private readonly inventoryMovementRepository: InventoryMovementRepository;
+  private readonly inventoryReadRepository: InventoryReadRepository;
   private readonly logger: Logger;
   private readonly requestIdGenerator: RequestIdGenerator;
   private readonly transactionManager: ApplicationTransactionManager;
@@ -72,6 +96,7 @@ export class InventoryApplicationService {
     this.authorizationService = dependencies.authorizationService;
     this.clock = dependencies.clock ?? systemClock;
     this.inventoryMovementRepository = dependencies.inventoryMovementRepository;
+    this.inventoryReadRepository = dependencies.inventoryReadRepository;
     this.logger = dependencies.logger ?? nullLogger;
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
@@ -124,6 +149,133 @@ export class InventoryApplicationService {
         );
       },
     );
+  }
+
+  listInventoryAvailability(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<InventoryAvailabilityReadContract>
+    >
+  > {
+    return this.execute(
+      "inventory.listAvailability",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          listInventoryAvailabilityServiceInputSchema,
+          payload,
+        );
+        await this.authorizeRead(validated);
+        const page = await listInventoryAvailability(
+          this.inventoryReadRepository,
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return inventoryAvailabilityPageContractSchema.parse(page);
+      },
+    );
+  }
+
+  listStockLocations(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<StockLocationReadContract>
+    >
+  > {
+    return this.execute(
+      "inventory.listStockLocations",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          listStockLocationsServiceInputSchema,
+          payload,
+        );
+        await this.authorizeRead(validated);
+        const page = await listInventoryStockLocations(
+          this.inventoryReadRepository,
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return inventoryStockLocationPageContractSchema.parse(page);
+      },
+    );
+  }
+
+  listInventoryMovements(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<InventoryMovementHistoryContract>
+    >
+  > {
+    return this.execute(
+      "inventory.listMovementHistory",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          listInventoryMovementsServiceInputSchema,
+          payload,
+        );
+        await this.authorizeRead(validated);
+        const page = await listInventoryMovementHistory(
+          this.inventoryReadRepository,
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return inventoryMovementHistoryPageContractSchema.parse({
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            occurredAt: item.occurredAt.toISOString(),
+          })),
+        });
+      },
+    );
+  }
+
+  getVariantAvailability(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantInventoryAvailabilityContract>> {
+    return this.execute(
+      "inventory.getVariantAvailability",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          getVariantAvailabilityServiceInputSchema,
+          payload,
+        );
+        await this.authorizeRead(validated);
+        const availability = await getVariantAvailability(
+          this.inventoryReadRepository,
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return variantInventoryAvailabilityContractSchema.parse(availability);
+      },
+    );
+  }
+
+  private authorizeRead(
+    context: ValidatedApplicationExecutionContext,
+  ): Promise<void> {
+    return requireAuthorization(this.authorizationService, context, {
+      action: "READ",
+      resource: "INVENTORY",
+    });
   }
 
   private async execute<T>(
@@ -279,5 +431,9 @@ const nullLogger: Logger = {
 export type {
   ApplicationServiceErrorShape,
   ApplicationServiceResult,
+  GetVariantAvailabilityServiceInputContract,
+  ListInventoryAvailabilityServiceInputContract,
+  ListInventoryMovementsServiceInputContract,
+  ListStockLocationsServiceInputContract,
   PostInventoryMovementServiceInputContract,
 };

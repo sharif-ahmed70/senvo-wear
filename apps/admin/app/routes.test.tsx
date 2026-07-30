@@ -9,6 +9,9 @@ import ProductsPage from "./catalog/products/page";
 import SizesPage from "./catalog/sizes/page";
 import { CatalogWorkspace } from "./catalog/_components/catalog-workspace";
 import InventoryPage from "./inventory/page";
+import InventoryLocationsPage from "./inventory/locations/page";
+import InventoryMovementsPage from "./inventory/movements/page";
+import { InventoryWorkspace } from "./inventory/_components/inventory-workspace";
 import OrganizationPage from "./organization/page";
 import AdminPage from "./page";
 import SalesOrdersPage from "./sales-orders/page";
@@ -23,7 +26,9 @@ describe("admin routes", () => {
     ["Colors", ColorsPage],
     ["Products", ProductsPage],
     ["Sizes", SizesPage],
-    ["Inventory", InventoryPage],
+    ["Inventory overview", InventoryPage],
+    ["Stock locations", InventoryLocationsPage],
+    ["Movement history", InventoryMovementsPage],
     ["Sales Orders", SalesOrdersPage],
     ["Organization", OrganizationPage],
     ["Users & Roles", UsersPage],
@@ -43,5 +48,17 @@ describe("admin routes", () => {
 
     expect(html).toContain("Colors");
     expect(html).not.toContain("Add color");
+  });
+
+  it("renders a restricted inventory state without INVENTORY.READ", () => {
+    const html = renderToStaticMarkup(
+      createElement(InventoryWorkspace, {
+        permissions: ["CATALOG:READ"],
+        view: "availability",
+      }),
+    );
+
+    expect(html).toContain("Inventory access is restricted");
+    expect(html).not.toContain("Search SKU");
   });
 });

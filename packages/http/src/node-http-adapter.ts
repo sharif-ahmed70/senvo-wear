@@ -5,7 +5,11 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import type { ApiHandler, CatalogApiHandlers } from "@senvo/api";
+import type {
+  ApiHandler,
+  CatalogApiHandlers,
+  InventoryReadApiHandlers,
+} from "@senvo/api";
 import {
   createApiFailure,
   type ApiFailure,
@@ -30,7 +34,11 @@ const defaultMaximumBodyBytes = 1_048_576;
 
 type HttpRoute = {
   handler: ApiHandler<unknown>;
-  input(body: unknown, match: RegExpMatchArray): unknown;
+  input(
+    body: unknown,
+    match: RegExpMatchArray,
+    request: IncomingMessage,
+  ): unknown;
   method: "GET" | "PATCH" | "POST";
   path: RegExp;
   successStatus: number;
@@ -39,6 +47,7 @@ type HttpRoute = {
 export type SenvoHttpHandlers = {
   catalog?: CatalogApiHandlers;
   createSalesOrder: ApiHandler<unknown>;
+  inventoryRead?: InventoryReadApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
 };
 
@@ -109,7 +118,7 @@ async function handleRequest(input: {
         : await readJsonBody(input.request, input.maximumBodyBytes);
     const apiResponse = await matchedRoute.route.handler.handle({
       context: requestContext,
-      input: matchedRoute.route.input(body, matchedRoute.match),
+      input: matchedRoute.route.input(body, matchedRoute.match, input.request),
     });
     writeJson(
       input.response,
@@ -233,7 +242,59 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       ),
     );
   }
+  if (handlers.inventoryRead) {
+    routes.push(
+      {
+        handler: handlers.inventoryRead.listAvailability,
+        input: queryInput,
+        method: "GET",
+        path: /^\/inventory\/availability$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.inventoryRead.listLocations,
+        input: queryInput,
+        method: "GET",
+        path: /^\/inventory\/locations$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.inventoryRead.listMovements,
+        input: queryInput,
+        method: "GET",
+        path: /^\/inventory\/movements$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.inventoryRead.getVariantAvailability,
+        input: variantAvailabilityInput,
+        method: "GET",
+        path: /^\/inventory\/variants\/(?<id>[0-9a-f-]+)\/availability$/iu,
+        successStatus: 200,
+      },
+    );
+  }
   return routes;
+}
+
+function queryInput(
+  _body: unknown,
+  _match: RegExpMatchArray,
+  request: IncomingMessage,
+): Record<string, string> {
+  const url = new URL(request.url ?? "/", "http://senvo.local");
+  return Object.fromEntries(url.searchParams.entries());
+}
+
+function variantAvailabilityInput(
+  body: unknown,
+  match: RegExpMatchArray,
+  request: IncomingMessage,
+): Record<string, unknown> {
+  return {
+    ...queryInput(body, match, request),
+    variantId: match.groups?.id,
+  };
 }
 
 function matchRoute(

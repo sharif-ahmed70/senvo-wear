@@ -3,6 +3,7 @@ import {
   PrismaCollectionRepository,
   PrismaColorRepository,
   PrismaInventoryMovementRepository,
+  PrismaInventoryReadRepository,
   PrismaOrganizationRepository,
   PrismaProductRepository,
   PrismaProductVariantRepository,
@@ -20,6 +21,7 @@ import type {
   CatalogProductVariantManagementRepository,
   CatalogSizeManagementRepository,
   InventoryMovementRepository,
+  InventoryReadRepository,
   OrganizationRepository,
   SalesOrderRepository,
 } from "@senvo/domain";
@@ -42,6 +44,7 @@ export type CreateApplicationServicesOptions = {
   collectionRepository?: CatalogCollectionManagementRepository;
   colorRepository?: CatalogColorManagementRepository;
   inventoryMovementRepository?: InventoryMovementRepository;
+  inventoryReadRepository?: InventoryReadRepository;
   logger?: Logger;
   organizationRepository?: OrganizationRepository;
   prismaClient?: PrismaClientHandle;
@@ -69,6 +72,7 @@ export function createApplicationServices(
   let ownsPrismaClient = false;
   let prismaClient = options.prismaClient;
   let inventoryMovementRepository = options.inventoryMovementRepository;
+  let inventoryReadRepository = options.inventoryReadRepository;
   let salesOrderRepository = options.salesOrderRepository;
   let transactionManager = options.transactionManager;
   let categoryRepository = options.categoryRepository;
@@ -82,6 +86,7 @@ export function createApplicationServices(
   if (
     !salesOrderRepository ||
     !inventoryMovementRepository ||
+    !inventoryReadRepository ||
     !transactionManager ||
     !categoryRepository ||
     !collectionRepository ||
@@ -106,6 +111,10 @@ export function createApplicationServices(
       requirePrismaClient(prismaClient),
     );
   }
+
+  inventoryReadRepository ??= new PrismaInventoryReadRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   if (!salesOrderRepository) {
     salesOrderRepository = new PrismaSalesOrderRepository(
@@ -168,6 +177,7 @@ export function createApplicationServices(
       authorizationService: options.authorizationService,
       clock,
       inventoryMovementRepository,
+      inventoryReadRepository,
       logger,
       requestIdGenerator: options.requestIdGenerator,
       transactionManager,

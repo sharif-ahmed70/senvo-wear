@@ -6,6 +6,7 @@ import type {
   CatalogProductVariantManagementRepository,
   CatalogSizeManagementRepository,
   InventoryMovementRepository,
+  InventoryReadRepository,
   OrganizationRepository,
   SalesOrderRepository,
 } from "@senvo/domain";
@@ -17,6 +18,7 @@ describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
       inventoryMovementRepository: fakeInventoryMovementRepository,
+      inventoryReadRepository: fakeInventoryReadRepository,
       categoryRepository: fakeCategoryRepository,
       collectionRepository: fakeCollectionRepository,
       colorRepository: fakeColorRepository,
@@ -55,6 +57,16 @@ const fakeInventoryMovementRepository: InventoryMovementRepository = {
   post: () => Promise.reject(unreachableError()),
   replaceDraftLines: () => Promise.reject(unreachableError()),
   reversePostedMovement: () => Promise.reject(unreachableError()),
+};
+
+const fakeInventoryReadRepository: InventoryReadRepository = {
+  getVariantAvailability: () => Promise.resolve(null),
+  listAvailability: () =>
+    Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
+  listLocations: () =>
+    Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
+  listMovements: () =>
+    Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
 };
 
 const fakeCategoryRepository: CatalogCategoryManagementRepository = {

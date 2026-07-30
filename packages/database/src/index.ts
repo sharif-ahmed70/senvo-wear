@@ -59,4 +59,5 @@ export {
   PrismaInventoryReservationConsumptionRepository,
   PrismaInventoryReservationRepository,
 } from "./inventory/repositories.js";
+export { PrismaInventoryReadRepository } from "./inventory/read-repository.js";
 export { PrismaSalesOrderRepository } from "./sales/repositories.js";

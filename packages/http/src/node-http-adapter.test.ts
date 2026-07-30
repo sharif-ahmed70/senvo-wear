@@ -11,7 +11,12 @@ import {
   createApiSuccess,
   postInventoryMovementServiceInputSchema,
   type ApiResponse,
+  type InventoryAvailabilityReadContract,
+  type InventoryMovementHistoryContract,
+  type InventoryReadPageContract,
   type PostInventoryMovementServiceInputContract,
+  type StockLocationReadContract,
+  type VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import {
   DefaultRequestIdFactory,
@@ -178,6 +183,83 @@ describe("Node HTTP runtime adapter", () => {
     ]);
   });
 
+  it("routes inventory read query parameters and variant identifiers", async () => {
+    const availability = new RecordingApiHandler<
+      InventoryReadPageContract<InventoryAvailabilityReadContract>
+    >(
+      createApiSuccess(
+        { hasMore: false, items: [], nextCursor: null },
+        suppliedRequestId,
+      ),
+    );
+    const variant =
+      new RecordingApiHandler<VariantInventoryAvailabilityContract>(
+        createApiSuccess(
+          {
+            locations: [],
+            variant: {
+              color: "Black",
+              id: movementId,
+              productId: "10000000-0000-4000-8000-000000000004",
+              productName: "Classic Tee",
+              size: "M",
+              sku: "TEE-BLK-M",
+            },
+          },
+          suppliedRequestId,
+        ),
+      );
+    const locations = new RecordingApiHandler<
+      InventoryReadPageContract<StockLocationReadContract>
+    >(
+      createApiSuccess(
+        { hasMore: false, items: [], nextCursor: null },
+        suppliedRequestId,
+      ),
+    );
+    const movements = new RecordingApiHandler<
+      InventoryReadPageContract<InventoryMovementHistoryContract>
+    >(
+      createApiSuccess(
+        { hasMore: false, items: [], nextCursor: null },
+        suppliedRequestId,
+      ),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const headers = developmentHeaders(suppliedRequestId);
+    headers.set("x-dev-permissions", "INVENTORY:READ");
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        inventoryRead: {
+          getVariantAvailability: variant,
+          listAvailability: availability,
+          listLocations: locations,
+          listMovements: movements,
+        },
+        postInventoryMovement: fallback,
+      },
+    });
+
+    const response = await fetch(
+      `${runtime.url}/inventory/availability?pageSize=10&search=SKU`,
+      { headers },
+    );
+    expect(response.status).toBe(200);
+    expect(availability.requests.at(0)?.input).toEqual({
+      pageSize: "10",
+      search: "SKU",
+    });
+
+    await fetch(
+      `${runtime.url}/inventory/variants/${movementId}/availability`,
+      { headers },
+    );
+    expect(variant.requests.at(0)?.input).toEqual({ variantId: movementId });
+  });
+
   it("rejects malformed JSON without calling an API handler", async () => {
     const inventory = new RecordingApiHandler(
       createApiSuccess({}, suppliedRequestId),
@@ -220,10 +302,10 @@ describe("Node HTTP runtime adapter", () => {
   });
 });
 
-class RecordingApiHandler implements ApiHandler<unknown> {
+class RecordingApiHandler<T = unknown> implements ApiHandler<T> {
   readonly requests: ApiRequest[] = [];
 
-  constructor(private readonly response: ApiResponse<unknown>) {}
+  constructor(private readonly response: ApiResponse<T>) {}
 
   handle(request: ApiRequest) {
     this.requests.push(request);

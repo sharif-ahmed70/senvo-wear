@@ -146,4 +146,37 @@ describe("AdminApiClient", () => {
     );
     expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ method: "PATCH" });
   });
+
+  it("uses typed inventory read endpoints with encoded filters", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: { hasMore: false, items: [], nextCursor: null },
+          requestId: "req_inventory_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    await client.listInventoryAvailability(
+      { locationId: "10000000-0000-4000-8000-000000000001", search: "A B" },
+      { requestId: "req_inventory_1" },
+    );
+    await client.listInventoryMovements(
+      { cursor: "cursor|1", status: "POSTED" },
+      { requestId: "req_inventory_2" },
+    );
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://admin.example.test/inventory/availability?locationId=10000000-0000-4000-8000-000000000001&search=A+B",
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://admin.example.test/inventory/movements?cursor=cursor%7C1&status=POSTED",
+    );
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "GET" });
+  });
 });

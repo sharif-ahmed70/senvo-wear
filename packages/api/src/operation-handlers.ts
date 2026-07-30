@@ -13,6 +13,10 @@ import {
   createProductVariantServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
+  getVariantAvailabilityServiceInputSchema,
+  listInventoryAvailabilityServiceInputSchema,
+  listInventoryMovementsServiceInputSchema,
+  listStockLocationsServiceInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
   postInventoryMovementServiceInputSchema,
@@ -30,18 +34,27 @@ import {
   type CreateSizeServiceInputContract,
   type CreateSalesOrderServiceInputContract,
   type InventoryMovementContract,
+  type InventoryAvailabilityReadContract,
+  type InventoryMovementHistoryContract,
+  type InventoryReadPageContract,
+  type GetVariantAvailabilityServiceInputContract,
   type GetProductServiceInputContract,
   type ListCatalogItemsServiceInputContract,
   type ListProductVariantsServiceInputContract,
+  type ListInventoryAvailabilityServiceInputContract,
+  type ListInventoryMovementsServiceInputContract,
+  type ListStockLocationsServiceInputContract,
   type PostInventoryMovementServiceInputContract,
   type ProductContract,
   type ProductDetailsContract,
   type ProductVariantContract,
   type SalesOrderServiceContract,
   type SizeContract,
+  type StockLocationReadContract,
   type UpdateCategoryStatusServiceInputContract,
   type UpdateColorStatusServiceInputContract,
   type UpdateSizeStatusServiceInputContract,
+  type VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
@@ -62,6 +75,50 @@ export type InventoryMovementPostingApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<InventoryMovementContract>>;
+};
+
+export type InventoryReadApplication = {
+  getVariantAvailability(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantInventoryAvailabilityContract>>;
+  listInventoryAvailability(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<InventoryAvailabilityReadContract>
+    >
+  >;
+  listInventoryMovements(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<InventoryMovementHistoryContract>
+    >
+  >;
+  listStockLocations(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<StockLocationReadContract>
+    >
+  >;
+};
+
+export type InventoryReadApiHandlers = {
+  getVariantAvailability: ApiHandler<VariantInventoryAvailabilityContract>;
+  listAvailability: ApiHandler<
+    InventoryReadPageContract<InventoryAvailabilityReadContract>
+  >;
+  listLocations: ApiHandler<
+    InventoryReadPageContract<StockLocationReadContract>
+  >;
+  listMovements: ApiHandler<
+    InventoryReadPageContract<InventoryMovementHistoryContract>
+  >;
 };
 
 export type CatalogManagementApplication = {
@@ -351,4 +408,62 @@ export function createPostInventoryMovementApiHandler(
     inputSchema: postInventoryMovementServiceInputSchema,
     permission: { action: "UPDATE", resource: "INVENTORY" },
   });
+}
+
+export function createInventoryReadApiHandlers(
+  dependencies: SecurityDependencies & {
+    inventory: InventoryReadApplication;
+  },
+): InventoryReadApiHandlers {
+  const protectedReadHandler = <TInput, TOutput>(options: {
+    execute: (
+      context: ApplicationExecutionContext,
+      input: TInput,
+    ) => Promise<ApplicationServiceResult<TOutput>>;
+    inputSchema: Parameters<
+      typeof createProtectedApiHandler<TInput, TOutput>
+    >[0]["inputSchema"];
+  }) =>
+    createProtectedApiHandler<TInput, TOutput>({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: options.execute,
+      inputSchema: options.inputSchema,
+      permission: { action: "READ", resource: "INVENTORY" },
+    });
+
+  return {
+    getVariantAvailability: protectedReadHandler<
+      GetVariantAvailabilityServiceInputContract,
+      VariantInventoryAvailabilityContract
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.getVariantAvailability(context, input),
+      inputSchema: getVariantAvailabilityServiceInputSchema,
+    }),
+    listAvailability: protectedReadHandler<
+      ListInventoryAvailabilityServiceInputContract,
+      InventoryReadPageContract<InventoryAvailabilityReadContract>
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.listInventoryAvailability(context, input),
+      inputSchema: listInventoryAvailabilityServiceInputSchema,
+    }),
+    listLocations: protectedReadHandler<
+      ListStockLocationsServiceInputContract,
+      InventoryReadPageContract<StockLocationReadContract>
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.listStockLocations(context, input),
+      inputSchema: listStockLocationsServiceInputSchema,
+    }),
+    listMovements: protectedReadHandler<
+      ListInventoryMovementsServiceInputContract,
+      InventoryReadPageContract<InventoryMovementHistoryContract>
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.listInventoryMovements(context, input),
+      inputSchema: listInventoryMovementsServiceInputSchema,
+    }),
+  };
 }

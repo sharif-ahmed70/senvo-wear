@@ -188,6 +188,12 @@ export {
   releaseInventoryReservation,
 } from "./inventory/application/reservation-use-cases.js";
 export {
+  getVariantAvailability,
+  listInventoryAvailability,
+  listInventoryMovementHistory,
+  listStockLocations as listInventoryStockLocations,
+} from "./inventory/application/read-query-use-cases.js";
+export {
   cancelSalesOrder,
   amendDraftSalesOrder,
   calculateSalesOrderTotals,
@@ -269,6 +275,13 @@ export type {
   ListInventoryReservationsInput,
   ListLocationAvailabilityInput,
 } from "./inventory/application/reservation-use-cases.js";
+export type {
+  GetVariantAvailabilityInput,
+  InventoryReadPageInput,
+  ListInventoryAvailabilityInput,
+  ListInventoryMovementHistoryInput,
+  ListStockLocationsInput as ListInventoryStockLocationsInput,
+} from "./inventory/application/read-query-use-cases.js";
 export type {
   AssignRoleInput,
   CreateOrganizationMembershipInput,
@@ -372,6 +385,17 @@ export type {
   ChangeInventoryReservationStatusRecord,
   CreateInventoryReservationRecord,
 } from "./inventory/repositories/inventory-repositories.js";
+export type {
+  InventoryAvailabilityReadItem,
+  InventoryLocationReadItem,
+  InventoryMovementHistoryItem,
+  InventoryReadPage,
+  InventoryReadPageFilter,
+  InventoryReadRepository,
+  InventoryVariantReadItem,
+  StockLocationReadItem,
+  VariantInventoryAvailability,
+} from "./inventory/repositories/inventory-read-repository.js";
 export type {
   CreateOrganizationMembershipRecord,
   CreateUserRecord,

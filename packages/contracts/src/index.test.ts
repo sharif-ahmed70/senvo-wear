@@ -48,8 +48,14 @@ import {
   inventoryReservationPageContractSchema,
   locationAvailabilityPageContractSchema,
   inventoryMovementPageContractSchema,
+  inventoryAvailabilityPageContractSchema,
+  inventoryMovementHistoryPageContractSchema,
+  inventoryStockLocationPageContractSchema,
   listInventoryAllocationPoliciesQuerySchema,
   listInventoryMovementsQuerySchema,
+  listInventoryAvailabilityServiceInputSchema,
+  listInventoryMovementsServiceInputSchema,
+  listStockLocationsServiceInputSchema,
   listBranchesQuerySchema,
   listLocationBalancesQuerySchema,
   listLocationAvailabilityQuerySchema,
@@ -80,6 +86,7 @@ import {
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
+  variantInventoryAvailabilityContractSchema,
   assignOrganizationMembershipRoleInputSchema,
   assignRolePermissionInputSchema,
   createPermissionInputSchema,
@@ -168,6 +175,82 @@ describe("API contracts", () => {
         name: "Black",
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps inventory read inputs strict and response projections public", () => {
+    expect(
+      listInventoryAvailabilityServiceInputSchema.parse({
+        locationId: "11111111-1111-4111-8111-111111111111",
+        pageSize: "25",
+        search: "SKU",
+      }),
+    ).toMatchObject({ pageSize: 25, search: "SKU" });
+    expect(
+      listInventoryAvailabilityServiceInputSchema.safeParse({
+        organizationId: "11111111-1111-4111-8111-111111111111",
+      }).success,
+    ).toBe(false);
+    expect(
+      listStockLocationsServiceInputSchema.safeParse({ internal: true })
+        .success,
+    ).toBe(false);
+    expect(
+      listInventoryMovementsServiceInputSchema.safeParse({
+        pageSize: 0,
+      }).success,
+    ).toBe(false);
+
+    const availability = {
+      availableToSell: 15,
+      location: {
+        id: "22222222-2222-4222-8222-222222222222",
+        name: "Main Warehouse",
+      },
+      onHand: 20,
+      reserved: 5,
+      variant: {
+        color: "Black",
+        id: "33333333-3333-4333-8333-333333333333",
+        productId: "44444444-4444-4444-8444-444444444444",
+        productName: "Classic Tee",
+        size: "M",
+        sku: "TEE-BLK-M",
+      },
+    };
+    expect(
+      inventoryAvailabilityPageContractSchema.parse({
+        hasMore: false,
+        items: [availability],
+        nextCursor: null,
+      }).items,
+    ).toHaveLength(1);
+    expect(
+      inventoryStockLocationPageContractSchema.safeParse({
+        hasMore: false,
+        items: [],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      inventoryMovementHistoryPageContractSchema.safeParse({
+        hasMore: false,
+        items: [],
+        nextCursor: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      variantInventoryAvailabilityContractSchema.parse({
+        locations: [
+          {
+            availableToSell: availability.availableToSell,
+            location: availability.location,
+            onHand: availability.onHand,
+            reserved: availability.reserved,
+          },
+        ],
+        variant: availability.variant,
+      }).locations,
+    ).toHaveLength(1);
   });
 
   it("validates organization operation creation inputs without Prisma types", () => {

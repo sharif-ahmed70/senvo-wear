@@ -32,6 +32,7 @@ import {
   PrismaInventoryReservationConsumptionRepository,
   PrismaInventoryReservationRepository,
 } from "./repositories.js";
+import { PrismaInventoryReadRepository } from "./read-repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
@@ -46,6 +47,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
   let availability: PrismaInventoryAvailabilityQueryRepository;
   let allocationPolicies: PrismaInventoryAllocationPolicyRepository;
   let allocation: PrismaInventoryAllocationQueryRepository;
+  let inventoryRead: PrismaInventoryReadRepository;
 
   beforeAll(() => {
     process.env.DATABASE_URL = testDatabaseUrl;
@@ -57,6 +59,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
     allocationPolicies = new PrismaInventoryAllocationPolicyRepository(prisma);
     allocation = new PrismaInventoryAllocationQueryRepository(prisma);
+    inventoryRead = new PrismaInventoryReadRepository(prisma);
   });
 
   beforeEach(async () => {
@@ -1470,6 +1473,128 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         productVariantId: base.variant.id,
       },
     ]);
+  });
+
+  it("projects ledger availability, reservations, locations, and movement history with organization isolation", async () => {
+    const base = await createInventoryBase("READ-MODEL");
+    const other = await createInventoryBase("READ-OTHER");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "READ-OPENING",
+      quantity: 20,
+    });
+    await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      movementNumber: "READ-RECEIPT",
+      quantity: 2,
+    });
+    await reserve(base, {
+      idempotencyKey: "read-reservation-key",
+      quantity: 5,
+      reservationNumber: "READ-RESERVATION",
+    });
+    await createAndPost("OPENING", other, {
+      destinationLocationId: other.primaryLocation.id,
+      movementNumber: "OTHER-OPENING",
+      quantity: 99,
+    });
+
+    const availabilityPage = await inventoryRead.listAvailability({
+      organizationId: base.organization.id,
+      pageSize: 25,
+      search: base.variant.sku,
+    });
+    expect(availabilityPage.items).toHaveLength(1);
+    expect(availabilityPage.items.at(0)).toMatchObject({
+      availableToSell: 17,
+      location: {
+        id: base.primaryLocation.id,
+        name: base.primaryLocation.name,
+      },
+      onHand: 22,
+      reserved: 5,
+      variant: {
+        id: base.variant.id,
+        productId: base.product.id,
+        sku: base.variant.sku,
+      },
+    });
+    expect(
+      availabilityPage.items.some(
+        (item) => item.variant.id === other.variant.id,
+      ),
+    ).toBe(false);
+
+    const variantAvailability = await inventoryRead.getVariantAvailability({
+      organizationId: base.organization.id,
+      variantId: base.variant.id,
+    });
+    expect(variantAvailability).toMatchObject({
+      locations: [
+        {
+          availableToSell: 17,
+          onHand: 22,
+          reserved: 5,
+        },
+      ],
+      variant: { id: base.variant.id },
+    });
+    await expect(
+      inventoryRead.getVariantAvailability({
+        organizationId: other.organization.id,
+        variantId: base.variant.id,
+      }),
+    ).resolves.toBeNull();
+
+    const locationsPage = await inventoryRead.listLocations({
+      organizationId: base.organization.id,
+      pageSize: 25,
+    });
+    expect(
+      locationsPage.items.find(
+        (location) => location.id === base.primaryLocation.id,
+      ),
+    ).toMatchObject({
+      branch: { id: base.branch.id },
+      id: base.primaryLocation.id,
+      isSellable: true,
+    });
+    expect(
+      locationsPage.items.some((location) =>
+        [other.primaryLocation.id, other.secondaryLocation.id].includes(
+          location.id,
+        ),
+      ),
+    ).toBe(false);
+
+    const firstMovementPage = await inventoryRead.listMovements({
+      organizationId: base.organization.id,
+      pageSize: 1,
+    });
+    expect(firstMovementPage.hasMore).toBe(true);
+    expect(firstMovementPage.items.at(0)).toMatchObject({
+      destinationLocation: {
+        id: base.primaryLocation.id,
+      },
+      variant: { id: base.variant.id },
+    });
+    expect(firstMovementPage.nextCursor).not.toBeNull();
+    const secondMovementPage = await inventoryRead.listMovements({
+      cursor: firstMovementPage.nextCursor ?? undefined,
+      organizationId: base.organization.id,
+      pageSize: 1,
+    });
+    expect(secondMovementPage.items).toHaveLength(1);
+    expect(
+      [...firstMovementPage.items, ...secondMovementPage.items]
+        .map((movement) => movement.quantity)
+        .sort((left, right) => left - right),
+    ).toEqual([2, 20]);
+    expect(
+      secondMovementPage.items.some(
+        (movement) => movement.variant.id === other.variant.id,
+      ),
+    ).toBe(false);
   });
 
   it("preserves restrictive deletion for reservation history", async () => {

@@ -3,6 +3,7 @@ import {
   type AuditWriter,
   type InventoryMovement,
   type InventoryMovementRepository,
+  type InventoryReadRepository,
   type RecordAuditEntryInput,
 } from "@senvo/domain";
 import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
@@ -38,6 +39,7 @@ describe("InventoryApplicationService", () => {
   let auditWriter: FakeAuditWriter;
   let logger: MemoryLogger;
   let repository: FakeInventoryMovementRepository;
+  let readRepository: FakeInventoryReadRepository;
   let service: InventoryApplicationService;
 
   beforeEach(() => {
@@ -45,10 +47,12 @@ describe("InventoryApplicationService", () => {
     authorization = new FakeAuthorizationService();
     logger = new MemoryLogger();
     repository = new FakeInventoryMovementRepository();
+    readRepository = new FakeInventoryReadRepository();
     service = new InventoryApplicationService({
       authorizationService: authorization,
       clock: new StepClock(),
       inventoryMovementRepository: repository,
+      inventoryReadRepository: readRepository,
       logger,
       requestIdGenerator: () => "generated_request_1",
       transactionManager: new FakeTransactionManager(repository, auditWriter),
@@ -93,7 +97,84 @@ describe("InventoryApplicationService", () => {
     });
     expect(repository.lastPost).toBeNull();
   });
+
+  it("queries organization-scoped availability with INVENTORY.READ", async () => {
+    const result = await service.listInventoryAvailability(context, {
+      pageSize: 1,
+      search: "SKU",
+    });
+
+    expect(result).toMatchObject({
+      data: {
+        hasMore: true,
+        items: [
+          {
+            availableToSell: 15,
+            onHand: 20,
+            reserved: 5,
+          },
+        ],
+        nextCursor: "next-inventory-page",
+      },
+      ok: true,
+    });
+    expect(readRepository.availabilityFilter).toMatchObject({
+      organizationId,
+      pageSize: 1,
+      search: "SKU",
+    });
+    expect(authorization.calls.at(-1)?.permission).toEqual({
+      action: "READ",
+      resource: "INVENTORY",
+    });
+  });
 });
+
+class FakeInventoryReadRepository implements InventoryReadRepository {
+  availabilityFilter:
+    Parameters<InventoryReadRepository["listAvailability"]>[0] | undefined;
+
+  getVariantAvailability() {
+    return Promise.resolve(null);
+  }
+
+  listAvailability(
+    filter: Parameters<InventoryReadRepository["listAvailability"]>[0],
+  ) {
+    this.availabilityFilter = filter;
+    return Promise.resolve({
+      hasMore: true,
+      items: [
+        {
+          availableToSell: 15,
+          location: {
+            id: "55555555-5555-4555-8555-555555555555",
+            name: "Main Warehouse",
+          },
+          onHand: 20,
+          reserved: 5,
+          variant: {
+            color: "Black",
+            id: productVariantId,
+            productId: "66666666-6666-4666-8666-666666666666",
+            productName: "Classic Tee",
+            size: "M",
+            sku: "SKU-BLACK-M",
+          },
+        },
+      ],
+      nextCursor: "next-inventory-page",
+    });
+  }
+
+  listLocations() {
+    return Promise.resolve({ hasMore: false, items: [], nextCursor: null });
+  }
+
+  listMovements() {
+    return Promise.resolve({ hasMore: false, items: [], nextCursor: null });
+  }
+}
 
 class FakeInventoryMovementRepository implements InventoryMovementRepository {
   lastPost: { movementId: string; organizationId: string } | null = null;

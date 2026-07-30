@@ -51,7 +51,11 @@ export type {
 } from "./errors/application-error.js";
 export { InventoryApplicationService } from "./inventory/inventory-application-service.js";
 export type {
+  GetVariantAvailabilityServiceInputContract,
   InventoryApplicationServiceDependencies,
+  ListInventoryAvailabilityServiceInputContract,
+  ListInventoryMovementsServiceInputContract,
+  ListStockLocationsServiceInputContract,
   PostInventoryMovementServiceInputContract,
 } from "./inventory/inventory-application-service.js";
 export { SalesApplicationService } from "./sales/sales-application-service.js";
