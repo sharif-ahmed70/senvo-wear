@@ -1,4 +1,8 @@
-import { ConflictError, NotFoundError } from "../../errors.js";
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationApplicationError,
+} from "../../errors.js";
 import type {
   Category,
   Collection,
@@ -136,7 +140,7 @@ export async function createCollection(
 
 export type CreateColorInput = {
   code: string;
-  hexValue?: string | null;
+  hexValue: string;
   name: string;
   organizationId: string;
   status?: "ACTIVE" | "INACTIVE";
@@ -157,6 +161,10 @@ export async function createColor(
   }
 
   const name = normalizeDisplayName(input.name, "color name");
+  const hexValue = normalizeHexValue(input.hexValue);
+  if (hexValue === null) {
+    throw new ValidationApplicationError("hexValue is required.");
+  }
   const normalizedName = normalizeComparableName(name);
   if (
     await repositories.colors.findByNormalizedName(
@@ -169,7 +177,7 @@ export async function createColor(
 
   return repositories.colors.create({
     code,
-    hexValue: normalizeHexValue(input.hexValue),
+    hexValue,
     name,
     normalizedName,
     organizationId: input.organizationId,

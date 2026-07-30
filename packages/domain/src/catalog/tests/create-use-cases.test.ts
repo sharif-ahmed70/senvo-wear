@@ -85,6 +85,7 @@ describe("catalog create use cases", () => {
 
     await createColor(repositories, {
       code: "BLACK",
+      hexValue: "#000000",
       name: "Black",
       organizationId: organization.id,
     });
@@ -92,10 +93,28 @@ describe("catalog create use cases", () => {
     await expect(
       createColor(repositories, {
         code: "BLACK-ALT",
+        hexValue: "#111111",
         name: " black ",
         organizationId: organization.id,
       }),
     ).rejects.toThrow("Color name already exists");
+  });
+
+  it("requires a color hex value", async () => {
+    const repositories = createInMemoryRepositories();
+    const organization = await createOrganization(repositories.organizations, {
+      code: "SENVO",
+      name: "SENVO Wear",
+    });
+
+    await expect(
+      createColor(repositories, {
+        code: "BLACK",
+        hexValue: "",
+        name: "Black",
+        organizationId: organization.id,
+      }),
+    ).rejects.toThrow("hexValue is required");
   });
 
   it("rejects cross-organization product category references", async () => {
@@ -145,6 +164,7 @@ describe("catalog create use cases", () => {
     });
     const color = await createColor(repositories, {
       code: "BLACK",
+      hexValue: "#000000",
       name: "Black",
       organizationId: organization.id,
     });

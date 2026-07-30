@@ -129,6 +129,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await expect(
       createColor(repositories, {
         code: "BLACK",
+        hexValue: "#111111",
         name: "Black Duplicate",
         organizationId: organization.id,
       }),
@@ -236,6 +237,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
     });
     const secondColor = await createColor(repositories, {
       code: "NAVY",
+      hexValue: "#000080",
       name: "Navy",
       organizationId: second.id,
     });
