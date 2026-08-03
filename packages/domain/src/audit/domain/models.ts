@@ -1,6 +1,10 @@
-export type AuditAction = "INVENTORY_MOVEMENT_POSTED" | "SALES_ORDER_CREATED";
+export type AuditAction =
+  | "INVENTORY_MOVEMENT_POSTED"
+  | "POS_CHECKOUT_COMPLETED"
+  | "SALES_ORDER_CREATED";
 
-export type AuditResource = "INVENTORY_MOVEMENT" | "SALES_ORDER";
+export type AuditResource =
+  "INVENTORY_MOVEMENT" | "POS_CHECKOUT" | "SALES_ORDER";
 
 export type AuditJsonValue =
   | boolean

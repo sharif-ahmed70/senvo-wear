@@ -53,6 +53,8 @@ import type {
   VariantBarcodeContract,
   SalesCounterContract,
   SalesSessionContract,
+  PosCheckoutContract,
+  CheckoutPosCartServiceInputContract,
   CreateSalesCounterServiceInputContract,
   UpdateSalesCounterStatusServiceInputContract,
   OpenSalesSessionServiceInputContract,
@@ -615,6 +617,29 @@ export class AdminApiClient {
       `/pos/sessions/${sessionId}/close`,
       { ...request, body, method: "POST" },
     );
+  }
+
+  checkoutPosCart(
+    input: CheckoutPosCartServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { cartId, ...body } = input;
+    return this.request<PosCheckoutContract>(`/pos/carts/${cartId}/checkout`, {
+      ...request,
+      body,
+      method: "POST",
+    });
+  }
+
+  getPosCheckout(checkoutId: string, request?: AdminApiRequest) {
+    return this.request<PosCheckoutContract>(
+      `/pos/checkouts/${checkoutId}`,
+      request,
+    );
+  }
+
+  listPosCheckouts(request?: AdminApiRequest) {
+    return this.request<PosCheckoutContract[]>("/pos/checkouts", request);
   }
 
   private salesOrderAction(

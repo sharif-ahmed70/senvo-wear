@@ -13,11 +13,13 @@ const sensitiveMetadataKeyPattern =
 
 export const auditActions = [
   "INVENTORY_MOVEMENT_POSTED",
+  "POS_CHECKOUT_COMPLETED",
   "SALES_ORDER_CREATED",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
   "INVENTORY_MOVEMENT",
+  "POS_CHECKOUT",
   "SALES_ORDER",
 ] as const satisfies readonly AuditResource[];
 

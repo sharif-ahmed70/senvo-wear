@@ -437,6 +437,13 @@ describe("AdminApiClient", () => {
       { counterId: "10000000-0000-4000-8000-000000000011" },
       { requestId: "req_pos_client_2" },
     );
+    await client.checkoutPosCart(
+      {
+        cartId: "10000000-0000-4000-8000-000000000012",
+        idempotencyKey: "checkout-client-001",
+      },
+      { requestId: "req_pos_client_3" },
+    );
     const bodies = fetcher.mock.calls.map(
       (call) =>
         JSON.parse(
@@ -446,12 +453,16 @@ describe("AdminApiClient", () => {
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       "https://admin.example.test/pos/counters",
       "https://admin.example.test/pos/sessions/open",
+      "https://admin.example.test/pos/carts/10000000-0000-4000-8000-000000000012/checkout",
     ]);
     for (const body of bodies) {
       expect(body).not.toHaveProperty("organizationId");
       expect(body).not.toHaveProperty("userId");
       expect(body).not.toHaveProperty("role");
       expect(body).not.toHaveProperty("permissions");
+      expect(body).not.toHaveProperty("cartId");
+      expect(body).not.toHaveProperty("staffId");
+      expect(body).not.toHaveProperty("totalMinor");
     }
   });
 });

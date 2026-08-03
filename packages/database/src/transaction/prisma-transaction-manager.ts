@@ -9,6 +9,8 @@ import type { PrismaClient } from "../../generated/prisma/client.js";
 import { PrismaAuditEntryRepository } from "../audit/repositories.js";
 import { PrismaTransactionalInventoryMovementPostingRepository } from "../inventory/repositories.js";
 import { PrismaTransactionalSalesOrderCreationRepository } from "../sales/repositories.js";
+import { PrismaPosCheckoutRepository } from "../pos/checkout-repository.js";
+import { createTransactionScopedSalesOrderRepository } from "../sales/repositories.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 type TransactionActorContext = {
@@ -40,6 +42,9 @@ export class PrismaTransactionManager<
           new PrismaTransactionalInventoryMovementPostingRepository(
             transaction,
           ),
+        posCheckoutRepository: new PrismaPosCheckoutRepository(transaction),
+        posCheckoutSalesOrderRepository:
+          createTransactionScopedSalesOrderRepository(transaction),
         salesOrderRepository:
           new PrismaTransactionalSalesOrderCreationRepository(transaction),
       }),

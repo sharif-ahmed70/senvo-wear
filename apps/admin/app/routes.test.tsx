@@ -33,6 +33,7 @@ import type { SalesOrderDetailsReadContract } from "@senvo/contracts";
 import UsersPage from "./users/page";
 import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
+import PosCheckoutsPage from "./pos/checkouts/page";
 import { PosManagementWorkspace } from "./pos/_components/pos-management-workspace";
 
 describe("admin routes", () => {
@@ -58,6 +59,9 @@ describe("admin routes", () => {
     );
     expect(renderToStaticMarkup(<SalesSessionsPage />)).toContain(
       "Sales Sessions",
+    );
+    expect(renderToStaticMarkup(<PosCheckoutsPage />)).toContain(
+      "Checkout History",
     );
     const restricted = renderToStaticMarkup(
       <PosManagementWorkspace permissions={[]} view="counters" />,

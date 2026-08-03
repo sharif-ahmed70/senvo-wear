@@ -42,7 +42,8 @@ export type AdminNavigationItem = {
     | "team"
     | "roles"
     | "counter"
-    | "sessions";
+    | "sessions"
+    | "checkouts";
   label: string;
   permission?: AdminPermissionKey;
 };
@@ -95,6 +96,12 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     href: "/pos/sessions",
     icon: "sessions",
     label: "Sales Sessions",
+    permission: "POS:READ",
+  },
+  {
+    href: "/pos/checkouts",
+    icon: "checkouts",
+    label: "Checkout History",
     permission: "POS:READ",
   },
   {

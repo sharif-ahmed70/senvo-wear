@@ -11,7 +11,11 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type SessionRecord = Prisma.SalesSessionGetPayload<{ include: { cart: true } }>;
 type CartRecord = Prisma.PosCartGetPayload<{
-  include: { lines: true; salesSession: { select: { status: true } } };
+  include: {
+    checkout: { select: { id: true } };
+    lines: true;
+    salesSession: { select: { status: true } };
+  };
 }>;
 
 export class PrismaPosRepository implements PosRepository {
@@ -132,7 +136,11 @@ export class PrismaPosRepository implements PosRepository {
 
   async findCartById(id: string, organizationId: string) {
     const record = await this.prisma.posCart.findFirst({
-      include: { lines: true, salesSession: { select: { status: true } } },
+      include: {
+        checkout: { select: { id: true } },
+        lines: true,
+        salesSession: { select: { status: true } },
+      },
       where: { id, organizationId },
     });
     return record ? mapCart(record) : null;
@@ -227,6 +235,7 @@ function mapSession(record: SessionRecord): SalesSession {
 }
 function mapCart(record: CartRecord): PosCart {
   return {
+    checkoutId: record.checkout?.id ?? null,
     createdAt: record.createdAt,
     id: record.id,
     lines: record.lines.map(mapLine),

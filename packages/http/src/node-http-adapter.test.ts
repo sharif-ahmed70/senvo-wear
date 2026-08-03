@@ -6,6 +6,7 @@ import {
   type ApiHandler,
   type ApiRequest,
   type OrganizationManagementApiHandlers,
+  type PosApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
 import {
@@ -401,6 +402,32 @@ describe("Node HTTP runtime adapter", () => {
       success: false,
     });
     expect(inventory.requests).toEqual([]);
+  });
+
+  it("maps the checkout cart path into trusted handler input", async () => {
+    const checkout = new RecordingApiHandler(
+      createApiSuccess({ status: "COMPLETED" }, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: checkout,
+        pos: { checkoutCart: checkout } as unknown as PosApiHandlers,
+        postInventoryMovement: checkout,
+      },
+    });
+    const response = await fetch(
+      `${runtime.url}/pos/carts/${movementId}/checkout`,
+      {
+        body: JSON.stringify({ idempotencyKey: "checkout-http-001" }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(response.status).toBe(201);
+    expect(checkout.requests.at(0)?.input).toEqual({
+      cartId: movementId,
+      idempotencyKey: "checkout-http-001",
+    });
   });
 
   it("does not allow development authentication adapters in production", () => {

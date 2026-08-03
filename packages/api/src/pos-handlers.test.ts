@@ -6,6 +6,7 @@ import type {
 } from "@senvo/application";
 import type {
   PosCartLineContract,
+  PosCheckoutContract,
   PosSaleLookupContract,
   SalesCounterContract,
   SalesSessionContract,
@@ -82,6 +83,25 @@ describe("POS API handlers", () => {
     expect(counterResponse.success).toBe(false);
     expect(cartResponse.success).toBe(false);
   });
+
+  it("accepts only an idempotency key from the checkout body", async () => {
+    const application = new FakePos();
+    const response = await handlers(application).checkoutCart.handle({
+      context,
+      input: {
+        cartId: "20000000-0000-4000-8000-000000000001",
+        idempotencyKey: "checkout-attempt-001",
+        organizationId,
+        staffId: userId,
+        totalMinor: 1,
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(application.context).toBeUndefined();
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -124,11 +144,20 @@ class FakePos implements PosApplication {
   closeSession(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesSessionContract);
   }
+  checkoutCart(context: ApplicationExecutionContext) {
+    return this.result(context, {} as PosCheckoutContract);
+  }
   createCounter(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesCounterContract);
   }
   listCounters(context: ApplicationExecutionContext) {
     return this.result(context, [] as SalesCounterContract[]);
+  }
+  getCheckout(context: ApplicationExecutionContext) {
+    return this.result(context, {} as PosCheckoutContract);
+  }
+  listCheckouts(context: ApplicationExecutionContext) {
+    return this.result(context, [] as PosCheckoutContract[]);
   }
   listSessions(context: ApplicationExecutionContext) {
     return this.result(context, [] as SalesSessionContract[]);

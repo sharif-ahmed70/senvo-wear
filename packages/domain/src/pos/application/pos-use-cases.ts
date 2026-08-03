@@ -344,6 +344,8 @@ async function requireOpenCart(
   if (!cart) throw new NotFoundError("Cart was not found.");
   if (cart.sessionStatus !== "OPEN")
     throw new BusinessRuleError("The sales session is closed.");
+  if (cart.checkoutId)
+    throw new BusinessRuleError("This sale has already been completed.");
   return cart;
 }
 

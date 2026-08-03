@@ -43,6 +43,7 @@ export type PosCartLine = {
 };
 
 export type PosCart = {
+  checkoutId?: string | null;
   createdAt: Date;
   id: string;
   lines: PosCartLine[];
@@ -50,6 +51,53 @@ export type PosCart = {
   salesSessionId: string;
   sessionStatus: SalesSessionStatus;
   updatedAt: Date;
+};
+
+export type PosCheckoutStatus = "COMPLETED";
+
+export type PosCheckout = {
+  cartId: string;
+  completedAt: Date;
+  counterId: string;
+  counterName: string;
+  createdAt: Date;
+  id: string;
+  idempotencyKey: string;
+  orderNumber: string;
+  organizationId: string;
+  salesOrderId: string;
+  salesSessionId: string;
+  staffName: string;
+  status: PosCheckoutStatus;
+  subtotalMinor: number;
+  totalMinor: number;
+  updatedAt: Date;
+};
+
+export type PosCheckoutPreparation = {
+  allocationPolicyId: string | null;
+  boothId: string | null;
+  branchId: string | null;
+  cartId: string;
+  checkout: PosCheckout | null;
+  counterId: string;
+  counterName: string;
+  counterStatus: SalesCounterStatus;
+  counterType: SalesCounterType;
+  lines: {
+    hasActiveBarcode: boolean;
+    productVariantId: string;
+    quantity: number;
+    sellingPriceMinor: number;
+    variantStatus: SellableVariant["status"];
+  }[];
+  membershipStatus: "ACTIVE" | "INACTIVE";
+  organizationId: string;
+  salesSessionId: string;
+  sessionStatus: SalesSessionStatus;
+  staffId: string;
+  staffName: string;
+  staffStatus: "ACTIVE" | "INACTIVE" | "LOCKED";
 };
 
 export type SellableVariant = {

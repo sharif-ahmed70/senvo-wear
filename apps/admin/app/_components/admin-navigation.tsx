@@ -14,6 +14,7 @@ import {
   UsersRound,
   MonitorSmartphone,
   Clock3,
+  ReceiptText,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -37,6 +38,7 @@ const navigationIcons = {
   team: UsersRound,
   counter: MonitorSmartphone,
   sessions: Clock3,
+  checkouts: ReceiptText,
 } satisfies Record<AdminNavigationItem["icon"], typeof LayoutDashboard>;
 
 export function AdminNavigation({ session }: { session: AdminSession }) {

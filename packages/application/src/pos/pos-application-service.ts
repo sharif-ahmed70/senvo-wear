@@ -1,5 +1,6 @@
 import {
   ApplicationError,
+  AuthenticationError,
   AuthorizationError,
   BusinessRuleError,
   ConflictError,
@@ -7,11 +8,14 @@ import {
   NotFoundError,
   ValidationApplicationError,
   addPosCartItem,
+  checkoutCart as completePosCheckout,
   changeSalesCounterStatus,
   closeSalesSession,
   createSalesCounter,
   listSalesCounters,
   listSalesSessions,
+  getCheckoutStatus,
+  listCheckoutHistory,
   lookupPosSale,
   openSalesSession,
   removePosCartItem,
@@ -21,6 +25,8 @@ import {
   type InventoryReadRepository,
   type OrganizationMembershipRepository,
   type PosCartLine,
+  type PosCheckout,
+  type PosCheckoutRepository,
   type PosRepository,
   type SalesCounter,
   type SalesSession,
@@ -29,11 +35,14 @@ import {
 } from "@senvo/domain";
 import {
   addPosCartItemServiceInputSchema,
+  checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
+  getPosCheckoutServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
+  posCheckoutContractSchema,
   posEmptyInputSchema,
   posSaleLookupContractSchema,
   removePosCartItemServiceInputSchema,
@@ -42,14 +51,20 @@ import {
   updatePosCartItemServiceInputSchema,
   updateSalesCounterStatusServiceInputSchema,
   type PosCartLineContract,
+  type PosCheckoutContract,
   type PosSaleLookupContract,
   type SalesCounterContract,
   type SalesSessionContract,
 } from "@senvo/contracts";
 import {
+  requireAuthentication,
+  type ApplicationAuthenticationService,
+} from "../context/authentication.js";
+import {
   requireAuthorization,
   type ApplicationAuthorizationService,
 } from "../context/authorization.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import type { Clock } from "../context/clock.js";
 import {
   validateExecutionContext,
@@ -72,15 +87,18 @@ type SafeParseSchema<T> = {
 };
 
 export type PosApplicationServiceDependencies = {
+  authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   barcodes: BarcodeRepository;
   branches: BranchRepository;
   clock: Clock;
+  checkouts: PosCheckoutRepository;
   inventory: InventoryReadRepository;
   memberships: OrganizationMembershipRepository;
   pos: PosRepository;
   requestIdGenerator?: () => string;
   salesSources: SalesSourceRepository;
+  transactionManager: ApplicationTransactionManager;
   users: UserRepository;
 };
 
@@ -237,6 +255,94 @@ export class PosApplicationService {
     });
   }
 
+  checkoutCart(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosCheckoutContract>(context, async (trusted) => {
+      const input = parsePayload(checkoutPosCartServiceInputSchema, payload);
+      await requireAuthentication(this.dependencies.authenticationService, {
+        requestId: trusted.requestId,
+        userId: trusted.userId,
+      });
+      if (!trusted.userId)
+        throw new AuthenticationError("Authenticated user is required.");
+      const staffId = trusted.userId;
+      return this.dependencies.transactionManager.execute(
+        trusted,
+        async (transaction) => {
+          await requireAuthorization(
+            this.dependencies.authorizationService,
+            transaction.applicationContext,
+            { action: "UPDATE", resource: "POS" },
+          );
+          await requireAuthorization(
+            this.dependencies.authorizationService,
+            transaction.applicationContext,
+            { action: "CREATE", resource: "SALES" },
+          );
+          if (
+            !transaction.posCheckoutRepository ||
+            !transaction.posCheckoutSalesOrderRepository
+          ) {
+            throw new Error("POS checkout transaction capability is required.");
+          }
+          const result = await completePosCheckout(
+            {
+              checkouts: transaction.posCheckoutRepository,
+              salesOrders: transaction.posCheckoutSalesOrderRepository,
+            },
+            {
+              ...input,
+              checkoutId: crypto.randomUUID(),
+              completedAt: this.dependencies.clock.now(),
+              organizationId: trusted.organizationId,
+              staffId,
+            },
+          );
+          if (!result.replayed) {
+            await transaction.auditWriter.recordWithinTransaction({
+              action: "POS_CHECKOUT_COMPLETED",
+              actor: { userId: staffId },
+              metadata: {
+                cartId: result.checkout.cartId,
+                requestId: trusted.requestId,
+                salesOrderId: result.checkout.salesOrderId,
+              },
+              organizationId: trusted.organizationId,
+              resource: "POS_CHECKOUT",
+              resourceId: result.checkout.id,
+            });
+          }
+          return mapCheckout(result.checkout);
+        },
+      );
+    });
+  }
+
+  getCheckout(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosCheckoutContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      return mapCheckout(
+        await getCheckoutStatus(this.dependencies.checkouts, {
+          ...input,
+          organizationId: trusted.organizationId,
+        }),
+      );
+    });
+  }
+
+  listCheckouts(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosCheckoutContract[]>(context, async (trusted) => {
+      parsePayload(posEmptyInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      return (
+        await listCheckoutHistory(
+          this.dependencies.checkouts,
+          trusted.organizationId,
+        )
+      ).map(mapCheckout);
+    });
+  }
+
   private authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -309,6 +415,25 @@ function mapLine(record: PosCartLine): PosCartLineContract {
     updatedAt: record.updatedAt.toISOString(),
   });
 }
+function mapCheckout(record: PosCheckout): PosCheckoutContract {
+  return posCheckoutContractSchema.parse({
+    cartId: record.cartId,
+    completedAt: record.completedAt.toISOString(),
+    counterId: record.counterId,
+    counterName: record.counterName,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    idempotencyKey: record.idempotencyKey,
+    orderNumber: record.orderNumber,
+    salesOrderId: record.salesOrderId,
+    salesSessionId: record.salesSessionId,
+    staffName: record.staffName,
+    status: record.status,
+    subtotalMinor: record.subtotalMinor,
+    totalMinor: record.totalMinor,
+    updatedAt: record.updatedAt.toISOString(),
+  });
+}
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {
   const parsed = schema.safeParse(payload);
   if (parsed.success) return parsed.data;
@@ -325,6 +450,11 @@ function normalizeError(error: unknown): ApplicationServiceError {
     return new ApplicationServiceError({
       code: "VALIDATION_ERROR",
       message: "Input is invalid.",
+    });
+  if (error instanceof AuthenticationError)
+    return new ApplicationServiceError({
+      code: "UNAUTHORIZED",
+      message: "Authentication is required.",
     });
   if (error instanceof AuthorizationError)
     return new ApplicationServiceError({

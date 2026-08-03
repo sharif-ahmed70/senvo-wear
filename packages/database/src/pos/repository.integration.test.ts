@@ -1,4 +1,10 @@
-import { ConflictError, addPosCartItem, openSalesSession } from "@senvo/domain";
+import {
+  BusinessRuleError,
+  ConflictError,
+  addPosCartItem,
+  checkoutCart,
+  openSalesSession,
+} from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "../index.js";
 import {
@@ -6,11 +12,18 @@ import {
   PrismaUserRepository,
 } from "../identity/repositories.js";
 import { PrismaPosRepository } from "./repository.js";
+import { PrismaPosCheckoutRepository } from "./checkout-repository.js";
+import { PrismaTransactionManager } from "../transaction/prisma-transaction-manager.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 let prisma: ReturnType<typeof createPrismaClient>;
 let repository: PrismaPosRepository;
+type CheckoutTestContext = {
+  organizationId: string;
+  requestId: string;
+  userId: string | null;
+};
 
 describeWithDatabase("Prisma offline POS repository", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
@@ -123,7 +136,225 @@ describeWithDatabase("Prisma offline POS repository", () => {
       prisma.salesCounter.delete({ where: { id: base.counter.id } }),
     ).rejects.toMatchObject({ code: "P2003" });
   });
+
+  it("atomically completes a sale, consumes inventory, and writes audit history", async () => {
+    const base = await seedCheckout("CHECKOUT", 5, 2);
+    const result = await completeCheckout(base, "checkout-success-001");
+    expect(result.checkout).toMatchObject({
+      status: "COMPLETED",
+      subtotalMinor: 5000,
+      totalMinor: 5000,
+    });
+    await expect(
+      prisma.salesOrder.findUnique({
+        where: { id: result.checkout.salesOrderId },
+      }),
+    ).resolves.toMatchObject({
+      channel: "OFFLINE_STORE",
+      status: "FULFILLED",
+      totalMinor: 5000,
+    });
+    await expect(
+      prisma.inventoryReservation.findFirst({
+        where: { referenceId: result.checkout.salesOrderId },
+      }),
+    ).resolves.toMatchObject({ status: "CONFIRMED" });
+    expect(
+      await prisma.inventoryMovementLine.aggregate({
+        _sum: { quantity: true },
+        where: {
+          movement: { status: "POSTED", type: "ISSUE" },
+          productVariantId: base.variant.id,
+        },
+      }),
+    ).toMatchObject({ _sum: { quantity: 2 } });
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          action: "POS_CHECKOUT_COMPLETED",
+          organizationId: base.organization.id,
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("rolls back the order, reservation, movement, checkout, and audit when stock is insufficient", async () => {
+    const base = await seedCheckout("ROLLBACK", 1, 2);
+    await expect(
+      completeCheckout(base, "checkout-rollback-001"),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.posCheckoutRecord.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.inventoryReservation.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.inventoryMovement.count({
+        where: { organizationId: base.organization.id, type: "ISSUE" },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.auditEntry.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it("returns one completed sale for an idempotent retry and preserves organization isolation", async () => {
+    const base = await seedCheckout("RETRY", 5, 2);
+    const first = await completeCheckout(base, "checkout-retry-001");
+    const second = await completeCheckout(base, "checkout-retry-001");
+    const other = await seedOrganization("RETRY-OTHER");
+    expect(second).toMatchObject({
+      checkout: { id: first.checkout.id },
+      replayed: true,
+    });
+    await expect(
+      prisma.posCheckoutRecord.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    const checkouts = new PrismaPosCheckoutRepository(prisma);
+    await expect(
+      checkouts.findById(first.checkout.id, other.organization.id),
+    ).resolves.toBeNull();
+  });
 });
+
+async function seedCheckout(label: string, stock: number, quantity: number) {
+  const base = await seedOrganization(label);
+  const variant = await seedVariant(base.organization.id);
+  await prisma.variantBarcode.create({
+    data: {
+      value: `${label}-BARCODE`,
+      organizationId: base.organization.id,
+      productVariantId: variant.id,
+      type: "CODE128",
+    },
+  });
+  const location = await prisma.stockLocation.create({
+    data: {
+      branchId: base.branch.id,
+      code: "SELLABLE",
+      isSellable: true,
+      name: "Sales floor",
+      organizationId: base.organization.id,
+      type: "SHOWROOM",
+    },
+  });
+  const policy = await prisma.inventoryAllocationPolicy.create({
+    data: {
+      code: "POS",
+      name: "POS allocation",
+      organizationId: base.organization.id,
+    },
+  });
+  await prisma.inventoryAllocationPolicyLocation.create({
+    data: {
+      organizationId: base.organization.id,
+      policyId: policy.id,
+      priority: 1,
+      stockLocationId: location.id,
+    },
+  });
+  await prisma.inventoryMovement.create({
+    data: {
+      destinationLocationId: location.id,
+      idempotencyKey: `${label}-opening`,
+      lines: {
+        create: {
+          lineNumber: 1,
+          organizationId: base.organization.id,
+          productVariantId: variant.id,
+          quantity: stock,
+        },
+      },
+      movementNumber: `${label}-OPENING`,
+      occurredAt: new Date("2026-08-03T08:00:00.000Z"),
+      organizationId: base.organization.id,
+      payloadSignature: `${label}-opening-signature`,
+      postedAt: new Date("2026-08-03T08:00:00.000Z"),
+      status: "POSTED",
+      type: "OPENING",
+    },
+  });
+  const session = await repository.openSession({
+    counterId: base.counter.id,
+    openedAt: new Date("2026-08-03T09:00:00.000Z"),
+    openedByUserId: base.user.id,
+    organizationId: base.organization.id,
+  });
+  await repository.addCartLine({
+    cartId: session.cartId,
+    lineSubtotalMinor: 2500 * quantity,
+    organizationId: base.organization.id,
+    productVariantId: variant.id,
+    quantity,
+    unitPriceMinor: 2500,
+  });
+  return { ...base, location, policy, session, variant };
+}
+
+async function completeCheckout(
+  base: Awaited<ReturnType<typeof seedCheckout>>,
+  idempotencyKey: string,
+) {
+  const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
+  return manager.execute(
+    {
+      organizationId: base.organization.id,
+      requestId: `request-${idempotencyKey}`,
+      userId: base.user.id,
+    },
+    async (transaction) => {
+      if (
+        !transaction.posCheckoutRepository ||
+        !transaction.posCheckoutSalesOrderRepository
+      ) {
+        throw new Error("Checkout transaction capability is missing.");
+      }
+      const result = await checkoutCart(
+        {
+          checkouts: transaction.posCheckoutRepository,
+          salesOrders: transaction.posCheckoutSalesOrderRepository,
+        },
+        {
+          cartId: base.session.cartId,
+          checkoutId: crypto.randomUUID(),
+          completedAt: new Date("2026-08-03T10:00:00.000Z"),
+          idempotencyKey,
+          organizationId: base.organization.id,
+          staffId: base.user.id,
+        },
+      );
+      if (!result.replayed) {
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "POS_CHECKOUT_COMPLETED",
+          actor: { userId: base.user.id },
+          organizationId: base.organization.id,
+          resource: "POS_CHECKOUT",
+          resourceId: result.checkout.id,
+        });
+      }
+      return result;
+    },
+  );
+}
 
 async function seedOrganization(label: string) {
   const organization = await prisma.organization.create({
@@ -188,6 +419,7 @@ async function seedVariant(organizationId: string) {
 }
 
 async function cleanDatabase() {
+  await prisma.posCheckoutRecord.deleteMany();
   await prisma.posCartLine.deleteMany();
   await prisma.posCart.deleteMany();
   await prisma.salesSession.deleteMany();

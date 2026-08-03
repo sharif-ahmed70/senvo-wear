@@ -3043,10 +3043,52 @@ export const removePosCartItemServiceInputSchema = z
   .object({ cartId: idSchema, itemId: idSchema })
   .strict();
 
+export const posCheckoutStatusSchema = z.literal("COMPLETED");
+export const posCheckoutContractSchema = z
+  .object({
+    cartId: idSchema,
+    completedAt: isoTimestampSchema,
+    counterId: idSchema,
+    counterName: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    idempotencyKey: z.string(),
+    orderNumber: z.string(),
+    salesOrderId: idSchema,
+    salesSessionId: idSchema,
+    staffName: z.string(),
+    status: posCheckoutStatusSchema,
+    subtotalMinor: minorUnitAmountSchema,
+    totalMinor: minorUnitAmountSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export const checkoutPosCartServiceInputSchema = z
+  .object({
+    cartId: idSchema,
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/u),
+  })
+  .strict();
+export const getPosCheckoutServiceInputSchema = z
+  .object({ checkoutId: idSchema })
+  .strict();
+
 export type SalesCounterContract = z.infer<typeof salesCounterContractSchema>;
 export type SalesSessionContract = z.infer<typeof salesSessionContractSchema>;
 export type PosCartLineContract = z.infer<typeof posCartLineContractSchema>;
 export type PosSaleLookupContract = z.infer<typeof posSaleLookupContractSchema>;
+export type PosCheckoutContract = z.infer<typeof posCheckoutContractSchema>;
+export type CheckoutPosCartServiceInputContract = z.infer<
+  typeof checkoutPosCartServiceInputSchema
+>;
+export type GetPosCheckoutServiceInputContract = z.infer<
+  typeof getPosCheckoutServiceInputSchema
+>;
 export type CreateSalesCounterServiceInputContract = z.infer<
   typeof createSalesCounterServiceInputSchema
 >;

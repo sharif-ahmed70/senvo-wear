@@ -94,6 +94,9 @@ export type {
   SalesOrderStatus,
 } from "./sales/domain/models.js";
 export type {
+  PosCheckout,
+  PosCheckoutPreparation,
+  PosCheckoutStatus,
   PosCart,
   PosCartLine,
   PosSaleLookup,
@@ -104,6 +107,12 @@ export type {
   SalesSessionStatus,
   SellableVariant,
 } from "./pos/domain/models.js";
+export {
+  checkoutCart,
+  getCheckoutStatus,
+  listCheckoutHistory,
+} from "./pos/application/checkout-use-cases.js";
+export type { PosCheckoutSalesOrderRepository } from "./pos/application/checkout-use-cases.js";
 export {
   addPosCartItem,
   addCartItem,
@@ -121,6 +130,7 @@ export {
   updateCartQuantity,
 } from "./pos/application/pos-use-cases.js";
 export type { PosRepository } from "./pos/repositories/pos-repository.js";
+export type { PosCheckoutRepository } from "./pos/repositories/pos-checkout-repository.js";
 export {
   changeSalesBoothStatus,
   createSalesBooth,

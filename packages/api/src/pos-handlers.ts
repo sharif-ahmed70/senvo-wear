@@ -6,15 +6,18 @@ import type {
 } from "@senvo/application";
 import {
   addPosCartItemServiceInputSchema,
+  checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
+  getPosCheckoutServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posEmptyInputSchema,
   removePosCartItemServiceInputSchema,
   updatePosCartItemServiceInputSchema,
   updateSalesCounterStatusServiceInputSchema,
   type PosCartLineContract,
+  type PosCheckoutContract,
   type PosSaleLookupContract,
   type SalesCounterContract,
   type SalesSessionContract,
@@ -30,6 +33,10 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesSessionContract>>;
+  checkoutCart(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosCheckoutContract>>;
   createCounter(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -38,6 +45,14 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesCounterContract[]>>;
+  getCheckout(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosCheckoutContract>>;
+  listCheckouts(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosCheckoutContract[]>>;
   listSessions(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -67,8 +82,11 @@ export type PosApplication = {
 export type PosApiHandlers = {
   addCartItem: ApiHandler<PosCartLineContract>;
   closeSession: ApiHandler<SalesSessionContract>;
+  checkoutCart: ApiHandler<PosCheckoutContract>;
   createCounter: ApiHandler<SalesCounterContract>;
   listCounters: ApiHandler<SalesCounterContract[]>;
+  getCheckout: ApiHandler<PosCheckoutContract>;
+  listCheckouts: ApiHandler<PosCheckoutContract[]>;
   listSessions: ApiHandler<SalesSessionContract[]>;
   lookupSale: ApiHandler<PosSaleLookupContract>;
   openSession: ApiHandler<SalesSessionContract>;
@@ -110,6 +128,11 @@ export function createPosApiHandlers(dependencies: {
       closeSalesSessionServiceInputSchema,
       (context, input) => dependencies.pos.closeSession(context, input),
     ),
+    checkoutCart: handler(
+      "UPDATE",
+      checkoutPosCartServiceInputSchema,
+      (context, input) => dependencies.pos.checkoutCart(context, input),
+    ),
     createCounter: handler(
       "CREATE",
       createSalesCounterServiceInputSchema,
@@ -117,6 +140,14 @@ export function createPosApiHandlers(dependencies: {
     ),
     listCounters: handler("READ", posEmptyInputSchema, (context, input) =>
       dependencies.pos.listCounters(context, input),
+    ),
+    getCheckout: handler(
+      "READ",
+      getPosCheckoutServiceInputSchema,
+      (context, input) => dependencies.pos.getCheckout(context, input),
+    ),
+    listCheckouts: handler("READ", posEmptyInputSchema, (context, input) =>
+      dependencies.pos.listCheckouts(context, input),
     ),
     listSessions: handler("READ", posEmptyInputSchema, (context, input) =>
       dependencies.pos.listSessions(context, input),

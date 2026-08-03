@@ -14,6 +14,7 @@ import {
   PrismaSalesOrderReadRepository,
   PrismaSalesSourceRepository,
   PrismaPosRepository,
+  PrismaPosCheckoutRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
   PrismaRolePermissionRepository,
@@ -40,6 +41,7 @@ import type {
   SalesOrderReadRepository,
   SalesSourceRepository,
   PosRepository,
+  PosCheckoutRepository,
   RolePermissionRepository,
   UserRepository,
 } from "@senvo/domain";
@@ -73,6 +75,7 @@ export type CreateApplicationServicesOptions = {
     OrganizationTeamReadRepository;
   organizationProfileRepository?: OrganizationProfileRepository;
   posRepository?: PosRepository;
+  posCheckoutRepository?: PosCheckoutRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
@@ -122,6 +125,7 @@ export function createApplicationServices(
   let productRepository = options.productRepository;
   let productVariantRepository = options.productVariantRepository;
   let posRepository = options.posRepository;
+  let posCheckoutRepository = options.posCheckoutRepository;
   let sizeRepository = options.sizeRepository;
 
   if (
@@ -142,6 +146,7 @@ export function createApplicationServices(
     !productRepository ||
     !productVariantRepository ||
     !posRepository ||
+    !posCheckoutRepository ||
     !sizeRepository
   ) {
     if (!prismaClient) {
@@ -231,6 +236,9 @@ export function createApplicationServices(
     requirePrismaClient(prismaClient),
   );
   posRepository ??= new PrismaPosRepository(requirePrismaClient(prismaClient));
+  posCheckoutRepository ??= new PrismaPosCheckoutRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   return {
     catalog: new CatalogApplicationService({
@@ -269,10 +277,12 @@ export function createApplicationServices(
       users: userRepository,
     }),
     pos: new PosApplicationService({
+      authenticationService: options.authenticationService,
       authorizationService: options.authorizationService,
       barcodes: barcodeRepository,
       branches: branchRepository,
       clock,
+      checkouts: posCheckoutRepository,
       inventory: inventoryReadRepository,
       memberships: membershipRepository,
       pos: posRepository,
@@ -280,6 +290,7 @@ export function createApplicationServices(
       salesSources:
         salesSourceRepository ??
         new PrismaSalesSourceRepository(requirePrismaClient(prismaClient)),
+      transactionManager,
       users: userRepository,
     }),
     sales: new SalesApplicationService({

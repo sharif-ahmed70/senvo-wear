@@ -9,6 +9,7 @@ import type {
   InventoryMovementRepository,
   InventoryReadRepository,
   OrganizationRepository,
+  PosCheckoutRepository,
   SalesOrderRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
@@ -33,6 +34,7 @@ describe("createApplicationServices", () => {
       productRepository: fakeProductRepository,
       productVariantRepository: fakeProductVariantRepository,
       posRepository: {} as never,
+      posCheckoutRepository: fakePosCheckoutRepository,
       rolePermissionRepository: {} as never,
       salesOrderRepository: fakeSalesOrderRepository,
       salesSourceRepository: {} as never,
@@ -147,6 +149,13 @@ const fakeSizeRepository: CatalogSizeManagementRepository = {
 
 const fakeTransactionManager: ApplicationTransactionManager = {
   execute: () => Promise.reject(unreachableError()),
+};
+
+const fakePosCheckoutRepository: PosCheckoutRepository = {
+  createCompleted: () => Promise.reject(unreachableError()),
+  findById: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  prepare: () => Promise.resolve(null),
 };
 
 const fakeSalesOrderRepository: SalesOrderRepository = {

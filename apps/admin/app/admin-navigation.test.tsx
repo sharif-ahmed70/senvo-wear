@@ -24,6 +24,7 @@ describe("admin navigation", () => {
       "Booth History",
       "Sales Counters",
       "Sales Sessions",
+      "Checkout History",
       "Organization",
       "Store locations",
       "Team",

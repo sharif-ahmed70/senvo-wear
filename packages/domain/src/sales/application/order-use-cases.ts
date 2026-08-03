@@ -184,7 +184,7 @@ export type ReserveSalesOrderInput = {
 };
 
 export async function reserveSalesOrder(
-  repository: SalesOrderRepository,
+  repository: Pick<SalesOrderRepository, "reserve">,
   input: ReserveSalesOrderInput,
 ): Promise<SalesOrder> {
   const record: ReserveSalesOrderRecord = {
@@ -214,7 +214,7 @@ export type ConfirmSalesOrderInput = {
 };
 
 export async function confirmSalesOrder(
-  repository: SalesOrderRepository,
+  repository: Pick<SalesOrderRepository, "confirm">,
   input: ConfirmSalesOrderInput,
 ): Promise<SalesOrder> {
   return repository.confirm(normalizeVersionedOrderInput(input));
@@ -235,7 +235,7 @@ export type FulfillSalesOrderInput = ConfirmSalesOrderInput & {
 };
 
 export async function fulfillSalesOrder(
-  repository: SalesOrderRepository,
+  repository: Pick<SalesOrderRepository, "fulfill">,
   input: FulfillSalesOrderInput,
 ): Promise<SalesOrder> {
   const record: FulfillSalesOrderRecord = {

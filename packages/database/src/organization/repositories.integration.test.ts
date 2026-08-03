@@ -48,6 +48,7 @@ describeWithDatabase("Prisma organization operation repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.posCheckoutRecord.deleteMany();
     await prisma.posCartLine.deleteMany();
     await prisma.posCart.deleteMany();
     await prisma.salesSession.deleteMany();

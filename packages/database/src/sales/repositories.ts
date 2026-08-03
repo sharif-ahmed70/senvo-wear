@@ -649,6 +649,30 @@ export class PrismaTransactionalSalesOrderCreationRepository implements SalesOrd
   }
 }
 
+export function createTransactionScopedSalesOrderRepository(
+  transaction: SalesTransactionClient,
+): SalesOrderRepository {
+  const reuseTransaction = (<TResult>(
+    operation: (sameTransaction: SalesTransactionClient) => Promise<TResult>,
+  ) => operation(transaction)) as unknown as SalesPrismaClient["$transaction"];
+  const client: SalesPrismaClient = {
+    $executeRaw: transaction.$executeRaw.bind(transaction),
+    $queryRaw: transaction.$queryRaw.bind(transaction),
+    $transaction: reuseTransaction,
+    inventoryAllocationPolicy: transaction.inventoryAllocationPolicy,
+    inventoryAllocationPolicyLocation:
+      transaction.inventoryAllocationPolicyLocation,
+    inventoryMovement: transaction.inventoryMovement,
+    inventoryMovementLine: transaction.inventoryMovementLine,
+    inventoryReservation: transaction.inventoryReservation,
+    inventoryReservationLine: transaction.inventoryReservationLine,
+    productVariant: transaction.productVariant,
+    salesOrder: transaction.salesOrder,
+    salesOrderLine: transaction.salesOrderLine,
+  };
+  return new PrismaSalesOrderRepository(client);
+}
+
 async function createDraftWithinTransaction(
   transaction: SalesTransaction,
   record: CreateDraftSalesOrderRecord,

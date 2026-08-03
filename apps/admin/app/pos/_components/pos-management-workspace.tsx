@@ -4,6 +4,7 @@ import type {
   SalesBoothContract,
   SalesCounterContract,
   SalesSessionContract,
+  PosCheckoutContract,
   StoreManagementContract,
 } from "@senvo/contracts";
 import {
@@ -12,6 +13,7 @@ import {
   LoaderCircle,
   MonitorSmartphone,
   Plus,
+  ReceiptText,
 } from "lucide-react";
 import {
   useCallback,
@@ -33,7 +35,7 @@ export function PosManagementWorkspace({
   view,
 }: {
   permissions: readonly AdminPermissionKey[];
-  view: "counters" | "sessions";
+  view: "checkouts" | "counters" | "sessions";
 }) {
   if (!permissions.includes("POS:READ"))
     return (
@@ -50,11 +52,85 @@ export function PosManagementWorkspace({
       canCreate={permissions.includes("POS:CREATE")}
       canUpdate={permissions.includes("POS:UPDATE")}
     />
-  ) : (
+  ) : view === "sessions" ? (
     <SessionManagement
       canCreate={permissions.includes("POS:CREATE")}
       canUpdate={permissions.includes("POS:UPDATE")}
     />
+  ) : (
+    <CheckoutHistory />
+  );
+}
+
+function CheckoutHistory() {
+  const [checkouts, setCheckouts] = useState<PosCheckoutContract[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void client
+        .listPosCheckouts()
+        .then((result) => setCheckouts(result.data))
+        .catch((reason: unknown) => setError(messageFor(reason)))
+        .finally(() => setLoading(false));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <main className="pos-page">
+      <Header
+        title="Checkout History"
+        subtitle="Review completed sales from your in-person counters and booths."
+      />
+      <Feedback error={error} success={null} />
+      {loading ? (
+        <State
+          icon={LoaderCircle}
+          spin
+          title="Loading completed sales"
+          text="Getting your latest checkout history."
+        />
+      ) : checkouts.length === 0 ? (
+        <State
+          icon={ReceiptText}
+          title="No completed sales yet"
+          text="Completed counter and booth sales will appear here."
+        />
+      ) : (
+        <div className="pos-table-wrap">
+          <table className="pos-table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Counter</th>
+                <th>Team member</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {checkouts.map((checkout) => (
+                <tr key={checkout.id}>
+                  <td data-label="Order">
+                    <strong>{checkout.orderNumber}</strong>
+                  </td>
+                  <td data-label="Counter">{checkout.counterName}</td>
+                  <td data-label="Team member">{checkout.staffName}</td>
+                  <td data-label="Amount">
+                    {formatMoney(checkout.totalMinor)}
+                  </td>
+                  <td data-label="Status">
+                    <Status value="COMPLETED" />
+                  </td>
+                  <td data-label="Time">{formatDate(checkout.completedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </main>
   );
 }
 
@@ -517,17 +593,19 @@ function State({
 function Status({
   value,
 }: {
-  value: "ACTIVE" | "CLOSED" | "INACTIVE" | "OPEN";
+  value: "ACTIVE" | "CLOSED" | "COMPLETED" | "INACTIVE" | "OPEN";
 }) {
   return (
     <span className={`pos-status pos-status--${value.toLowerCase()}`}>
-      {value === "OPEN"
-        ? "Open"
-        : value === "CLOSED"
-          ? "Closed"
-          : value === "ACTIVE"
-            ? "Active"
-            : "Inactive"}
+      {value === "COMPLETED"
+        ? "Completed"
+        : value === "OPEN"
+          ? "Open"
+          : value === "CLOSED"
+            ? "Closed"
+            : value === "ACTIVE"
+              ? "Active"
+              : "Inactive"}
     </span>
   );
 }
@@ -541,6 +619,13 @@ function formatDate(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-BD", {
+    currency: "BDT",
+    style: "currency",
+  }).format(value / 100);
 }
 
 function formText(data: FormData, field: string): string {
