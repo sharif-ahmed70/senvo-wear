@@ -62,6 +62,21 @@ export class PrismaOrganizationRepository implements OrganizationRepository {
     const record = await this.prisma.organization.findUnique({ where: { id } });
     return record ? mapOrganization(record) : null;
   }
+
+  async updateProfile(record: {
+    expectedVersion: number;
+    id: string;
+    profile: Omit<
+      Organization,
+      "code" | "createdAt" | "id" | "status" | "updatedAt" | "version"
+    >;
+  }): Promise<Organization | null> {
+    const updated = await this.prisma.organization.updateMany({
+      data: { ...record.profile, version: { increment: 1 } },
+      where: { id: record.id, version: record.expectedVersion },
+    });
+    return updated.count === 0 ? null : this.findById(record.id);
+  }
 }
 
 export class PrismaCategoryRepository implements CategoryRepository {

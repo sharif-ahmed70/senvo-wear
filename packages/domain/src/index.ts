@@ -341,6 +341,10 @@ export type {
   CursorPageRequest,
   CursorPageResult,
   OrganizationLookupRepository,
+  OrganizationProfilePatch,
+  OrganizationProfileRepository,
+  OrganizationTeamMember,
+  OrganizationTeamReadRepository,
   PosCounterListFilter,
   PosCounterMetadataPatch,
   PosCounterRepository,
@@ -348,6 +352,12 @@ export type {
   StockLocationMetadataPatch,
   StockLocationRepository,
 } from "./organization/repositories/organization-repositories.js";
+export {
+  getOrganizationProfile,
+  listOrganizationTeam,
+  updateOrganizationProfile,
+} from "./organization/application/admin-management-use-cases.js";
+export type { UpdateOrganizationProfileInput } from "./organization/application/admin-management-use-cases.js";
 export type {
   AllocateInventoryReservationRecord,
   AllocateInventoryReservationResult,

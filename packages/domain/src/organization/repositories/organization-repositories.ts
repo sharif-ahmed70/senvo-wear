@@ -1,4 +1,9 @@
 import type { Organization } from "../../catalog/domain/models.js";
+import type {
+  OrganizationMembership,
+  Role,
+  UserStatus,
+} from "../../identity/domain/models.js";
 import type { Branch, PosCounter, StockLocation } from "../domain/models.js";
 
 export type CreateBranchRecord = Omit<
@@ -85,6 +90,46 @@ export type PosCounterListFilter = {
 
 export type OrganizationLookupRepository = {
   findById(id: string): Promise<Organization | null>;
+};
+
+export type OrganizationProfilePatch = Pick<
+  Organization,
+  | "addressLine1"
+  | "addressLine2"
+  | "city"
+  | "countryCode"
+  | "district"
+  | "email"
+  | "name"
+  | "phone"
+  | "postalCode"
+  | "timezone"
+>;
+
+export type OrganizationProfileRepository = OrganizationLookupRepository & {
+  updateProfile(record: {
+    expectedVersion: number;
+    id: string;
+    profile: OrganizationProfilePatch;
+  }): Promise<Organization | null>;
+};
+
+export type OrganizationTeamMember = {
+  createdAt: Date;
+  email: string;
+  id: string;
+  name: string | null;
+  organizationId: string;
+  role: Role;
+  status: OrganizationMembership["status"];
+  updatedAt: Date;
+  userId: string;
+  userStatus: UserStatus;
+  version: number;
+};
+
+export type OrganizationTeamReadRepository = {
+  listByOrganization(organizationId: string): Promise<OrganizationTeamMember[]>;
 };
 
 export type BranchRepository = {

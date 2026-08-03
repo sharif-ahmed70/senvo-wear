@@ -216,4 +216,83 @@ describe("AdminApiClient", () => {
       method: "POST",
     });
   });
+
+  it("uses typed organization, store, team, and role endpoints without trusted context fields", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {},
+          requestId: "req_settings_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const storeId = "10000000-0000-4000-8000-000000000010";
+    const teamMemberId = "10000000-0000-4000-8000-000000000011";
+
+    await client.getOrganizationProfile({ requestId: "req_settings_1" });
+    await client.updateStoreStatus(
+      { expectedVersion: 2, status: "INACTIVE", storeId },
+      { requestId: "req_settings_2" },
+    );
+    await client.assignTeamMemberRole(
+      { expectedVersion: 3, role: "MANAGER", teamMemberId },
+      { requestId: "req_settings_3" },
+    );
+    await client.listRoles({ requestId: "req_settings_4" });
+
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "https://admin.example.test/organization",
+      `https://admin.example.test/organization/stores/${storeId}/status`,
+      `https://admin.example.test/organization/team/${teamMemberId}/role`,
+      "https://admin.example.test/organization/roles",
+    ]);
+    const statusRequestBody = fetcher.mock.calls[1]?.[1]?.body;
+    const roleRequestBody = fetcher.mock.calls[2]?.[1]?.body;
+    expect(typeof statusRequestBody).toBe("string");
+    expect(typeof roleRequestBody).toBe("string");
+    const statusBody = JSON.parse(
+      typeof statusRequestBody === "string" ? statusRequestBody : "{}",
+    ) as Record<string, unknown>;
+    const roleBody = JSON.parse(
+      typeof roleRequestBody === "string" ? roleRequestBody : "{}",
+    ) as Record<string, unknown>;
+    expect(statusBody).toEqual({ expectedVersion: 2, status: "INACTIVE" });
+    expect(roleBody).toEqual({ expectedVersion: 3, role: "MANAGER" });
+    expect(statusBody).not.toHaveProperty("organizationId");
+    expect(roleBody).not.toHaveProperty("userId");
+    expect(roleBody).not.toHaveProperty("permissions");
+  });
+
+  it("maps organization API errors with request IDs", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json(
+        {
+          error: {
+            code: "CONFLICT.STATE",
+            message: "Store code already exists.",
+          },
+          requestId: "req_store_error_1",
+          success: false,
+        },
+        { status: 409 },
+      ),
+    );
+    const client = new AdminApiClient({ fetcher });
+
+    await expect(
+      client.createStore(
+        { code: "MAIN", name: "Main Store" },
+        { requestId: "req_store_error_1" },
+      ),
+    ).rejects.toMatchObject({
+      category: "CONFLICT",
+      requestId: "req_store_error_1",
+      status: 409,
+    });
+  });
 });

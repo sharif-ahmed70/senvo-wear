@@ -141,12 +141,22 @@ describe("identity use cases", () => {
 function organization(id: string): Organization {
   const now = new Date("2026-07-13T00:00:00.000Z");
   return {
+    addressLine1: null,
+    addressLine2: null,
+    city: null,
     code: id.slice(0, 8),
+    countryCode: "BD",
     createdAt: now,
+    district: null,
+    email: null,
     id,
     name: "Organization",
+    phone: null,
+    postalCode: null,
     status: "ACTIVE",
+    timezone: "Asia/Dhaka",
     updatedAt: now,
+    version: 1,
   };
 }
 

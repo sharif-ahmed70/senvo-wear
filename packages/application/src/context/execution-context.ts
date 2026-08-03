@@ -55,6 +55,7 @@ const roles: readonly ApplicationRole[] = [
 ];
 const permissionResources: readonly PermissionKey["resource"][] = [
   "ORGANIZATION",
+  "TEAM",
   "USER",
   "CATALOG",
   "INVENTORY",

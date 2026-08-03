@@ -131,6 +131,7 @@ enum Role {
 
 enum PermissionResource {
   ORGANIZATION
+  TEAM
   USER
   CATALOG
   INVENTORY
@@ -166,12 +167,22 @@ enum CredentialStatus {
 }
 
 model Organization {
-  id        String             @id @default(uuid()) @db.Uuid
-  name      String             @db.VarChar(160)
-  code      String             @unique @db.VarChar(64)
-  status    OrganizationStatus @default(ACTIVE)
-  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String             @id @default(uuid()) @db.Uuid
+  name         String             @db.VarChar(160)
+  code         String             @unique @db.VarChar(64)
+  status       OrganizationStatus @default(ACTIVE)
+  countryCode  String             @default("BD") @map("country_code") @db.VarChar(2)
+  timezone     String             @default("Asia/Dhaka") @db.VarChar(80)
+  phone        String?            @db.VarChar(40)
+  email        String?            @db.VarChar(254)
+  addressLine1 String?            @map("address_line_1") @db.VarChar(240)
+  addressLine2 String?            @map("address_line_2") @db.VarChar(240)
+  city         String?            @db.VarChar(120)
+  district     String?            @db.VarChar(120)
+  postalCode   String?            @map("postal_code") @db.VarChar(120)
+  version      Int                @default(1)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   branches       Branch[]
   categories     Category[]

@@ -5,6 +5,7 @@ import {
   createProtectedApiHandler,
   type ApiHandler,
   type ApiRequest,
+  type OrganizationManagementApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
 import {
@@ -316,6 +317,60 @@ describe("Node HTTP runtime adapter", () => {
     expect(reserve.requests.at(0)?.input).toEqual({
       expectedVersion: 2,
       salesOrderId: movementId,
+    });
+  });
+
+  it("routes organization store and team path inputs", async () => {
+    const storeStatus = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const teamRole = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        organizationManagement: {
+          assignTeamMemberRole: teamRole,
+          createStore: fallback,
+          createTeamMember: fallback,
+          getProfile: fallback,
+          listRoles: fallback,
+          listStores: fallback,
+          listTeam: fallback,
+          updateProfile: fallback,
+          updateStore: fallback,
+          updateStoreStatus: storeStatus,
+          updateTeamMemberStatus: fallback,
+        } as unknown as OrganizationManagementApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const headers = developmentHeaders(suppliedRequestId);
+
+    await fetch(`${runtime.url}/organization/stores/${movementId}/status`, {
+      body: JSON.stringify({ expectedVersion: 2, status: "INACTIVE" }),
+      headers,
+      method: "PATCH",
+    });
+    await fetch(`${runtime.url}/organization/team/${movementId}/role`, {
+      body: JSON.stringify({ expectedVersion: 3, role: "MANAGER" }),
+      headers,
+      method: "PATCH",
+    });
+
+    expect(storeStatus.requests.at(0)?.input).toEqual({
+      expectedVersion: 2,
+      status: "INACTIVE",
+      storeId: movementId,
+    });
+    expect(teamRole.requests.at(0)?.input).toEqual({
+      expectedVersion: 3,
+      role: "MANAGER",
+      teamMemberId: movementId,
     });
   });
 

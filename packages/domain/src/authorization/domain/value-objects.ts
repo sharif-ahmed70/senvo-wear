@@ -11,6 +11,7 @@ const uuidPattern =
 
 export const permissionResources = [
   "ORGANIZATION",
+  "TEAM",
   "USER",
   "CATALOG",
   "INVENTORY",

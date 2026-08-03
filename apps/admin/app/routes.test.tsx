@@ -13,6 +13,10 @@ import InventoryLocationsPage from "./inventory/locations/page";
 import InventoryMovementsPage from "./inventory/movements/page";
 import { InventoryWorkspace } from "./inventory/_components/inventory-workspace";
 import OrganizationPage from "./organization/page";
+import StoreLocationsPage from "./store-locations/page";
+import TeamPage from "./team/page";
+import RolesPage from "./roles/page";
+import { OrganizationWorkspace } from "./organization/_components/organization-workspace";
 import AdminPage from "./page";
 import SalesOrdersPage from "./sales-orders/page";
 import SalesManagementPage from "./sales/orders/page";
@@ -38,6 +42,9 @@ describe("admin routes", () => {
     ["Sales Orders", SalesOrdersPage],
     ["Sales Orders", SalesManagementPage],
     ["Organization", OrganizationPage],
+    ["Store locations", StoreLocationsPage],
+    ["Team", TeamPage],
+    ["Roles", RolesPage],
     ["Users & Roles", UsersPage],
   ])("renders the %s route", (title, Page) => {
     const html = renderToStaticMarkup(createElement(Page));
@@ -115,6 +122,18 @@ describe("admin routes", () => {
     );
     expect(html).not.toContain(">Reserve<");
     expect(html).not.toContain(">Cancel<");
+  });
+
+  it("renders friendly restricted organization access without view permission", () => {
+    const html = renderToStaticMarkup(
+      createElement(OrganizationWorkspace, {
+        permissions: ["CATALOG:READ"],
+        view: "team",
+      }),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).not.toContain("Add team member");
+    expect(html).not.toContain("Membership");
   });
 });
 

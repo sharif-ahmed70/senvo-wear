@@ -9,6 +9,7 @@ import type {
   ApiHandler,
   CatalogApiHandlers,
   InventoryReadApiHandlers,
+  OrganizationManagementApiHandlers,
   SalesOrderManagementApiHandlers,
 } from "@senvo/api";
 import {
@@ -49,6 +50,7 @@ export type SenvoHttpHandlers = {
   catalog?: CatalogApiHandlers;
   createSalesOrder: ApiHandler<unknown>;
   inventoryRead?: InventoryReadApiHandlers;
+  organizationManagement?: OrganizationManagementApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
 };
@@ -276,6 +278,72 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
     );
   }
+  if (handlers.organizationManagement) {
+    const organization = handlers.organizationManagement;
+    routes.push(
+      organizationRoute("GET", /^\/organization$/u, organization.getProfile),
+      organizationRoute(
+        "PATCH",
+        /^\/organization$/u,
+        organization.updateProfile,
+      ),
+      organizationRoute(
+        "GET",
+        /^\/organization\/stores$/u,
+        organization.listStores,
+      ),
+      organizationRoute(
+        "POST",
+        /^\/organization\/stores$/u,
+        organization.createStore,
+        201,
+      ),
+      organizationRoute(
+        "PATCH",
+        /^\/organization\/stores\/(?<id>[0-9a-f-]+)$/iu,
+        organization.updateStore,
+        200,
+        "storeId",
+      ),
+      organizationRoute(
+        "PATCH",
+        /^\/organization\/stores\/(?<id>[0-9a-f-]+)\/status$/iu,
+        organization.updateStoreStatus,
+        200,
+        "storeId",
+      ),
+      organizationRoute(
+        "GET",
+        /^\/organization\/team$/u,
+        organization.listTeam,
+      ),
+      organizationRoute(
+        "POST",
+        /^\/organization\/team$/u,
+        organization.createTeamMember,
+        201,
+      ),
+      organizationRoute(
+        "PATCH",
+        /^\/organization\/team\/(?<id>[0-9a-f-]+)\/status$/iu,
+        organization.updateTeamMemberStatus,
+        200,
+        "teamMemberId",
+      ),
+      organizationRoute(
+        "PATCH",
+        /^\/organization\/team\/(?<id>[0-9a-f-]+)\/role$/iu,
+        organization.assignTeamMemberRole,
+        200,
+        "teamMemberId",
+      ),
+      organizationRoute(
+        "GET",
+        /^\/organization\/roles$/u,
+        organization.listRoles,
+      ),
+    );
+  }
   if (handlers.salesManagement) {
     routes.push(
       {
@@ -311,6 +379,27 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
     );
   }
   return routes;
+}
+
+function organizationRoute(
+  method: HttpRoute["method"],
+  path: RegExp,
+  handler: ApiHandler<unknown>,
+  successStatus = 200,
+  pathIdField?: "storeId" | "teamMemberId",
+): HttpRoute {
+  return {
+    handler,
+    input: (body, match) =>
+      pathIdField
+        ? { ...(isObject(body) ? body : {}), [pathIdField]: match.groups?.id }
+        : method === "GET"
+          ? {}
+          : body,
+    method,
+    path,
+    successStatus,
+  };
 }
 
 function salesActionRoute(

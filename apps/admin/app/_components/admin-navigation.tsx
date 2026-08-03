@@ -4,6 +4,8 @@ import {
   Boxes,
   Building2,
   LayoutDashboard,
+  MapPin,
+  ShieldCheck,
   ShoppingBag,
   ShoppingCart,
   UsersRound,
@@ -21,8 +23,10 @@ const navigationIcons = {
   dashboard: LayoutDashboard,
   inventory: Boxes,
   organization: Building2,
+  roles: ShieldCheck,
   sales: ShoppingCart,
-  users: UsersRound,
+  stores: MapPin,
+  team: UsersRound,
 } satisfies Record<AdminNavigationItem["icon"], typeof LayoutDashboard>;
 
 export function AdminNavigation({ session }: { session: AdminSession }) {
@@ -39,23 +43,40 @@ export function AdminNavigationList({
   return (
     <nav className="admin-nav" aria-label="Primary navigation">
       <p className="admin-nav__label">Workspace</p>
-      {visibleAdminNavigation(session).map((item) => {
+      {visibleAdminNavigation(session).map((item, index, items) => {
         const Icon = navigationIcons[item.icon];
+        const settingsItem = [
+          "/organization",
+          "/store-locations",
+          "/team",
+          "/roles",
+        ].includes(item.href);
+        const previousWasSettings =
+          index > 0 &&
+          ["/organization", "/store-locations", "/team", "/roles"].includes(
+            items[index - 1]?.href ?? "",
+          );
         const active =
           item.href === "/"
             ? currentPath === "/"
             : currentPath.startsWith(item.href);
         return (
-          <Link
-            aria-label={item.label}
-            aria-current={active ? "page" : undefined}
-            className="admin-nav__link"
-            href={item.href}
-            key={item.href}
-          >
-            <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-            <span>{item.label}</span>
-          </Link>
+          <div className="admin-nav__item" key={item.href}>
+            {settingsItem && !previousWasSettings ? (
+              <p className="admin-nav__label admin-nav__label--section">
+                Team &amp; Settings
+              </p>
+            ) : null}
+            <Link
+              aria-label={item.label}
+              aria-current={active ? "page" : undefined}
+              className="admin-nav__link"
+              href={item.href}
+            >
+              <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+              <span>{item.label}</span>
+            </Link>
+          </div>
         );
       })}
     </nav>

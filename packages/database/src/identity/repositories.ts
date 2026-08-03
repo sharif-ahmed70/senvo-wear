@@ -5,6 +5,8 @@ import {
   type CreateUserRecord,
   type OrganizationMembership,
   type OrganizationMembershipRepository,
+  type OrganizationTeamMember,
+  type OrganizationTeamReadRepository,
   type Role,
   type User,
   type UserRepository,
@@ -42,7 +44,9 @@ export class PrismaUserRepository implements UserRepository {
   }
 }
 
-export class PrismaOrganizationMembershipRepository implements OrganizationMembershipRepository {
+export class PrismaOrganizationMembershipRepository
+  implements OrganizationMembershipRepository, OrganizationTeamReadRepository
+{
   constructor(private readonly prisma: IdentityPrismaClient) {}
 
   async create(
@@ -73,6 +77,29 @@ export class PrismaOrganizationMembershipRepository implements OrganizationMembe
       where: { userId_organizationId: { organizationId, userId } },
     });
     return record ? mapMembership(record) : null;
+  }
+
+  async listByOrganization(
+    organizationId: string,
+  ): Promise<OrganizationTeamMember[]> {
+    const records = await this.prisma.organizationMembership.findMany({
+      include: { user: true },
+      orderBy: [{ user: { name: "asc" } }, { user: { email: "asc" } }],
+      where: { organizationId },
+    });
+    return records.map((record) => ({
+      createdAt: record.createdAt,
+      email: record.user.email,
+      id: record.id,
+      name: record.user.name,
+      organizationId: record.organizationId,
+      role: record.role,
+      status: record.status,
+      updatedAt: record.updatedAt,
+      userId: record.userId,
+      userStatus: record.user.status,
+      version: record.version,
+    }));
   }
 
   async changeStatus(record: {

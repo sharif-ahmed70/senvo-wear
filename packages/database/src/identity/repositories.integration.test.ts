@@ -116,6 +116,24 @@ describeWithDatabase("Prisma identity repositories", () => {
         userId: base.user.id,
       }),
     ).resolves.toMatchObject({ role: "STAFF" });
+
+    const firstTeam = await repositories.memberships.listByOrganization(
+      base.organization.id,
+    );
+    const secondTeam = await repositories.memberships.listByOrganization(
+      secondOrganization.id,
+    );
+    expect(firstTeam).toHaveLength(1);
+    expect(secondTeam).toHaveLength(1);
+    expect(firstTeam[0]).toMatchObject({
+      email: base.user.email,
+      organizationId: base.organization.id,
+      role: "OWNER",
+    });
+    expect(secondTeam[0]).toMatchObject({
+      organizationId: secondOrganization.id,
+      role: "STAFF",
+    });
   });
 
   it("updates membership role and status with optimistic concurrency", async () => {

@@ -6,7 +6,9 @@ export const adminPermissionKeys = [
   "SALES_ORDER:READ",
   "SALES_ORDER:UPDATE",
   "ORGANIZATION:READ",
-  "USER:READ",
+  "ORGANIZATION:UPDATE",
+  "TEAM:READ",
+  "TEAM:UPDATE",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];
@@ -22,7 +24,14 @@ export type AdminSession = {
 export type AdminNavigationItem = {
   href: string;
   icon:
-    "dashboard" | "catalog" | "inventory" | "sales" | "organization" | "users";
+    | "dashboard"
+    | "catalog"
+    | "inventory"
+    | "sales"
+    | "organization"
+    | "stores"
+    | "team"
+    | "roles";
   label: string;
   permission?: AdminPermissionKey;
 };
@@ -54,10 +63,22 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     permission: "ORGANIZATION:READ",
   },
   {
-    href: "/users",
-    icon: "users",
-    label: "Users & Roles",
-    permission: "USER:READ",
+    href: "/store-locations",
+    icon: "stores",
+    label: "Store locations",
+    permission: "ORGANIZATION:READ",
+  },
+  {
+    href: "/team",
+    icon: "team",
+    label: "Team",
+    permission: "TEAM:READ",
+  },
+  {
+    href: "/roles",
+    icon: "roles",
+    label: "Roles",
+    permission: "TEAM:READ",
   },
 ];
 

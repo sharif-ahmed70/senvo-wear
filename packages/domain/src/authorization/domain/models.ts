@@ -2,6 +2,7 @@ import type { Role } from "../../identity/domain/models.js";
 
 export type PermissionResource =
   | "ORGANIZATION"
+  | "TEAM"
   | "USER"
   | "CATALOG"
   | "INVENTORY"

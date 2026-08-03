@@ -249,9 +249,19 @@ function createInMemoryRepositories(): {
       create: async (record: CreateOrganizationRecord) => {
         const organization = {
           ...record,
+          addressLine1: null,
+          addressLine2: null,
+          city: null,
+          countryCode: "BD",
           createdAt: now(),
+          district: null,
+          email: null,
           id: id("org"),
+          phone: null,
+          postalCode: null,
+          timezone: "Asia/Dhaka",
           updatedAt: now(),
+          version: 1,
         };
         organizations.push(organization);
         return organization;

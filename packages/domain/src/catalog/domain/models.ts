@@ -6,12 +6,22 @@ import type {
 } from "./value-objects.js";
 
 export type Organization = {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
   code: string;
+  countryCode: string;
   createdAt: Date;
+  district: string | null;
+  email: string | null;
   id: string;
   name: string;
+  phone: string | null;
+  postalCode: string | null;
   status: OrganizationStatus;
+  timezone: string;
   updatedAt: Date;
+  version: number;
 };
 
 export type Category = {

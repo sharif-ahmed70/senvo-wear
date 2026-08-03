@@ -4,6 +4,8 @@ import {
   PrismaColorRepository,
   PrismaInventoryMovementRepository,
   PrismaInventoryReadRepository,
+  PrismaBranchRepository,
+  PrismaOrganizationMembershipRepository,
   PrismaOrganizationRepository,
   PrismaProductRepository,
   PrismaProductVariantRepository,
@@ -11,6 +13,8 @@ import {
   PrismaSalesOrderReadRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
+  PrismaRolePermissionRepository,
+  PrismaUserRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -23,9 +27,15 @@ import type {
   CatalogSizeManagementRepository,
   InventoryMovementRepository,
   InventoryReadRepository,
+  BranchRepository,
+  OrganizationMembershipRepository,
+  OrganizationProfileRepository,
+  OrganizationTeamReadRepository,
   OrganizationRepository,
   SalesOrderRepository,
   SalesOrderReadRepository,
+  RolePermissionRepository,
+  UserRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
@@ -34,6 +44,7 @@ import { systemClock, type Clock } from "../context/clock.js";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { CatalogApplicationService } from "../catalog/catalog-application-service.js";
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
+import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
@@ -41,6 +52,7 @@ type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 export type CreateApplicationServicesOptions = {
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
+  branchRepository?: BranchRepository;
   categoryRepository?: CatalogCategoryManagementRepository;
   clock?: Clock;
   collectionRepository?: CatalogCollectionManagementRepository;
@@ -49,8 +61,12 @@ export type CreateApplicationServicesOptions = {
   inventoryReadRepository?: InventoryReadRepository;
   logger?: Logger;
   organizationRepository?: OrganizationRepository;
+  membershipRepository?: OrganizationMembershipRepository &
+    OrganizationTeamReadRepository;
+  organizationProfileRepository?: OrganizationProfileRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
+  rolePermissionRepository?: RolePermissionRepository;
   productRepository?: CatalogProductManagementRepository;
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
@@ -58,12 +74,14 @@ export type CreateApplicationServicesOptions = {
   transactionManager?: ApplicationTransactionManager;
   sizeRepository?: CatalogSizeManagementRepository;
   useSharedPrismaClient?: boolean;
+  userRepository?: UserRepository;
 };
 
 export type ApplicationServices = {
   catalog: CatalogApplicationService;
   disconnect(): Promise<void>;
   inventory: InventoryApplicationService;
+  organization: OrganizationApplicationService;
   sales: SalesApplicationService;
 };
 
@@ -83,6 +101,11 @@ export function createApplicationServices(
   let collectionRepository = options.collectionRepository;
   let colorRepository = options.colorRepository;
   let organizationRepository = options.organizationRepository;
+  let organizationProfileRepository = options.organizationProfileRepository;
+  let branchRepository = options.branchRepository;
+  let membershipRepository = options.membershipRepository;
+  let rolePermissionRepository = options.rolePermissionRepository;
+  let userRepository = options.userRepository;
   let productRepository = options.productRepository;
   let productVariantRepository = options.productVariantRepository;
   let sizeRepository = options.sizeRepository;
@@ -96,6 +119,11 @@ export function createApplicationServices(
     !collectionRepository ||
     !colorRepository ||
     !organizationRepository ||
+    !organizationProfileRepository ||
+    !branchRepository ||
+    !membershipRepository ||
+    !rolePermissionRepository ||
+    !userRepository ||
     !productRepository ||
     !productVariantRepository ||
     !sizeRepository
@@ -154,6 +182,21 @@ export function createApplicationServices(
   organizationRepository ??= new PrismaOrganizationRepository(
     requirePrismaClient(prismaClient),
   );
+  organizationProfileRepository ??=
+    organizationRepository as OrganizationRepository &
+      OrganizationProfileRepository;
+  branchRepository ??= new PrismaBranchRepository(
+    requirePrismaClient(prismaClient),
+  );
+  membershipRepository ??= new PrismaOrganizationMembershipRepository(
+    requirePrismaClient(prismaClient),
+  );
+  rolePermissionRepository ??= new PrismaRolePermissionRepository(
+    requirePrismaClient(prismaClient),
+  );
+  userRepository ??= new PrismaUserRepository(
+    requirePrismaClient(prismaClient),
+  );
   productRepository ??= new PrismaProductRepository(
     requirePrismaClient(prismaClient),
   );
@@ -189,6 +232,15 @@ export function createApplicationServices(
       logger,
       requestIdGenerator: options.requestIdGenerator,
       transactionManager,
+    }),
+    organization: new OrganizationApplicationService({
+      authorizationService: options.authorizationService,
+      branches: branchRepository,
+      memberships: membershipRepository,
+      organizations: organizationProfileRepository,
+      requestIdGenerator: options.requestIdGenerator,
+      rolePermissions: rolePermissionRepository,
+      users: userRepository,
     }),
     sales: new SalesApplicationService({
       authenticationService: options.authenticationService,

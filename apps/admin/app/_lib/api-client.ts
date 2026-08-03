@@ -5,6 +5,9 @@ import type {
   CategoryContract,
   CollectionContract,
   ColorContract,
+  AssignTeamMemberRoleServiceInputContract,
+  CreateStoreServiceInputContract,
+  CreateTeamMemberServiceInputContract,
   CreateCategoryServiceInputContract,
   CreateCollectionServiceInputContract,
   CreateColorServiceInputContract,
@@ -21,16 +24,24 @@ import type {
   ProductContract,
   ProductDetailsContract,
   ProductVariantContract,
+  OrganizationProfileContract,
   PublicErrorDetails,
   SizeContract,
+  RoleVisibilityContract,
   SalesOrderDetailsReadContract,
   SalesOrderListReadPageContract,
   SalesOrderManagementActionInputContract,
   SalesOrderManagementListInputContract,
   StockLocationReadContract,
+  StoreManagementContract,
+  TeamMemberContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,
+  UpdateOrganizationProfileServiceInputContract,
+  UpdateStoreServiceInputContract,
+  UpdateStoreStatusServiceInputContract,
+  UpdateTeamMemberStatusServiceInputContract,
   VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 
@@ -365,6 +376,109 @@ export class AdminApiClient {
     request?: AdminApiRequest,
   ) {
     return this.salesOrderAction("cancel", input, request);
+  }
+
+  getOrganizationProfile(request?: AdminApiRequest) {
+    return this.request<OrganizationProfileContract>("/organization", request);
+  }
+
+  updateOrganizationProfile(
+    input: UpdateOrganizationProfileServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<OrganizationProfileContract>("/organization", {
+      ...request,
+      body: input,
+      method: "PATCH",
+    });
+  }
+
+  listStores(request?: AdminApiRequest) {
+    return this.request<StoreManagementContract[]>(
+      "/organization/stores",
+      request,
+    );
+  }
+
+  createStore(
+    input: CreateStoreServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<StoreManagementContract>("/organization/stores", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateStore(
+    input: UpdateStoreServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { storeId, ...body } = input;
+    return this.request<StoreManagementContract>(
+      `/organization/stores/${storeId}`,
+      {
+        ...request,
+        body,
+        method: "PATCH",
+      },
+    );
+  }
+
+  updateStoreStatus(
+    input: UpdateStoreStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { storeId, ...body } = input;
+    return this.request<StoreManagementContract>(
+      `/organization/stores/${storeId}/status`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  listTeam(request?: AdminApiRequest) {
+    return this.request<TeamMemberContract[]>("/organization/team", request);
+  }
+
+  createTeamMember(
+    input: CreateTeamMemberServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<TeamMemberContract>("/organization/team", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateTeamMemberStatus(
+    input: UpdateTeamMemberStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { teamMemberId, ...body } = input;
+    return this.request<TeamMemberContract>(
+      `/organization/team/${teamMemberId}/status`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  assignTeamMemberRole(
+    input: AssignTeamMemberRoleServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { teamMemberId, ...body } = input;
+    return this.request<TeamMemberContract>(
+      `/organization/team/${teamMemberId}/role`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  listRoles(request?: AdminApiRequest) {
+    return this.request<RoleVisibilityContract[]>(
+      "/organization/roles",
+      request,
+    );
   }
 
   private salesOrderAction(

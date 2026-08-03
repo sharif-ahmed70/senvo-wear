@@ -324,6 +324,7 @@ export const organizationMembershipStatusSchema = z.enum([
 export const roleSchema = z.enum(["OWNER", "ADMIN", "MANAGER", "STAFF"]);
 export const permissionResourceSchema = z.enum([
   "ORGANIZATION",
+  "TEAM",
   "USER",
   "CATALOG",
   "INVENTORY",
@@ -2608,4 +2609,175 @@ export const salesOrderListReadPageContractSchema =
 
 export type SalesOrderListReadPageContract = z.infer<
   typeof salesOrderListReadPageContractSchema
+>;
+
+const nullableContactTextSchema = (maximum: number) =>
+  z.string().trim().max(maximum).nullable().optional();
+
+export const organizationProfileContractSchema = z
+  .object({
+    addressLine1: z.string().nullable(),
+    addressLine2: z.string().nullable(),
+    businessCode: z.string(),
+    businessName: z.string(),
+    city: z.string().nullable(),
+    countryCode: z.string().length(2),
+    district: z.string().nullable(),
+    email: z.string().nullable(),
+    id: idSchema,
+    phone: z.string().nullable(),
+    postalCode: z.string().nullable(),
+    timezone: z.string(),
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const updateOrganizationProfileServiceInputSchema = z
+  .object({
+    addressLine1: nullableContactTextSchema(240),
+    addressLine2: nullableContactTextSchema(240),
+    businessName: displayNameSchema.optional(),
+    city: nullableContactTextSchema(120),
+    countryCode: z.string().trim().length(2).optional(),
+    district: nullableContactTextSchema(120),
+    email: z.string().trim().email().max(254).nullable().optional(),
+    expectedVersion: expectedVersionSchema,
+    phone: nullableContactTextSchema(40),
+    postalCode: nullableContactTextSchema(120),
+    timezone: z.string().trim().min(3).max(80).optional(),
+  })
+  .strict();
+
+export const storeManagementContractSchema = z
+  .object({
+    address: z.string().nullable(),
+    city: z.string().nullable(),
+    code: z.string(),
+    countryCode: z.string(),
+    id: idSchema,
+    name: z.string(),
+    phone: z.string().nullable(),
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    timezone: z.string(),
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const createStoreServiceInputSchema = z
+  .object({
+    address: nullableContactTextSchema(240),
+    city: nullableContactTextSchema(120),
+    code: codeSchema,
+    name: displayNameSchema,
+    phone: nullableContactTextSchema(40),
+  })
+  .strict();
+
+export const updateStoreServiceInputSchema = z
+  .object({
+    address: nullableContactTextSchema(240),
+    city: nullableContactTextSchema(120),
+    expectedVersion: expectedVersionSchema,
+    name: displayNameSchema.optional(),
+    phone: nullableContactTextSchema(40),
+    storeId: idSchema,
+  })
+  .strict();
+
+export const updateStoreStatusServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    status: z.enum(["ACTIVE", "INACTIVE"]),
+    storeId: idSchema,
+  })
+  .strict();
+
+export const teamMemberContractSchema = z
+  .object({
+    email: z.string().email(),
+    id: idSchema,
+    name: z.string().nullable(),
+    role: roleSchema,
+    status: organizationMembershipStatusSchema,
+    storeAccess: z.string(),
+    updatedAt: isoTimestampSchema,
+    userStatus: userStatusSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const createTeamMemberServiceInputSchema = z
+  .object({
+    email: z.string().trim().email().max(254),
+    name: displayNameSchema,
+    role: roleSchema,
+  })
+  .strict();
+
+export const updateTeamMemberStatusServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    status: organizationMembershipStatusSchema,
+    teamMemberId: idSchema,
+  })
+  .strict();
+
+export const assignTeamMemberRoleServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    role: roleSchema,
+    teamMemberId: idSchema,
+  })
+  .strict();
+
+export const roleVisibilityContractSchema = z
+  .object({
+    description: z.string(),
+    name: z.string(),
+    permissions: z.array(
+      z
+        .object({
+          action: permissionActionSchema,
+          resource: permissionResourceSchema,
+        })
+        .strict(),
+    ),
+    role: roleSchema,
+  })
+  .strict();
+
+export const organizationManagementEmptyInputSchema = z.object({}).strict();
+
+export type OrganizationProfileContract = z.infer<
+  typeof organizationProfileContractSchema
+>;
+export type UpdateOrganizationProfileServiceInputContract = z.infer<
+  typeof updateOrganizationProfileServiceInputSchema
+>;
+export type StoreManagementContract = z.infer<
+  typeof storeManagementContractSchema
+>;
+export type CreateStoreServiceInputContract = z.infer<
+  typeof createStoreServiceInputSchema
+>;
+export type UpdateStoreServiceInputContract = z.infer<
+  typeof updateStoreServiceInputSchema
+>;
+export type UpdateStoreStatusServiceInputContract = z.infer<
+  typeof updateStoreStatusServiceInputSchema
+>;
+export type TeamMemberContract = z.infer<typeof teamMemberContractSchema>;
+export type CreateTeamMemberServiceInputContract = z.infer<
+  typeof createTeamMemberServiceInputSchema
+>;
+export type UpdateTeamMemberStatusServiceInputContract = z.infer<
+  typeof updateTeamMemberStatusServiceInputSchema
+>;
+export type AssignTeamMemberRoleServiceInputContract = z.infer<
+  typeof assignTeamMemberRoleServiceInputSchema
+>;
+export type RoleVisibilityContract = z.infer<
+  typeof roleVisibilityContractSchema
 >;

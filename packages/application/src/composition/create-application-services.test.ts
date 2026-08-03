@@ -17,19 +17,24 @@ import { createApplicationServices } from "./create-application-services.js";
 describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
+      branchRepository: {} as never,
       inventoryMovementRepository: fakeInventoryMovementRepository,
       inventoryReadRepository: fakeInventoryReadRepository,
       categoryRepository: fakeCategoryRepository,
       collectionRepository: fakeCollectionRepository,
       colorRepository: fakeColorRepository,
       logger: nullLogger,
+      membershipRepository: {} as never,
       requestIdGenerator: () => "generated_request_1",
+      organizationProfileRepository: {} as never,
       organizationRepository: fakeOrganizationRepository,
       productRepository: fakeProductRepository,
       productVariantRepository: fakeProductVariantRepository,
+      rolePermissionRepository: {} as never,
       salesOrderRepository: fakeSalesOrderRepository,
       transactionManager: fakeTransactionManager,
       sizeRepository: fakeSizeRepository,
+      userRepository: {} as never,
     });
 
     const result = await services.sales.getOrderById(
