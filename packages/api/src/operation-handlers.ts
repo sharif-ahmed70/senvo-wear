@@ -432,7 +432,7 @@ export function createSalesOrderApiHandler(
     authorizationService: dependencies.authorizationService,
     execute: (context, input) => dependencies.sales.createOrder(context, input),
     inputSchema: createSalesOrderServiceInputSchema,
-    permission: { action: "CREATE", resource: "SALES_ORDER" },
+    permission: { action: "CREATE", resource: "SALES" },
   });
 }
 

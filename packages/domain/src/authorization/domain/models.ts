@@ -8,6 +8,7 @@ export type PermissionResource =
   | "INVENTORY"
   | "RESERVATION"
   | "SALES_ORDER"
+  | "SALES"
   | "REPORT";
 
 export type PermissionAction =

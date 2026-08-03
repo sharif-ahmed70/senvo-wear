@@ -107,8 +107,15 @@ enum SalesOrderStatus {
 
 enum SalesOrderChannel {
   ONLINE
+  OFFLINE_STORE
+  EVENT_BOOTH
   POS
   MANUAL
+}
+
+enum SalesBoothStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum UserStatus {
@@ -137,6 +144,7 @@ enum PermissionResource {
   INVENTORY
   RESERVATION
   SALES_ORDER
+  SALES
   REPORT
 }
 
@@ -200,6 +208,7 @@ model Organization {
   inventoryAllocationPolicies InventoryAllocationPolicy[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
   salesOrders SalesOrder[]
+  salesBooths SalesBooth[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
   auditEntries AuditEntry[]
@@ -219,6 +228,7 @@ model User {
   memberships OrganizationMembership[]
   credentials UserCredential[]
   auditEntries AuditEntry[]
+  responsibleBooths SalesBooth[]
 
   @@index([status])
   @@map("users")
@@ -255,6 +265,7 @@ model OrganizationMembership {
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  responsibleBooths SalesBooth[]
 
   @@unique([userId, organizationId])
   @@unique([id, organizationId])
@@ -712,6 +723,7 @@ model SalesOrder {
   orderNumber            String            @map("order_number") @db.VarChar(64)
   status                 SalesOrderStatus  @default(DRAFT)
   channel                SalesOrderChannel
+  boothId                String?           @map("booth_id") @db.Uuid
   currencyCode           String            @map("currency_code") @db.VarChar(3)
   subtotalMinor          Int               @map("subtotal_minor")
   discountMinor          Int               @default(0) @map("discount_minor")
@@ -743,6 +755,7 @@ model SalesOrder {
   allocationPolicy     InventoryAllocationPolicy? @relation(fields: [allocationPolicyId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   inventoryReservation InventoryReservation?      @relation("SalesOrderInventoryReservation", fields: [inventoryReservationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   fulfillmentMovement  InventoryMovement?         @relation("SalesOrderFulfillmentMovement", fields: [fulfillmentMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  booth                SalesBooth?                 @relation(fields: [boothId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   lines                SalesOrderLine[]
 
   @@unique([id, organizationId])
@@ -752,10 +765,35 @@ model SalesOrder {
   @@unique([fulfillmentMovementId, organizationId], map: "sales_orders_fulfillment_movement_id_organization_key")
   @@index([organizationId, status, createdAt, id])
   @@index([organizationId, channel, createdAt, id])
+  @@index([organizationId, boothId, createdAt, id])
   @@index([organizationId, customerPhone])
   @@index([organizationId, allocationPolicyId])
   @@index([organizationId, inventoryReservationId])
   @@map("sales_orders")
+}
+
+model SalesBooth {
+  id                 String           @id @default(uuid()) @db.Uuid
+  organizationId     String           @map("organization_id") @db.Uuid
+  name               String           @db.VarChar(160)
+  location           String           @db.VarChar(240)
+  startDate          DateTime         @map("start_date") @db.Date
+  endDate            DateTime         @map("end_date") @db.Date
+  responsibleStaffId String           @map("responsible_staff_id") @db.Uuid
+  status             SalesBoothStatus @default(ACTIVE)
+  version            Int              @default(1)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  responsibleStaff      User                   @relation(fields: [responsibleStaffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  responsibleMembership OrganizationMembership @relation(fields: [responsibleStaffId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  salesOrders           SalesOrder[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status, startDate, id])
+  @@index([organizationId, responsibleStaffId])
+  @@map("sales_booths")
 }
 
 model SalesOrderLine {

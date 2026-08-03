@@ -10,22 +10,30 @@ import {
   amendDraftSalesOrder,
   cancelSalesOrder,
   confirmSalesOrder,
+  changeSalesBoothStatus,
+  createSalesBooth,
   createSalesOrder,
   fulfillSalesOrder,
   getSalesOrderDetails,
   getSalesOrderById,
+  getSalesSourceSummary,
+  listSalesBooths,
   listSalesOrders,
   listSalesOrderReadModel,
   replaceDraftSalesOrderLines,
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
+  validateOrderSalesSource,
   type SalesOrderRepository,
   type SalesOrderReadRepository,
+  type SalesBooth,
+  type SalesSourceRepository,
 } from "@senvo/domain";
 import {
   amendDraftSalesOrderServiceInputSchema,
   cancelSalesOrderServiceInputSchema,
   confirmSalesOrderServiceInputSchema,
+  createSalesBoothServiceInputSchema,
   createSalesOrderServiceInputSchema,
   fulfillSalesOrderServiceInputSchema,
   getSalesOrderServiceInputSchema,
@@ -39,6 +47,10 @@ import {
   salesOrderManagementActionInputSchema,
   salesOrderManagementDetailsInputSchema,
   salesOrderManagementListInputSchema,
+  salesBoothContractSchema,
+  salesSourceEmptyInputSchema,
+  salesSourceSummaryContractSchema,
+  updateSalesBoothStatusServiceInputSchema,
   updateDraftSalesOrderMetadataServiceInputSchema,
   type AmendDraftSalesOrderServiceInputContract,
   type CancelSalesOrderServiceInputContract,
@@ -53,6 +65,8 @@ import {
   type SalesOrderServicePageContract,
   type SalesOrderDetailsReadContract,
   type SalesOrderListReadPageContract,
+  type SalesBoothContract,
+  type SalesSourceSummaryContract,
   type UpdateDraftSalesOrderMetadataServiceInputContract,
 } from "@senvo/contracts";
 import type { Logger, LogMetadata } from "@senvo/logger";
@@ -107,6 +121,7 @@ export type SalesApplicationServiceDependencies = {
   requestIdGenerator?: RequestIdGenerator;
   salesOrderRepository: SalesOrderRepository;
   salesOrderReadRepository?: SalesOrderReadRepository;
+  salesSourceRepository?: SalesSourceRepository;
   transactionManager: ApplicationTransactionManager;
 };
 
@@ -118,6 +133,7 @@ export class SalesApplicationService {
   private readonly requestIdGenerator: RequestIdGenerator;
   private readonly salesOrderRepository: SalesOrderRepository;
   private readonly salesOrderReadRepository?: SalesOrderReadRepository;
+  private readonly salesSourceRepository?: SalesSourceRepository;
   private readonly transactionManager: ApplicationTransactionManager;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
@@ -129,6 +145,7 @@ export class SalesApplicationService {
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
     this.salesOrderRepository = dependencies.salesOrderRepository;
     this.salesOrderReadRepository = dependencies.salesOrderReadRepository;
+    this.salesSourceRepository = dependencies.salesSourceRepository;
     this.transactionManager = dependencies.transactionManager;
   }
 
@@ -145,6 +162,14 @@ export class SalesApplicationService {
           requestId: validatedContext.requestId,
           userId: validatedContext.userId,
         });
+        const boothId =
+          input.channel === "EVENT_BOOTH"
+            ? await validateOrderSalesSource(this.requireSourceRepository(), {
+                boothId: input.boothId,
+                organizationId: validatedContext.organizationId,
+                salesChannel: input.channel,
+              })
+            : null;
         return this.transactionManager.execute(
           validatedContext,
           async (transactionContext) => {
@@ -154,13 +179,14 @@ export class SalesApplicationService {
               applicationContext,
               {
                 action: "CREATE",
-                resource: "SALES_ORDER",
+                resource: "SALES",
               },
             );
             const order = await createSalesOrder(
               transactionContext.salesOrderRepository,
               {
                 ...input,
+                boothId,
                 organizationId: applicationContext.organizationId,
               },
             );
@@ -362,6 +388,89 @@ export class SalesApplicationService {
     );
   }
 
+  listSalesBooths(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesBoothContract[]>> {
+    return this.execute("sales.listBooths", context, async (validated) => {
+      parsePayload(salesSourceEmptyInputSchema, payload);
+      await this.authorizeSalesSource(validated, "READ");
+      const booths = await listSalesBooths(
+        this.requireSourceRepository(),
+        validated.organizationId,
+      );
+      return booths.map((booth) =>
+        salesBoothContractSchema.parse(mapSalesBooth(booth)),
+      );
+    });
+  }
+
+  createSalesBooth(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesBoothContract>> {
+    return this.execute("sales.createBooth", context, async (validated) => {
+      const input = parsePayload(createSalesBoothServiceInputSchema, payload);
+      await this.authorizeSalesSource(validated, "CREATE");
+      if (!validated.userId) {
+        throw new AuthenticationError("Authenticated user is required.");
+      }
+      const booth = await createSalesBooth(this.requireSourceRepository(), {
+        ...input,
+        organizationId: validated.organizationId,
+        responsibleStaffId: validated.userId,
+      });
+      return salesBoothContractSchema.parse(mapSalesBooth(booth));
+    });
+  }
+
+  updateSalesBoothStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesBoothContract>> {
+    return this.execute(
+      "sales.updateBoothStatus",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          updateSalesBoothStatusServiceInputSchema,
+          payload,
+        );
+        await this.authorizeSalesSource(validated, "UPDATE");
+        const booth = await changeSalesBoothStatus(
+          this.requireSourceRepository(),
+          { ...input, organizationId: validated.organizationId },
+        );
+        return salesBoothContractSchema.parse(mapSalesBooth(booth));
+      },
+    );
+  }
+
+  getSalesSourceSummary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesSourceSummaryContract>> {
+    return this.execute(
+      "sales.getSourceSummary",
+      context,
+      async (validated) => {
+        parsePayload(salesSourceEmptyInputSchema, payload);
+        await this.authorizeSalesSource(validated, "READ");
+        const summary = await getSalesSourceSummary(
+          this.requireSourceRepository(),
+          validated.organizationId,
+        );
+        return salesSourceSummaryContractSchema.parse({
+          ...summary,
+          booths: summary.booths.map((item) => ({
+            ...item,
+            booth: mapSalesBooth(item.booth),
+          })),
+        });
+      },
+    );
+  }
+
   getManagedOrderDetails(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -499,6 +608,27 @@ export class SalesApplicationService {
     });
   }
 
+  private async authorizeSalesSource(
+    context: ValidatedApplicationExecutionContext,
+    action: "CREATE" | "READ" | "UPDATE",
+  ): Promise<void> {
+    await requireAuthentication(this.authenticationService, {
+      requestId: context.requestId,
+      userId: context.userId,
+    });
+    await requireAuthorization(this.authorizationService, context, {
+      action,
+      resource: "SALES",
+    });
+  }
+
+  private requireSourceRepository(): SalesSourceRepository {
+    if (!this.salesSourceRepository) {
+      throw new Error("Sales source repository is required.");
+    }
+    return this.salesSourceRepository;
+  }
+
   private requireReadRepository(): SalesOrderReadRepository {
     if (!this.salesOrderReadRepository) {
       throw new Error("Sales order read repository is required.");
@@ -590,6 +720,21 @@ function managedKey(
   version: number,
 ): string {
   return `sales:${salesOrderId}:${action}:${version}`;
+}
+
+function mapSalesBooth(booth: SalesBooth): SalesBoothContract {
+  return {
+    createdAt: booth.createdAt.toISOString(),
+    endDate: booth.endDate.toISOString().slice(0, 10),
+    id: booth.id,
+    location: booth.location,
+    name: booth.name,
+    responsibleStaffName: booth.responsibleStaffName,
+    startDate: booth.startDate.toISOString().slice(0, 10),
+    status: booth.status,
+    updatedAt: booth.updatedAt.toISOString(),
+    version: booth.version,
+  };
 }
 
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {

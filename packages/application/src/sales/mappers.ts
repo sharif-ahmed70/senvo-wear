@@ -11,6 +11,7 @@ import type {
 export function mapSalesOrder(order: SalesOrder): SalesOrderServiceContract {
   return {
     allocationPolicyId: order.allocationPolicyId,
+    boothId: order.boothId,
     cancelledAt: serializeNullableDate(order.cancelledAt),
     channel: order.channel,
     confirmedAt: serializeNullableDate(order.confirmedAt),

@@ -315,7 +315,18 @@ export const salesOrderStatusSchema = z.enum([
   "CANCELLED",
   "FULFILLED",
 ]);
-export const salesOrderChannelSchema = z.enum(["ONLINE", "POS", "MANUAL"]);
+export const salesChannelSchema = z.enum([
+  "ONLINE",
+  "OFFLINE_STORE",
+  "EVENT_BOOTH",
+]);
+export const salesOrderChannelSchema = z.enum([
+  "ONLINE",
+  "OFFLINE_STORE",
+  "EVENT_BOOTH",
+  "POS",
+  "MANUAL",
+]);
 export const userStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LOCKED"]);
 export const organizationMembershipStatusSchema = z.enum([
   "ACTIVE",
@@ -330,6 +341,7 @@ export const permissionResourceSchema = z.enum([
   "INVENTORY",
   "RESERVATION",
   "SALES_ORDER",
+  "SALES",
   "REPORT",
 ]);
 export const permissionActionSchema = z.enum([
@@ -898,7 +910,8 @@ const salesOrderLinesInputSchema = z
 export const createSalesOrderInputSchema = z
   .object({
     allocationPolicyId: idSchema.nullable().optional(),
-    channel: salesOrderChannelSchema,
+    boothId: idSchema.nullable().optional(),
+    channel: salesChannelSchema,
     currencyCode: salesOrderCurrencyCodeSchema,
     customerEmail: emailSchema,
     customerName: optionalTextSchema(160),
@@ -916,12 +929,14 @@ export const createSalesOrderInputSchema = z
     orderNumber: codeSchema,
     organizationId: idSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(validateBoothSalesSource);
 
 export const createSalesOrderServiceInputSchema = z
   .object({
     allocationPolicyId: idSchema.nullable().optional(),
-    channel: salesOrderChannelSchema,
+    boothId: idSchema.nullable().optional(),
+    channel: salesChannelSchema,
     currencyCode: salesOrderCurrencyCodeSchema,
     customerEmail: emailSchema,
     customerName: optionalTextSchema(160),
@@ -938,7 +953,8 @@ export const createSalesOrderServiceInputSchema = z
     orderDiscountMinor: minorUnitAmountSchema.optional(),
     orderNumber: codeSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(validateBoothSalesSource);
 
 const draftSalesOrderMetadataChangesSchema = z
   .object({
@@ -2354,6 +2370,7 @@ export const salesOrderLineContractSchema = z
 export const salesOrderContractSchema = z
   .object({
     allocationPolicyId: idSchema.nullable(),
+    boothId: idSchema.nullable(),
     cancelledAt: isoTimestampSchema.nullable(),
     channel: salesOrderChannelSchema,
     confirmedAt: isoTimestampSchema.nullable(),
@@ -2415,6 +2432,7 @@ export const salesOrderListReadContractSchema = z
 
 export const salesOrderDetailsReadContractSchema = z
   .object({
+    boothId: idSchema.nullable(),
     channel: salesOrderChannelSchema,
     currencyCode: salesOrderCurrencyCodeSchema,
     customer: salesOrderCustomerSnapshotContractSchema,
@@ -2748,6 +2766,67 @@ export const roleVisibilityContractSchema = z
   })
   .strict();
 
+export const salesBoothStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+const calendarDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+
+export const salesBoothContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    endDate: calendarDateSchema,
+    id: idSchema,
+    location: z.string(),
+    name: z.string(),
+    responsibleStaffName: z.string().nullable(),
+    startDate: calendarDateSchema,
+    status: salesBoothStatusSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const createSalesBoothServiceInputSchema = z
+  .object({
+    endDate: calendarDateSchema,
+    location: z.string().trim().min(1).max(240),
+    name: z.string().trim().min(1).max(160),
+    startDate: calendarDateSchema,
+  })
+  .strict();
+
+export const updateSalesBoothStatusServiceInputSchema = z
+  .object({
+    boothId: idSchema,
+    expectedVersion: expectedVersionSchema,
+    status: salesBoothStatusSchema,
+  })
+  .strict();
+
+export const salesSourceSummaryContractSchema = z
+  .object({
+    booths: z.array(
+      z
+        .object({
+          booth: salesBoothContractSchema,
+          orderCount: z.number().int().nonnegative(),
+          totalMinor: minorUnitAmountSchema,
+        })
+        .strict(),
+    ),
+    channels: z.array(
+      z
+        .object({
+          orderCount: z.number().int().nonnegative(),
+          salesChannel: salesChannelSchema,
+          totalMinor: minorUnitAmountSchema,
+        })
+        .strict(),
+    ),
+    legacyOrderCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const salesSourceEmptyInputSchema = z.object({}).strict();
+
 export const organizationManagementEmptyInputSchema = z.object({}).strict();
 
 export type OrganizationProfileContract = z.infer<
@@ -2781,3 +2860,36 @@ export type AssignTeamMemberRoleServiceInputContract = z.infer<
 export type RoleVisibilityContract = z.infer<
   typeof roleVisibilityContractSchema
 >;
+export type SalesBoothContract = z.infer<typeof salesBoothContractSchema>;
+export type CreateSalesBoothServiceInputContract = z.infer<
+  typeof createSalesBoothServiceInputSchema
+>;
+export type UpdateSalesBoothStatusServiceInputContract = z.infer<
+  typeof updateSalesBoothStatusServiceInputSchema
+>;
+export type SalesSourceSummaryContract = z.infer<
+  typeof salesSourceSummaryContractSchema
+>;
+
+function validateBoothSalesSource(
+  input: {
+    boothId?: string | null;
+    channel: z.infer<typeof salesChannelSchema>;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (input.channel === "EVENT_BOOTH" && !input.boothId) {
+    context.addIssue({
+      code: "custom",
+      message: "Select a booth for an event booth sale.",
+      path: ["boothId"],
+    });
+  }
+  if (input.channel !== "EVENT_BOOTH" && input.boothId) {
+    context.addIssue({
+      code: "custom",
+      message: "A booth can only be used for an event booth sale.",
+      path: ["boothId"],
+    });
+  }
+}

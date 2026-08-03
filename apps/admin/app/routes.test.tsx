@@ -20,6 +20,9 @@ import { OrganizationWorkspace } from "./organization/_components/organization-w
 import AdminPage from "./page";
 import SalesOrdersPage from "./sales-orders/page";
 import SalesManagementPage from "./sales/orders/page";
+import SalesBoothsPage from "./sales/booths/page";
+import SalesChannelsPage from "./sales/channels/page";
+import { SalesSourceWorkspace } from "./sales/_components/sales-source-workspace";
 import {
   SalesOrderDetailsPanel,
   SalesOrdersWorkspace,
@@ -28,6 +31,22 @@ import type { SalesOrderDetailsReadContract } from "@senvo/contracts";
 import UsersPage from "./users/page";
 
 describe("admin routes", () => {
+  it("renders sales source and booth history routes", () => {
+    expect(renderToStaticMarkup(<SalesChannelsPage />)).toContain(
+      "Sales Sources",
+    );
+    expect(renderToStaticMarkup(<SalesBoothsPage />)).toContain(
+      "Booth History",
+    );
+  });
+
+  it("hides sales source management without sales access", () => {
+    const html = renderToStaticMarkup(
+      <SalesSourceWorkspace permissions={[]} view="booths" />,
+    );
+    expect(html).toContain("Sales access needed");
+    expect(html).not.toContain("New booth");
+  });
   it.each([
     ["Dashboard", AdminPage],
     ["Catalog", CatalogPage],
@@ -141,6 +160,7 @@ function salesOrderDetails(
   status: SalesOrderDetailsReadContract["status"],
 ): SalesOrderDetailsReadContract {
   return {
+    boothId: null,
     channel: "ONLINE",
     currencyCode: "BDT",
     customer: { email: "buyer@test.dev", name: "Buyer", phone: "01700000000" },

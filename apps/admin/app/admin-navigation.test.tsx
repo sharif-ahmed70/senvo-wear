@@ -19,6 +19,8 @@ describe("admin navigation", () => {
       "Catalog",
       "Inventory",
       "Sales Orders",
+      "Sales Sources",
+      "Booth History",
       "Organization",
       "Store locations",
       "Team",
@@ -45,6 +47,7 @@ describe("admin navigation", () => {
     expect(html).not.toContain("Inventory");
     expect(html).not.toContain("Users &amp; Roles");
     expect(html).not.toContain("Store locations");
+    expect(html).not.toContain("Booth History");
   });
 
   it("renders an unauthorized state without application navigation", () => {

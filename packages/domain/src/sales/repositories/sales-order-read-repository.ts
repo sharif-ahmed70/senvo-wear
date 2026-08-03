@@ -19,6 +19,7 @@ export type SalesOrderListReadItem = {
 };
 
 export type SalesOrderDetailsReadItem = {
+  boothId: string | null;
   channel: SalesOrderChannel;
   currencyCode: string;
   customer: SalesOrderCustomerSnapshot;

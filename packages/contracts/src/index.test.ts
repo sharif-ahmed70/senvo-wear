@@ -1579,6 +1579,7 @@ describe("API contracts", () => {
 
     const order = {
       allocationPolicyId,
+      boothId: null,
       cancelledAt: null,
       channel: "ONLINE",
       confirmedAt: null,

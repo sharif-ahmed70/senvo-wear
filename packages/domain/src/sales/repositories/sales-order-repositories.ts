@@ -1,4 +1,7 @@
 import type {
+  SalesBooth,
+  SalesBoothStatus,
+  SalesChannel,
   SalesOrder,
   SalesOrderChannel,
   SalesOrderStatus,
@@ -50,6 +53,7 @@ export type AmendDraftSalesOrderRecord = {
 
 export type CreateDraftSalesOrderRecord = {
   allocationPolicyId: string | null;
+  boothId: string | null;
   channel: SalesOrderChannel;
   currencyCode: string;
   customerEmail: string | null;
@@ -69,6 +73,46 @@ export type CreateDraftSalesOrderRecord = {
   organizationId: string;
   subtotalMinor: number;
   totalMinor: number;
+};
+
+export type SalesChannelPerformance = {
+  orderCount: number;
+  salesChannel: SalesChannel;
+  totalMinor: number;
+};
+
+export type SalesBoothPerformance = {
+  booth: SalesBooth;
+  orderCount: number;
+  totalMinor: number;
+};
+
+export type SalesSourceSummary = {
+  booths: SalesBoothPerformance[];
+  channels: SalesChannelPerformance[];
+  legacyOrderCount: number;
+};
+
+export type CreateSalesBoothRecord = {
+  endDate: Date;
+  location: string;
+  name: string;
+  organizationId: string;
+  responsibleStaffId: string;
+  startDate: Date;
+};
+
+export type SalesSourceRepository = {
+  createBooth(record: CreateSalesBoothRecord): Promise<SalesBooth>;
+  findBoothById(id: string, organizationId: string): Promise<SalesBooth | null>;
+  getSummary(organizationId: string): Promise<SalesSourceSummary>;
+  listBooths(organizationId: string): Promise<SalesBooth[]>;
+  updateBoothStatus(record: {
+    expectedVersion: number;
+    id: string;
+    organizationId: string;
+    status: SalesBoothStatus;
+  }): Promise<SalesBooth | null>;
 };
 
 export type ReserveSalesOrderRecord = {

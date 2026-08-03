@@ -35,11 +35,18 @@ const orderStatuses = [
   "CANCELLED",
   "FULFILLED",
 ] as const;
-const orderChannels = ["ONLINE", "POS", "MANUAL"] as const;
+const orderChannels = [
+  "ONLINE",
+  "OFFLINE_STORE",
+  "EVENT_BOOTH",
+  "POS",
+  "MANUAL",
+] as const;
 const maxIntegerMinorUnit = 2_147_483_647;
 
 export type CreateSalesOrderInput = {
   allocationPolicyId?: string | null;
+  boothId?: string | null;
   channel: SalesOrderChannel;
   currencyCode: string;
   customerEmail?: string | null;
@@ -303,6 +310,7 @@ function normalizeCreateOrderInput(
     allocationPolicyId:
       normalizeOptionalId(input.allocationPolicyId, "allocationPolicyId") ??
       null,
+    boothId: normalizeOptionalId(input.boothId, "boothId") ?? null,
     channel: normalizeChannel(input.channel),
     currencyCode: normalizeCurrencyCode(input.currencyCode),
     customerEmail: normalizeOptionalEmail(input.customerEmail),

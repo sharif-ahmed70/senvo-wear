@@ -32,6 +32,9 @@ import type {
   SalesOrderListReadPageContract,
   SalesOrderManagementActionInputContract,
   SalesOrderManagementListInputContract,
+  SalesBoothContract,
+  SalesSourceSummaryContract,
+  CreateSalesBoothServiceInputContract,
   StockLocationReadContract,
   StoreManagementContract,
   TeamMemberContract,
@@ -42,6 +45,7 @@ import type {
   UpdateStoreServiceInputContract,
   UpdateStoreStatusServiceInputContract,
   UpdateTeamMemberStatusServiceInputContract,
+  UpdateSalesBoothStatusServiceInputContract,
   VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 
@@ -339,6 +343,40 @@ export class AdminApiClient {
   ) {
     return this.request<SalesOrderListReadPageContract>(
       `/sales/orders${queryString(input)}`,
+      request,
+    );
+  }
+
+  listSalesBooths(request?: AdminApiRequest) {
+    return this.request<SalesBoothContract[]>("/sales/booths", request);
+  }
+
+  createSalesBooth(
+    input: CreateSalesBoothServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SalesBoothContract>("/sales/booths", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateSalesBoothStatus(
+    input: UpdateSalesBoothStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { boothId, ...body } = input;
+    return this.request<SalesBoothContract>(`/sales/booths/${boothId}/status`, {
+      ...request,
+      body,
+      method: "PATCH",
+    });
+  }
+
+  getSalesSourceSummary(request?: AdminApiRequest) {
+    return this.request<SalesSourceSummaryContract>(
+      "/sales/sources/summary",
       request,
     );
   }

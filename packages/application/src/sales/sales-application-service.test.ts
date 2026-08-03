@@ -107,7 +107,7 @@ describe("SalesApplicationService", () => {
     expect(authorization.calls).toEqual([
       {
         organizationId,
-        permission: { action: "CREATE", resource: "SALES_ORDER" },
+        permission: { action: "CREATE", resource: "SALES" },
         role: "ADMIN",
         userId,
       },
@@ -425,6 +425,7 @@ function baseOrder(overrides: Partial<SalesOrder> = {}): SalesOrder {
   const timestamp = new Date("2026-07-03T00:00:00.000Z");
   return {
     allocationPolicyId,
+    boothId: null,
     cancelledAt: null,
     channel: "ONLINE",
     confirmedAt: null,

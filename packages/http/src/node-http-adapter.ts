@@ -11,6 +11,7 @@ import type {
   InventoryReadApiHandlers,
   OrganizationManagementApiHandlers,
   SalesOrderManagementApiHandlers,
+  SalesSourceApiHandlers,
 } from "@senvo/api";
 import {
   createApiFailure,
@@ -53,6 +54,7 @@ export type SenvoHttpHandlers = {
   organizationManagement?: OrganizationManagementApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
+  salesSource?: SalesSourceApiHandlers;
 };
 
 export type NodeHttpAdapterOptions = {
@@ -378,6 +380,38 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       ),
     );
   }
+  if (handlers.salesSource) {
+    routes.push(
+      {
+        handler: handlers.salesSource.listBooths,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/sales\/booths$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.salesSource.createBooth,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/sales\/booths$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.salesSource.updateBoothStatus,
+        input: boothStatusInput,
+        method: "PATCH",
+        path: /^\/sales\/booths\/(?<id>[0-9a-f-]+)\/status$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.salesSource.getSummary,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/sales\/sources\/summary$/u,
+        successStatus: 200,
+      },
+    );
+  }
   return routes;
 }
 
@@ -415,6 +449,20 @@ function salesActionRoute(
     method: "POST",
     path,
     successStatus: 200,
+  };
+}
+
+function emptyInput(): Record<string, never> {
+  return {};
+}
+
+function boothStatusInput(
+  body: unknown,
+  match: RegExpMatchArray,
+): Record<string, unknown> {
+  return {
+    ...(isObject(body) ? body : {}),
+    boothId: match.groups?.id,
   };
 }
 

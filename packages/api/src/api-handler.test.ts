@@ -63,7 +63,7 @@ describe("API application gateway", () => {
     expect(authorization.calls).toEqual([
       {
         organizationId,
-        permission: { action: "CREATE", resource: "SALES_ORDER" },
+        permission: { action: "CREATE", resource: "SALES" },
         userId,
       },
     ]);

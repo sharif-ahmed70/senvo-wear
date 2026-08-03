@@ -674,6 +674,7 @@ async function createDraftWithinTransaction(
   const order = await transaction.salesOrder.create({
     data: {
       allocationPolicyId: record.allocationPolicyId,
+      boothId: record.boothId,
       channel: record.channel,
       currencyCode: record.currencyCode,
       customerEmail: record.customerEmail,
@@ -1108,6 +1109,7 @@ function toOrderCursorPage(
 function mapOrder(record: OrderWithLines): SalesOrder {
   return {
     allocationPolicyId: record.allocationPolicyId,
+    boothId: record.boothId,
     cancelledAt: record.cancelledAt,
     channel: record.channel,
     confirmedAt: record.confirmedAt,

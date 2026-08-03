@@ -26,6 +26,11 @@ export {
   type OrganizationManagementApplication,
 } from "./organization-handlers.js";
 export {
+  createSalesSourceApiHandlers,
+  type SalesSourceApiHandlers,
+  type SalesSourceApplication,
+} from "./sales-source-handlers.js";
+export {
   createApplicationContext,
   type ApiAuthenticatedUser,
   type ApiRequestContext,

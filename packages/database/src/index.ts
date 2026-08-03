@@ -62,3 +62,4 @@ export {
 export { PrismaInventoryReadRepository } from "./inventory/read-repository.js";
 export { PrismaSalesOrderRepository } from "./sales/repositories.js";
 export { PrismaSalesOrderReadRepository } from "./sales/read-repository.js";
+export { PrismaSalesSourceRepository } from "./sales/source-repository.js";

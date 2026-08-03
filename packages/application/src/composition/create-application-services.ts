@@ -11,6 +11,7 @@ import {
   PrismaProductVariantRepository,
   PrismaSalesOrderRepository,
   PrismaSalesOrderReadRepository,
+  PrismaSalesSourceRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
   PrismaRolePermissionRepository,
@@ -34,6 +35,7 @@ import type {
   OrganizationRepository,
   SalesOrderRepository,
   SalesOrderReadRepository,
+  SalesSourceRepository,
   RolePermissionRepository,
   UserRepository,
 } from "@senvo/domain";
@@ -71,6 +73,7 @@ export type CreateApplicationServicesOptions = {
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
   salesOrderReadRepository?: SalesOrderReadRepository;
+  salesSourceRepository?: SalesSourceRepository;
   transactionManager?: ApplicationTransactionManager;
   sizeRepository?: CatalogSizeManagementRepository;
   useSharedPrismaClient?: boolean;
@@ -96,6 +99,7 @@ export function createApplicationServices(
   let inventoryReadRepository = options.inventoryReadRepository;
   let salesOrderRepository = options.salesOrderRepository;
   let salesOrderReadRepository = options.salesOrderReadRepository;
+  let salesSourceRepository = options.salesSourceRepository;
   let transactionManager = options.transactionManager;
   let categoryRepository = options.categoryRepository;
   let collectionRepository = options.collectionRepository;
@@ -156,6 +160,10 @@ export function createApplicationServices(
 
   if (!salesOrderReadRepository && prismaClient) {
     salesOrderReadRepository = new PrismaSalesOrderReadRepository(prismaClient);
+  }
+
+  if (!salesSourceRepository && prismaClient) {
+    salesSourceRepository = new PrismaSalesSourceRepository(prismaClient);
   }
 
   if (!transactionManager && prismaClient) {
@@ -250,6 +258,7 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
       salesOrderRepository,
       salesOrderReadRepository,
+      salesSourceRepository,
       transactionManager,
     }),
   };

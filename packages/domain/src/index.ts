@@ -73,11 +73,21 @@ export type {
   OnHandBalance,
 } from "./inventory/domain/models.js";
 export type {
+  SalesBooth,
+  SalesBoothStatus,
+  SalesChannel,
   SalesOrder,
   SalesOrderChannel,
   SalesOrderLine,
   SalesOrderStatus,
 } from "./sales/domain/models.js";
+export {
+  changeSalesBoothStatus,
+  createSalesBooth,
+  getSalesSourceSummary,
+  listSalesBooths,
+  validateOrderSalesSource,
+} from "./sales/application/source-use-cases.js";
 export type {
   OrganizationMembership,
   OrganizationMembershipStatus,
@@ -438,6 +448,7 @@ export type {
   AmendDraftSalesOrderRecord,
   ConfirmSalesOrderRecord,
   CreateDraftSalesOrderRecord,
+  CreateSalesBoothRecord,
   CreateSalesOrderLineRecord,
   DraftSalesOrderMetadataChanges,
   CursorPageRequest as SalesCursorPageRequest,
@@ -448,6 +459,10 @@ export type {
   SalesOrderListFilter,
   SalesOrderCreationRepository,
   SalesOrderRepository,
+  SalesBoothPerformance,
+  SalesChannelPerformance,
+  SalesSourceRepository,
+  SalesSourceSummary,
 } from "./sales/repositories/sales-order-repositories.js";
 export {
   getSalesOrderDetails,

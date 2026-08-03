@@ -1,7 +1,25 @@
 export type SalesOrderStatus =
   "DRAFT" | "RESERVED" | "CONFIRMED" | "CANCELLED" | "FULFILLED";
 
-export type SalesOrderChannel = "ONLINE" | "POS" | "MANUAL";
+export type SalesChannel = "ONLINE" | "OFFLINE_STORE" | "EVENT_BOOTH";
+export type SalesOrderChannel = SalesChannel | "POS" | "MANUAL";
+
+export type SalesBoothStatus = "ACTIVE" | "INACTIVE";
+
+export type SalesBooth = {
+  createdAt: Date;
+  endDate: Date;
+  id: string;
+  location: string;
+  name: string;
+  organizationId: string;
+  responsibleStaffId: string;
+  responsibleStaffName: string | null;
+  startDate: Date;
+  status: SalesBoothStatus;
+  updatedAt: Date;
+  version: number;
+};
 
 export type SalesOrderLine = {
   colorSnapshot: string | null;
@@ -24,6 +42,7 @@ export type SalesOrder = {
   allocationPolicyId: string | null;
   cancelledAt: Date | null;
   channel: SalesOrderChannel;
+  boothId: string | null;
   confirmedAt: Date | null;
   createdAt: Date;
   currencyCode: string;

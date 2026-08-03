@@ -8,6 +8,8 @@ import {
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  RadioTower,
+  TentTree,
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -20,6 +22,8 @@ import {
 
 const navigationIcons = {
   catalog: ShoppingBag,
+  booths: TentTree,
+  channels: RadioTower,
   dashboard: LayoutDashboard,
   inventory: Boxes,
   organization: Building2,

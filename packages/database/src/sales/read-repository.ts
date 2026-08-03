@@ -133,6 +133,7 @@ function mapDetails(record: DetailsRecord): SalesOrderDetailsReadItem {
   const reservation = record.inventoryReservation;
   const movement = record.fulfillmentMovement;
   return {
+    boothId: record.boothId,
     channel: record.channel,
     currencyCode: record.currencyCode,
     customer: {

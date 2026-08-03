@@ -5,6 +5,9 @@ export const adminPermissionKeys = [
   "INVENTORY:READ",
   "SALES_ORDER:READ",
   "SALES_ORDER:UPDATE",
+  "SALES:READ",
+  "SALES:CREATE",
+  "SALES:UPDATE",
   "ORGANIZATION:READ",
   "ORGANIZATION:UPDATE",
   "TEAM:READ",
@@ -28,6 +31,8 @@ export type AdminNavigationItem = {
     | "catalog"
     | "inventory"
     | "sales"
+    | "channels"
+    | "booths"
     | "organization"
     | "stores"
     | "team"
@@ -55,6 +60,18 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     icon: "sales",
     label: "Sales Orders",
     permission: "SALES_ORDER:READ",
+  },
+  {
+    href: "/sales/channels",
+    icon: "channels",
+    label: "Sales Sources",
+    permission: "SALES:READ",
+  },
+  {
+    href: "/sales/booths",
+    icon: "booths",
+    label: "Booth History",
+    permission: "SALES:READ",
   },
   {
     href: "/organization",

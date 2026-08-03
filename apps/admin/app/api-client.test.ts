@@ -295,4 +295,36 @@ describe("AdminApiClient", () => {
       status: 409,
     });
   });
+
+  it("uses sales source endpoints without trusted staff or organization fields", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ data: {}, requestId: "req_booth_1", success: true }),
+      );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    await client.createSalesBooth(
+      {
+        endDate: "2026-08-10",
+        location: "UIU",
+        name: "UIU Spring Fest 2026",
+        startDate: "2026-08-08",
+      },
+      { requestId: "req_booth_1" },
+    );
+    const rawBody = fetcher.mock.calls[0]?.[1]?.body;
+    expect(typeof rawBody).toBe("string");
+    const body = JSON.parse(
+      typeof rawBody === "string" ? rawBody : "{}",
+    ) as Record<string, unknown>;
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://admin.example.test/sales/booths",
+    );
+    expect(body).not.toHaveProperty("organizationId");
+    expect(body).not.toHaveProperty("responsibleStaffId");
+    expect(body).not.toHaveProperty("permissions");
+  });
 });

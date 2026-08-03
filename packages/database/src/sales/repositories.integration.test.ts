@@ -23,12 +23,14 @@ import {
 } from "../inventory/repositories.js";
 import { PrismaSalesOrderRepository } from "./repositories.js";
 import { PrismaSalesOrderReadRepository } from "./read-repository.js";
+import { PrismaSalesSourceRepository } from "./source-repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 let prisma: ReturnType<typeof createPrismaClient>;
 let salesOrders: PrismaSalesOrderRepository;
 let salesOrderReads: PrismaSalesOrderReadRepository;
+let salesSources: PrismaSalesSourceRepository;
 let balances: PrismaInventoryBalanceQueryRepository;
 let availability: PrismaInventoryAvailabilityQueryRepository;
 
@@ -40,6 +42,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
     prisma = createPrismaClient();
     salesOrders = new PrismaSalesOrderRepository(prisma);
     salesOrderReads = new PrismaSalesOrderReadRepository(prisma);
+    salesSources = new PrismaSalesSourceRepository(prisma);
     balances = new PrismaInventoryBalanceQueryRepository(prisma);
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
   });
@@ -47,6 +50,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
   beforeEach(async () => {
     await prisma.salesOrderLine.deleteMany();
     await prisma.salesOrder.deleteMany();
+    await prisma.salesBooth.deleteMany();
     await prisma.inventoryReservationLine.deleteMany();
     await prisma.inventoryReservation.deleteMany();
     await prisma.inventoryMovementLine.deleteMany();
@@ -1087,9 +1091,133 @@ describeWithDatabase("Prisma sales order repositories", () => {
       /Foreign key constraint|violates foreign key constraint/i,
     );
   });
+  it("preserves organization-scoped booth history and status changes", async () => {
+    const first = await createSalesBase("BOOTH-A");
+    const second = await createSalesBase("BOOTH-B");
+    const firstUser = await createBoothStaff(
+      first.organization.id,
+      "staff-a@senvo.test",
+    );
+    const secondUser = await createBoothStaff(
+      second.organization.id,
+      "staff-b@senvo.test",
+    );
+    const booth = await salesSources.createBooth({
+      endDate: new Date("2026-08-10"),
+      location: "UIU",
+      name: "UIU Spring Fest 2026",
+      organizationId: first.organization.id,
+      responsibleStaffId: firstUser.id,
+      startDate: new Date("2026-08-08"),
+    });
+    await salesSources.createBooth({
+      endDate: new Date("2026-09-03"),
+      location: "Trade Fair",
+      name: "Dhaka Trade Fair",
+      organizationId: second.organization.id,
+      responsibleStaffId: secondUser.id,
+      startDate: new Date("2026-09-01"),
+    });
+    expect(await salesSources.listBooths(first.organization.id)).toHaveLength(
+      1,
+    );
+    const inactive = await salesSources.updateBoothStatus({
+      expectedVersion: booth.version,
+      id: booth.id,
+      organizationId: first.organization.id,
+      status: "INACTIVE",
+    });
+    expect(inactive).toMatchObject({ status: "INACTIVE", version: 2 });
+    expect(
+      (await salesSources.listBooths(first.organization.id))[0],
+    ).toMatchObject({ id: booth.id, status: "INACTIVE" });
+  });
+
+  it("tracks event booth orders and rejects cross-organization or mismatched sources", async () => {
+    const first = await createSalesBase("SOURCE-A");
+    const second = await createSalesBase("SOURCE-B");
+    const staff = await createBoothStaff(
+      first.organization.id,
+      "source-a@senvo.test",
+    );
+    const booth = await salesSources.createBooth({
+      endDate: new Date("2026-08-10"),
+      location: "University",
+      name: "University Booth",
+      organizationId: first.organization.id,
+      responsibleStaffId: staff.id,
+      startDate: new Date("2026-08-08"),
+    });
+    const order = await createSalesOrder(salesOrders, {
+      boothId: booth.id,
+      channel: "EVENT_BOOTH",
+      currencyCode: "BDT",
+      idempotencyKey: "event-source",
+      lines: [
+        {
+          productVariantId: first.variant.id,
+          quantity: 1,
+          unitPriceMinor: 1000,
+        },
+      ],
+      orderNumber: "SO-EVENT",
+      organizationId: first.organization.id,
+    });
+    expect(order).toMatchObject({ boothId: booth.id, channel: "EVENT_BOOTH" });
+    const summary = await salesSources.getSummary(first.organization.id);
+    expect(
+      summary.channels.find((item) => item.salesChannel === "EVENT_BOOTH"),
+    ).toMatchObject({ orderCount: 1, totalMinor: 1000 });
+    expect(summary.booths[0]).toMatchObject({
+      orderCount: 1,
+      totalMinor: 1000,
+    });
+    await expect(
+      prisma.salesOrder.create({
+        data: {
+          boothId: booth.id,
+          channel: "EVENT_BOOTH",
+          currencyCode: "BDT",
+          idempotencyKey: "cross-org",
+          orderNumber: "SO-CROSS",
+          organizationId: second.organization.id,
+          payloadSignature: "{}",
+          subtotalMinor: 0,
+          totalMinor: 0,
+        },
+      }),
+    ).rejects.toThrow(
+      /Foreign key constraint|violates foreign key constraint/i,
+    );
+    await expect(
+      prisma.salesOrder.create({
+        data: {
+          boothId: booth.id,
+          channel: "ONLINE",
+          currencyCode: "BDT",
+          idempotencyKey: "bad-source",
+          orderNumber: "SO-BAD",
+          organizationId: first.organization.id,
+          payloadSignature: "{}",
+          subtotalMinor: 0,
+          totalMinor: 0,
+        },
+      }),
+    ).rejects.toThrow(/constraint/i);
+  });
 });
 
 type SalesBase = Awaited<ReturnType<typeof createSalesBase>>;
+
+async function createBoothStaff(organizationId: string, email: string) {
+  const user = await prisma.user.create({
+    data: { email, name: "Booth Staff" },
+  });
+  await prisma.organizationMembership.create({
+    data: { organizationId, role: "STAFF", userId: user.id },
+  });
+  return user;
+}
 
 async function createSalesBase(label: string) {
   const organization = await prisma.organization.create({
