@@ -279,7 +279,6 @@ async function seedCheckout(label: string, stock: number, quantity: number) {
       lines: {
         create: {
           lineNumber: 1,
-          organizationId: base.organization.id,
           productVariantId: variant.id,
           quantity: stock,
         },
