@@ -4,6 +4,7 @@ export const adminPermissionKeys = [
   "CATALOG:UPDATE",
   "INVENTORY:READ",
   "SALES_ORDER:READ",
+  "SALES_ORDER:UPDATE",
   "ORGANIZATION:READ",
   "USER:READ",
 ] as const;
@@ -41,7 +42,7 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     permission: "INVENTORY:READ",
   },
   {
-    href: "/sales-orders",
+    href: "/sales/orders",
     icon: "sales",
     label: "Sales Orders",
     permission: "SALES_ORDER:READ",

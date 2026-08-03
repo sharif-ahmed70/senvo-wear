@@ -15,6 +15,8 @@ import {
   type InventoryMovementHistoryContract,
   type InventoryReadPageContract,
   type PostInventoryMovementServiceInputContract,
+  type SalesOrderDetailsReadContract,
+  type SalesOrderServiceContract,
   type StockLocationReadContract,
   type VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
@@ -258,6 +260,63 @@ describe("Node HTTP runtime adapter", () => {
       { headers },
     );
     expect(variant.requests.at(0)?.input).toEqual({ variantId: movementId });
+  });
+
+  it("routes sales list, details, and lifecycle action inputs", async () => {
+    const list = new RecordingApiHandler(
+      createApiSuccess(
+        { hasMore: false, items: [], nextCursor: null },
+        suppliedRequestId,
+      ),
+    );
+    const details = new RecordingApiHandler(
+      createApiSuccess({} as SalesOrderDetailsReadContract, suppliedRequestId),
+    );
+    const reserve = new RecordingApiHandler(
+      createApiSuccess({} as SalesOrderServiceContract, suppliedRequestId),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({} as SalesOrderServiceContract, suppliedRequestId),
+    );
+    const headers = developmentHeaders(suppliedRequestId);
+    headers.set("x-dev-permissions", "SALES_ORDER:READ,SALES_ORDER:UPDATE");
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        salesManagement: {
+          cancel: fallback,
+          confirm: fallback,
+          fulfill: fallback,
+          getDetails: details,
+          list,
+          reserve,
+        },
+      },
+    });
+
+    await fetch(
+      `${runtime.url}/sales/orders?pageSize=10&search=SO-1&status=DRAFT`,
+      { headers },
+    );
+    expect(list.requests.at(0)?.input).toEqual({
+      pageSize: "10",
+      search: "SO-1",
+      status: "DRAFT",
+    });
+
+    await fetch(`${runtime.url}/sales/orders/${movementId}`, { headers });
+    expect(details.requests.at(0)?.input).toEqual({ salesOrderId: movementId });
+
+    await fetch(`${runtime.url}/sales/orders/${movementId}/reserve`, {
+      body: JSON.stringify({ expectedVersion: 2 }),
+      headers,
+      method: "POST",
+    });
+    expect(reserve.requests.at(0)?.input).toEqual({
+      expectedVersion: 2,
+      salesOrderId: movementId,
+    });
   });
 
   it("rejects malformed JSON without calling an API handler", async () => {

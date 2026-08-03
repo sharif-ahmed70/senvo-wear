@@ -361,6 +361,32 @@ describe("SalesApplicationService", () => {
     expect(repository.lastCancel?.organizationId).toBe(organizationId);
     expect(repository.lastFulfill?.organizationId).toBe(organizationId);
   });
+
+  it("derives lifecycle integration metadata for admin actions", async () => {
+    await service.reserveManagedOrder(context, {
+      expectedVersion: 1,
+      salesOrderId,
+    });
+    expect(repository.lastReserve).toMatchObject({
+      expectedVersion: 1,
+      organizationId,
+      reservationIdempotencyKey: `sales:${salesOrderId}:reserve:1`,
+      reservationNumber: `RSV-${salesOrderId}-1`,
+      salesOrderId,
+    });
+
+    await service.fulfillManagedOrder(context, {
+      expectedVersion: 3,
+      salesOrderId,
+    });
+    expect(repository.lastFulfill).toMatchObject({
+      consumptionIdempotencyKey: `sales:${salesOrderId}:fulfill:3`,
+      expectedVersion: 3,
+      movementNumber: `FUL-${salesOrderId}-3`,
+      organizationId,
+      salesOrderId,
+    });
+  });
 });
 
 async function expectError(
@@ -460,6 +486,7 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
   lastFulfill: FulfillSalesOrderRecord | null = null;
   listError: Error | null = null;
   reserveError: Error | null = null;
+  lastReserve: ReserveSalesOrderRecord | null = null;
 
   amendDraft(record: { organizationId: string }): Promise<SalesOrder> {
     this.lastAmend = record;
@@ -562,6 +589,7 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
     record: ReserveSalesOrderRecord,
     payloadSignature: string,
   ): Promise<SalesOrder> {
+    this.lastReserve = record;
     if (this.reserveError) {
       return Promise.reject(this.reserveError);
     }

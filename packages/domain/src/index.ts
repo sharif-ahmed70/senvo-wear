@@ -439,6 +439,19 @@ export type {
   SalesOrderCreationRepository,
   SalesOrderRepository,
 } from "./sales/repositories/sales-order-repositories.js";
+export {
+  getSalesOrderDetails,
+  listSalesOrderReadModel,
+} from "./sales/application/read-query-use-cases.js";
+export type { ListSalesOrderReadInput } from "./sales/application/read-query-use-cases.js";
+export type {
+  SalesOrderCustomerSnapshot,
+  SalesOrderDateOrder,
+  SalesOrderDetailsReadItem,
+  SalesOrderListReadItem,
+  SalesOrderReadPage,
+  SalesOrderReadRepository,
+} from "./sales/repositories/sales-order-read-repository.js";
 export type {
   TransactionContext,
   TransactionManager,

@@ -179,4 +179,41 @@ describe("AdminApiClient", () => {
     );
     expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "GET" });
   });
+
+  it("uses typed sales read and lifecycle endpoints", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: { hasMore: false, items: [], nextCursor: null },
+          requestId: "req_sales_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const salesOrderId = "10000000-0000-4000-8000-000000000003";
+
+    await client.listSalesOrders(
+      { search: "SO 1", status: "DRAFT" },
+      { requestId: "req_sales_1" },
+    );
+    await client.reserveSalesOrder(
+      { expectedVersion: 2, salesOrderId },
+      { requestId: "req_sales_2" },
+    );
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://admin.example.test/sales/orders?search=SO+1&status=DRAFT",
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      `https://admin.example.test/sales/orders/${salesOrderId}/reserve`,
+    );
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
+      body: JSON.stringify({ expectedVersion: 2 }),
+      method: "POST",
+    });
+  });
 });

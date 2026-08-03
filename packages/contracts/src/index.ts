@@ -1137,6 +1137,27 @@ export const listSalesOrdersServiceInputSchema =
     })
     .strict();
 
+export const salesOrderManagementListInputSchema = z
+  .object({
+    cursor: cursorSchema.optional(),
+    order: z.enum(["NEWEST", "OLDEST"]).optional(),
+    pageSize: z.coerce.number().int().min(1).max(100).optional(),
+    search: z.string().trim().min(1).max(64).optional(),
+    status: salesOrderStatusSchema.optional(),
+  })
+  .strict();
+
+export const salesOrderManagementDetailsInputSchema = z
+  .object({ salesOrderId: idSchema })
+  .strict();
+
+export const salesOrderManagementActionInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    salesOrderId: idSchema,
+  })
+  .strict();
+
 export const updateBranchMetadataInputSchema = z
   .object({
     addressLine1: optionalTextSchema(240),
@@ -2371,6 +2392,127 @@ export const salesOrderServiceContractSchema = salesOrderContractSchema.omit({
   payloadSignature: true,
 });
 
+const salesOrderCustomerSnapshotContractSchema = z
+  .object({
+    email: z.string().nullable(),
+    name: z.string().nullable(),
+    phone: z.string().nullable(),
+  })
+  .strict();
+
+export const salesOrderListReadContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customer: salesOrderCustomerSnapshotContractSchema,
+    id: idSchema,
+    orderNumber: z.string(),
+    status: salesOrderStatusSchema,
+    totalMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+export const salesOrderDetailsReadContractSchema = z
+  .object({
+    channel: salesOrderChannelSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customer: salesOrderCustomerSnapshotContractSchema,
+    delivery: z
+      .object({
+        addressLine1: z.string().nullable(),
+        addressLine2: z.string().nullable(),
+        city: z.string().nullable(),
+        district: z.string().nullable(),
+        postalCode: z.string().nullable(),
+      })
+      .strict(),
+    id: idSchema,
+    inventory: z
+      .object({
+        fulfillment: z
+          .object({
+            movement: z
+              .object({
+                id: idSchema,
+                movementNumber: z.string(),
+                occurredAt: isoTimestampSchema,
+                postedAt: isoTimestampSchema.nullable(),
+                status: inventoryMovementStatusSchema,
+                type: inventoryMovementTypeSchema,
+              })
+              .strict()
+              .nullable(),
+            status: z.enum(["PENDING", "FULFILLED"]),
+          })
+          .strict(),
+        reservation: z
+          .object({
+            id: idSchema,
+            reservationNumber: z.string(),
+            status: inventoryReservationStatusSchema,
+            stockLocation: z
+              .object({ id: idSchema, name: z.string() })
+              .strict(),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+    lines: z.array(
+      z
+        .object({
+          color: z.string().nullable(),
+          id: idSchema,
+          lineNumber: z.number().int().positive(),
+          lineTotalMinor: minorUnitAmountSchema,
+          productName: z.string(),
+          quantity: z.number().int().positive(),
+          size: z.string().nullable(),
+          sku: z.string(),
+          unitPriceMinor: minorUnitAmountSchema,
+        })
+        .strict(),
+    ),
+    orderNumber: z.string(),
+    status: salesOrderStatusSchema,
+    timestamps: z
+      .object({
+        cancelledAt: isoTimestampSchema.nullable(),
+        confirmedAt: isoTimestampSchema.nullable(),
+        createdAt: isoTimestampSchema,
+        fulfilledAt: isoTimestampSchema.nullable(),
+        reservedAt: isoTimestampSchema.nullable(),
+        updatedAt: isoTimestampSchema,
+      })
+      .strict(),
+    totals: z
+      .object({
+        deliveryMinor: minorUnitAmountSchema,
+        discountMinor: minorUnitAmountSchema,
+        subtotalMinor: minorUnitAmountSchema,
+        totalMinor: minorUnitAmountSchema,
+      })
+      .strict(),
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export type SalesOrderManagementListInputContract = z.infer<
+  typeof salesOrderManagementListInputSchema
+>;
+export type SalesOrderManagementDetailsInputContract = z.infer<
+  typeof salesOrderManagementDetailsInputSchema
+>;
+export type SalesOrderManagementActionInputContract = z.infer<
+  typeof salesOrderManagementActionInputSchema
+>;
+export type SalesOrderListReadContract = z.infer<
+  typeof salesOrderListReadContractSchema
+>;
+export type SalesOrderDetailsReadContract = z.infer<
+  typeof salesOrderDetailsReadContractSchema
+>;
+
 export const cursorPageResultSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .object({
@@ -2460,3 +2602,10 @@ export const salesOrderPageContractSchema = salesOrderCursorPageResultSchema(
 
 export const salesOrderServicePageContractSchema =
   salesOrderCursorPageResultSchema(salesOrderServiceContractSchema);
+
+export const salesOrderListReadPageContractSchema =
+  salesOrderCursorPageResultSchema(salesOrderListReadContractSchema);
+
+export type SalesOrderListReadPageContract = z.infer<
+  typeof salesOrderListReadPageContractSchema
+>;

@@ -22,11 +22,13 @@ import {
   PrismaInventoryBalanceQueryRepository,
 } from "../inventory/repositories.js";
 import { PrismaSalesOrderRepository } from "./repositories.js";
+import { PrismaSalesOrderReadRepository } from "./read-repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
 let prisma: ReturnType<typeof createPrismaClient>;
 let salesOrders: PrismaSalesOrderRepository;
+let salesOrderReads: PrismaSalesOrderReadRepository;
 let balances: PrismaInventoryBalanceQueryRepository;
 let availability: PrismaInventoryAvailabilityQueryRepository;
 
@@ -37,6 +39,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
     process.env.DATABASE_URL = testDatabaseUrl;
     prisma = createPrismaClient();
     salesOrders = new PrismaSalesOrderRepository(prisma);
+    salesOrderReads = new PrismaSalesOrderReadRepository(prisma);
     balances = new PrismaInventoryBalanceQueryRepository(prisma);
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
   });
@@ -959,6 +962,89 @@ describeWithDatabase("Prisma sales order repositories", () => {
         salesOrderId: order.id,
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("projects organization-scoped order visibility and inventory linkage", async () => {
+    const base = await createSalesBase("ADMIN-READ");
+    const other = await createSalesBase("ADMIN-READ-OTHER");
+    await seedOnHand(base, 5);
+    const order = await createOrder(base, "SO-ADMIN-READ", 2);
+    await createOrder(other, "SO-OTHER-READ", 1);
+
+    const firstPage = await salesOrderReads.list({
+      order: "NEWEST",
+      organizationId: base.organization.id,
+      pageSize: 1,
+      search: "admin-read",
+    });
+    expect(firstPage).toMatchObject({
+      hasMore: false,
+      items: [
+        {
+          customer: { email: null, name: null, phone: null },
+          id: order.id,
+          orderNumber: "SO-ADMIN-READ",
+          status: "DRAFT",
+          totalMinor: 2000,
+        },
+      ],
+      nextCursor: null,
+    });
+    await expect(
+      salesOrderReads.getDetails({
+        organizationId: other.organization.id,
+        salesOrderId: order.id,
+      }),
+    ).resolves.toBeNull();
+
+    const reserved = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "reserve-admin-read",
+      reservationNumber: "RSV-ADMIN-READ",
+      salesOrderId: order.id,
+    });
+    const reservedDetails = await salesOrderReads.getDetails({
+      organizationId: base.organization.id,
+      salesOrderId: order.id,
+    });
+    expect(reservedDetails?.inventory.reservation).toMatchObject({
+      reservationNumber: "RSV-ADMIN-READ",
+      status: "ACTIVE",
+      stockLocation: { id: base.location.id },
+    });
+
+    const confirmed = await confirmSalesOrder(salesOrders, {
+      expectedVersion: reserved.version,
+      organizationId: base.organization.id,
+      salesOrderId: order.id,
+    });
+    const fulfilled = await fulfillSalesOrder(salesOrders, {
+      consumptionIdempotencyKey: "consume-admin-read",
+      expectedVersion: confirmed.version,
+      movementNumber: "MOVE-ADMIN-READ",
+      occurredAt: "2026-07-03T01:00:00.000Z",
+      organizationId: base.organization.id,
+      salesOrderId: order.id,
+    });
+    const fulfilledDetails = await salesOrderReads.getDetails({
+      organizationId: base.organization.id,
+      salesOrderId: fulfilled.id,
+    });
+    expect(fulfilledDetails).toMatchObject({
+      inventory: {
+        fulfillment: {
+          movement: {
+            movementNumber: "MOVE-ADMIN-READ",
+            status: "POSTED",
+            type: "ISSUE",
+          },
+          status: "FULFILLED",
+        },
+        reservation: { status: "CONFIRMED" },
+      },
+      status: "FULFILLED",
+    });
   });
 
   it("enforces unique linkages and restrictive deletion", async () => {

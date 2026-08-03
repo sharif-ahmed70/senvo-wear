@@ -9,6 +9,7 @@ import type {
   ApiHandler,
   CatalogApiHandlers,
   InventoryReadApiHandlers,
+  SalesOrderManagementApiHandlers,
 } from "@senvo/api";
 import {
   createApiFailure,
@@ -49,6 +50,7 @@ export type SenvoHttpHandlers = {
   createSalesOrder: ApiHandler<unknown>;
   inventoryRead?: InventoryReadApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
+  salesManagement?: SalesOrderManagementApiHandlers;
 };
 
 export type NodeHttpAdapterOptions = {
@@ -274,7 +276,68 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
     );
   }
+  if (handlers.salesManagement) {
+    routes.push(
+      {
+        handler: handlers.salesManagement.list,
+        input: queryInput,
+        method: "GET",
+        path: /^\/sales\/orders$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.salesManagement.getDetails,
+        input: salesOrderPathQueryInput,
+        method: "GET",
+        path: /^\/sales\/orders\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      salesActionRoute(
+        /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/reserve$/iu,
+        handlers.salesManagement.reserve,
+      ),
+      salesActionRoute(
+        /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/confirm$/iu,
+        handlers.salesManagement.confirm,
+      ),
+      salesActionRoute(
+        /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/fulfill$/iu,
+        handlers.salesManagement.fulfill,
+      ),
+      salesActionRoute(
+        /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/cancel$/iu,
+        handlers.salesManagement.cancel,
+      ),
+    );
+  }
   return routes;
+}
+
+function salesActionRoute(
+  path: RegExp,
+  handler: ApiHandler<unknown>,
+): HttpRoute {
+  return {
+    handler,
+    input: (body, match) => ({
+      ...(isObject(body) ? body : {}),
+      salesOrderId: match.groups?.id,
+    }),
+    method: "POST",
+    path,
+    successStatus: 200,
+  };
+}
+
+function salesOrderPathQueryInput(
+  body: unknown,
+  match: RegExpMatchArray,
+  request: IncomingMessage,
+): Record<string, unknown> {
+  return {
+    ...queryInput(body, match, request),
+    salesOrderId: match.groups?.id,
+  };
 }
 
 function queryInput(

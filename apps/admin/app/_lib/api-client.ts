@@ -23,6 +23,10 @@ import type {
   ProductVariantContract,
   PublicErrorDetails,
   SizeContract,
+  SalesOrderDetailsReadContract,
+  SalesOrderListReadPageContract,
+  SalesOrderManagementActionInputContract,
+  SalesOrderManagementListInputContract,
   StockLocationReadContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
@@ -316,6 +320,63 @@ export class AdminApiClient {
       `/inventory/variants/${input.variantId}/availability`,
       request,
     );
+  }
+
+  listSalesOrders(
+    input: SalesOrderManagementListInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SalesOrderListReadPageContract>(
+      `/sales/orders${queryString(input)}`,
+      request,
+    );
+  }
+
+  getSalesOrder(salesOrderId: string, request?: AdminApiRequest) {
+    return this.request<SalesOrderDetailsReadContract>(
+      `/sales/orders/${salesOrderId}`,
+      request,
+    );
+  }
+
+  reserveSalesOrder(
+    input: SalesOrderManagementActionInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.salesOrderAction("reserve", input, request);
+  }
+
+  confirmSalesOrder(
+    input: SalesOrderManagementActionInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.salesOrderAction("confirm", input, request);
+  }
+
+  fulfillSalesOrder(
+    input: SalesOrderManagementActionInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.salesOrderAction("fulfill", input, request);
+  }
+
+  cancelSalesOrder(
+    input: SalesOrderManagementActionInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.salesOrderAction("cancel", input, request);
+  }
+
+  private salesOrderAction(
+    action: "cancel" | "confirm" | "fulfill" | "reserve",
+    input: SalesOrderManagementActionInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request(`/sales/orders/${input.salesOrderId}/${action}`, {
+      ...request,
+      body: { expectedVersion: input.expectedVersion },
+      method: "POST",
+    });
   }
 }
 

@@ -8,6 +8,7 @@ import {
   PrismaProductRepository,
   PrismaProductVariantRepository,
   PrismaSalesOrderRepository,
+  PrismaSalesOrderReadRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
   createPrismaClient,
@@ -24,6 +25,7 @@ import type {
   InventoryReadRepository,
   OrganizationRepository,
   SalesOrderRepository,
+  SalesOrderReadRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
@@ -52,6 +54,7 @@ export type CreateApplicationServicesOptions = {
   productRepository?: CatalogProductManagementRepository;
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
+  salesOrderReadRepository?: SalesOrderReadRepository;
   transactionManager?: ApplicationTransactionManager;
   sizeRepository?: CatalogSizeManagementRepository;
   useSharedPrismaClient?: boolean;
@@ -74,6 +77,7 @@ export function createApplicationServices(
   let inventoryMovementRepository = options.inventoryMovementRepository;
   let inventoryReadRepository = options.inventoryReadRepository;
   let salesOrderRepository = options.salesOrderRepository;
+  let salesOrderReadRepository = options.salesOrderReadRepository;
   let transactionManager = options.transactionManager;
   let categoryRepository = options.categoryRepository;
   let collectionRepository = options.collectionRepository;
@@ -120,6 +124,10 @@ export function createApplicationServices(
     salesOrderRepository = new PrismaSalesOrderRepository(
       requirePrismaClient(prismaClient),
     );
+  }
+
+  if (!salesOrderReadRepository && prismaClient) {
+    salesOrderReadRepository = new PrismaSalesOrderReadRepository(prismaClient);
   }
 
   if (!transactionManager && prismaClient) {
@@ -189,6 +197,7 @@ export function createApplicationServices(
       logger,
       requestIdGenerator: options.requestIdGenerator,
       salesOrderRepository,
+      salesOrderReadRepository,
       transactionManager,
     }),
   };

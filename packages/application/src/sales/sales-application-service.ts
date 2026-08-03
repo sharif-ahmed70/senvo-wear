@@ -12,12 +12,15 @@ import {
   confirmSalesOrder,
   createSalesOrder,
   fulfillSalesOrder,
+  getSalesOrderDetails,
   getSalesOrderById,
   listSalesOrders,
+  listSalesOrderReadModel,
   replaceDraftSalesOrderLines,
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
   type SalesOrderRepository,
+  type SalesOrderReadRepository,
 } from "@senvo/domain";
 import {
   amendDraftSalesOrderServiceInputSchema,
@@ -31,6 +34,11 @@ import {
   reserveSalesOrderServiceInputSchema,
   salesOrderServiceContractSchema,
   salesOrderServicePageContractSchema,
+  salesOrderDetailsReadContractSchema,
+  salesOrderListReadPageContractSchema,
+  salesOrderManagementActionInputSchema,
+  salesOrderManagementDetailsInputSchema,
+  salesOrderManagementListInputSchema,
   updateDraftSalesOrderMetadataServiceInputSchema,
   type AmendDraftSalesOrderServiceInputContract,
   type CancelSalesOrderServiceInputContract,
@@ -43,6 +51,8 @@ import {
   type ReserveSalesOrderServiceInputContract,
   type SalesOrderServiceContract,
   type SalesOrderServicePageContract,
+  type SalesOrderDetailsReadContract,
+  type SalesOrderListReadPageContract,
   type UpdateDraftSalesOrderMetadataServiceInputContract,
 } from "@senvo/contracts";
 import type { Logger, LogMetadata } from "@senvo/logger";
@@ -69,6 +79,10 @@ import {
   type ApplicationServiceResult,
 } from "../errors/application-error.js";
 import { mapSalesOrder, mapSalesOrderPage } from "./mappers.js";
+import {
+  mapSalesOrderDetailsRead,
+  mapSalesOrderReadPage,
+} from "./read-mappers.js";
 
 type RequestIdGenerator = () => string;
 
@@ -92,6 +106,7 @@ export type SalesApplicationServiceDependencies = {
   logger?: Logger;
   requestIdGenerator?: RequestIdGenerator;
   salesOrderRepository: SalesOrderRepository;
+  salesOrderReadRepository?: SalesOrderReadRepository;
   transactionManager: ApplicationTransactionManager;
 };
 
@@ -102,6 +117,7 @@ export class SalesApplicationService {
   private readonly logger: Logger;
   private readonly requestIdGenerator: RequestIdGenerator;
   private readonly salesOrderRepository: SalesOrderRepository;
+  private readonly salesOrderReadRepository?: SalesOrderReadRepository;
   private readonly transactionManager: ApplicationTransactionManager;
 
   constructor(dependencies: SalesApplicationServiceDependencies) {
@@ -112,6 +128,7 @@ export class SalesApplicationService {
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
     this.salesOrderRepository = dependencies.salesOrderRepository;
+    this.salesOrderReadRepository = dependencies.salesOrderReadRepository;
     this.transactionManager = dependencies.transactionManager;
   }
 
@@ -318,6 +335,177 @@ export class SalesApplicationService {
     });
   }
 
+  listManagedOrders(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderListReadPageContract>> {
+    return this.execute(
+      "sales.listManagedOrders",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          salesOrderManagementListInputSchema,
+          payload,
+        );
+        await this.authorizeManagedOperation(validated, "READ");
+        const page = await listSalesOrderReadModel(
+          this.requireReadRepository(),
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return salesOrderListReadPageContractSchema.parse(
+          mapSalesOrderReadPage(page),
+        );
+      },
+    );
+  }
+
+  getManagedOrderDetails(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderDetailsReadContract>> {
+    return this.execute(
+      "sales.getManagedOrderDetails",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          salesOrderManagementDetailsInputSchema,
+          payload,
+        );
+        await this.authorizeManagedOperation(validated, "READ");
+        const order = await getSalesOrderDetails(this.requireReadRepository(), {
+          organizationId: validated.organizationId,
+          salesOrderId: input.salesOrderId,
+        });
+        return salesOrderDetailsReadContractSchema.parse(
+          mapSalesOrderDetailsRead(order),
+        );
+      },
+    );
+  }
+
+  reserveManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
+    return this.executeManagedAction(
+      "reserve",
+      context,
+      payload,
+      (input, org) =>
+        reserveSalesOrder(this.salesOrderRepository, {
+          expectedVersion: input.expectedVersion,
+          organizationId: org,
+          reservationIdempotencyKey: managedKey(
+            input.salesOrderId,
+            "reserve",
+            input.expectedVersion,
+          ),
+          reservationNumber: `RSV-${input.salesOrderId}-${input.expectedVersion}`,
+          salesOrderId: input.salesOrderId,
+        }),
+    );
+  }
+
+  confirmManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
+    return this.executeManagedAction(
+      "confirm",
+      context,
+      payload,
+      (input, org) =>
+        confirmSalesOrder(this.salesOrderRepository, {
+          ...input,
+          organizationId: org,
+        }),
+    );
+  }
+
+  cancelManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
+    return this.executeManagedAction("cancel", context, payload, (input, org) =>
+      cancelSalesOrder(this.salesOrderRepository, {
+        ...input,
+        organizationId: org,
+      }),
+    );
+  }
+
+  fulfillManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
+    return this.executeManagedAction(
+      "fulfill",
+      context,
+      payload,
+      (input, org) =>
+        fulfillSalesOrder(this.salesOrderRepository, {
+          consumptionIdempotencyKey: managedKey(
+            input.salesOrderId,
+            "fulfill",
+            input.expectedVersion,
+          ),
+          expectedVersion: input.expectedVersion,
+          movementNumber: `FUL-${input.salesOrderId}-${input.expectedVersion}`,
+          occurredAt: this.clock.now(),
+          organizationId: org,
+          salesOrderId: input.salesOrderId,
+        }),
+    );
+  }
+
+  private executeManagedAction(
+    action: string,
+    context: ApplicationExecutionContext,
+    payload: unknown,
+    operation: (
+      input: { expectedVersion: number; salesOrderId: string },
+      organizationId: string,
+    ) => Promise<Parameters<typeof mapSalesOrder>[0]>,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>> {
+    return this.execute(
+      `sales.${action}ManagedOrder`,
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          salesOrderManagementActionInputSchema,
+          payload,
+        );
+        await this.authorizeManagedOperation(validated, "UPDATE");
+        const order = await operation(input, validated.organizationId);
+        return salesOrderServiceContractSchema.parse(mapSalesOrder(order));
+      },
+    );
+  }
+
+  private async authorizeManagedOperation(
+    context: ValidatedApplicationExecutionContext,
+    action: "READ" | "UPDATE",
+  ): Promise<void> {
+    await requireAuthentication(this.authenticationService, {
+      requestId: context.requestId,
+      userId: context.userId,
+    });
+    await requireAuthorization(this.authorizationService, context, {
+      action,
+      resource: "SALES_ORDER",
+    });
+  }
+
+  private requireReadRepository(): SalesOrderReadRepository {
+    if (!this.salesOrderReadRepository) {
+      throw new Error("Sales order read repository is required.");
+    }
+    return this.salesOrderReadRepository;
+  }
+
   private async execute<T>(
     operation: string,
     rawContext: ApplicationExecutionContext,
@@ -394,6 +582,14 @@ export class SalesApplicationService {
       requestId: context.requestId,
     });
   }
+}
+
+function managedKey(
+  salesOrderId: string,
+  action: "fulfill" | "reserve",
+  version: number,
+): string {
+  return `sales:${salesOrderId}:${action}:${version}`;
 }
 
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {

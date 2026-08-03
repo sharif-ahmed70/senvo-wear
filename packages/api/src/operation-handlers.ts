@@ -17,6 +17,9 @@ import {
   listInventoryAvailabilityServiceInputSchema,
   listInventoryMovementsServiceInputSchema,
   listStockLocationsServiceInputSchema,
+  salesOrderManagementActionInputSchema,
+  salesOrderManagementDetailsInputSchema,
+  salesOrderManagementListInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
   postInventoryMovementServiceInputSchema,
@@ -49,6 +52,11 @@ import {
   type ProductDetailsContract,
   type ProductVariantContract,
   type SalesOrderServiceContract,
+  type SalesOrderDetailsReadContract,
+  type SalesOrderListReadPageContract,
+  type SalesOrderManagementActionInputContract,
+  type SalesOrderManagementDetailsInputContract,
+  type SalesOrderManagementListInputContract,
   type SizeContract,
   type StockLocationReadContract,
   type UpdateCategoryStatusServiceInputContract,
@@ -68,6 +76,42 @@ export type SalesOrderCreationApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesOrderServiceContract>>;
+};
+
+export type SalesOrderManagementApplication = {
+  cancelManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>>;
+  confirmManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>>;
+  fulfillManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>>;
+  getManagedOrderDetails(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderDetailsReadContract>>;
+  listManagedOrders(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderListReadPageContract>>;
+  reserveManagedOrder(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesOrderServiceContract>>;
+};
+
+export type SalesOrderManagementApiHandlers = {
+  cancel: ApiHandler<SalesOrderServiceContract>;
+  confirm: ApiHandler<SalesOrderServiceContract>;
+  fulfill: ApiHandler<SalesOrderServiceContract>;
+  getDetails: ApiHandler<SalesOrderDetailsReadContract>;
+  list: ApiHandler<SalesOrderListReadPageContract>;
+  reserve: ApiHandler<SalesOrderServiceContract>;
 };
 
 export type InventoryMovementPostingApplication = {
@@ -390,6 +434,77 @@ export function createSalesOrderApiHandler(
     inputSchema: createSalesOrderServiceInputSchema,
     permission: { action: "CREATE", resource: "SALES_ORDER" },
   });
+}
+
+export function createSalesOrderManagementApiHandlers(
+  dependencies: SecurityDependencies & {
+    sales: SalesOrderManagementApplication;
+  },
+): SalesOrderManagementApiHandlers {
+  const handler = <TInput, TOutput>(options: {
+    action: "READ" | "UPDATE";
+    execute: (
+      context: ApplicationExecutionContext,
+      input: TInput,
+    ) => Promise<ApplicationServiceResult<TOutput>>;
+    inputSchema: Parameters<
+      typeof createProtectedApiHandler<TInput, TOutput>
+    >[0]["inputSchema"];
+  }) =>
+    createProtectedApiHandler<TInput, TOutput>({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: options.execute,
+      inputSchema: options.inputSchema,
+      permission: { action: options.action, resource: "SALES_ORDER" },
+    });
+
+  const action = (
+    execute: (
+      context: ApplicationExecutionContext,
+      input: SalesOrderManagementActionInputContract,
+    ) => Promise<ApplicationServiceResult<SalesOrderServiceContract>>,
+  ) =>
+    handler<SalesOrderManagementActionInputContract, SalesOrderServiceContract>(
+      {
+        action: "UPDATE",
+        execute,
+        inputSchema: salesOrderManagementActionInputSchema,
+      },
+    );
+
+  return {
+    cancel: action((context, input) =>
+      dependencies.sales.cancelManagedOrder(context, input),
+    ),
+    confirm: action((context, input) =>
+      dependencies.sales.confirmManagedOrder(context, input),
+    ),
+    fulfill: action((context, input) =>
+      dependencies.sales.fulfillManagedOrder(context, input),
+    ),
+    getDetails: handler<
+      SalesOrderManagementDetailsInputContract,
+      SalesOrderDetailsReadContract
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.sales.getManagedOrderDetails(context, input),
+      inputSchema: salesOrderManagementDetailsInputSchema,
+    }),
+    list: handler<
+      SalesOrderManagementListInputContract,
+      SalesOrderListReadPageContract
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.sales.listManagedOrders(context, input),
+      inputSchema: salesOrderManagementListInputSchema,
+    }),
+    reserve: action((context, input) =>
+      dependencies.sales.reserveManagedOrder(context, input),
+    ),
+  };
 }
 
 export function createPostInventoryMovementApiHandler(
