@@ -13,6 +13,7 @@ import {
   PrismaSalesOrderRepository,
   PrismaSalesOrderReadRepository,
   PrismaSalesSourceRepository,
+  PrismaPosRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
   PrismaRolePermissionRepository,
@@ -38,6 +39,7 @@ import type {
   SalesOrderRepository,
   SalesOrderReadRepository,
   SalesSourceRepository,
+  PosRepository,
   RolePermissionRepository,
   UserRepository,
 } from "@senvo/domain";
@@ -50,6 +52,7 @@ import { CatalogApplicationService } from "../catalog/catalog-application-servic
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
+import { PosApplicationService } from "../pos/pos-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -69,6 +72,7 @@ export type CreateApplicationServicesOptions = {
   membershipRepository?: OrganizationMembershipRepository &
     OrganizationTeamReadRepository;
   organizationProfileRepository?: OrganizationProfileRepository;
+  posRepository?: PosRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
@@ -88,6 +92,7 @@ export type ApplicationServices = {
   disconnect(): Promise<void>;
   inventory: InventoryApplicationService;
   organization: OrganizationApplicationService;
+  pos: PosApplicationService;
   sales: SalesApplicationService;
 };
 
@@ -116,6 +121,7 @@ export function createApplicationServices(
   let userRepository = options.userRepository;
   let productRepository = options.productRepository;
   let productVariantRepository = options.productVariantRepository;
+  let posRepository = options.posRepository;
   let sizeRepository = options.sizeRepository;
 
   if (
@@ -135,6 +141,7 @@ export function createApplicationServices(
     !userRepository ||
     !productRepository ||
     !productVariantRepository ||
+    !posRepository ||
     !sizeRepository
   ) {
     if (!prismaClient) {
@@ -223,6 +230,7 @@ export function createApplicationServices(
   sizeRepository ??= new PrismaSizeRepository(
     requirePrismaClient(prismaClient),
   );
+  posRepository ??= new PrismaPosRepository(requirePrismaClient(prismaClient));
 
   return {
     catalog: new CatalogApplicationService({
@@ -258,6 +266,20 @@ export function createApplicationServices(
       organizations: organizationProfileRepository,
       requestIdGenerator: options.requestIdGenerator,
       rolePermissions: rolePermissionRepository,
+      users: userRepository,
+    }),
+    pos: new PosApplicationService({
+      authorizationService: options.authorizationService,
+      barcodes: barcodeRepository,
+      branches: branchRepository,
+      clock,
+      inventory: inventoryReadRepository,
+      memberships: membershipRepository,
+      pos: posRepository,
+      requestIdGenerator: options.requestIdGenerator,
+      salesSources:
+        salesSourceRepository ??
+        new PrismaSalesSourceRepository(requirePrismaClient(prismaClient)),
       users: userRepository,
     }),
     sales: new SalesApplicationService({

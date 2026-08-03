@@ -409,4 +409,49 @@ describe("AdminApiClient", () => {
     expect(body).not.toHaveProperty("responsibleStaffId");
     expect(body).not.toHaveProperty("permissions");
   });
+
+  it("uses POS endpoints without trusted context fields", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {},
+          requestId: "req_pos_client_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    await client.createSalesCounter(
+      {
+        branchId: "10000000-0000-4000-8000-000000000010",
+        code: "MAIN-01",
+        name: "Main counter",
+        type: "STORE",
+      },
+      { requestId: "req_pos_client_1" },
+    );
+    await client.openSalesSession(
+      { counterId: "10000000-0000-4000-8000-000000000011" },
+      { requestId: "req_pos_client_2" },
+    );
+    const bodies = fetcher.mock.calls.map(
+      (call) =>
+        JSON.parse(
+          typeof call[1]?.body === "string" ? call[1].body : "{}",
+        ) as Record<string, unknown>,
+    );
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "https://admin.example.test/pos/counters",
+      "https://admin.example.test/pos/sessions",
+    ]);
+    for (const body of bodies) {
+      expect(body).not.toHaveProperty("organizationId");
+      expect(body).not.toHaveProperty("userId");
+      expect(body).not.toHaveProperty("role");
+      expect(body).not.toHaveProperty("permissions");
+    }
+  });
 });

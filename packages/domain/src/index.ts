@@ -93,6 +93,30 @@ export type {
   SalesOrderLine,
   SalesOrderStatus,
 } from "./sales/domain/models.js";
+export type {
+  PosCart,
+  PosCartLine,
+  PosSaleLookup,
+  SalesCounter,
+  SalesCounterStatus,
+  SalesCounterType,
+  SalesSession,
+  SalesSessionStatus,
+  SellableVariant,
+} from "./pos/domain/models.js";
+export {
+  addPosCartItem,
+  changeSalesCounterStatus,
+  closeSalesSession,
+  createSalesCounter,
+  listSalesCounters,
+  listSalesSessions,
+  lookupPosSale,
+  openSalesSession,
+  removePosCartItem,
+  updatePosCartItem,
+} from "./pos/application/pos-use-cases.js";
+export type { PosRepository } from "./pos/repositories/pos-repository.js";
 export {
   changeSalesBoothStatus,
   createSalesBooth,

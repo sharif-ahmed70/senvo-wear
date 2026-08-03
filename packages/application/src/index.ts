@@ -61,6 +61,8 @@ export type {
   PostInventoryMovementServiceInputContract,
 } from "./inventory/inventory-application-service.js";
 export { SalesApplicationService } from "./sales/sales-application-service.js";
+export { PosApplicationService } from "./pos/pos-application-service.js";
+export type { PosApplicationServiceDependencies } from "./pos/pos-application-service.js";
 export type {
   SalesApplicationServiceDependencies,
   AmendDraftSalesOrderServiceInputContract,

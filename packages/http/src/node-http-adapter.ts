@@ -10,6 +10,7 @@ import type {
   CatalogApiHandlers,
   InventoryReadApiHandlers,
   OrganizationManagementApiHandlers,
+  PosApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
 } from "@senvo/api";
@@ -42,7 +43,7 @@ type HttpRoute = {
     match: RegExpMatchArray,
     request: IncomingMessage,
   ): unknown;
-  method: "GET" | "PATCH" | "POST";
+  method: "DELETE" | "GET" | "PATCH" | "POST";
   path: RegExp;
   successStatus: number;
 };
@@ -52,6 +53,7 @@ export type SenvoHttpHandlers = {
   createSalesOrder: ApiHandler<unknown>;
   inventoryRead?: InventoryReadApiHandlers;
   organizationManagement?: OrganizationManagementApiHandlers;
+  pos?: PosApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
@@ -440,7 +442,97 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
     );
   }
+  if (handlers.pos) {
+    routes.push(
+      {
+        handler: handlers.pos.listCounters,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/pos\/counters$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.createCounter,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/pos\/counters$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.pos.updateCounterStatus,
+        input: pathBodyInput("counterId"),
+        method: "PATCH",
+        path: /^\/pos\/counters\/(?<id>[0-9a-f-]+)\/status$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.listSessions,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/pos\/sessions$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.openSession,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/pos\/sessions$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.pos.closeSession,
+        input: pathBodyInput("sessionId"),
+        method: "POST",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/close$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.lookupSale,
+        input: (_body, match) => ({
+          value: decodeURIComponent(match.groups?.value ?? ""),
+        }),
+        method: "GET",
+        path: /^\/pos\/sale-lookup\/(?<value>[^/]+)$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.addCartItem,
+        input: pathBodyInput("cartId"),
+        method: "POST",
+        path: /^\/pos\/carts\/(?<id>[0-9a-f-]+)\/items$/iu,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.pos.updateCartItem,
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
+          cartId: match.groups?.cartId,
+          itemId: match.groups?.itemId,
+        }),
+        method: "PATCH",
+        path: /^\/pos\/carts\/(?<cartId>[0-9a-f-]+)\/items\/(?<itemId>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.removeCartItem,
+        input: (_body, match) => ({
+          cartId: match.groups?.cartId,
+          itemId: match.groups?.itemId,
+        }),
+        method: "DELETE",
+        path: /^\/pos\/carts\/(?<cartId>[0-9a-f-]+)\/items\/(?<itemId>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+    );
+  }
   return routes;
+}
+
+function pathBodyInput(field: string): HttpRoute["input"] {
+  return (body, match) => ({
+    ...(isObject(body) ? body : {}),
+    [field]: match.groups?.id,
+  });
 }
 
 function organizationRoute(

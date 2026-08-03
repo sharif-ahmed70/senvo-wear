@@ -12,6 +12,9 @@ export const adminPermissionKeys = [
   "ORGANIZATION:UPDATE",
   "TEAM:READ",
   "TEAM:UPDATE",
+  "POS:READ",
+  "POS:CREATE",
+  "POS:UPDATE",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];
@@ -37,7 +40,9 @@ export type AdminNavigationItem = {
     | "organization"
     | "stores"
     | "team"
-    | "roles";
+    | "roles"
+    | "counter"
+    | "sessions";
   label: string;
   permission?: AdminPermissionKey;
 };
@@ -79,6 +84,18 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     icon: "booths",
     label: "Booth History",
     permission: "SALES:READ",
+  },
+  {
+    href: "/pos/counters",
+    icon: "counter",
+    label: "Sales Counters",
+    permission: "POS:READ",
+  },
+  {
+    href: "/pos/sessions",
+    icon: "sessions",
+    label: "Sales Sessions",
+    permission: "POS:READ",
   },
   {
     href: "/organization",

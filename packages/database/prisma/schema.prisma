@@ -79,6 +79,21 @@ enum BarcodeStatus {
   INACTIVE
 }
 
+enum SalesCounterType {
+  STORE
+  EVENT_BOOTH
+}
+
+enum SalesCounterStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SalesSessionStatus {
+  OPEN
+  CLOSED
+}
+
 enum InventoryMovementType {
   OPENING
   RECEIPT
@@ -158,6 +173,7 @@ enum PermissionResource {
   RESERVATION
   SALES_ORDER
   SALES
+  POS
   REPORT
 }
 
@@ -223,6 +239,10 @@ model Organization {
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
   salesOrders SalesOrder[]
   salesBooths SalesBooth[]
+  salesCounters SalesCounter[]
+  salesSessions SalesSession[]
+  posCarts PosCart[]
+  posCartLines PosCartLine[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
   auditEntries AuditEntry[]
@@ -243,6 +263,7 @@ model User {
   credentials UserCredential[]
   auditEntries AuditEntry[]
   responsibleBooths SalesBooth[]
+  openedSalesSessions SalesSession[]
 
   @@index([status])
   @@map("users")
@@ -280,6 +301,7 @@ model OrganizationMembership {
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   responsibleBooths SalesBooth[]
+  openedSalesSessions SalesSession[]
 
   @@unique([userId, organizationId])
   @@unique([id, organizationId])
@@ -362,6 +384,7 @@ model Branch {
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   posCounters    PosCounter[]
+  salesCounters  SalesCounter[]
   stockLocations StockLocation[]
 
   @@unique([id, organizationId])
@@ -536,6 +559,7 @@ model ProductVariant {
   sizeId         String               @map("size_id") @db.Uuid
   sku            String               @db.VarChar(80)
   status         ProductVariantStatus @default(ACTIVE)
+  sellingPriceMinor Int                @default(0) @map("selling_price_minor")
   createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -547,6 +571,7 @@ model ProductVariant {
   inventoryReservationLines InventoryReservationLine[]
   salesOrderLines SalesOrderLine[]
   barcodes VariantBarcode[]
+  posCartLines PosCartLine[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, sku])
@@ -573,6 +598,95 @@ model VariantBarcode {
   @@index([organizationId, productVariantId, createdAt])
   @@index([organizationId, status])
   @@map("variant_barcodes")
+}
+
+model SalesCounter {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  branchId       String?            @map("branch_id") @db.Uuid
+  boothId        String?            @map("booth_id") @db.Uuid
+  name           String             @db.VarChar(160)
+  code           String             @db.VarChar(64)
+  type           SalesCounterType
+  status         SalesCounterStatus @default(ACTIVE)
+  version        Int                @default(1)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  branch       Branch?      @relation(fields: [branchId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  booth        SalesBooth?  @relation(fields: [boothId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  sessions     SalesSession[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@index([organizationId, status, type])
+  @@index([organizationId, branchId])
+  @@index([organizationId, boothId])
+  @@map("sales_counters")
+}
+
+model SalesSession {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  counterId      String             @map("counter_id") @db.Uuid
+  openedByUserId String             @map("opened_by_user_id") @db.Uuid
+  openedAt       DateTime           @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt       DateTime?          @map("closed_at") @db.Timestamptz(6)
+  status         SalesSessionStatus @default(OPEN)
+  version        Int                @default(1)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  counter          SalesCounter           @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  openedBy         User                   @relation(fields: [openedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  openedMembership OrganizationMembership @relation(fields: [openedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  cart             PosCart?
+
+  @@unique([id, organizationId])
+  @@unique([counterId], map: "sales_sessions_one_open_per_counter_key", where: { status: "OPEN" })
+  @@index([organizationId, status, openedAt])
+  @@index([organizationId, openedByUserId])
+  @@map("sales_sessions")
+}
+
+model PosCart {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  salesSessionId String   @map("sales_session_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesSession SalesSession @relation(fields: [salesSessionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  lines        PosCartLine[]
+
+  @@unique([id, organizationId])
+  @@unique([salesSessionId, organizationId])
+  @@index([organizationId, createdAt])
+  @@map("pos_carts")
+}
+
+model PosCartLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  cartId           String   @map("cart_id") @db.Uuid
+  productVariantId String   @map("product_variant_id") @db.Uuid
+  quantity         Int
+  unitPriceMinor   Int      @map("unit_price_minor")
+  lineSubtotalMinor Int     @map("line_subtotal_minor")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cart           PosCart        @relation(fields: [cartId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([cartId, productVariantId])
+  @@index([organizationId, productVariantId])
+  @@index([cartId])
+  @@map("pos_cart_lines")
 }
 
 model ProductCollection {
@@ -823,6 +937,7 @@ model SalesBooth {
   responsibleStaff      User                   @relation(fields: [responsibleStaffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   responsibleMembership OrganizationMembership @relation(fields: [responsibleStaffId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade)
   salesOrders           SalesOrder[]
+  salesCounters         SalesCounter[]
 
   @@unique([id, organizationId])
   @@index([organizationId, status, startDate, id])

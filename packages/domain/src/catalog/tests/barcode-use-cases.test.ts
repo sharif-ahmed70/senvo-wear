@@ -203,7 +203,9 @@ class FakeBarcodeRepository implements BarcodeRepository {
       productName: "Oxford Shirt",
       size: "Large",
       sku: "OXFORD-BLK-L",
+      sellingPriceMinor: 2500,
       variantId: barcode.productVariantId,
+      variantStatus: "ACTIVE",
     } satisfies BarcodeLookupResult);
   }
 

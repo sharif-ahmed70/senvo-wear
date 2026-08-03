@@ -12,6 +12,7 @@ const allResources: readonly PermissionResource[] = [
   "INVENTORY",
   "RESERVATION",
   "SALES_ORDER",
+  "POS",
   "REPORT",
 ];
 
@@ -36,18 +37,18 @@ export const defaultRolePermissions: readonly (PermissionKey & {
   ),
   ...permissionsFor(
     "ADMIN",
-    ["CATALOG", "INVENTORY", "SALES_ORDER"],
+    ["CATALOG", "INVENTORY", "SALES_ORDER", "POS"],
     ["CREATE", "READ", "UPDATE", "DELETE", "CANCEL", "FULFILL"],
   ),
   ...permissionsFor(
     "MANAGER",
-    ["INVENTORY", "RESERVATION", "SALES_ORDER"],
+    ["INVENTORY", "RESERVATION", "SALES_ORDER", "POS"],
     ["CREATE", "READ", "UPDATE", "CANCEL", "FULFILL"],
   ),
   ...permissionsFor("STAFF", allResources, ["READ"]),
   ...permissionsFor(
     "STAFF",
-    ["RESERVATION", "SALES_ORDER"],
+    ["RESERVATION", "SALES_ORDER", "POS"],
     ["CREATE", "UPDATE"],
   ),
 ];

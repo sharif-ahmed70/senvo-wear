@@ -51,6 +51,12 @@ import type {
   UpdateSalesBoothStatusServiceInputContract,
   VariantInventoryAvailabilityContract,
   VariantBarcodeContract,
+  SalesCounterContract,
+  SalesSessionContract,
+  CreateSalesCounterServiceInputContract,
+  UpdateSalesCounterStatusServiceInputContract,
+  OpenSalesSessionServiceInputContract,
+  CloseSalesSessionServiceInputContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -556,6 +562,58 @@ export class AdminApiClient {
     return this.request<RoleVisibilityContract[]>(
       "/organization/roles",
       request,
+    );
+  }
+
+  listSalesCounters(request?: AdminApiRequest) {
+    return this.request<SalesCounterContract[]>("/pos/counters", request);
+  }
+
+  createSalesCounter(
+    input: CreateSalesCounterServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SalesCounterContract>("/pos/counters", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateSalesCounterStatus(
+    input: UpdateSalesCounterStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { counterId, ...body } = input;
+    return this.request<SalesCounterContract>(
+      `/pos/counters/${counterId}/status`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  listSalesSessions(request?: AdminApiRequest) {
+    return this.request<SalesSessionContract[]>("/pos/sessions", request);
+  }
+
+  openSalesSession(
+    input: OpenSalesSessionServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SalesSessionContract>("/pos/sessions", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  closeSalesSession(
+    input: CloseSalesSessionServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { sessionId, ...body } = input;
+    return this.request<SalesSessionContract>(
+      `/pos/sessions/${sessionId}/close`,
+      { ...request, body, method: "POST" },
     );
   }
 

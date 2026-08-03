@@ -2938,6 +2938,139 @@ export type SalesSourceSummaryContract = z.infer<
   typeof salesSourceSummaryContractSchema
 >;
 
+export const salesCounterTypeSchema = z.enum(["STORE", "EVENT_BOOTH"]);
+export const salesCounterStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export const salesSessionStatusSchema = z.enum(["OPEN", "CLOSED"]);
+
+export const salesCounterContractSchema = z
+  .object({
+    boothId: idSchema.nullable(),
+    branchId: idSchema.nullable(),
+    code: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    name: z.string(),
+    status: salesCounterStatusSchema,
+    type: salesCounterTypeSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const salesSessionContractSchema = z
+  .object({
+    cartId: idSchema,
+    closedAt: isoTimestampSchema.nullable(),
+    counterId: idSchema,
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    openedAt: isoTimestampSchema,
+    openedByUserId: idSchema,
+    status: salesSessionStatusSchema,
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+
+export const posCartLineContractSchema = z
+  .object({
+    cartId: idSchema,
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    lineSubtotalMinor: minorUnitAmountSchema,
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema,
+    unitPriceMinor: minorUnitAmountSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const posSaleLookupContractSchema = z
+  .object({
+    availableQuantity: z.number().int().positive(),
+    barcode: z.string(),
+    color: z.string(),
+    productName: z.string(),
+    sellingPriceMinor: minorUnitAmountSchema,
+    size: z.string(),
+    sku: z.string(),
+    variantId: idSchema,
+  })
+  .strict();
+
+export const createSalesCounterServiceInputSchema = z
+  .object({
+    boothId: idSchema.optional(),
+    branchId: idSchema.optional(),
+    code: codeSchema,
+    name: displayNameSchema,
+    type: salesCounterTypeSchema,
+  })
+  .strict();
+export const updateSalesCounterStatusServiceInputSchema = z
+  .object({
+    counterId: idSchema,
+    expectedVersion: expectedVersionSchema,
+    status: salesCounterStatusSchema,
+  })
+  .strict();
+export const openSalesSessionServiceInputSchema = z
+  .object({ counterId: idSchema })
+  .strict();
+export const closeSalesSessionServiceInputSchema = z
+  .object({ expectedVersion: expectedVersionSchema, sessionId: idSchema })
+  .strict();
+export const posEmptyInputSchema = z.object({}).strict();
+export const lookupPosSaleServiceInputSchema = z
+  .object({ value: z.string().trim().min(1).max(80) })
+  .strict();
+export const addPosCartItemServiceInputSchema = z
+  .object({
+    cartId: idSchema,
+    productVariantId: idSchema,
+    quantity: positiveInventoryQuantitySchema.max(10000),
+  })
+  .strict();
+export const updatePosCartItemServiceInputSchema = z
+  .object({
+    cartId: idSchema,
+    itemId: idSchema,
+    quantity: positiveInventoryQuantitySchema.max(10000),
+  })
+  .strict();
+export const removePosCartItemServiceInputSchema = z
+  .object({ cartId: idSchema, itemId: idSchema })
+  .strict();
+
+export type SalesCounterContract = z.infer<typeof salesCounterContractSchema>;
+export type SalesSessionContract = z.infer<typeof salesSessionContractSchema>;
+export type PosCartLineContract = z.infer<typeof posCartLineContractSchema>;
+export type PosSaleLookupContract = z.infer<typeof posSaleLookupContractSchema>;
+export type CreateSalesCounterServiceInputContract = z.infer<
+  typeof createSalesCounterServiceInputSchema
+>;
+export type UpdateSalesCounterStatusServiceInputContract = z.infer<
+  typeof updateSalesCounterStatusServiceInputSchema
+>;
+export type OpenSalesSessionServiceInputContract = z.infer<
+  typeof openSalesSessionServiceInputSchema
+>;
+export type CloseSalesSessionServiceInputContract = z.infer<
+  typeof closeSalesSessionServiceInputSchema
+>;
+export type LookupPosSaleServiceInputContract = z.infer<
+  typeof lookupPosSaleServiceInputSchema
+>;
+export type AddPosCartItemServiceInputContract = z.infer<
+  typeof addPosCartItemServiceInputSchema
+>;
+export type UpdatePosCartItemServiceInputContract = z.infer<
+  typeof updatePosCartItemServiceInputSchema
+>;
+export type RemovePosCartItemServiceInputContract = z.infer<
+  typeof removePosCartItemServiceInputSchema
+>;
+
 function validateBoothSalesSource(
   input: {
     boothId?: string | null;

@@ -12,6 +12,8 @@ import {
   ScanBarcode,
   TentTree,
   UsersRound,
+  MonitorSmartphone,
+  Clock3,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -33,6 +35,8 @@ const navigationIcons = {
   sales: ShoppingCart,
   stores: MapPin,
   team: UsersRound,
+  counter: MonitorSmartphone,
+  sessions: Clock3,
 } satisfies Record<AdminNavigationItem["icon"], typeof LayoutDashboard>;
 
 export function AdminNavigation({ session }: { session: AdminSession }) {

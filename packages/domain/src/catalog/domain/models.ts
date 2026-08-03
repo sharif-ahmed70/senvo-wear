@@ -116,5 +116,7 @@ export type BarcodeLookupResult = {
   productName: string;
   size: string;
   sku: string;
+  sellingPriceMinor: number;
   variantId: string;
+  variantStatus: ProductVariantStatus;
 };

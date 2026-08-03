@@ -31,6 +31,9 @@ import {
 } from "./sales/orders/_components/sales-orders-workspace";
 import type { SalesOrderDetailsReadContract } from "@senvo/contracts";
 import UsersPage from "./users/page";
+import SalesCountersPage from "./pos/counters/page";
+import SalesSessionsPage from "./pos/sessions/page";
+import { PosManagementWorkspace } from "./pos/_components/pos-management-workspace";
 
 describe("admin routes", () => {
   it("renders sales source and booth history routes", () => {
@@ -48,6 +51,19 @@ describe("admin routes", () => {
     );
     expect(html).toContain("Sales access needed");
     expect(html).not.toContain("New booth");
+  });
+  it("renders POS routes and hides controls without POS access", () => {
+    expect(renderToStaticMarkup(<SalesCountersPage />)).toContain(
+      "Sales Counters",
+    );
+    expect(renderToStaticMarkup(<SalesSessionsPage />)).toContain(
+      "Sales Sessions",
+    );
+    const restricted = renderToStaticMarkup(
+      <PosManagementWorkspace permissions={[]} view="counters" />,
+    );
+    expect(restricted).toContain("Access unavailable");
+    expect(restricted).not.toContain("New counter");
   });
   it.each([
     ["Dashboard", AdminPage],

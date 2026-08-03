@@ -124,7 +124,9 @@ function mapLookup(record: LookupRecord): BarcodeLookupResult {
     productName: record.productVariant.product.name,
     size: record.productVariant.size.name,
     sku: record.productVariant.sku,
+    sellingPriceMinor: record.productVariant.sellingPriceMinor,
     variantId: record.productVariant.id,
+    variantStatus: record.productVariant.status,
   };
 }
 

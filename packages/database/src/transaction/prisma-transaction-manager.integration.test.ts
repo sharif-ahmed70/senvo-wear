@@ -31,6 +31,10 @@ describeWithDatabase("Prisma transactional audit integration", () => {
   });
 
   beforeEach(async () => {
+    await prisma.posCartLine.deleteMany();
+    await prisma.posCart.deleteMany();
+    await prisma.salesSession.deleteMany();
+    await prisma.salesCounter.deleteMany();
     await prisma.auditEntry.deleteMany();
     await prisma.salesOrderLine.deleteMany();
     await prisma.salesOrder.deleteMany();

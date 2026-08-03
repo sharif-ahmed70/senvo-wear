@@ -18,6 +18,10 @@ describeWithDatabase("Prisma audit repository", () => {
   });
 
   beforeEach(async () => {
+    await prisma.posCartLine.deleteMany();
+    await prisma.posCart.deleteMany();
+    await prisma.salesSession.deleteMany();
+    await prisma.salesCounter.deleteMany();
     await prisma.auditEntry.deleteMany();
     await prisma.userCredential.deleteMany();
     await prisma.organizationMembership.deleteMany();
