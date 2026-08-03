@@ -76,6 +76,9 @@ describeWithDatabase("Prisma sales order repositories", () => {
   });
 
   afterAll(async () => {
+    await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrder.deleteMany();
+    await prisma.salesBooth.deleteMany();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
   });
