@@ -445,7 +445,7 @@ describe("AdminApiClient", () => {
     );
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       "https://admin.example.test/pos/counters",
-      "https://admin.example.test/pos/sessions",
+      "https://admin.example.test/pos/sessions/open",
     ]);
     for (const body of bodies) {
       expect(body).not.toHaveProperty("organizationId");

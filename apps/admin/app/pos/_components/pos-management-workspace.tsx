@@ -388,7 +388,7 @@ function SessionManagement({
             type="submit"
           >
             <Clock3 size={17} />
-            Open session
+            Start Selling
           </button>
         </form>
       ) : null}

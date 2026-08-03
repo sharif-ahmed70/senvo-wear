@@ -35,5 +35,5 @@ Sale lookup is organization scoped and accepts only an active barcode attached t
 
 - A keyboard-wedge or camera scanner can call the sale lookup route without changing domain logic.
 - Product barcode lookup remains owned by catalog and is consumed through its repository contract.
-- Thermal label and receipt printers should be introduced as replaceable output adapters after order and payment boundaries exist.
+- Thermal label and receipt printers, including the Xprinter XP-T361U, should be introduced as replaceable output adapters after order and payment boundaries exist.
 - Cart conversion to a sales order, stock consumption, payment, discounting, tax, and returns are deliberately deferred.

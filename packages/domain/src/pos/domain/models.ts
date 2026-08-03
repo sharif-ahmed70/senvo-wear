@@ -60,6 +60,7 @@ export type SellableVariant = {
 };
 
 export type PosSaleLookup = {
+  availabilityStatus: "AVAILABLE";
   availableQuantity: number;
   barcode: string;
   color: string;

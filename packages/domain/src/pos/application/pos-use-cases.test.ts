@@ -190,6 +190,7 @@ describe("offline POS use cases", () => {
       { organizationId, value: "scan-1" },
     );
     expect(lookup).toMatchObject({
+      availabilityStatus: "AVAILABLE",
       availableQuantity: 4,
       sellingPriceMinor: 1250,
     });

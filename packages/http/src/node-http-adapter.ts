@@ -476,7 +476,7 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         handler: handlers.pos.openSession,
         input: bodyInput,
         method: "POST",
-        path: /^\/pos\/sessions$/u,
+        path: /^\/pos\/sessions\/open$/u,
         successStatus: 201,
       },
       {
@@ -492,7 +492,7 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
           value: decodeURIComponent(match.groups?.value ?? ""),
         }),
         method: "GET",
-        path: /^\/pos\/sale-lookup\/(?<value>[^/]+)$/u,
+        path: /^\/pos\/barcode\/(?<value>[^/]+)$/u,
         successStatus: 200,
       },
       {

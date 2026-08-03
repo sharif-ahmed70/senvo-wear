@@ -2987,6 +2987,7 @@ export const posCartLineContractSchema = z
 
 export const posSaleLookupContractSchema = z
   .object({
+    availabilityStatus: z.literal("AVAILABLE"),
     availableQuantity: z.number().int().positive(),
     barcode: z.string(),
     color: z.string(),

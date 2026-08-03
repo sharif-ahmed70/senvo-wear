@@ -599,7 +599,7 @@ export class AdminApiClient {
     input: OpenSalesSessionServiceInputContract,
     request?: AdminApiRequest,
   ) {
-    return this.request<SalesSessionContract>("/pos/sessions", {
+    return this.request<SalesSessionContract>("/pos/sessions/open", {
       ...request,
       body: input,
       method: "POST",

@@ -106,15 +106,19 @@ export type {
 } from "./pos/domain/models.js";
 export {
   addPosCartItem,
+  addCartItem,
   changeSalesCounterStatus,
   closeSalesSession,
   createSalesCounter,
   listSalesCounters,
   listSalesSessions,
   lookupPosSale,
+  lookupBarcodeForSale,
   openSalesSession,
   removePosCartItem,
+  removeCartItem,
   updatePosCartItem,
+  updateCartQuantity,
 } from "./pos/application/pos-use-cases.js";
 export type { PosRepository } from "./pos/repositories/pos-repository.js";
 export {

@@ -218,6 +218,7 @@ export async function lookupPosSale(
   if (availableQuantity <= 0)
     throw new BusinessRuleError("This item is currently unavailable.");
   return {
+    availabilityStatus: "AVAILABLE",
     availableQuantity,
     barcode: barcode.barcode.value,
     color: barcode.color,
@@ -228,6 +229,11 @@ export async function lookupPosSale(
     variantId: barcode.variantId,
   };
 }
+
+export const lookupBarcodeForSale = lookupPosSale;
+export const addCartItem = addPosCartItem;
+export const removeCartItem = removePosCartItem;
+export const updateCartQuantity = updatePosCartItem;
 
 export async function addPosCartItem(
   repositories: {
