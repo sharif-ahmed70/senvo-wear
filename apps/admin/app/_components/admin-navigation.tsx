@@ -9,6 +9,7 @@ import {
   ShoppingBag,
   ShoppingCart,
   RadioTower,
+  ScanBarcode,
   TentTree,
   UsersRound,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import {
 } from "../_lib/admin-access";
 
 const navigationIcons = {
+  barcodes: ScanBarcode,
   catalog: ShoppingBag,
   booths: TentTree,
   channels: RadioTower,

@@ -147,6 +147,88 @@ describe("AdminApiClient", () => {
     expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ method: "PATCH" });
   });
 
+  it("uses barcode endpoints without trusted context fields", async () => {
+    const variantId = "10000000-0000-4000-8000-000000000020";
+    const barcodeId = "10000000-0000-4000-8000-000000000021";
+    const barcode = {
+      createdAt: "2026-08-03T00:00:00.000Z",
+      id: barcodeId,
+      organizationId: "10000000-0000-4000-8000-000000000022",
+      productVariantId: variantId,
+      status: "ACTIVE",
+      type: "INTERNAL",
+      updatedAt: "2026-08-03T00:00:00.000Z",
+      value: "SENVO-SHIRT-L",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: barcode,
+          requestId: "req_barcode_1",
+          success: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { ...barcode, status: "INACTIVE" },
+          requestId: "req_barcode_2",
+          success: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: {
+            barcode,
+            color: "Black",
+            productName: "Oxford Shirt",
+            size: "Large",
+            sku: "OXFORD-BLK-L",
+            variantId,
+          },
+          requestId: "req_barcode_3",
+          success: true,
+        }),
+      );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    await client.createVariantBarcode(
+      { type: "INTERNAL", value: "senvo-shirt-l", variantId },
+      { requestId: "req_barcode_1" },
+    );
+    await client.updateBarcodeStatus(
+      { barcodeId, status: "INACTIVE" },
+      { requestId: "req_barcode_2" },
+    );
+    await client.lookupBarcode("CODE / 1", { requestId: "req_barcode_3" });
+
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      `https://admin.example.test/catalog/variants/${variantId}/barcodes`,
+      `https://admin.example.test/catalog/barcodes/${barcodeId}/status`,
+      "https://admin.example.test/catalog/barcodes/lookup/CODE%20%2F%201",
+    ]);
+    const rawCreateBody = fetcher.mock.calls[0]?.[1]?.body;
+    const rawStatusBody = fetcher.mock.calls[1]?.[1]?.body;
+    expect(typeof rawCreateBody).toBe("string");
+    expect(typeof rawStatusBody).toBe("string");
+    const createBody = JSON.parse(
+      typeof rawCreateBody === "string" ? rawCreateBody : "{}",
+    ) as Record<string, unknown>;
+    const statusBody = JSON.parse(
+      typeof rawStatusBody === "string" ? rawStatusBody : "{}",
+    ) as Record<string, unknown>;
+    expect(createBody).toEqual({ type: "INTERNAL", value: "senvo-shirt-l" });
+    expect(statusBody).toEqual({ status: "INACTIVE" });
+    for (const body of [createBody, statusBody]) {
+      expect(body).not.toHaveProperty("organizationId");
+      expect(body).not.toHaveProperty("createdBy");
+      expect(body).not.toHaveProperty("permissions");
+    }
+  });
+
   it("uses typed inventory read endpoints with encoded filters", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
       Promise.resolve(

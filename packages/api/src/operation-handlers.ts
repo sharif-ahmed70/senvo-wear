@@ -6,6 +6,7 @@ import type {
 } from "@senvo/application";
 import {
   createCategoryServiceInputSchema,
+  createVariantBarcodeServiceInputSchema,
   createCollectionServiceInputSchema,
   createColorServiceInputSchema,
   createSalesOrderServiceInputSchema,
@@ -22,14 +23,19 @@ import {
   salesOrderManagementListInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
+  listVariantBarcodesServiceInputSchema,
+  lookupBarcodeServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
+  updateBarcodeStatusServiceInputSchema,
   updateColorStatusServiceInputSchema,
   updateSizeStatusServiceInputSchema,
   type CategoryContract,
+  type BarcodeLookupContract,
   type CollectionContract,
   type ColorContract,
   type CreateCategoryServiceInputContract,
+  type CreateVariantBarcodeServiceInputContract,
   type CreateCollectionServiceInputContract,
   type CreateColorServiceInputContract,
   type CreateProductServiceInputContract,
@@ -44,6 +50,8 @@ import {
   type GetProductServiceInputContract,
   type ListCatalogItemsServiceInputContract,
   type ListProductVariantsServiceInputContract,
+  type ListVariantBarcodesServiceInputContract,
+  type LookupBarcodeServiceInputContract,
   type ListInventoryAvailabilityServiceInputContract,
   type ListInventoryMovementsServiceInputContract,
   type ListStockLocationsServiceInputContract,
@@ -60,6 +68,8 @@ import {
   type SizeContract,
   type StockLocationReadContract,
   type UpdateCategoryStatusServiceInputContract,
+  type UpdateBarcodeStatusServiceInputContract,
+  type VariantBarcodeContract,
   type UpdateColorStatusServiceInputContract,
   type UpdateSizeStatusServiceInputContract,
   type VariantInventoryAvailabilityContract,
@@ -166,6 +176,10 @@ export type InventoryReadApiHandlers = {
 };
 
 export type CatalogManagementApplication = {
+  createVariantBarcode(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract>>;
   createCategory(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -218,6 +232,18 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductVariantContract[]>>;
+  listVariantBarcodes(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract[]>>;
+  lookupBarcode(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<BarcodeLookupContract>>;
+  updateBarcodeStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract>>;
   updateCategoryStatus(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -233,6 +259,7 @@ export type CatalogManagementApplication = {
 };
 
 export type CatalogApiHandlers = {
+  createVariantBarcode: ApiHandler<VariantBarcodeContract>;
   createCategory: ApiHandler<CategoryContract>;
   createCollection: ApiHandler<CollectionContract>;
   createColor: ApiHandler<ColorContract>;
@@ -246,6 +273,9 @@ export type CatalogApiHandlers = {
   listProducts: ApiHandler<ProductContract[]>;
   listSizes: ApiHandler<SizeContract[]>;
   listVariants: ApiHandler<ProductVariantContract[]>;
+  listVariantBarcodes: ApiHandler<VariantBarcodeContract[]>;
+  lookupBarcode: ApiHandler<BarcodeLookupContract>;
+  updateBarcodeStatus: ApiHandler<VariantBarcodeContract>;
   updateCategoryStatus: ApiHandler<CategoryContract>;
   updateColorStatus: ApiHandler<ColorContract>;
   updateSizeStatus: ApiHandler<SizeContract>;
@@ -275,6 +305,15 @@ export function createCatalogApiHandlers(
     });
 
   return {
+    createVariantBarcode: protectedHandler<
+      CreateVariantBarcodeServiceInputContract,
+      VariantBarcodeContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.catalog.createVariantBarcode(context, input),
+      inputSchema: createVariantBarcodeServiceInputSchema,
+    }),
     createCategory: protectedHandler<
       CreateCategoryServiceInputContract,
       CategoryContract
@@ -388,6 +427,33 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.listVariants(context, input),
       inputSchema: listProductVariantsServiceInputSchema,
+    }),
+    listVariantBarcodes: protectedHandler<
+      ListVariantBarcodesServiceInputContract,
+      VariantBarcodeContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.listVariantBarcodes(context, input),
+      inputSchema: listVariantBarcodesServiceInputSchema,
+    }),
+    lookupBarcode: protectedHandler<
+      LookupBarcodeServiceInputContract,
+      BarcodeLookupContract
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.lookupBarcode(context, input),
+      inputSchema: lookupBarcodeServiceInputSchema,
+    }),
+    updateBarcodeStatus: protectedHandler<
+      UpdateBarcodeStatusServiceInputContract,
+      VariantBarcodeContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateBarcodeStatus(context, input),
+      inputSchema: updateBarcodeStatusServiceInputSchema,
     }),
     updateCategoryStatus: protectedHandler<
       UpdateCategoryStatusServiceInputContract,

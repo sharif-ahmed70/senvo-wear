@@ -5,6 +5,7 @@ import type {
   ApplicationServiceResult,
 } from "@senvo/application";
 import type {
+  BarcodeLookupContract,
   CategoryContract,
   CollectionContract,
   ColorContract,
@@ -12,6 +13,7 @@ import type {
   ProductDetailsContract,
   ProductVariantContract,
   SizeContract,
+  VariantBarcodeContract,
 } from "@senvo/contracts";
 import { AuthorizationError } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
@@ -32,6 +34,62 @@ const context: ApiRequestContext = {
 };
 
 describe("catalog API handlers", () => {
+  it("enforces barcode permissions and rejects trusted-field injection", async () => {
+    const authorization = new FakeAuthorization();
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+
+    const created = await handlers.createVariantBarcode.handle({
+      context,
+      input: {
+        type: "INTERNAL",
+        value: "  sku-black-l  ",
+        variantId: "10000000-0000-4000-8000-000000000010",
+      },
+    });
+    expect(created.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "CREATE",
+      resource: "CATALOG",
+    });
+
+    const rejected = await handlers.createVariantBarcode.handle({
+      context,
+      input: {
+        organizationId,
+        permissions: [],
+        type: "INTERNAL",
+        value: "SKU-BLACK-L",
+        variantId: "10000000-0000-4000-8000-000000000010",
+      },
+    });
+    expect(rejected).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+  });
+
+  it("validates barcode lookup input before calling the application", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    const response = await handlers.lookupBarcode.handle({
+      context,
+      input: { value: "" },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.payloads).toEqual([]);
+  });
   it("enforces CATALOG.READ and passes trusted organization context", async () => {
     const authorization = new FakeAuthorization();
     const catalog = new FakeCatalog();
@@ -281,6 +339,10 @@ class FakeCatalog implements CatalogManagementApplication {
   createCategory(context: ApplicationExecutionContext) {
     return this.success(context, {} as CategoryContract);
   }
+  createVariantBarcode(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as VariantBarcodeContract);
+  }
   createCollection(context: ApplicationExecutionContext) {
     return this.success(context, {} as CollectionContract);
   }
@@ -330,6 +392,18 @@ class FakeCatalog implements CatalogManagementApplication {
   }
   listVariants(context: ApplicationExecutionContext) {
     return this.success(context, [] as ProductVariantContract[]);
+  }
+  listVariantBarcodes(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, [] as VariantBarcodeContract[]);
+  }
+  lookupBarcode(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as BarcodeLookupContract);
+  }
+  updateBarcodeStatus(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as VariantBarcodeContract);
   }
   updateCategoryStatus(context: ApplicationExecutionContext) {
     return this.success(context, {} as CategoryContract);

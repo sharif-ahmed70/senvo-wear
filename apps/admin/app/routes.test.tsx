@@ -5,9 +5,11 @@ import CatalogPage from "./catalog/page";
 import CategoriesPage from "./catalog/categories/page";
 import CollectionsPage from "./catalog/collections/page";
 import ColorsPage from "./catalog/colors/page";
+import BarcodesPage from "./catalog/barcodes/page";
 import ProductsPage from "./catalog/products/page";
 import SizesPage from "./catalog/sizes/page";
 import { CatalogWorkspace } from "./catalog/_components/catalog-workspace";
+import { BarcodeWorkspace } from "./catalog/barcodes/_components/barcode-workspace";
 import InventoryPage from "./inventory/page";
 import InventoryLocationsPage from "./inventory/locations/page";
 import InventoryMovementsPage from "./inventory/movements/page";
@@ -50,6 +52,7 @@ describe("admin routes", () => {
   it.each([
     ["Dashboard", AdminPage],
     ["Catalog", CatalogPage],
+    ["Barcodes", BarcodesPage],
     ["Categories", CategoriesPage],
     ["Collections", CollectionsPage],
     ["Colors", ColorsPage],
@@ -69,6 +72,16 @@ describe("admin routes", () => {
     const html = renderToStaticMarkup(createElement(Page));
 
     expect(html).toContain(title.replace("&", "&amp;"));
+  });
+
+  it("keeps barcode data hidden without catalog read access", () => {
+    const html = renderToStaticMarkup(
+      createElement(BarcodeWorkspace, { permissions: [] }),
+    );
+
+    expect(html).toContain("Catalog access is restricted");
+    expect(html).not.toContain("Add barcode");
+    expect(html).not.toContain("Test a Scan Code");
   });
 
   it("keeps catalog attribute mutations hidden for read-only users", () => {

@@ -8,7 +8,7 @@ import {
   createSize,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createPrismaClient } from "../index.js";
+import { createPrismaClient, PrismaBarcodeRepository } from "../index.js";
 import {
   PrismaCategoryRepository,
   PrismaCollectionRepository,
@@ -27,6 +27,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
   let prisma: ReturnType<typeof createPrismaClient>;
   let repositories: {
     categories: PrismaCategoryRepository;
+    barcodes: PrismaBarcodeRepository;
     collections: PrismaCollectionRepository;
     colors: PrismaColorRepository;
     organizations: PrismaOrganizationRepository;
@@ -39,6 +40,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
     process.env.DATABASE_URL = testDatabaseUrl;
     prisma = createPrismaClient();
     repositories = {
+      barcodes: new PrismaBarcodeRepository(prisma),
       categories: new PrismaCategoryRepository(prisma),
       collections: new PrismaCollectionRepository(prisma),
       colors: new PrismaColorRepository(prisma),
@@ -58,6 +60,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await prisma.inventoryMovement.deleteMany();
     await prisma.inventoryAllocationPolicyLocation.deleteMany();
     await prisma.inventoryAllocationPolicy.deleteMany();
+    await prisma.variantBarcode.deleteMany();
     await prisma.productCollection.deleteMany();
     await prisma.productVariant.deleteMany();
     await prisma.product.deleteMany();
@@ -78,6 +81,7 @@ describeWithDatabase("Prisma catalog repositories", () => {
   });
 
   afterAll(async () => {
+    await prisma.variantBarcode.deleteMany();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
   });
@@ -536,6 +540,73 @@ describeWithDatabase("Prisma catalog repositories", () => {
         status: "INACTIVE",
       }),
     ).resolves.toMatchObject({ status: "INACTIVE" });
+  });
+
+  it("enforces barcode uniqueness, history, isolation, and restrictive ownership", async () => {
+    const first = await createBaseCatalog(prisma, "A");
+    const second = await createBaseCatalog(prisma, "B");
+    const active = await repositories.barcodes.create({
+      organizationId: first.organization.id,
+      productVariantId: first.variant.id,
+      status: "ACTIVE",
+      type: "INTERNAL",
+      value: "SENVO-OXFORD-A",
+    });
+
+    await expectDbReject(
+      prisma.variantBarcode.create({
+        data: {
+          organizationId: second.organization.id,
+          productVariantId: second.variant.id,
+          status: "ACTIVE",
+          type: "CODE128",
+          value: active.value,
+        },
+      }),
+    );
+    await expectDbReject(
+      prisma.variantBarcode.create({
+        data: {
+          organizationId: first.organization.id,
+          productVariantId: first.variant.id,
+          status: "ACTIVE",
+          type: "CODE128",
+          value: "SENVO-OXFORD-A-SECOND",
+        },
+      }),
+    );
+    await expect(
+      repositories.barcodes.create({
+        organizationId: first.organization.id,
+        productVariantId: first.variant.id,
+        status: "INACTIVE",
+        type: "INTERNAL",
+        value: "SENVO-OXFORD-A-HISTORY",
+      }),
+    ).resolves.toMatchObject({ status: "INACTIVE" });
+    await expect(
+      repositories.barcodes.lookupActive(second.organization.id, active.value),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.barcodes.updateStatus({
+        id: active.id,
+        organizationId: second.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repositories.barcodes.updateStatus({
+        id: active.id,
+        organizationId: first.organization.id,
+        status: "INACTIVE",
+      }),
+    ).resolves.toMatchObject({ status: "INACTIVE" });
+    await expect(
+      repositories.barcodes.lookupActive(first.organization.id, active.value),
+    ).resolves.toBeNull();
+    await expectDbReject(
+      prisma.productVariant.delete({ where: { id: first.variant.id } }),
+    );
   });
 });
 

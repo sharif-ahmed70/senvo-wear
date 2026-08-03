@@ -95,3 +95,26 @@ export type ProductVariant = {
   status: ProductVariantStatus;
   updatedAt: Date;
 };
+
+export type BarcodeType = "EAN13" | "CODE128" | "UPC" | "INTERNAL";
+export type BarcodeStatus = "ACTIVE" | "INACTIVE";
+
+export type VariantBarcode = {
+  createdAt: Date;
+  id: string;
+  organizationId: string;
+  productVariantId: string;
+  status: BarcodeStatus;
+  type: BarcodeType;
+  updatedAt: Date;
+  value: string;
+};
+
+export type BarcodeLookupResult = {
+  barcode: VariantBarcode;
+  color: string;
+  productName: string;
+  size: string;
+  sku: string;
+  variantId: string;
+};

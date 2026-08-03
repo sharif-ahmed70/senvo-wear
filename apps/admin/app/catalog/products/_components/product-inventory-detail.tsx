@@ -25,6 +25,9 @@ export function ProductInventoryDetail({
   const [availability, setAvailability] = useState<
     VariantInventoryAvailabilityContract[]
   >([]);
+  const [barcodeStatus, setBarcodeStatus] = useState<Record<string, string>>(
+    {},
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -33,18 +36,38 @@ export function ProductInventoryDetail({
     void client
       .getProduct(productId)
       .then(async (result) => {
-        const inventory = permissions.includes("INVENTORY:READ")
-          ? await Promise.all(
-              result.data.variants.map((variant) =>
-                client
-                  .getVariantAvailability({ variantId: variant.id })
-                  .then((response) => response.data),
-              ),
-            )
-          : [];
+        const [inventory, barcodeEntries] = await Promise.all([
+          permissions.includes("INVENTORY:READ")
+            ? Promise.all(
+                result.data.variants.map((variant) =>
+                  client
+                    .getVariantAvailability({ variantId: variant.id })
+                    .then((response) => response.data),
+                ),
+              )
+            : Promise.resolve([]),
+          Promise.all(
+            result.data.variants.map(async (variant) => ({
+              entries: (await client.listVariantBarcodes(variant.id)).data,
+              variantId: variant.id,
+            })),
+          ),
+        ]);
         if (active) {
           setProduct(result.data);
           setAvailability(inventory);
+          setBarcodeStatus(
+            Object.fromEntries(
+              barcodeEntries.map(({ entries, variantId }) => [
+                variantId,
+                entries.some((barcode) => barcode.status === "ACTIVE")
+                  ? "ACTIVE"
+                  : entries.length > 0
+                    ? "INACTIVE"
+                    : "NONE",
+              ]),
+            ),
+          );
         }
       })
       .catch((caught) => {
@@ -94,6 +117,45 @@ export function ProductInventoryDetail({
           {humanize(product.product.status)}
         </span>
       </header>
+      <section className="inventory-section">
+        <div className="admin-section__heading">
+          <div>
+            <h2>Product options</h2>
+          </div>
+        </div>
+        <div className="inventory-table-wrap">
+          <table className="inventory-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Barcode</th>
+              </tr>
+            </thead>
+            <tbody>
+              {product.variants.map((variant) => (
+                <tr key={variant.id}>
+                  <td className="inventory-mono">{variant.sku}</td>
+                  <td>
+                    <span
+                      className={`barcode-status barcode-status--${
+                        barcodeStatus[variant.id] === "ACTIVE"
+                          ? "active"
+                          : "inactive"
+                      }`}
+                    >
+                      {barcodeStatus[variant.id] === "ACTIVE"
+                        ? "Ready to scan"
+                        : barcodeStatus[variant.id] === "INACTIVE"
+                          ? "Inactive"
+                          : "Not assigned"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <section className="inventory-section">
         <div className="admin-section__heading">
           <div>

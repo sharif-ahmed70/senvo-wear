@@ -1,4 +1,5 @@
 import type {
+  BarcodeRepository,
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
   CatalogColorManagementRepository,
@@ -17,6 +18,7 @@ import { createApplicationServices } from "./create-application-services.js";
 describe("createApplicationServices", () => {
   it("composes sales services with an injected repository without opening Prisma", async () => {
     const services = createApplicationServices({
+      barcodeRepository: fakeBarcodeRepository,
       branchRepository: {} as never,
       inventoryMovementRepository: fakeInventoryMovementRepository,
       inventoryReadRepository: fakeInventoryReadRepository,
@@ -62,6 +64,17 @@ const fakeInventoryMovementRepository: InventoryMovementRepository = {
   post: () => Promise.reject(unreachableError()),
   replaceDraftLines: () => Promise.reject(unreachableError()),
   reversePostedMovement: () => Promise.reject(unreachableError()),
+};
+
+const fakeBarcodeRepository: BarcodeRepository = {
+  create: () => Promise.reject(unreachableError()),
+  existsByValue: () => Promise.resolve(false),
+  findActiveByVariant: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  listByVariant: () => Promise.resolve([]),
+  lookupActive: () => Promise.resolve(null),
+  updateStatus: () => Promise.resolve(null),
+  variantExists: () => Promise.resolve(false),
 };
 
 const fakeInventoryReadRepository: InventoryReadRepository = {

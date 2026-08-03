@@ -599,6 +599,32 @@ export const listProductVariantsServiceInputSchema = z
   .object({ productId: idSchema })
   .strict();
 
+export const barcodeTypeSchema = z.enum([
+  "EAN13",
+  "CODE128",
+  "UPC",
+  "INTERNAL",
+]);
+export const barcodeStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export type BarcodeType = z.infer<typeof barcodeTypeSchema>;
+export type BarcodeStatus = z.infer<typeof barcodeStatusSchema>;
+export const createVariantBarcodeServiceInputSchema = z
+  .object({
+    type: barcodeTypeSchema,
+    value: z.string().trim().min(1).max(80),
+    variantId: idSchema,
+  })
+  .strict();
+export const listVariantBarcodesServiceInputSchema = z
+  .object({ variantId: idSchema })
+  .strict();
+export const updateBarcodeStatusServiceInputSchema = z
+  .object({ barcodeId: idSchema, status: barcodeStatusSchema })
+  .strict();
+export const lookupBarcodeServiceInputSchema = z
+  .object({ value: z.string().trim().min(1).max(80) })
+  .strict();
+
 export const createBranchInputSchema = z.object({
   addressLine1: optionalTextSchema(240),
   addressLine2: optionalTextSchema(240),
@@ -1438,6 +1464,18 @@ export type CreateProductVariantServiceInputContract = z.infer<
 export type ListProductVariantsServiceInputContract = z.infer<
   typeof listProductVariantsServiceInputSchema
 >;
+export type CreateVariantBarcodeServiceInputContract = z.infer<
+  typeof createVariantBarcodeServiceInputSchema
+>;
+export type ListVariantBarcodesServiceInputContract = z.infer<
+  typeof listVariantBarcodesServiceInputSchema
+>;
+export type UpdateBarcodeStatusServiceInputContract = z.infer<
+  typeof updateBarcodeStatusServiceInputSchema
+>;
+export type LookupBarcodeServiceInputContract = z.infer<
+  typeof lookupBarcodeServiceInputSchema
+>;
 export type CreateBranchInputContract = z.infer<typeof createBranchInputSchema>;
 export type CreateStockLocationInputContract = z.infer<
   typeof createStockLocationInputSchema
@@ -1706,6 +1744,11 @@ export type ProductDetailsContract = {
   product: ProductContract;
   variants: ProductVariantContract[];
 };
+
+export type VariantBarcodeContract = z.infer<
+  typeof variantBarcodeContractSchema
+>;
+export type BarcodeLookupContract = z.infer<typeof barcodeLookupContractSchema>;
 
 export type BranchContract = CatalogRecordContract & {
   addressLine1: string | null;
@@ -2030,6 +2073,30 @@ export const productVariantContractSchema = z
     sku: z.string(),
     status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]),
     updatedAt: isoTimestampSchema,
+  })
+  .strict();
+
+export const variantBarcodeContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    organizationId: idSchema,
+    productVariantId: idSchema,
+    status: barcodeStatusSchema,
+    type: barcodeTypeSchema,
+    updatedAt: isoTimestampSchema,
+    value: z.string().min(1).max(80),
+  })
+  .strict();
+
+export const barcodeLookupContractSchema = z
+  .object({
+    barcode: variantBarcodeContractSchema,
+    color: z.string().min(1),
+    productName: z.string().min(1),
+    size: z.string().min(1),
+    sku: z.string().min(1),
+    variantId: idSchema,
   })
   .strict();
 

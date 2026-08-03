@@ -7,11 +7,17 @@ import {
   NotFoundError,
   ValidationApplicationError,
   createCategory,
+  createVariantBarcode,
   createCollection,
   createColor,
   createProduct,
   createProductVariant,
   createSize,
+  listVariantBarcodes,
+  lookupVariantByBarcode,
+  updateBarcodeStatus,
+  type BarcodeRepository,
+  type BarcodeLookupResult,
   type Category,
   type CatalogCategoryManagementRepository,
   type CatalogCollectionManagementRepository,
@@ -25,12 +31,15 @@ import {
   type Product,
   type ProductVariant,
   type Size,
+  type VariantBarcode,
 } from "@senvo/domain";
 import {
   categoryContractSchema,
+  barcodeLookupContractSchema,
   collectionContractSchema,
   colorContractSchema,
   createCategoryServiceInputSchema,
+  createVariantBarcodeServiceInputSchema,
   createCollectionServiceInputSchema,
   createColorServiceInputSchema,
   createProductServiceInputSchema,
@@ -39,10 +48,15 @@ import {
   getProductServiceInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
+  listVariantBarcodesServiceInputSchema,
+  lookupBarcodeServiceInputSchema,
   productContractSchema,
   productDetailsContractSchema,
   productVariantContractSchema,
   sizeContractSchema,
+  updateBarcodeStatusServiceInputSchema,
+  variantBarcodeContractSchema,
+  type BarcodeLookupContract,
   updateCategoryStatusServiceInputSchema,
   updateColorStatusServiceInputSchema,
   updateSizeStatusServiceInputSchema,
@@ -62,6 +76,7 @@ import {
   type ProductDetailsContract,
   type ProductVariantContract,
   type SizeContract,
+  type VariantBarcodeContract,
   type UpdateCategoryStatusServiceInputContract,
   type UpdateColorStatusServiceInputContract,
   type UpdateSizeStatusServiceInputContract,
@@ -92,6 +107,7 @@ type SafeParseSchema<T> = {
 
 export type CatalogApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
+  barcodes: BarcodeRepository;
   categories: CatalogCategoryManagementRepository;
   collections: CatalogCollectionManagementRepository;
   colors: CatalogColorManagementRepository;
@@ -103,6 +119,7 @@ export type CatalogApplicationServiceDependencies = {
 };
 
 export class CatalogApplicationService {
+  private readonly barcodes: BarcodeRepository;
   private readonly authorizationService?: ApplicationAuthorizationService;
   private readonly categories: CatalogCategoryManagementRepository;
   private readonly collections: CatalogCollectionManagementRepository;
@@ -114,6 +131,7 @@ export class CatalogApplicationService {
   private readonly sizes: CatalogSizeManagementRepository;
 
   constructor(dependencies: CatalogApplicationServiceDependencies) {
+    this.barcodes = dependencies.barcodes;
     this.authorizationService = dependencies.authorizationService;
     this.categories = dependencies.categories;
     this.collections = dependencies.collections;
@@ -450,6 +468,82 @@ export class CatalogApplicationService {
     });
   }
 
+  listVariantBarcodes(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        listVariantBarcodesServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "READ");
+      return (
+        await listVariantBarcodes(this.barcodes, {
+          organizationId: validated.organizationId,
+          productVariantId: input.variantId,
+        })
+      ).map(mapBarcode);
+    });
+  }
+
+  createVariantBarcode(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        createVariantBarcodeServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "CREATE");
+      return mapBarcode(
+        await createVariantBarcode(this.barcodes, {
+          organizationId: validated.organizationId,
+          productVariantId: input.variantId,
+          type: input.type,
+          value: input.value,
+        }),
+      );
+    });
+  }
+
+  updateBarcodeStatus(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantBarcodeContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        updateBarcodeStatusServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "UPDATE");
+      return mapBarcode(
+        await updateBarcodeStatus(this.barcodes, {
+          barcodeId: input.barcodeId,
+          organizationId: validated.organizationId,
+          status: input.status,
+        }),
+      );
+    });
+  }
+
+  lookupBarcode(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<BarcodeLookupContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(lookupBarcodeServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+      return mapBarcodeLookup(
+        await lookupVariantByBarcode(this.barcodes, {
+          organizationId: validated.organizationId,
+          value: input.value,
+        }),
+      );
+    });
+  }
+
   private authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -557,6 +651,17 @@ function mapProduct(record: Product): ProductContract {
 
 function mapVariant(record: ProductVariant): ProductVariantContract {
   return productVariantContractSchema.parse(mapRecord(record));
+}
+
+function mapBarcode(record: VariantBarcode): VariantBarcodeContract {
+  return variantBarcodeContractSchema.parse(mapRecord(record));
+}
+
+function mapBarcodeLookup(record: BarcodeLookupResult): BarcodeLookupContract {
+  return barcodeLookupContractSchema.parse({
+    ...record,
+    barcode: mapBarcode(record.barcode),
+  });
 }
 
 function mapRecord<T extends { createdAt: Date; updatedAt: Date }>(

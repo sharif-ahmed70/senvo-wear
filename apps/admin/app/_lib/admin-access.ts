@@ -29,6 +29,7 @@ export type AdminNavigationItem = {
   icon:
     | "dashboard"
     | "catalog"
+    | "barcodes"
     | "inventory"
     | "sales"
     | "channels"
@@ -47,6 +48,12 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     href: "/catalog",
     icon: "catalog",
     label: "Catalog",
+    permission: "CATALOG:READ",
+  },
+  {
+    href: "/catalog/barcodes",
+    icon: "barcodes",
+    label: "Barcodes",
     permission: "CATALOG:READ",
   },
   {

@@ -1,5 +1,6 @@
 import type {
   ApiErrorCode,
+  BarcodeLookupContract,
   ApiFailure,
   ApiResponse,
   CategoryContract,
@@ -9,6 +10,7 @@ import type {
   CreateStoreServiceInputContract,
   CreateTeamMemberServiceInputContract,
   CreateCategoryServiceInputContract,
+  CreateVariantBarcodeServiceInputContract,
   CreateCollectionServiceInputContract,
   CreateColorServiceInputContract,
   CreateProductServiceInputContract,
@@ -39,6 +41,7 @@ import type {
   StoreManagementContract,
   TeamMemberContract,
   UpdateCategoryStatusServiceInputContract,
+  UpdateBarcodeStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,
   UpdateOrganizationProfileServiceInputContract,
@@ -47,6 +50,7 @@ import type {
   UpdateTeamMemberStatusServiceInputContract,
   UpdateSalesBoothStatusServiceInputContract,
   VariantInventoryAvailabilityContract,
+  VariantBarcodeContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -296,6 +300,42 @@ export class AdminApiClient {
     return this.request<ProductVariantContract>(
       `/catalog/products/${input.productId}/variants`,
       { ...request, body: input, method: "POST" },
+    );
+  }
+
+  listVariantBarcodes(variantId: string, request?: AdminApiRequest) {
+    return this.request<VariantBarcodeContract[]>(
+      `/catalog/variants/${variantId}/barcodes`,
+      request,
+    );
+  }
+
+  createVariantBarcode(
+    input: CreateVariantBarcodeServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { variantId, ...body } = input;
+    return this.request<VariantBarcodeContract>(
+      `/catalog/variants/${variantId}/barcodes`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  updateBarcodeStatus(
+    input: UpdateBarcodeStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { barcodeId, ...body } = input;
+    return this.request<VariantBarcodeContract>(
+      `/catalog/barcodes/${barcodeId}/status`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  lookupBarcode(value: string, request?: AdminApiRequest) {
+    return this.request<BarcodeLookupContract>(
+      `/catalog/barcodes/lookup/${encodeURIComponent(value)}`,
+      request,
     );
   }
 

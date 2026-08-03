@@ -1,4 +1,5 @@
 import {
+  PrismaBarcodeRepository,
   PrismaCategoryRepository,
   PrismaCollectionRepository,
   PrismaColorRepository,
@@ -20,6 +21,7 @@ import {
   getPrismaClient,
 } from "@senvo/database";
 import type {
+  BarcodeRepository,
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
   CatalogColorManagementRepository,
@@ -54,6 +56,7 @@ type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 export type CreateApplicationServicesOptions = {
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
+  barcodeRepository?: BarcodeRepository;
   branchRepository?: BranchRepository;
   categoryRepository?: CatalogCategoryManagementRepository;
   clock?: Clock;
@@ -102,6 +105,7 @@ export function createApplicationServices(
   let salesSourceRepository = options.salesSourceRepository;
   let transactionManager = options.transactionManager;
   let categoryRepository = options.categoryRepository;
+  let barcodeRepository = options.barcodeRepository;
   let collectionRepository = options.collectionRepository;
   let colorRepository = options.colorRepository;
   let organizationRepository = options.organizationRepository;
@@ -120,6 +124,7 @@ export function createApplicationServices(
     !inventoryReadRepository ||
     !transactionManager ||
     !categoryRepository ||
+    !barcodeRepository ||
     !collectionRepository ||
     !colorRepository ||
     !organizationRepository ||
@@ -147,6 +152,10 @@ export function createApplicationServices(
       requirePrismaClient(prismaClient),
     );
   }
+
+  barcodeRepository ??= new PrismaBarcodeRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   inventoryReadRepository ??= new PrismaInventoryReadRepository(
     requirePrismaClient(prismaClient),
@@ -217,6 +226,7 @@ export function createApplicationServices(
 
   return {
     catalog: new CatalogApplicationService({
+      barcodes: barcodeRepository,
       authorizationService: options.authorizationService,
       categories: categoryRepository,
       collections: collectionRepository,

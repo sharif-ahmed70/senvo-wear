@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -64,6 +65,18 @@ enum ProductVariantStatus {
   ACTIVE
   INACTIVE
   ARCHIVED
+}
+
+enum BarcodeType {
+  EAN13
+  CODE128
+  UPC
+  INTERNAL
+}
+
+enum BarcodeStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum InventoryMovementType {
@@ -201,6 +214,7 @@ model Organization {
   sizes          Size[]
   stockLocations StockLocation[]
   variants       ProductVariant[]
+  variantBarcodes VariantBarcode[]
   inventoryMovements InventoryMovement[]
   inventoryMovementLines InventoryMovementLine[]
   inventoryReservations InventoryReservation[]
@@ -532,6 +546,7 @@ model ProductVariant {
   inventoryMovementLines InventoryMovementLine[]
   inventoryReservationLines InventoryReservationLine[]
   salesOrderLines SalesOrderLine[]
+  barcodes VariantBarcode[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, sku])
@@ -539,6 +554,25 @@ model ProductVariant {
   @@index([organizationId, productId])
   @@index([organizationId, status])
   @@map("product_variants")
+}
+
+model VariantBarcode {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @map("organization_id") @db.Uuid
+  productVariantId String        @map("product_variant_id") @db.Uuid
+  value            String        @unique @db.VarChar(80)
+  type             BarcodeType
+  status           BarcodeStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([productVariantId], map: "variant_barcodes_one_active_per_variant_key", where: { status: "ACTIVE" })
+  @@index([organizationId, productVariantId, createdAt])
+  @@index([organizationId, status])
+  @@map("variant_barcodes")
 }
 
 model ProductCollection {

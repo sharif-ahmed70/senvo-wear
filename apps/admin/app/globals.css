@@ -2455,3 +2455,262 @@ a {
     padding: 8px 0;
   }
 }
+
+.barcode-page {
+  display: grid;
+  gap: 18px;
+}
+
+.barcode-header h1,
+.barcode-panel h2 {
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.barcode-header h1 {
+  font-size: 1.55rem;
+}
+
+.barcode-header p:last-child,
+.barcode-panel p {
+  color: var(--admin-muted);
+  font-size: 0.82rem;
+  margin: 5px 0 0;
+}
+
+.barcode-panel,
+.barcode-table-wrap,
+.barcode-state {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 7px;
+}
+
+.barcode-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.barcode-select-label,
+.barcode-form label,
+.barcode-lookup label {
+  color: var(--admin-muted);
+  display: grid;
+  font-size: 0.75rem;
+  font-weight: 650;
+  gap: 6px;
+}
+
+.barcode-select-label select,
+.barcode-form select,
+.barcode-form input,
+.barcode-lookup input {
+  background: #fff;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  color: var(--admin-text);
+  font: inherit;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.barcode-variant-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.barcode-variant-summary strong {
+  flex-basis: 100%;
+}
+
+.barcode-variant-summary span {
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+}
+
+.barcode-form {
+  align-items: end;
+  grid-template-columns:
+    minmax(180px, 1fr) minmax(140px, 0.6fr) minmax(200px, 1fr)
+    auto;
+}
+
+.barcode-form h2,
+.barcode-panel h2 {
+  font-size: 0.95rem;
+}
+
+.barcode-table-wrap {
+  overflow: hidden;
+}
+
+.barcode-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+}
+
+.barcode-table th,
+.barcode-table td {
+  border-bottom: 1px solid var(--admin-border);
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.barcode-table th {
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+}
+
+.barcode-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.barcode-code {
+  font-family: var(--font-geist-mono), monospace;
+  font-weight: 650;
+}
+
+.barcode-status {
+  align-items: center;
+  border-radius: 4px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 700;
+  min-height: 25px;
+  padding: 3px 8px;
+}
+
+.barcode-status--active {
+  background: #e8f5ec;
+  color: #176b3a;
+}
+
+.barcode-status--inactive {
+  background: #f1f2f1;
+  color: #626b66;
+}
+
+.barcode-lookup {
+  display: flex;
+  gap: 8px;
+}
+
+.barcode-lookup label {
+  flex: 1;
+}
+
+.barcode-result,
+.barcode-feedback {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.barcode-result {
+  background: #eef7f1;
+  border: 1px solid #c9e3d1;
+  border-radius: 5px;
+  color: #176b3a;
+  padding: 12px;
+}
+
+.barcode-result div {
+  display: grid;
+  gap: 3px;
+}
+
+.barcode-result span {
+  font-size: 0.77rem;
+}
+
+.barcode-feedback {
+  background: #eef7f1;
+  border: 1px solid #c9e3d1;
+  border-radius: 5px;
+  color: #176b3a;
+  font-size: 0.8rem;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.barcode-feedback--error {
+  background: #fff5f4;
+  border-color: #e8c8c5;
+  color: var(--admin-danger);
+}
+
+.barcode-state {
+  align-items: center;
+  color: var(--admin-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  justify-content: center;
+  min-height: 150px;
+  padding: 20px;
+  text-align: center;
+}
+
+.barcode-state strong {
+  color: var(--admin-text);
+  font-size: 0.84rem;
+}
+
+.barcode-spin {
+  animation: sales-spin 0.9s linear infinite;
+}
+
+@media (max-width: 760px) {
+  .barcode-form {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .barcode-form .catalog-primary-button,
+  .barcode-lookup .source-secondary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .barcode-lookup {
+    display: grid;
+  }
+
+  .barcode-table,
+  .barcode-table tbody,
+  .barcode-table tr,
+  .barcode-table td {
+    display: block;
+  }
+
+  .barcode-table thead {
+    display: none;
+  }
+
+  .barcode-table tr {
+    border-bottom: 1px solid var(--admin-border);
+    padding: 10px 13px;
+  }
+
+  .barcode-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .barcode-table td {
+    align-items: center;
+    border: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+  }
+
+  .barcode-table td::before {
+    color: var(--admin-muted);
+    content: attr(data-label);
+    font-size: 0.7rem;
+    font-weight: 650;
+  }
+}

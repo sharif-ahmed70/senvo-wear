@@ -234,6 +234,34 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       ),
       catalogRoute(
         "GET",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/barcodes$/iu,
+        handlers.catalog.listVariantBarcodes,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/barcodes$/iu,
+        handlers.catalog.createVariantBarcode,
+        201,
+        "variantId",
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/barcodes\/(?<id>[0-9a-f-]+)\/status$/iu,
+        handlers.catalog.updateBarcodeStatus,
+        200,
+        "barcodeId",
+      ),
+      {
+        handler: handlers.catalog.lookupBarcode,
+        input: barcodeLookupInput,
+        method: "GET",
+        path: /^\/catalog\/barcodes\/lookup\/(?<value>[^/]+)$/u,
+        successStatus: 200,
+      },
+      catalogRoute(
+        "GET",
         /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/variants$/iu,
         handlers.catalog.listVariants,
         200,
@@ -536,7 +564,13 @@ function catalogRoute(
   path: RegExp,
   handler: ApiHandler<unknown>,
   successStatus = 200,
-  pathIdField?: "categoryId" | "colorId" | "productId" | "sizeId",
+  pathIdField?:
+    | "barcodeId"
+    | "categoryId"
+    | "colorId"
+    | "productId"
+    | "sizeId"
+    | "variantId",
 ): HttpRoute {
   return {
     handler,
@@ -553,6 +587,13 @@ function catalogRoute(
     path,
     successStatus,
   };
+}
+
+function barcodeLookupInput(
+  _body: unknown,
+  match: RegExpMatchArray,
+): Record<string, unknown> {
+  return { value: decodeURIComponent(match.groups?.value ?? "") };
 }
 
 function bodyInput(body: unknown): unknown {

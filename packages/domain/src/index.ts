@@ -36,6 +36,9 @@ export type {
   PublicApplicationError,
 } from "./errors.js";
 export type {
+  BarcodeLookupResult,
+  BarcodeStatus,
+  BarcodeType,
   Category,
   Collection,
   Color,
@@ -43,7 +46,16 @@ export type {
   Product,
   ProductVariant,
   Size,
+  VariantBarcode,
 } from "./catalog/domain/models.js";
+export {
+  createVariantBarcode,
+  listVariantBarcodes,
+  lookupVariantByBarcode,
+  normalizeBarcodeLookupValue,
+  normalizeBarcodeValue,
+  updateBarcodeStatus,
+} from "./catalog/application/barcode-use-cases.js";
 export type {
   Branch,
   BranchStatus,
@@ -318,6 +330,7 @@ export type {
   UpdateDraftSalesOrderMetadataInput,
 } from "./sales/application/order-use-cases.js";
 export type {
+  BarcodeRepository,
   CategoryRepository,
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
@@ -329,6 +342,7 @@ export type {
   CollectionRepository,
   ColorRepository,
   CreateCategoryRecord,
+  CreateVariantBarcodeRecord,
   CreateCollectionRecord,
   CreateColorRecord,
   CreateOrganizationRecord,

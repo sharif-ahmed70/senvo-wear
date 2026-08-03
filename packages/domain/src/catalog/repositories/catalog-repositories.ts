@@ -1,4 +1,5 @@
 import type {
+  BarcodeLookupResult,
   Category,
   Collection,
   Color,
@@ -6,7 +7,40 @@ import type {
   Product,
   ProductVariant,
   Size,
+  VariantBarcode,
 } from "../domain/models.js";
+
+export type CreateVariantBarcodeRecord = Pick<
+  VariantBarcode,
+  "organizationId" | "productVariantId" | "status" | "type" | "value"
+>;
+
+export type BarcodeRepository = {
+  create(record: CreateVariantBarcodeRecord): Promise<VariantBarcode>;
+  existsByValue(value: string): Promise<boolean>;
+  findActiveByVariant(
+    organizationId: string,
+    productVariantId: string,
+  ): Promise<VariantBarcode | null>;
+  findById(id: string, organizationId: string): Promise<VariantBarcode | null>;
+  listByVariant(
+    organizationId: string,
+    productVariantId: string,
+  ): Promise<VariantBarcode[]>;
+  lookupActive(
+    organizationId: string,
+    value: string,
+  ): Promise<BarcodeLookupResult | null>;
+  updateStatus(record: {
+    id: string;
+    organizationId: string;
+    status: VariantBarcode["status"];
+  }): Promise<VariantBarcode | null>;
+  variantExists(
+    organizationId: string,
+    productVariantId: string,
+  ): Promise<boolean>;
+};
 
 export type CreateOrganizationRecord = Pick<
   Organization,

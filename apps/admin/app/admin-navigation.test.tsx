@@ -17,6 +17,7 @@ describe("admin navigation", () => {
     for (const label of [
       "Dashboard",
       "Catalog",
+      "Barcodes",
       "Inventory",
       "Sales Orders",
       "Sales Sources",
