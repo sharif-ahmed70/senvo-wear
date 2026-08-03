@@ -24,9 +24,9 @@ CREATE TABLE "public"."pos_checkout_records" (
 CREATE UNIQUE INDEX "pos_checkout_records_id_organization_id_key" ON "public"."pos_checkout_records"("id", "organization_id");
 CREATE UNIQUE INDEX "pos_checkout_records_cart_id_organization_id_key" ON "public"."pos_checkout_records"("cart_id", "organization_id");
 CREATE UNIQUE INDEX "pos_checkout_records_sales_order_id_organization_id_key" ON "public"."pos_checkout_records"("sales_order_id", "organization_id");
-CREATE UNIQUE INDEX "pos_checkout_records_organization_id_sales_session_id_idempotency_key_key" ON "public"."pos_checkout_records"("organization_id", "sales_session_id", "idempotency_key");
+CREATE UNIQUE INDEX "pos_checkout_records_organization_id_sales_session_id_idemp_key" ON "public"."pos_checkout_records"("organization_id", "sales_session_id", "idempotency_key");
 CREATE INDEX "pos_checkout_records_organization_id_completed_at_id_idx" ON "public"."pos_checkout_records"("organization_id", "completed_at", "id");
-CREATE INDEX "pos_checkout_records_organization_id_counter_id_completed_at_idx" ON "public"."pos_checkout_records"("organization_id", "counter_id", "completed_at");
+CREATE INDEX "pos_checkout_records_organization_id_counter_id_completed_a_idx" ON "public"."pos_checkout_records"("organization_id", "counter_id", "completed_at");
 CREATE INDEX "pos_checkout_records_organization_id_staff_id_completed_at_idx" ON "public"."pos_checkout_records"("organization_id", "staff_id", "completed_at");
 
 ALTER TABLE "public"."pos_checkout_records" ADD CONSTRAINT "pos_checkout_records_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
