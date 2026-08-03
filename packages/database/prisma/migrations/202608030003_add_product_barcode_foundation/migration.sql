@@ -18,7 +18,7 @@ CREATE UNIQUE INDEX "variant_barcodes_value_key"
 CREATE UNIQUE INDEX "variant_barcodes_one_active_per_variant_key"
   ON "public"."variant_barcodes"("product_variant_id")
   WHERE "status" = 'ACTIVE';
-CREATE INDEX "variant_barcodes_organization_id_product_variant_id_created_at_idx"
+CREATE INDEX "variant_barcodes_organization_id_product_variant_id_created_idx"
   ON "public"."variant_barcodes"("organization_id", "product_variant_id", "created_at");
 CREATE INDEX "variant_barcodes_organization_id_status_idx"
   ON "public"."variant_barcodes"("organization_id", "status");
