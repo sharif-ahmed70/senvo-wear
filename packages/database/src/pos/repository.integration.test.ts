@@ -135,7 +135,7 @@ describeWithDatabase("Prisma offline POS repository", () => {
           productName: "Oxford Shirt",
           quantity: 2,
           size: "Large",
-          sku: "OXFORD-BLK-L",
+          sku: variant.sku,
         },
       ],
       sessionStatus: "OPEN",
