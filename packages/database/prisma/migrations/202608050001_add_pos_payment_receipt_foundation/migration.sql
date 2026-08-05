@@ -192,8 +192,8 @@ ALTER TABLE "public"."sales_receipts" ADD CONSTRAINT "sales_receipts_checkout_or
 ALTER TABLE "public"."sales_receipts" ADD CONSTRAINT "sales_receipts_order_org_fkey" FOREIGN KEY ("sales_order_id", "organization_id") REFERENCES "public"."sales_orders"("id", "organization_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "public"."sales_receipts" ADD CONSTRAINT "sales_receipts_payment_org_fkey" FOREIGN KEY ("payment_batch_id", "organization_id") REFERENCES "public"."payment_batches"("id", "organization_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
-ALTER TABLE "public"."sales_receipt_lines" ADD CONSTRAINT "receipt_lines_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "public"."sales_receipt_lines" ADD CONSTRAINT "sales_receipt_lines_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "public"."sales_receipt_lines" ADD CONSTRAINT "receipt_lines_receipt_org_fkey" FOREIGN KEY ("receipt_id", "organization_id") REFERENCES "public"."sales_receipts"("id", "organization_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
-ALTER TABLE "public"."sales_receipt_payments" ADD CONSTRAINT "receipt_payments_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "public"."sales_receipt_payments" ADD CONSTRAINT "sales_receipt_payments_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "public"."sales_receipt_payments" ADD CONSTRAINT "receipt_payments_receipt_org_fkey" FOREIGN KEY ("receipt_id", "organization_id") REFERENCES "public"."sales_receipts"("id", "organization_id") ON DELETE RESTRICT ON UPDATE CASCADE;
