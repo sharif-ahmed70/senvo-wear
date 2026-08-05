@@ -14,13 +14,17 @@ const sensitiveMetadataKeyPattern =
 export const auditActions = [
   "INVENTORY_MOVEMENT_POSTED",
   "POS_CHECKOUT_COMPLETED",
+  "POS_PAYMENT_RECORDED",
+  "SALES_RECEIPT_ISSUED",
   "SALES_ORDER_CREATED",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
   "INVENTORY_MOVEMENT",
+  "PAYMENT",
   "POS_CHECKOUT",
   "SALES_ORDER",
+  "SALES_RECEIPT",
 ] as const satisfies readonly AuditResource[];
 
 export function assertAuditId(value: string, field: string): string {

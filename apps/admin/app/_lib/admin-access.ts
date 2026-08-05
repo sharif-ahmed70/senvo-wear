@@ -15,6 +15,10 @@ export const adminPermissionKeys = [
   "POS:READ",
   "POS:CREATE",
   "POS:UPDATE",
+  "PAYMENT:READ",
+  "PAYMENT:CREATE",
+  "PAYMENT:APPROVE",
+  "RECEIPT:READ",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];

@@ -7,12 +7,16 @@ import type {
 
 const allResources: readonly PermissionResource[] = [
   "ORGANIZATION",
+  "TEAM",
   "USER",
   "CATALOG",
   "INVENTORY",
   "RESERVATION",
   "SALES_ORDER",
+  "SALES",
   "POS",
+  "PAYMENT",
+  "RECEIPT",
   "REPORT",
 ];
 
@@ -37,20 +41,25 @@ export const defaultRolePermissions: readonly (PermissionKey & {
   ),
   ...permissionsFor(
     "ADMIN",
-    ["CATALOG", "INVENTORY", "SALES_ORDER", "POS"],
+    ["CATALOG", "INVENTORY", "SALES_ORDER", "SALES", "POS"],
     ["CREATE", "READ", "UPDATE", "DELETE", "CANCEL", "FULFILL"],
   ),
+  ...permissionsFor("ADMIN", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
+  ...permissionsFor("ADMIN", ["RECEIPT"], ["READ"]),
   ...permissionsFor(
     "MANAGER",
-    ["INVENTORY", "RESERVATION", "SALES_ORDER", "POS"],
+    ["INVENTORY", "RESERVATION", "SALES_ORDER", "SALES", "POS"],
     ["CREATE", "READ", "UPDATE", "CANCEL", "FULFILL"],
   ),
+  ...permissionsFor("MANAGER", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
+  ...permissionsFor("MANAGER", ["RECEIPT"], ["READ"]),
   ...permissionsFor("STAFF", allResources, ["READ"]),
   ...permissionsFor(
     "STAFF",
     ["RESERVATION", "SALES_ORDER", "POS"],
     ["CREATE", "UPDATE"],
   ),
+  ...permissionsFor("STAFF", ["PAYMENT"], ["CREATE"]),
 ];
 
 export function roleAllowsPermission(

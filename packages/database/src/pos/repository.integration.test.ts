@@ -13,6 +13,7 @@ import {
 } from "../identity/repositories.js";
 import { PrismaPosRepository } from "./repository.js";
 import { PrismaPosCheckoutRepository } from "./checkout-repository.js";
+import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaTransactionManager } from "../transaction/prisma-transaction-manager.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -155,6 +156,51 @@ describeWithDatabase("Prisma offline POS repository", () => {
       totalMinor: 5000,
     });
     await expect(
+      prisma.paymentBatch.findFirst({
+        include: { lines: true },
+        where: { checkoutId: result.checkout.id },
+      }),
+    ).resolves.toMatchObject({
+      lines: [{ amountMinor: 5000, method: "CASH" }],
+      outstandingMinor: 0,
+      paidMinor: 5000,
+      status: "PAID",
+    });
+    await expect(
+      prisma.salesReceipt.findFirst({
+        include: { lines: true, payments: true },
+        where: { checkoutId: result.checkout.id },
+      }),
+    ).resolves.toMatchObject({
+      lines: [
+        {
+          productName: "Oxford Shirt",
+          quantity: 2,
+          sku: "OX-BLK-L",
+        },
+      ],
+      organizationName: "Organization CHECKOUT",
+      paymentStatus: "PAID",
+      payments: [{ amountMinor: 5000, method: "CASH" }],
+      totalMinor: 5000,
+    });
+    await prisma.organization.update({
+      data: { name: "Renamed organization" },
+      where: { id: base.organization.id },
+    });
+    await prisma.salesCounter.update({
+      data: { name: "Renamed counter" },
+      where: { id: base.counter.id },
+    });
+    await expect(
+      prisma.salesReceipt.findFirst({
+        where: { checkoutId: result.checkout.id },
+      }),
+    ).resolves.toMatchObject({
+      counterName: "Counter 1",
+      organizationName: "Organization CHECKOUT",
+    });
+    await expect(
       prisma.inventoryReservation.findFirst({
         where: { referenceId: result.checkout.salesOrderId },
       }),
@@ -171,11 +217,85 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await expect(
       prisma.auditEntry.count({
         where: {
-          action: "POS_CHECKOUT_COMPLETED",
+          action: {
+            in: [
+              "POS_CHECKOUT_COMPLETED",
+              "POS_PAYMENT_RECORDED",
+              "SALES_RECEIPT_ISSUED",
+            ],
+          },
           organizationId: base.organization.id,
         },
       }),
-    ).resolves.toBe(1);
+    ).resolves.toBe(3);
+  });
+
+  it("persists deterministic split tender lines and an approved partial balance", async () => {
+    const split = await seedCheckout("SPLIT", 5, 2);
+    const splitResult = await completeCheckout(split, "checkout-split-001", {
+      payments: [
+        { amountMinor: 2000, method: "CASH" },
+        { amountMinor: 3000, method: "CARD", reference: " CARD-001 " },
+      ],
+    });
+    await expect(
+      prisma.paymentLine.findMany({
+        orderBy: { lineNumber: "asc" },
+        where: { paymentBatch: { checkoutId: splitResult.checkout.id } },
+      }),
+    ).resolves.toMatchObject([
+      { amountMinor: 2000, lineNumber: 1, method: "CASH", reference: null },
+      {
+        amountMinor: 3000,
+        lineNumber: 2,
+        method: "CARD",
+        reference: "CARD-001",
+      },
+    ]);
+
+    await cleanDatabase();
+    const partial = await seedCheckout("PARTIAL", 5, 2);
+    const partialResult = await completeCheckout(
+      partial,
+      "checkout-partial-001",
+      {
+        allowOutstanding: true,
+        payments: [{ amountMinor: 1500, method: "CASH" }],
+      },
+    );
+    expect(partialResult.checkout).toMatchObject({
+      outstandingMinor: 3500,
+      paidMinor: 1500,
+      paymentStatus: "PARTIALLY_PAID",
+    });
+
+    await cleanDatabase();
+    const due = await seedCheckout("DUE", 5, 2);
+    const dueResult = await completeCheckout(due, "checkout-due-001", {
+      allowOutstanding: true,
+      payments: [],
+    });
+    expect(dueResult.checkout).toMatchObject({
+      outstandingMinor: 5000,
+      paidMinor: 0,
+      paymentStatus: "UNPAID",
+    });
+    await expect(prisma.paymentLine.count()).resolves.toBe(0);
+    await expect(prisma.salesReceipt.count()).resolves.toBe(1);
+  });
+
+  it("rolls back every checkout record when payment is greater than the server total", async () => {
+    const base = await seedCheckout("OVERPAY", 5, 2);
+    await expect(
+      completeCheckout(base, "checkout-overpay-001", {
+        payments: [{ amountMinor: 5001, method: "CASH" }],
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(prisma.salesOrder.count()).resolves.toBe(0);
+    await expect(prisma.posCheckoutRecord.count()).resolves.toBe(0);
+    await expect(prisma.paymentBatch.count()).resolves.toBe(0);
+    await expect(prisma.salesReceipt.count()).resolves.toBe(0);
+    await expect(prisma.auditEntry.count()).resolves.toBe(0);
   });
 
   it("rolls back the order, reservation, movement, checkout, and audit when stock is insufficient", async () => {
@@ -229,10 +349,83 @@ describeWithDatabase("Prisma offline POS repository", () => {
         where: { organizationId: base.organization.id },
       }),
     ).resolves.toBe(1);
+    await expect(prisma.paymentBatch.count()).resolves.toBe(1);
+    await expect(prisma.paymentLine.count()).resolves.toBe(1);
+    await expect(prisma.salesReceipt.count()).resolves.toBe(1);
+    await expect(prisma.auditEntry.count()).resolves.toBe(3);
     const checkouts = new PrismaPosCheckoutRepository(prisma);
     await expect(
       checkouts.findById(first.checkout.id, other.organization.id),
     ).resolves.toBeNull();
+    const receipts = new PrismaReceiptRepository(prisma);
+    await expect(
+      receipts.findByCheckoutId(first.checkout.id, other.organization.id),
+    ).resolves.toBeNull();
+  });
+
+  it("serializes concurrent identical retries into one payment and receipt", async () => {
+    const base = await seedCheckout("CONCURRENT", 5, 2);
+    const [first, second] = await Promise.all([
+      completeCheckout(base, "checkout-concurrent-001"),
+      completeCheckout(base, "checkout-concurrent-001"),
+    ]);
+    expect(first.checkout.id).toBe(second.checkout.id);
+    expect([first.replayed, second.replayed].sort()).toEqual([false, true]);
+    await expect(prisma.posCheckoutRecord.count()).resolves.toBe(1);
+    await expect(prisma.paymentBatch.count()).resolves.toBe(1);
+    await expect(prisma.salesReceipt.count()).resolves.toBe(1);
+    await expect(prisma.auditEntry.count()).resolves.toBe(3);
+  });
+
+  it("reads a pre-payment checkout honestly as unrecorded", async () => {
+    const base = await seedCheckout("LEGACY", 5, 2);
+    const result = await completeCheckout(base, "checkout-legacy-001");
+    await prisma.salesReceiptPayment.deleteMany();
+    await prisma.salesReceiptLine.deleteMany();
+    await prisma.salesReceipt.deleteMany();
+    await prisma.paymentLine.deleteMany();
+    await prisma.paymentBatch.deleteMany();
+    const checkouts = new PrismaPosCheckoutRepository(prisma);
+    await expect(
+      checkouts.findById(result.checkout.id, base.organization.id),
+    ).resolves.toMatchObject({
+      outstandingMinor: null,
+      paidMinor: null,
+      paymentStatus: "UNRECORDED",
+      receiptId: null,
+      receiptNumber: null,
+    });
+  });
+
+  it("rejects cross-organization payment references at the database boundary", async () => {
+    const first = await seedCheckout("PAYMENT-FK-A", 5, 2);
+    const completed = await completeCheckout(first, "checkout-payment-fk-001");
+    const second = await seedOrganization("PAYMENT-FK-B");
+    const secondSession = await repository.openSession({
+      counterId: second.counter.id,
+      openedAt: new Date("2026-08-03T09:00:00.000Z"),
+      openedByUserId: second.user.id,
+      organizationId: second.organization.id,
+    });
+    await expect(
+      prisma.paymentBatch.create({
+        data: {
+          checkoutId: completed.checkout.id,
+          counterId: second.counter.id,
+          currencyCode: "BDT",
+          idempotencyKey: "cross-org-payment-001",
+          organizationId: second.organization.id,
+          outstandingMinor: 0,
+          paidMinor: 5000,
+          payableMinor: 5000,
+          requestSignature: "cross-org-signature",
+          salesOrderId: completed.checkout.salesOrderId,
+          salesSessionId: secondSession.id,
+          staffId: second.user.id,
+          status: "PAID",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
   });
 });
 
@@ -306,12 +499,27 @@ async function seedCheckout(label: string, stock: number, quantity: number) {
     quantity,
     unitPriceMinor: 2500,
   });
-  return { ...base, location, policy, session, variant };
+  return {
+    ...base,
+    location,
+    policy,
+    session,
+    totalMinor: 2500 * quantity,
+    variant,
+  };
 }
 
 async function completeCheckout(
   base: Awaited<ReturnType<typeof seedCheckout>>,
   idempotencyKey: string,
+  options: {
+    allowOutstanding?: boolean;
+    payments?: readonly {
+      amountMinor: number;
+      method: "BANK_TRANSFER" | "CARD" | "CASH" | "MOBILE_BANKING";
+      reference?: string;
+    }[];
+  } = {},
 ) {
   const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
   return manager.execute(
@@ -322,22 +530,33 @@ async function completeCheckout(
     },
     async (transaction) => {
       if (
+        !transaction.paymentRepository ||
         !transaction.posCheckoutRepository ||
-        !transaction.posCheckoutSalesOrderRepository
+        !transaction.posCheckoutSalesOrderRepository ||
+        !transaction.receiptRepository
       ) {
         throw new Error("Checkout transaction capability is missing.");
       }
       const result = await checkoutCart(
         {
           checkouts: transaction.posCheckoutRepository,
+          payments: transaction.paymentRepository,
+          receipts: transaction.receiptRepository,
           salesOrders: transaction.posCheckoutSalesOrderRepository,
         },
         {
+          allowOutstanding: options.allowOutstanding ?? false,
+          approveOutstanding: () => Promise.resolve(),
           cartId: base.session.cartId,
           checkoutId: crypto.randomUUID(),
           completedAt: new Date("2026-08-03T10:00:00.000Z"),
           idempotencyKey,
           organizationId: base.organization.id,
+          paymentBatchId: crypto.randomUUID(),
+          payments: options.payments ?? [
+            { amountMinor: base.totalMinor, method: "CASH" },
+          ],
+          receiptId: crypto.randomUUID(),
           staffId: base.user.id,
         },
       );
@@ -348,6 +567,20 @@ async function completeCheckout(
           organizationId: base.organization.id,
           resource: "POS_CHECKOUT",
           resourceId: result.checkout.id,
+        });
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "POS_PAYMENT_RECORDED",
+          actor: { userId: base.user.id },
+          organizationId: base.organization.id,
+          resource: "PAYMENT",
+          resourceId: result.checkout.paymentBatchId!,
+        });
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "SALES_RECEIPT_ISSUED",
+          actor: { userId: base.user.id },
+          organizationId: base.organization.id,
+          resource: "SALES_RECEIPT",
+          resourceId: result.checkout.receiptId!,
         });
       }
       return result;
@@ -418,6 +651,11 @@ async function seedVariant(organizationId: string) {
 }
 
 async function cleanDatabase() {
+  await prisma.salesReceiptPayment.deleteMany();
+  await prisma.salesReceiptLine.deleteMany();
+  await prisma.salesReceipt.deleteMany();
+  await prisma.paymentLine.deleteMany();
+  await prisma.paymentBatch.deleteMany();
   await prisma.posCheckoutRecord.deleteMany();
   await prisma.posCartLine.deleteMany();
   await prisma.posCart.deleteMany();

@@ -6,18 +6,19 @@ POS checkout converts one organization-scoped cart into a fulfilled sales order.
 
 ## Trusted flow
 
-1. The API accepts only the cart identifier from the route and an idempotency key from the body.
-2. Authentication and both `POS.UPDATE` and `SALES.CREATE` authorization are required.
+1. The API accepts the cart identifier from the route plus an idempotency key, ordered payment instructions, and `allowOutstanding` from the body.
+2. Authentication and `POS.UPDATE`, `SALES.CREATE`, and `PAYMENT.CREATE` authorization are required. An outstanding sale also requires `PAYMENT.APPROVE`.
 3. The transaction locks the cart and reloads its session, counter, staff membership, variants, active barcodes, current prices, and allocation policy.
 4. The server derives `OFFLINE_STORE` or `EVENT_BOOTH`, booth, staff, organization, BDT totals, order number, reservation identifiers, and movement identifiers.
 5. The existing sales lifecycle creates a draft order, reserves through allocation, confirms it, and fulfills it by consuming the reservation.
-6. A completed checkout record and append-only audit entry are written before the same transaction commits.
+6. The transaction persists the completed checkout, immutable payment batch and lines, and immutable receipt snapshot.
+7. Checkout, payment, and receipt audit entries are appended before the same transaction commits.
 
 Any validation, allocation, stock, persistence, or audit failure rolls back every checkout write. Inventory remains ledger-derived; checkout never updates a balance directly.
 
 ## Retry and history
 
-Idempotency is scoped by organization, sales session, and key. A retry with the original key returns the completed checkout. Reusing a completed cart with another key is rejected. Checkout records preserve counter, staff, order, amount, status, and completion time while the sales order retains the durable sales and inventory references.
+Idempotency is scoped by organization, sales session, and key and is sensitive to normalized ordered payment instructions and `allowOutstanding`. An identical retry returns the completed checkout without duplicate payment, receipt, or audit records. Changed payment content with the same key and another key on a completed cart are rejected. Legacy checkouts without a payment signature report `UNRECORDED` and cannot be mutated through retry behavior.
 
 ## Security
 
@@ -25,8 +26,8 @@ The browser cannot provide organization, staff identity, channel, booth, totals,
 
 ## Future adapters
 
-- Payment can become a pre-commit checkout capability without changing cart ownership.
-- Receipt rendering and printing belong after successful checkout and should consume the completed checkout projection.
+- Gateway payment lifecycles can extend payment ownership without changing cart ownership.
+- Receipt rendering and printing consume the committed printer-independent receipt projection.
 - The Xprinter XP-T361U should be implemented behind replaceable receipt and label output adapters.
 - Keyboard-wedge or camera barcode scanners continue to use the existing barcode lookup boundary; no hardware driver belongs in checkout domain logic.
 

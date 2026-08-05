@@ -418,16 +418,42 @@ describe("Node HTTP runtime adapter", () => {
     const response = await fetch(
       `${runtime.url}/pos/carts/${movementId}/checkout`,
       {
-        body: JSON.stringify({ idempotencyKey: "checkout-http-001" }),
+        body: JSON.stringify({
+          allowOutstanding: false,
+          idempotencyKey: "checkout-http-001",
+          payments: [{ amountMinor: 2500, method: "CASH" }],
+        }),
         headers: developmentHeaders(suppliedRequestId),
         method: "POST",
       },
     );
     expect(response.status).toBe(201);
     expect(checkout.requests.at(0)?.input).toEqual({
+      allowOutstanding: false,
       cartId: movementId,
       idempotencyKey: "checkout-http-001",
+      payments: [{ amountMinor: 2500, method: "CASH" }],
     });
+  });
+
+  it("maps the receipt path to an organization-scoped checkout lookup", async () => {
+    const receipt = new RecordingApiHandler(
+      createApiSuccess({ receiptNumber: "RCP-001" }, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: receipt,
+        pos: { getReceipt: receipt } as unknown as PosApiHandlers,
+        postInventoryMovement: receipt,
+      },
+    });
+    const response = await fetch(
+      `${runtime.url}/pos/checkouts/${movementId}/receipt`,
+      { headers: developmentHeaders(suppliedRequestId) },
+    );
+    expect(response.status).toBe(200);
+    expect(receipt.requests.at(0)?.input).toEqual({ checkoutId: movementId });
+    expect(receipt.requests.at(0)?.context.organizationId).toBe(organizationId);
   });
 
   it("does not allow development authentication adapters in production", () => {

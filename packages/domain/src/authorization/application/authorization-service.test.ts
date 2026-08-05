@@ -51,6 +51,21 @@ describe("authorization service", () => {
     ).rejects.toThrow("Permission is required");
   });
 
+  it("allows managers but not staff to approve outstanding payments", async () => {
+    await expect(
+      authorize(repositoriesFor({ role: "MANAGER" }), {
+        context: { organizationId, role: "MANAGER", userId },
+        permission: { action: "APPROVE", resource: "PAYMENT" },
+      }),
+    ).resolves.toMatchObject({ allowed: true, role: "MANAGER" });
+    await expect(
+      authorize(repositoriesFor({ role: "STAFF" }), {
+        context: { organizationId, role: "STAFF", userId },
+        permission: { action: "APPROVE", resource: "PAYMENT" },
+      }),
+    ).rejects.toThrow("Permission is required");
+  });
+
   it("rejects inactive users", async () => {
     const repositories = repositoriesFor({
       role: "OWNER",

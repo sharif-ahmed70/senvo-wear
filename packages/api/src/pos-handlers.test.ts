@@ -8,6 +8,7 @@ import type {
   PosCartLineContract,
   PosCheckoutContract,
   PosSaleLookupContract,
+  SalesReceiptContract,
   SalesCounterContract,
   SalesSessionContract,
 } from "@senvo/contracts";
@@ -84,13 +85,15 @@ describe("POS API handlers", () => {
     expect(cartResponse.success).toBe(false);
   });
 
-  it("accepts only an idempotency key from the checkout body", async () => {
+  it("accepts only operator-controlled payment instructions at checkout", async () => {
     const application = new FakePos();
     const response = await handlers(application).checkoutCart.handle({
       context,
       input: {
         cartId: "20000000-0000-4000-8000-000000000001",
+        allowOutstanding: false,
         idempotencyKey: "checkout-attempt-001",
+        payments: [{ amountMinor: 1, method: "CASH" }],
         organizationId,
         staffId: userId,
         totalMinor: 1,
@@ -101,6 +104,24 @@ describe("POS API handlers", () => {
       success: false,
     });
     expect(application.context).toBeUndefined();
+  });
+
+  it("requires receipt read permission before receipt application access", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).getReceipt.handle({
+      context,
+      input: { checkoutId: "20000000-0000-4000-8000-000000000001" },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "RECEIPT",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
   });
 });
 
@@ -155,6 +176,9 @@ class FakePos implements PosApplication {
   }
   getCheckout(context: ApplicationExecutionContext) {
     return this.result(context, {} as PosCheckoutContract);
+  }
+  getReceipt(context: ApplicationExecutionContext) {
+    return this.result(context, {} as SalesReceiptContract);
   }
   listCheckouts(context: ApplicationExecutionContext) {
     return this.result(context, [] as PosCheckoutContract[]);

@@ -439,11 +439,16 @@ describe("AdminApiClient", () => {
     );
     await client.checkoutPosCart(
       {
+        allowOutstanding: false,
         cartId: "10000000-0000-4000-8000-000000000012",
         idempotencyKey: "checkout-client-001",
+        payments: [{ amountMinor: 2500, method: "CASH" }],
       },
       { requestId: "req_pos_client_3" },
     );
+    await client.getPosReceipt("10000000-0000-4000-8000-000000000013", {
+      requestId: "req_pos_client_4",
+    });
     const bodies = fetcher.mock.calls.map(
       (call) =>
         JSON.parse(
@@ -454,6 +459,7 @@ describe("AdminApiClient", () => {
       "https://admin.example.test/pos/counters",
       "https://admin.example.test/pos/sessions/open",
       "https://admin.example.test/pos/carts/10000000-0000-4000-8000-000000000012/checkout",
+      "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/receipt",
     ]);
     for (const body of bodies) {
       expect(body).not.toHaveProperty("organizationId");

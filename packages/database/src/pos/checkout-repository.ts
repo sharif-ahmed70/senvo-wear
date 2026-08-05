@@ -13,6 +13,16 @@ type CheckoutPrismaClient = Pick<
 
 const checkoutInclude = {
   counter: { select: { name: true } },
+  paymentBatch: {
+    select: {
+      id: true,
+      outstandingMinor: true,
+      paidMinor: true,
+      requestSignature: true,
+      status: true,
+    },
+  },
+  receipt: { select: { id: true, receiptNumber: true } },
   salesOrder: { select: { orderNumber: true } },
   staff: { select: { name: true } },
 } as const;
@@ -53,11 +63,12 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         },
         salesSession: {
           include: {
-            counter: true,
+            counter: { include: { booth: true, branch: true } },
             openedBy: true,
             openedMembership: true,
           },
         },
+        organization: true,
       },
       where: { id: cartId, organizationId },
     });
@@ -88,6 +99,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       cartId: cart.id,
       checkout: cart.checkout ? mapCheckout(cart.checkout) : null,
       counterId: counter.id,
+      counterCode: counter.code,
       counterName: counter.name,
       counterStatus: counter.status,
       counterType: counter.type,
@@ -100,12 +112,24 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       })),
       membershipStatus: cart.salesSession.openedMembership.status,
       organizationId: cart.organizationId,
+      organizationAddressLine1: cart.organization.addressLine1,
+      organizationAddressLine2: cart.organization.addressLine2,
+      organizationCity: cart.organization.city,
+      organizationDistrict: cart.organization.district,
+      organizationEmail: cart.organization.email,
+      organizationName: cart.organization.name,
+      organizationPhone: cart.organization.phone,
+      organizationPostalCode: cart.organization.postalCode,
       salesSessionId: cart.salesSessionId,
       sessionStatus: cart.salesSession.status,
       staffId: cart.salesSession.openedByUserId,
       staffName:
         cart.salesSession.openedBy.name ?? cart.salesSession.openedBy.email,
       staffStatus: cart.salesSession.openedBy.status,
+      sourceName:
+        counter.type === "EVENT_BOOTH"
+          ? (counter.booth?.name ?? counter.name)
+          : (counter.branch?.name ?? counter.name),
     };
   }
 
@@ -157,6 +181,13 @@ function mapCheckout(record: CheckoutRecord): PosCheckout {
     idempotencyKey: record.idempotencyKey,
     orderNumber: record.salesOrder.orderNumber,
     organizationId: record.organizationId,
+    outstandingMinor: record.paymentBatch?.outstandingMinor ?? null,
+    paidMinor: record.paymentBatch?.paidMinor ?? null,
+    paymentBatchId: record.paymentBatch?.id ?? null,
+    paymentRequestSignature: record.paymentBatch?.requestSignature ?? null,
+    paymentStatus: record.paymentBatch?.status ?? "UNRECORDED",
+    receiptId: record.receipt?.id ?? null,
+    receiptNumber: record.receipt?.receiptNumber ?? null,
     salesOrderId: record.salesOrderId,
     salesSessionId: record.salesSessionId,
     staffName: record.staff.name ?? "Team member",

@@ -27,6 +27,11 @@ describeWithDatabase("Prisma authorization repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.salesReceiptPayment.deleteMany();
+    await prisma.salesReceiptLine.deleteMany();
+    await prisma.salesReceipt.deleteMany();
+    await prisma.paymentLine.deleteMany();
+    await prisma.paymentBatch.deleteMany();
     await prisma.posCheckoutRecord.deleteMany();
     await prisma.posCartLine.deleteMany();
     await prisma.posCart.deleteMany();

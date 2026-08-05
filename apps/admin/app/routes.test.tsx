@@ -35,6 +35,7 @@ import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
 import PosCheckoutsPage from "./pos/checkouts/page";
 import { PosManagementWorkspace } from "./pos/_components/pos-management-workspace";
+import { ReceiptPreview } from "./pos/checkouts/[id]/receipt/receipt-preview";
 
 describe("admin routes", () => {
   it("renders sales source and booth history routes", () => {
@@ -68,6 +69,16 @@ describe("admin routes", () => {
     );
     expect(restricted).toContain("Access unavailable");
     expect(restricted).not.toContain("New counter");
+  });
+  it("hides receipt details without receipt and payment read access", () => {
+    const html = renderToStaticMarkup(
+      <ReceiptPreview
+        checkoutId="10000000-0000-4000-8000-000000000001"
+        permissions={["POS:READ"]}
+      />,
+    );
+    expect(html).toContain("Receipt access unavailable");
+    expect(html).not.toContain("Print");
   });
   it.each([
     ["Dashboard", AdminPage],

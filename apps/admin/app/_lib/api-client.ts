@@ -54,6 +54,7 @@ import type {
   SalesCounterContract,
   SalesSessionContract,
   PosCheckoutContract,
+  SalesReceiptContract,
   CheckoutPosCartServiceInputContract,
   CreateSalesCounterServiceInputContract,
   UpdateSalesCounterStatusServiceInputContract,
@@ -634,6 +635,13 @@ export class AdminApiClient {
   getPosCheckout(checkoutId: string, request?: AdminApiRequest) {
     return this.request<PosCheckoutContract>(
       `/pos/checkouts/${checkoutId}`,
+      request,
+    );
+  }
+
+  getPosReceipt(checkoutId: string, request?: AdminApiRequest) {
+    return this.request<SalesReceiptContract>(
+      `/pos/checkouts/${checkoutId}/receipt`,
       request,
     );
   }

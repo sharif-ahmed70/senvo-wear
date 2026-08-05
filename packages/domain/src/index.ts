@@ -132,6 +132,35 @@ export {
 export type { PosRepository } from "./pos/repositories/pos-repository.js";
 export type { PosCheckoutRepository } from "./pos/repositories/pos-checkout-repository.js";
 export {
+  calculatePaymentBalance,
+  createPaymentRequestSignature,
+  normalizePaymentInstructions,
+} from "./payment/application/payment-rules.js";
+export type {
+  CheckoutPaymentStatus,
+  PaymentBalance,
+  PaymentBalanceStatus,
+  PaymentBatch,
+  PaymentInstruction,
+  PaymentLine,
+  PaymentMethod,
+} from "./payment/domain/models.js";
+export type {
+  CreatePaymentBatchRecord,
+  PaymentRepository,
+} from "./payment/repositories/payment-repository.js";
+export { getSalesReceipt } from "./receipt/application/receipt-use-cases.js";
+export type {
+  ReceiptDocument,
+  SalesReceipt,
+  SalesReceiptLine,
+  SalesReceiptPayment,
+} from "./receipt/domain/models.js";
+export type {
+  CreateSalesReceiptRecord,
+  ReceiptRepository,
+} from "./receipt/repositories/receipt-repository.js";
+export {
   changeSalesBoothStatus,
   createSalesBooth,
   getSalesSourceSummary,

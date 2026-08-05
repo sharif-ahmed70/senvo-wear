@@ -19,6 +19,7 @@ import {
   type PosCartLineContract,
   type PosCheckoutContract,
   type PosSaleLookupContract,
+  type SalesReceiptContract,
   type SalesCounterContract,
   type SalesSessionContract,
 } from "@senvo/contracts";
@@ -49,6 +50,10 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<PosCheckoutContract>>;
+  getReceipt(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesReceiptContract>>;
   listCheckouts(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -86,6 +91,7 @@ export type PosApiHandlers = {
   createCounter: ApiHandler<SalesCounterContract>;
   listCounters: ApiHandler<SalesCounterContract[]>;
   getCheckout: ApiHandler<PosCheckoutContract>;
+  getReceipt: ApiHandler<SalesReceiptContract>;
   listCheckouts: ApiHandler<PosCheckoutContract[]>;
   listSessions: ApiHandler<SalesSessionContract[]>;
   lookupSale: ApiHandler<PosSaleLookupContract>;
@@ -146,6 +152,13 @@ export function createPosApiHandlers(dependencies: {
       getPosCheckoutServiceInputSchema,
       (context, input) => dependencies.pos.getCheckout(context, input),
     ),
+    getReceipt: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) => dependencies.pos.getReceipt(context, input),
+      inputSchema: getPosCheckoutServiceInputSchema,
+      permission: { action: "READ", resource: "RECEIPT" },
+    }),
     listCheckouts: handler("READ", posEmptyInputSchema, (context, input) =>
       dependencies.pos.listCheckouts(context, input),
     ),

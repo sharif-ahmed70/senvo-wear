@@ -1,10 +1,16 @@
 export type AuditAction =
   | "INVENTORY_MOVEMENT_POSTED"
   | "POS_CHECKOUT_COMPLETED"
+  | "POS_PAYMENT_RECORDED"
+  | "SALES_RECEIPT_ISSUED"
   | "SALES_ORDER_CREATED";
 
 export type AuditResource =
-  "INVENTORY_MOVEMENT" | "POS_CHECKOUT" | "SALES_ORDER";
+  | "INVENTORY_MOVEMENT"
+  | "PAYMENT"
+  | "POS_CHECKOUT"
+  | "SALES_ORDER"
+  | "SALES_RECEIPT";
 
 export type AuditJsonValue =
   | boolean
