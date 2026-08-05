@@ -65,6 +65,13 @@ export type PosCheckout = {
   idempotencyKey: string;
   orderNumber: string;
   organizationId: string;
+  outstandingMinor: number | null;
+  paidMinor: number | null;
+  paymentBatchId: string | null;
+  paymentRequestSignature: string | null;
+  paymentStatus: CheckoutPaymentStatus;
+  receiptId: string | null;
+  receiptNumber: string | null;
   salesOrderId: string;
   salesSessionId: string;
   staffName: string;
@@ -81,6 +88,7 @@ export type PosCheckoutPreparation = {
   cartId: string;
   checkout: PosCheckout | null;
   counterId: string;
+  counterCode: string;
   counterName: string;
   counterStatus: SalesCounterStatus;
   counterType: SalesCounterType;
@@ -93,11 +101,20 @@ export type PosCheckoutPreparation = {
   }[];
   membershipStatus: "ACTIVE" | "INACTIVE";
   organizationId: string;
+  organizationAddressLine1: string | null;
+  organizationAddressLine2: string | null;
+  organizationCity: string | null;
+  organizationDistrict: string | null;
+  organizationEmail: string | null;
+  organizationName: string;
+  organizationPhone: string | null;
+  organizationPostalCode: string | null;
   salesSessionId: string;
   sessionStatus: SalesSessionStatus;
   staffId: string;
   staffName: string;
   staffStatus: "ACTIVE" | "INACTIVE" | "LOCKED";
+  sourceName: string;
 };
 
 export type SellableVariant = {
@@ -118,3 +135,4 @@ export type PosSaleLookup = {
   sku: string;
   variantId: string;
 };
+import type { CheckoutPaymentStatus } from "../../payment/domain/models.js";

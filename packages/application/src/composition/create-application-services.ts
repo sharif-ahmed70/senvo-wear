@@ -15,6 +15,7 @@ import {
   PrismaSalesSourceRepository,
   PrismaPosRepository,
   PrismaPosCheckoutRepository,
+  PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
   PrismaRolePermissionRepository,
@@ -42,6 +43,7 @@ import type {
   SalesSourceRepository,
   PosRepository,
   PosCheckoutRepository,
+  ReceiptRepository,
   RolePermissionRepository,
   UserRepository,
 } from "@senvo/domain";
@@ -76,6 +78,7 @@ export type CreateApplicationServicesOptions = {
   organizationProfileRepository?: OrganizationProfileRepository;
   posRepository?: PosRepository;
   posCheckoutRepository?: PosCheckoutRepository;
+  receiptRepository?: ReceiptRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
@@ -126,6 +129,7 @@ export function createApplicationServices(
   let productVariantRepository = options.productVariantRepository;
   let posRepository = options.posRepository;
   let posCheckoutRepository = options.posCheckoutRepository;
+  let receiptRepository = options.receiptRepository;
   let sizeRepository = options.sizeRepository;
 
   if (
@@ -147,6 +151,7 @@ export function createApplicationServices(
     !productVariantRepository ||
     !posRepository ||
     !posCheckoutRepository ||
+    !receiptRepository ||
     !sizeRepository
   ) {
     if (!prismaClient) {
@@ -239,6 +244,9 @@ export function createApplicationServices(
   posCheckoutRepository ??= new PrismaPosCheckoutRepository(
     requirePrismaClient(prismaClient),
   );
+  receiptRepository ??= new PrismaReceiptRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   return {
     catalog: new CatalogApplicationService({
@@ -286,6 +294,7 @@ export function createApplicationServices(
       inventory: inventoryReadRepository,
       memberships: membershipRepository,
       pos: posRepository,
+      receipts: receiptRepository,
       requestIdGenerator: options.requestIdGenerator,
       salesSources:
         salesSourceRepository ??

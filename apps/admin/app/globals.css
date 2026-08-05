@@ -1885,14 +1885,183 @@ a {
   padding: 4px 8px;
 }
 .pos-status--active,
-.pos-status--open {
+.pos-status--open,
+.pos-status--paid {
   background: #e8f5ec;
   color: #176b3a;
 }
 .pos-status--inactive,
-.pos-status--closed {
+.pos-status--closed,
+.pos-status--unrecorded {
   background: #f1f2f1;
   color: #626b66;
+}
+.pos-status--partially_paid {
+  background: #fff4d8;
+  color: #7a5200;
+}
+.pos-status--unpaid {
+  background: #fde9e7;
+  color: #9f2f27;
+}
+.pos-receipt-link,
+.receipt-actions button {
+  align-items: center;
+  background: #176b3a;
+  border: 0;
+  border-radius: 5px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 7px;
+  padding: 7px 10px;
+  text-decoration: none;
+}
+.pos-muted {
+  color: var(--admin-muted);
+  font-size: 0.76rem;
+}
+.receipt-page {
+  padding: 24px;
+}
+.receipt-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.receipt-document {
+  background: #fff;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  color: #17201b;
+  margin: 0 auto;
+  max-width: 860px;
+  padding: 30px;
+}
+.receipt-header {
+  align-items: flex-start;
+  border-bottom: 2px solid #17201b;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 20px;
+}
+.receipt-header h1 {
+  font-size: 1.35rem;
+  margin: 0 0 7px;
+}
+.receipt-header p {
+  color: #626b66;
+  font-size: 0.78rem;
+  margin: 3px 0;
+}
+.receipt-number {
+  text-align: right;
+}
+.receipt-number span {
+  color: #626b66;
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+.receipt-number strong {
+  display: block;
+  margin-top: 5px;
+}
+.receipt-meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 20px 0;
+}
+.receipt-meta div,
+.receipt-summary dl div {
+  display: grid;
+  gap: 4px;
+}
+.receipt-meta dt,
+.receipt-summary dt {
+  color: #626b66;
+  font-size: 0.7rem;
+}
+.receipt-meta dd,
+.receipt-summary dd {
+  font-size: 0.82rem;
+  font-weight: 650;
+  margin: 0;
+}
+.receipt-table-wrap {
+  overflow-x: auto;
+}
+.receipt-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+}
+.receipt-table th,
+.receipt-table td {
+  border-bottom: 1px solid #dfe3e0;
+  padding: 11px 8px;
+  text-align: right;
+}
+.receipt-table th:first-child,
+.receipt-table td:first-child {
+  text-align: left;
+}
+.receipt-table td span {
+  color: #626b66;
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 3px;
+}
+.receipt-summary {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.receipt-summary dl {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  min-width: 250px;
+}
+.receipt-summary dl div {
+  grid-template-columns: 1fr auto;
+}
+.receipt-total {
+  border-top: 1px solid #17201b;
+  padding-top: 9px;
+}
+.receipt-payments {
+  border-top: 1px solid #dfe3e0;
+  margin-top: 22px;
+  padding-top: 16px;
+}
+.receipt-payments h2 {
+  font-size: 0.9rem;
+}
+.receipt-payments div {
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: space-between;
+  padding: 5px 0;
+}
+.receipt-payments p {
+  color: #626b66;
+  font-size: 0.78rem;
+}
+.receipt-state {
+  align-items: center;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  color: var(--admin-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  min-height: 260px;
 }
 .pos-state {
   align-items: center;
@@ -1953,6 +2122,38 @@ a {
     content: attr(data-label);
     font-size: 0.7rem;
     font-weight: 650;
+  }
+  .receipt-page {
+    padding: 12px;
+  }
+  .receipt-document {
+    padding: 18px;
+  }
+  .receipt-header {
+    flex-direction: column;
+  }
+  .receipt-number {
+    text-align: left;
+  }
+  .receipt-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media print {
+  .admin-sidebar,
+  .admin-topbar,
+  .receipt-actions {
+    display: none !important;
+  }
+  .admin-main,
+  .receipt-page {
+    padding: 0 !important;
+  }
+  .receipt-document {
+    border: 0;
+    max-width: none;
+    padding: 0;
   }
 }
 

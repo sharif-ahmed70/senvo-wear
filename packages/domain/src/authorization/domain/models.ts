@@ -10,6 +10,8 @@ export type PermissionResource =
   | "SALES_ORDER"
   | "SALES"
   | "POS"
+  | "PAYMENT"
+  | "RECEIPT"
   | "REPORT";
 
 export type PermissionAction =

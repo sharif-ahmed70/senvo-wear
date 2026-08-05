@@ -23,6 +23,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 
@@ -58,11 +59,16 @@ export function PosManagementWorkspace({
       canUpdate={permissions.includes("POS:UPDATE")}
     />
   ) : (
-    <CheckoutHistory />
+    <CheckoutHistory
+      canReadReceipt={
+        permissions.includes("RECEIPT:READ") &&
+        permissions.includes("PAYMENT:READ")
+      }
+    />
   );
 }
 
-function CheckoutHistory() {
+function CheckoutHistory({ canReadReceipt }: { canReadReceipt: boolean }) {
   const [checkouts, setCheckouts] = useState<PosCheckoutContract[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +111,10 @@ function CheckoutHistory() {
                 <th>Counter</th>
                 <th>Team member</th>
                 <th>Amount</th>
-                <th>Status</th>
+                <th>Paid</th>
+                <th>Outstanding</th>
+                <th>Payment</th>
+                <th>Receipt</th>
                 <th>Time</th>
               </tr>
             </thead>
@@ -120,8 +129,32 @@ function CheckoutHistory() {
                   <td data-label="Amount">
                     {formatMoney(checkout.totalMinor)}
                   </td>
-                  <td data-label="Status">
-                    <Status value="COMPLETED" />
+                  <td data-label="Paid">
+                    {checkout.paidMinor === null
+                      ? "Not recorded"
+                      : formatMoney(checkout.paidMinor)}
+                  </td>
+                  <td data-label="Outstanding">
+                    {checkout.outstandingMinor === null
+                      ? "Not recorded"
+                      : formatMoney(checkout.outstandingMinor)}
+                  </td>
+                  <td data-label="Payment">
+                    <Status value={checkout.paymentStatus} />
+                  </td>
+                  <td data-label="Receipt">
+                    {canReadReceipt && checkout.receiptId ? (
+                      <Link
+                        className="pos-receipt-link"
+                        href={`/pos/checkouts/${checkout.id}/receipt`}
+                      >
+                        View
+                      </Link>
+                    ) : (
+                      <span className="pos-muted">
+                        {checkout.receiptId ? "Restricted" : "Unavailable"}
+                      </span>
+                    )}
                   </td>
                   <td data-label="Time">{formatDate(checkout.completedAt)}</td>
                 </tr>
@@ -593,19 +626,31 @@ function State({
 function Status({
   value,
 }: {
-  value: "ACTIVE" | "CLOSED" | "COMPLETED" | "INACTIVE" | "OPEN";
+  value:
+    | "ACTIVE"
+    | "CLOSED"
+    | "COMPLETED"
+    | "INACTIVE"
+    | "OPEN"
+    | "PAID"
+    | "PARTIALLY_PAID"
+    | "UNPAID"
+    | "UNRECORDED";
 }) {
+  const labels = {
+    ACTIVE: "Active",
+    CLOSED: "Closed",
+    COMPLETED: "Completed",
+    INACTIVE: "Inactive",
+    OPEN: "Open",
+    PAID: "Paid",
+    PARTIALLY_PAID: "Partially paid",
+    UNPAID: "Unpaid",
+    UNRECORDED: "Not recorded",
+  } as const;
   return (
     <span className={`pos-status pos-status--${value.toLowerCase()}`}>
-      {value === "COMPLETED"
-        ? "Completed"
-        : value === "OPEN"
-          ? "Open"
-          : value === "CLOSED"
-            ? "Closed"
-            : value === "ACTIVE"
-              ? "Active"
-              : "Inactive"}
+      {labels[value]}
     </span>
   );
 }

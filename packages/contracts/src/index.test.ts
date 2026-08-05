@@ -15,6 +15,7 @@ import {
   changeBranchStatusInputSchema,
   changePosCounterStatusInputSchema,
   changeStockLocationStatusInputSchema,
+  checkoutPosCartServiceInputSchema,
   createBranchInputSchema,
   createCredentialInputSchema,
   createInventoryAllocationPolicyInputSchema,
@@ -100,6 +101,49 @@ import {
 } from "./index.js";
 
 describe("API contracts", () => {
+  it("accepts only operator-controlled checkout payment fields", () => {
+    const valid = {
+      allowOutstanding: false,
+      cartId: "10000000-0000-4000-8000-000000000001",
+      idempotencyKey: "checkout-contract-001",
+      payments: [
+        { amountMinor: 1200, method: "CASH" },
+        { amountMinor: 1300, method: "CARD", reference: "CARD-123" },
+      ],
+    };
+    expect(checkoutPosCartServiceInputSchema.safeParse(valid).success).toBe(
+      true,
+    );
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        organizationId: "10000000-0000-4000-8000-000000000002",
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        payments: [{ amountMinor: 2500, method: "CARD" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        payments: [{ amountMinor: 0, method: "CASH" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({ ...valid, payments: [] })
+        .success,
+    ).toBe(false);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        allowOutstanding: true,
+        payments: [],
+      }).success,
+    ).toBe(true);
+  });
   it("creates a discriminated success response", () => {
     expect(createApiSuccess({ ready: true }, "req_contract_1")).toEqual({
       data: { ready: true },

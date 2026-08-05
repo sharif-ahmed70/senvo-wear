@@ -10,6 +10,7 @@ import type {
   InventoryReadRepository,
   OrganizationRepository,
   PosCheckoutRepository,
+  ReceiptRepository,
   SalesOrderRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
@@ -35,6 +36,7 @@ describe("createApplicationServices", () => {
       productVariantRepository: fakeProductVariantRepository,
       posRepository: {} as never,
       posCheckoutRepository: fakePosCheckoutRepository,
+      receiptRepository: fakeReceiptRepository,
       rolePermissionRepository: {} as never,
       salesOrderRepository: fakeSalesOrderRepository,
       salesSourceRepository: {} as never,
@@ -156,6 +158,11 @@ const fakePosCheckoutRepository: PosCheckoutRepository = {
   findById: () => Promise.resolve(null),
   list: () => Promise.resolve([]),
   prepare: () => Promise.resolve(null),
+};
+
+const fakeReceiptRepository: ReceiptRepository = {
+  create: () => Promise.reject(unreachableError()),
+  findByCheckoutId: () => Promise.resolve(null),
 };
 
 const fakeSalesOrderRepository: SalesOrderRepository = {

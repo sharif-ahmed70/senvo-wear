@@ -503,6 +503,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 200,
       },
       {
+        handler: handlers.pos.getReceipt,
+        input: (_body, match) => ({ checkoutId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/checkouts\/(?<id>[0-9a-f-]+)\/receipt$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.getCheckout,
         input: (_body, match) => ({ checkoutId: match.groups?.id }),
         method: "GET",

@@ -3044,6 +3044,37 @@ export const removePosCartItemServiceInputSchema = z
   .strict();
 
 export const posCheckoutStatusSchema = z.literal("COMPLETED");
+export const paymentMethodSchema = z.enum([
+  "CASH",
+  "CARD",
+  "MOBILE_BANKING",
+  "BANK_TRANSFER",
+]);
+export const paymentBalanceStatusSchema = z.enum([
+  "UNPAID",
+  "PARTIALLY_PAID",
+  "PAID",
+]);
+export const checkoutPaymentStatusSchema = z.union([
+  paymentBalanceStatusSchema,
+  z.literal("UNRECORDED"),
+]);
+export const checkoutPaymentInstructionSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    method: paymentMethodSchema,
+    reference: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict()
+  .superRefine((payment, context) => {
+    if (payment.method !== "CASH" && !payment.reference) {
+      context.addIssue({
+        code: "custom",
+        message: "A transaction reference is required for non-cash payments.",
+        path: ["reference"],
+      });
+    }
+  });
 export const posCheckoutContractSchema = z
   .object({
     cartId: idSchema,
@@ -3054,6 +3085,11 @@ export const posCheckoutContractSchema = z
     id: idSchema,
     idempotencyKey: z.string(),
     orderNumber: z.string(),
+    outstandingMinor: minorUnitAmountSchema.nullable(),
+    paidMinor: minorUnitAmountSchema.nullable(),
+    paymentStatus: checkoutPaymentStatusSchema,
+    receiptId: idSchema.nullable(),
+    receiptNumber: z.string().nullable(),
     salesOrderId: idSchema,
     salesSessionId: idSchema,
     staffName: z.string(),
@@ -3072,10 +3108,80 @@ export const checkoutPosCartServiceInputSchema = z
       .min(8)
       .max(64)
       .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/u),
+    payments: z.array(checkoutPaymentInstructionSchema).max(8),
+    allowOutstanding: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((checkout, context) => {
+    if (checkout.payments.length === 0 && !checkout.allowOutstanding) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "At least one payment is required unless outstanding payment is allowed.",
+        path: ["payments"],
+      });
+    }
+  });
 export const getPosCheckoutServiceInputSchema = z
   .object({ checkoutId: idSchema })
+  .strict();
+
+export const salesReceiptLineContractSchema = z
+  .object({
+    color: z.string().nullable(),
+    discountMinor: minorUnitAmountSchema,
+    lineNumber: z.number().int().positive(),
+    lineTotalMinor: minorUnitAmountSchema,
+    productName: z.string(),
+    quantity: z.number().int().positive(),
+    size: z.string().nullable(),
+    sku: z.string(),
+    unitPriceMinor: minorUnitAmountSchema,
+  })
+  .strict();
+export const salesReceiptPaymentContractSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    lineNumber: z.number().int().positive(),
+    method: paymentMethodSchema,
+    reference: z.string().nullable(),
+  })
+  .strict();
+export const salesReceiptContractSchema = z
+  .object({
+    checkoutId: idSchema,
+    counterCode: z.string(),
+    counterName: z.string(),
+    currencyCode: z.literal("BDT"),
+    customerEmail: z.string().nullable(),
+    customerName: z.string().nullable(),
+    customerPhone: z.string().nullable(),
+    deliveryMinor: minorUnitAmountSchema,
+    discountMinor: minorUnitAmountSchema,
+    id: idSchema,
+    issuedAt: isoTimestampSchema,
+    lines: z.array(salesReceiptLineContractSchema),
+    orderNumber: z.string(),
+    organizationAddressLine1: z.string().nullable(),
+    organizationAddressLine2: z.string().nullable(),
+    organizationCity: z.string().nullable(),
+    organizationDistrict: z.string().nullable(),
+    organizationEmail: z.string().nullable(),
+    organizationName: z.string(),
+    organizationPhone: z.string().nullable(),
+    organizationPostalCode: z.string().nullable(),
+    outstandingMinor: minorUnitAmountSchema,
+    paidMinor: minorUnitAmountSchema,
+    paymentStatus: paymentBalanceStatusSchema,
+    payments: z.array(salesReceiptPaymentContractSchema).max(8),
+    receiptNumber: z.string(),
+    salesChannel: z.enum(["OFFLINE_STORE", "EVENT_BOOTH"]),
+    salesOrderId: idSchema,
+    sourceName: z.string(),
+    staffName: z.string(),
+    subtotalMinor: minorUnitAmountSchema,
+    totalMinor: minorUnitAmountSchema,
+  })
   .strict();
 
 export type SalesCounterContract = z.infer<typeof salesCounterContractSchema>;
@@ -3086,6 +3192,11 @@ export type PosCheckoutContract = z.infer<typeof posCheckoutContractSchema>;
 export type CheckoutPosCartServiceInputContract = z.infer<
   typeof checkoutPosCartServiceInputSchema
 >;
+export type PaymentMethodContract = z.infer<typeof paymentMethodSchema>;
+export type PaymentBalanceStatusContract = z.infer<
+  typeof paymentBalanceStatusSchema
+>;
+export type SalesReceiptContract = z.infer<typeof salesReceiptContractSchema>;
 export type GetPosCheckoutServiceInputContract = z.infer<
   typeof getPosCheckoutServiceInputSchema
 >;

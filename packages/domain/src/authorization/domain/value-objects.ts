@@ -19,6 +19,8 @@ export const permissionResources = [
   "SALES_ORDER",
   "SALES",
   "POS",
+  "PAYMENT",
+  "RECEIPT",
   "REPORT",
 ] as const satisfies readonly PermissionResource[];
 

@@ -11,7 +11,15 @@ import {
   reserveSalesOrder,
 } from "../../sales/application/order-use-cases.js";
 import type { SalesOrderRepository } from "../../sales/repositories/sales-order-repositories.js";
-import type { PosCheckout } from "../domain/models.js";
+import {
+  calculatePaymentBalance,
+  createPaymentRequestSignature,
+  normalizePaymentInstructions,
+} from "../../payment/application/payment-rules.js";
+import type { PaymentMethod } from "../../payment/domain/models.js";
+import type { PaymentRepository } from "../../payment/repositories/payment-repository.js";
+import type { ReceiptRepository } from "../../receipt/repositories/receipt-repository.js";
+import type { PosCheckout, PosCheckoutPreparation } from "../domain/models.js";
 import type { PosCheckoutRepository } from "../repositories/pos-checkout-repository.js";
 
 const uuidPattern =
@@ -25,14 +33,25 @@ export type PosCheckoutSalesOrderRepository = Pick<
 export async function checkoutCart(
   repositories: {
     checkouts: PosCheckoutRepository;
+    payments: PaymentRepository;
+    receipts: ReceiptRepository;
     salesOrders: PosCheckoutSalesOrderRepository;
   },
   input: {
+    allowOutstanding: boolean;
+    approveOutstanding(): Promise<void>;
     cartId: string;
     checkoutId: string;
     completedAt: Date;
     idempotencyKey: string;
     organizationId: string;
+    paymentBatchId: string;
+    payments: readonly {
+      amountMinor: number;
+      method: PaymentMethod;
+      reference?: string | null;
+    }[];
+    receiptId: string;
     staffId: string;
   },
 ): Promise<{ checkout: PosCheckout; replayed: boolean }> {
@@ -40,7 +59,17 @@ export async function checkoutCart(
   const cartId = assertId(input.cartId, "cartId");
   const staffId = assertId(input.staffId, "staffId");
   const checkoutId = assertId(input.checkoutId, "checkoutId");
+  const paymentBatchId = assertId(input.paymentBatchId, "paymentBatchId");
+  const receiptId = assertId(input.receiptId, "receiptId");
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
+  const payments = normalizePaymentInstructions(
+    input.payments,
+    input.allowOutstanding,
+  );
+  const paymentRequestSignature = createPaymentRequestSignature(
+    payments,
+    input.allowOutstanding,
+  );
   const preparation = await repositories.checkouts.prepare(
     cartId,
     organizationId,
@@ -52,9 +81,23 @@ export async function checkoutCart(
         "This cart was already checked out with another idempotency key.",
       );
     }
+    if (
+      preparation.checkout.paymentRequestSignature === null ||
+      preparation.checkout.paymentRequestSignature !== paymentRequestSignature
+    ) {
+      throw new ConflictError(
+        "Checkout idempotency key was reused with different payment instructions.",
+      );
+    }
     return { checkout: preparation.checkout, replayed: true };
   }
   validatePreparation(preparation, staffId);
+  const balance = calculatePaymentBalance(
+    checkoutTotal(preparation),
+    payments,
+    input.allowOutstanding,
+  );
+  if (balance.outstandingMinor > 0) await input.approveOutstanding();
 
   const suffix = checkoutId.replaceAll("-", "").slice(0, 20).toUpperCase();
   const orderKey = `pos:${preparation.salesSessionId}:${idempotencyKey}`;
@@ -100,7 +143,7 @@ export async function checkoutCart(
     organizationId,
     salesOrderId: draft.id,
   });
-  const checkout = await repositories.checkouts.createCompleted({
+  const checkoutRecord = await repositories.checkouts.createCompleted({
     cartId,
     completedAt: input.completedAt,
     counterId: preparation.counterId,
@@ -113,6 +156,88 @@ export async function checkoutCart(
     subtotalMinor: fulfilled.subtotalMinor,
     totalMinor: fulfilled.totalMinor,
   });
+  const payment = await repositories.payments.create({
+    checkoutId: checkoutRecord.id,
+    counterId: preparation.counterId,
+    createdAt: input.completedAt,
+    currencyCode: "BDT",
+    id: paymentBatchId,
+    idempotencyKey,
+    lines: payments,
+    organizationId,
+    outstandingMinor: balance.outstandingMinor,
+    paidMinor: balance.paidMinor,
+    payableMinor: fulfilled.totalMinor,
+    requestSignature: paymentRequestSignature,
+    salesOrderId: fulfilled.id,
+    salesSessionId: preparation.salesSessionId,
+    staffId,
+    status: balance.status,
+  });
+  const receipt = await repositories.receipts.create({
+    checkoutId: checkoutRecord.id,
+    counterCode: preparation.counterCode,
+    counterName: preparation.counterName,
+    currencyCode: "BDT",
+    customerEmail: fulfilled.customerEmail,
+    customerName: fulfilled.customerName,
+    customerPhone: fulfilled.customerPhone,
+    deliveryMinor: fulfilled.deliveryMinor,
+    discountMinor: fulfilled.discountMinor,
+    id: receiptId,
+    issuedAt: input.completedAt,
+    lines: fulfilled.lines.map((line) => ({
+      color: line.colorSnapshot,
+      discountMinor: line.discountMinor,
+      lineNumber: line.lineNumber,
+      lineTotalMinor: line.lineTotalMinor,
+      productName: line.productNameSnapshot,
+      quantity: line.quantity,
+      size: line.sizeSnapshot,
+      sku: line.skuSnapshot,
+      unitPriceMinor: line.unitPriceMinor,
+    })),
+    orderNumber: fulfilled.orderNumber,
+    organizationAddressLine1: preparation.organizationAddressLine1,
+    organizationAddressLine2: preparation.organizationAddressLine2,
+    organizationCity: preparation.organizationCity,
+    organizationDistrict: preparation.organizationDistrict,
+    organizationEmail: preparation.organizationEmail,
+    organizationId,
+    organizationName: preparation.organizationName,
+    organizationPhone: preparation.organizationPhone,
+    organizationPostalCode: preparation.organizationPostalCode,
+    outstandingMinor: balance.outstandingMinor,
+    paidMinor: balance.paidMinor,
+    paymentBatchId: payment.id,
+    paymentStatus: balance.status,
+    payments: payment.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      reference: line.reference,
+    })),
+    receiptNumber: `RCP-${suffix}`,
+    salesChannel:
+      preparation.counterType === "EVENT_BOOTH"
+        ? "EVENT_BOOTH"
+        : "OFFLINE_STORE",
+    salesOrderId: fulfilled.id,
+    sourceName: preparation.sourceName,
+    staffName: preparation.staffName,
+    subtotalMinor: fulfilled.subtotalMinor,
+    totalMinor: fulfilled.totalMinor,
+  });
+  const checkout: PosCheckout = {
+    ...checkoutRecord,
+    outstandingMinor: balance.outstandingMinor,
+    paidMinor: balance.paidMinor,
+    paymentBatchId: payment.id,
+    paymentRequestSignature,
+    paymentStatus: balance.status,
+    receiptId: receipt.id,
+    receiptNumber: receipt.receiptNumber,
+  };
   return { checkout, replayed: false };
 }
 
@@ -188,4 +313,16 @@ function subtotal(price: number, quantity: number): number {
     throw new ValidationApplicationError("Cart total is invalid.");
   }
   return value;
+}
+
+function checkoutTotal(preparation: PosCheckoutPreparation): number {
+  let total = 0;
+  for (const line of preparation.lines) {
+    const next = total + subtotal(line.sellingPriceMinor, line.quantity);
+    if (!Number.isSafeInteger(next) || next > 2_147_483_647) {
+      throw new ValidationApplicationError("Cart total is invalid.");
+    }
+    total = next;
+  }
+  return total;
 }

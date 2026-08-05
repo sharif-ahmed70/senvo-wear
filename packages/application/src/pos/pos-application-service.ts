@@ -16,6 +16,7 @@ import {
   listSalesSessions,
   getCheckoutStatus,
   listCheckoutHistory,
+  getSalesReceipt,
   lookupPosSale,
   openSalesSession,
   removePosCartItem,
@@ -28,6 +29,8 @@ import {
   type PosCheckout,
   type PosCheckoutRepository,
   type PosRepository,
+  type ReceiptRepository,
+  type SalesReceipt,
   type SalesCounter,
   type SalesSession,
   type SalesSourceRepository,
@@ -43,6 +46,7 @@ import {
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
   posCheckoutContractSchema,
+  salesReceiptContractSchema,
   posEmptyInputSchema,
   posSaleLookupContractSchema,
   removePosCartItemServiceInputSchema,
@@ -53,6 +57,7 @@ import {
   type PosCartLineContract,
   type PosCheckoutContract,
   type PosSaleLookupContract,
+  type SalesReceiptContract,
   type SalesCounterContract,
   type SalesSessionContract,
 } from "@senvo/contracts";
@@ -96,6 +101,7 @@ export type PosApplicationServiceDependencies = {
   inventory: InventoryReadRepository;
   memberships: OrganizationMembershipRepository;
   pos: PosRepository;
+  receipts: ReceiptRepository;
   requestIdGenerator?: () => string;
   salesSources: SalesSourceRepository;
   transactionManager: ApplicationTransactionManager;
@@ -278,15 +284,24 @@ export class PosApplicationService {
             transaction.applicationContext,
             { action: "CREATE", resource: "SALES" },
           );
+          await requireAuthorization(
+            this.dependencies.authorizationService,
+            transaction.applicationContext,
+            { action: "CREATE", resource: "PAYMENT" },
+          );
           if (
             !transaction.posCheckoutRepository ||
-            !transaction.posCheckoutSalesOrderRepository
+            !transaction.posCheckoutSalesOrderRepository ||
+            !transaction.paymentRepository ||
+            !transaction.receiptRepository
           ) {
             throw new Error("POS checkout transaction capability is required.");
           }
           const result = await completePosCheckout(
             {
               checkouts: transaction.posCheckoutRepository,
+              payments: transaction.paymentRepository,
+              receipts: transaction.receiptRepository,
               salesOrders: transaction.posCheckoutSalesOrderRepository,
             },
             {
@@ -294,7 +309,15 @@ export class PosApplicationService {
               checkoutId: crypto.randomUUID(),
               completedAt: this.dependencies.clock.now(),
               organizationId: trusted.organizationId,
+              paymentBatchId: crypto.randomUUID(),
+              receiptId: crypto.randomUUID(),
               staffId,
+              approveOutstanding: () =>
+                requireAuthorization(
+                  this.dependencies.authorizationService,
+                  transaction.applicationContext,
+                  { action: "APPROVE", resource: "PAYMENT" },
+                ),
             },
           );
           if (!result.replayed) {
@@ -309,6 +332,37 @@ export class PosApplicationService {
               organizationId: trusted.organizationId,
               resource: "POS_CHECKOUT",
               resourceId: result.checkout.id,
+            });
+            await transaction.auditWriter.recordWithinTransaction({
+              action: "POS_PAYMENT_RECORDED",
+              actor: { userId: staffId },
+              metadata: {
+                checkoutId: result.checkout.id,
+                lineCount: input.payments.length,
+                outstandingMinor: result.checkout.outstandingMinor ?? 0,
+                paidMinor: result.checkout.paidMinor ?? 0,
+                paymentStatus: result.checkout.paymentStatus,
+                requestId: trusted.requestId,
+                salesOrderId: result.checkout.salesOrderId,
+              },
+              organizationId: trusted.organizationId,
+              resource: "PAYMENT",
+              resourceId: result.checkout.paymentBatchId ?? result.checkout.id,
+            });
+            await transaction.auditWriter.recordWithinTransaction({
+              action: "SALES_RECEIPT_ISSUED",
+              actor: { userId: staffId },
+              metadata: {
+                checkoutId: result.checkout.id,
+                outstandingMinor: result.checkout.outstandingMinor ?? 0,
+                paidMinor: result.checkout.paidMinor ?? 0,
+                paymentStatus: result.checkout.paymentStatus,
+                requestId: trusted.requestId,
+                salesOrderId: result.checkout.salesOrderId,
+              },
+              organizationId: trusted.organizationId,
+              resource: "SALES_RECEIPT",
+              resourceId: result.checkout.receiptId ?? result.checkout.id,
             });
           }
           return mapCheckout(result.checkout);
@@ -340,6 +394,28 @@ export class PosApplicationService {
           trusted.organizationId,
         )
       ).map(mapCheckout);
+    });
+  }
+
+  getReceipt(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<SalesReceiptContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        { action: "READ", resource: "RECEIPT" },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        { action: "READ", resource: "PAYMENT" },
+      );
+      return mapReceipt(
+        await getSalesReceipt(this.dependencies.receipts, {
+          ...input,
+          organizationId: trusted.organizationId,
+        }),
+      );
     });
   }
 
@@ -425,6 +501,11 @@ function mapCheckout(record: PosCheckout): PosCheckoutContract {
     id: record.id,
     idempotencyKey: record.idempotencyKey,
     orderNumber: record.orderNumber,
+    outstandingMinor: record.outstandingMinor,
+    paidMinor: record.paidMinor,
+    paymentStatus: record.paymentStatus,
+    receiptId: record.receiptId,
+    receiptNumber: record.receiptNumber,
     salesOrderId: record.salesOrderId,
     salesSessionId: record.salesSessionId,
     staffName: record.staffName,
@@ -432,6 +513,12 @@ function mapCheckout(record: PosCheckout): PosCheckoutContract {
     subtotalMinor: record.subtotalMinor,
     totalMinor: record.totalMinor,
     updatedAt: record.updatedAt.toISOString(),
+  });
+}
+function mapReceipt(record: SalesReceipt): SalesReceiptContract {
+  return salesReceiptContractSchema.parse({
+    ...record,
+    issuedAt: record.issuedAt.toISOString(),
   });
 }
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {

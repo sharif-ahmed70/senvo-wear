@@ -11,6 +11,8 @@ import { PrismaTransactionalInventoryMovementPostingRepository } from "../invent
 import { PrismaTransactionalSalesOrderCreationRepository } from "../sales/repositories.js";
 import { PrismaPosCheckoutRepository } from "../pos/checkout-repository.js";
 import { createTransactionScopedSalesOrderRepository } from "../sales/repositories.js";
+import { PrismaPaymentRepository } from "../payment/repository.js";
+import { PrismaReceiptRepository } from "../receipt/repository.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 type TransactionActorContext = {
@@ -43,6 +45,8 @@ export class PrismaTransactionManager<
             transaction,
           ),
         posCheckoutRepository: new PrismaPosCheckoutRepository(transaction),
+        paymentRepository: new PrismaPaymentRepository(transaction),
+        receiptRepository: new PrismaReceiptRepository(transaction),
         posCheckoutSalesOrderRepository:
           createTransactionScopedSalesOrderRepository(transaction),
         salesOrderRepository:

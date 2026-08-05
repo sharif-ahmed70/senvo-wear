@@ -5,6 +5,10 @@ import {
   type PosCheckout,
   type PosCheckoutPreparation,
   type PosCheckoutRepository,
+  type PaymentBatch,
+  type PaymentRepository,
+  type ReceiptRepository,
+  type SalesReceipt,
   type SalesOrder,
 } from "../../index.js";
 import { describe, expect, it } from "vitest";
@@ -19,29 +23,51 @@ const ids = {
   session: "10000000-0000-4000-8000-000000000007",
   staff: "10000000-0000-4000-8000-000000000008",
   variant: "10000000-0000-4000-8000-000000000009",
+  payment: "10000000-0000-4000-8000-000000000012",
+  receipt: "10000000-0000-4000-8000-000000000013",
 };
+
+function repositories(checkouts: FakeCheckoutRepository) {
+  return {
+    checkouts,
+    payments: new FakePaymentRepository(),
+    receipts: new FakeReceiptRepository(),
+    salesOrders: new FakeSalesRepository(),
+  };
+}
 
 describe("POS checkout", () => {
   it("derives the offline channel and current server price through the full lifecycle", async () => {
     const checkouts = new FakeCheckoutRepository(preparation());
-    const sales = new FakeSalesRepository();
-    const result = await checkoutCart(
-      { checkouts, salesOrders: sales },
-      input(),
-    );
+    const dependencies = repositories(checkouts);
+    const result = await checkoutCart(dependencies, input());
     expect(result.replayed).toBe(false);
     expect(result.checkout).toMatchObject({
       status: "COMPLETED",
       subtotalMinor: 5000,
       totalMinor: 5000,
     });
-    expect(sales.created).toMatchObject({
+    expect(dependencies.salesOrders.created).toMatchObject({
       boothId: null,
       channel: "OFFLINE_STORE",
       lines: [{ quantity: 2, unitPriceMinor: 2500 }],
       organizationId: ids.organization,
     });
-    expect(sales.transitions).toEqual(["reserve", "confirm", "fulfill"]);
+    expect(dependencies.salesOrders.transitions).toEqual([
+      "reserve",
+      "confirm",
+      "fulfill",
+    ]);
+    expect(dependencies.payments.created).toMatchObject({
+      paidMinor: 5000,
+      outstandingMinor: 0,
+      status: "PAID",
+    });
+    expect(dependencies.receipts.created).toMatchObject({
+      paidMinor: 5000,
+      paymentStatus: "PAID",
+      totalMinor: 5000,
+    });
   });
 
   it("derives event booth source from the counter", async () => {
@@ -52,9 +78,9 @@ describe("POS checkout", () => {
       branchId: null,
       counterType: "EVENT_BOOTH",
     });
-    const sales = new FakeSalesRepository();
-    await checkoutCart({ checkouts, salesOrders: sales }, input());
-    expect(sales.created).toMatchObject({
+    const dependencies = repositories(checkouts);
+    await checkoutCart(dependencies, input());
+    expect(dependencies.salesOrders.created).toMatchObject({
       boothId,
       channel: "EVENT_BOOTH",
     });
@@ -73,11 +99,11 @@ describe("POS checkout", () => {
       ...preparation(),
       ...change,
     } as PosCheckoutPreparation);
-    const sales = new FakeSalesRepository();
-    await expect(
-      checkoutCart({ checkouts, salesOrders: sales }, input()),
-    ).rejects.toBeInstanceOf(BusinessRuleError);
-    expect(sales.created).toBeUndefined();
+    const dependencies = repositories(checkouts);
+    await expect(checkoutCart(dependencies, input())).rejects.toBeInstanceOf(
+      BusinessRuleError,
+    );
+    expect(dependencies.salesOrders.created).toBeUndefined();
   });
 
   it("returns the completed checkout for an idempotent retry", async () => {
@@ -86,10 +112,7 @@ describe("POS checkout", () => {
       ...preparation(),
       checkout: existing,
     });
-    const result = await checkoutCart(
-      { checkouts, salesOrders: new FakeSalesRepository() },
-      input(),
-    );
+    const result = await checkoutCart(repositories(checkouts), input());
     expect(result).toEqual({ checkout: existing, replayed: true });
   });
 
@@ -99,10 +122,43 @@ describe("POS checkout", () => {
       checkout: completedCheckout(),
     });
     await expect(
-      checkoutCart(
-        { checkouts, salesOrders: new FakeSalesRepository() },
-        { ...input(), idempotencyKey: "checkout-attempt-002" },
-      ),
+      checkoutCart(repositories(checkouts), {
+        ...input(),
+        idempotencyKey: "checkout-attempt-002",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("rejects same-key replay with a different normalized payment payload", async () => {
+    const checkouts = new FakeCheckoutRepository({
+      ...preparation(),
+      checkout: completedCheckout(),
+    });
+    await expect(
+      checkoutCart(repositories(checkouts), {
+        ...input(),
+        allowOutstanding: true,
+        payments: [{ amountMinor: 4000, method: "CASH" }],
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("does not mutate or replay a legacy checkout without a payment signature", async () => {
+    const checkouts = new FakeCheckoutRepository({
+      ...preparation(),
+      checkout: {
+        ...completedCheckout(),
+        outstandingMinor: null,
+        paidMinor: null,
+        paymentBatchId: null,
+        paymentRequestSignature: null,
+        paymentStatus: "UNRECORDED",
+        receiptId: null,
+        receiptNumber: null,
+      },
+    });
+    await expect(
+      checkoutCart(repositories(checkouts), input()),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 });
@@ -110,10 +166,15 @@ describe("POS checkout", () => {
 function input() {
   return {
     cartId: ids.cart,
+    allowOutstanding: false,
+    approveOutstanding: () => Promise.resolve(),
     checkoutId: ids.checkout,
     completedAt: new Date("2026-08-03T10:00:00.000Z"),
     idempotencyKey: "checkout-attempt-001",
     organizationId: ids.organization,
+    paymentBatchId: ids.payment,
+    payments: [{ amountMinor: 5000, method: "CASH" as const }],
+    receiptId: ids.receipt,
     staffId: ids.staff,
   };
 }
@@ -126,6 +187,7 @@ function preparation(): PosCheckoutPreparation {
     cartId: ids.cart,
     checkout: null,
     counterId: ids.counter,
+    counterCode: "MAIN",
     counterName: "Main counter",
     counterStatus: "ACTIVE",
     counterType: "STORE",
@@ -140,11 +202,20 @@ function preparation(): PosCheckoutPreparation {
     ],
     membershipStatus: "ACTIVE",
     organizationId: ids.organization,
+    organizationAddressLine1: "1 Main Road",
+    organizationAddressLine2: null,
+    organizationCity: "Dhaka",
+    organizationDistrict: "Dhaka",
+    organizationEmail: "sales@senvo.example",
+    organizationName: "SENVO Wear",
+    organizationPhone: "+8801000000000",
+    organizationPostalCode: "1205",
     salesSessionId: ids.session,
     sessionStatus: "OPEN",
     staffId: ids.staff,
     staffName: "Sales staff",
     staffStatus: "ACTIVE",
+    sourceName: "Main store",
   };
 }
 
@@ -160,6 +231,14 @@ function completedCheckout(): PosCheckout {
     idempotencyKey: "checkout-attempt-001",
     orderNumber: "POS-10000000000040008000",
     organizationId: ids.organization,
+    outstandingMinor: 0,
+    paidMinor: 5000,
+    paymentBatchId: ids.payment,
+    paymentRequestSignature:
+      '{"allowOutstanding":false,"payments":[{"amountMinor":5000,"method":"CASH","reference":null}]}',
+    paymentStatus: "PAID",
+    receiptId: ids.receipt,
+    receiptNumber: "RCP-10000000000040008000",
     salesOrderId: ids.order,
     salesSessionId: ids.session,
     staffName: "Sales staff",
@@ -168,6 +247,36 @@ function completedCheckout(): PosCheckout {
     totalMinor: 5000,
     updatedAt: now,
   };
+}
+
+class FakePaymentRepository implements PaymentRepository {
+  created?: Parameters<PaymentRepository["create"]>[0];
+  create(record: Parameters<PaymentRepository["create"]>[0]) {
+    this.created = record;
+    const now = record.createdAt;
+    return Promise.resolve({
+      ...record,
+      lines: record.lines.map((line, index) => ({
+        ...line,
+        createdAt: now,
+        id: `10000000-0000-4000-8000-${String(index + 20).padStart(12, "0")}`,
+        lineNumber: index + 1,
+        organizationId: record.organizationId,
+        paymentBatchId: record.id,
+      })),
+    } satisfies PaymentBatch);
+  }
+}
+
+class FakeReceiptRepository implements ReceiptRepository {
+  created?: Parameters<ReceiptRepository["create"]>[0];
+  create(record: Parameters<ReceiptRepository["create"]>[0]) {
+    this.created = record;
+    return Promise.resolve(record as SalesReceipt);
+  }
+  findByCheckoutId() {
+    return Promise.resolve(null);
+  }
 }
 
 class FakeCheckoutRepository implements PosCheckoutRepository {
