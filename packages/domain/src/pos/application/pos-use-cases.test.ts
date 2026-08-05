@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 import type {
   PosCart,
+  PosCartDetails,
   PosCartLine,
   SalesCounter,
   SalesSession,
@@ -15,6 +16,7 @@ import type { PosRepository } from "../repositories/pos-repository.js";
 import {
   addPosCartItem,
   createSalesCounter,
+  getPosCart,
   lookupPosSale,
   openSalesSession,
 } from "./pos-use-cases.js";
@@ -26,6 +28,28 @@ const branchId = "10000000-0000-4000-8000-000000000004";
 const variantId = "10000000-0000-4000-8000-000000000005";
 
 describe("offline POS use cases", () => {
+  it("reads only an organization-scoped persisted cart projection", async () => {
+    const pos = new FakePos();
+    pos.cartDetails = {
+      checkoutId: null,
+      createdAt: new Date(),
+      id: branchId,
+      lines: [],
+      organizationId,
+      salesSessionId: userId,
+      sessionStatus: "OPEN",
+      updatedAt: new Date(),
+    };
+    await expect(
+      getPosCart(pos, { cartId: branchId, organizationId }),
+    ).resolves.toBe(pos.cartDetails);
+    await expect(
+      getPosCart(pos, {
+        cartId: branchId,
+        organizationId: otherOrganizationId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
   it("creates a normalized organization-scoped store counter", async () => {
     const pos = new FakePos();
     const result = await createSalesCounter(
@@ -211,6 +235,7 @@ describe("offline POS use cases", () => {
 });
 
 class FakePos implements PosRepository {
+  cartDetails: PosCartDetails | null = null;
   counters: SalesCounter[] = [];
   cart: PosCart | null = null;
   variant: SellableVariant | null = null;
@@ -243,6 +268,13 @@ class FakePos implements PosRepository {
     return Promise.resolve(
       this.cart?.id === id && this.cart.organizationId === org
         ? this.cart
+        : null,
+    );
+  }
+  findCartDetailsById(id: string, org: string) {
+    return Promise.resolve(
+      this.cartDetails?.id === id && this.cartDetails.organizationId === org
+        ? this.cartDetails
         : null,
     );
   }

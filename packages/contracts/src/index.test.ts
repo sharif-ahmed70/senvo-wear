@@ -33,6 +33,7 @@ import {
   disableCredentialInputSchema,
   recordAuditEntryInputSchema,
   fulfillSalesOrderInputSchema,
+  getPosCartServiceInputSchema,
   fulfillSalesOrderServiceInputSchema,
   getInventoryAllocationPolicyQuerySchema,
   getBranchQuerySchema,
@@ -101,6 +102,16 @@ import {
 } from "./index.js";
 
 describe("API contracts", () => {
+  it("accepts only a cart ID for POS cart reads", () => {
+    const cartId = "10000000-0000-4000-8000-000000000001";
+    expect(getPosCartServiceInputSchema.safeParse({ cartId }).success).toBe(
+      true,
+    );
+    expect(
+      getPosCartServiceInputSchema.safeParse({ cartId, organizationId: cartId })
+        .success,
+    ).toBe(false);
+  });
   it("accepts only operator-controlled checkout payment fields", () => {
     const valid = {
       allowOutstanding: false,

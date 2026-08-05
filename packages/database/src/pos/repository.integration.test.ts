@@ -125,6 +125,25 @@ describeWithDatabase("Prisma offline POS repository", () => {
       lineSubtotalMinor: 5000,
       unitPriceMinor: 2500,
     });
+    await expect(
+      repository.findCartDetailsById(opened.cartId, base.organization.id),
+    ).resolves.toMatchObject({
+      checkoutId: null,
+      lines: [
+        {
+          color: "Black",
+          productName: "Oxford Shirt",
+          quantity: 2,
+          size: "Large",
+          sku: "OXFORD-BLK-L",
+        },
+      ],
+      sessionStatus: "OPEN",
+    });
+    const other = await seedOrganization("CART-OTHER");
+    await expect(
+      repository.findCartDetailsById(opened.cartId, other.organization.id),
+    ).resolves.toBeNull();
     const closed = await repository.closeSession({
       closedAt: new Date("2026-08-03T10:00:00.000Z"),
       expectedVersion: 1,
@@ -146,6 +165,9 @@ describeWithDatabase("Prisma offline POS repository", () => {
       subtotalMinor: 5000,
       totalMinor: 5000,
     });
+    await expect(
+      repository.findCartDetailsById(base.session.cartId, base.organization.id),
+    ).resolves.toMatchObject({ checkoutId: result.checkout.id });
     await expect(
       prisma.salesOrder.findUnique({
         where: { id: result.checkout.salesOrderId },

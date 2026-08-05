@@ -6,6 +6,7 @@ import type {
 } from "@senvo/application";
 import type {
   PosCartLineContract,
+  PosCartDetailsContract,
   PosCheckoutContract,
   PosSaleLookupContract,
   SalesReceiptContract,
@@ -29,6 +30,26 @@ const context: ApiRequestContext = {
 };
 
 describe("POS API handlers", () => {
+  it("validates and authorizes organization-scoped cart reads", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(application, authorization).getCart.handle({
+      context,
+      input: { cartId: "10000000-0000-4000-8000-000000000010" },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "POS",
+    });
+    expect(application.context?.organizationId).toBe(organizationId);
+
+    const invalid = await handlers(application).getCart.handle({
+      context,
+      input: { cartId: "not-an-id", organizationId },
+    });
+    expect(invalid).toMatchObject({ success: false });
+  });
   it("uses trusted context and POS permission", async () => {
     const application = new FakePos();
     const authorization = new FakeAuthorization();
@@ -176,6 +197,9 @@ class FakePos implements PosApplication {
   }
   getCheckout(context: ApplicationExecutionContext) {
     return this.result(context, {} as PosCheckoutContract);
+  }
+  getCart(context: ApplicationExecutionContext) {
+    return this.result(context, {} as PosCartDetailsContract);
   }
   getReceipt(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesReceiptContract);

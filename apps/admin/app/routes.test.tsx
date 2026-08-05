@@ -34,6 +34,7 @@ import UsersPage from "./users/page";
 import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
 import PosCheckoutsPage from "./pos/checkouts/page";
+import PosSellPage from "./pos/sell/page";
 import { PosManagementWorkspace } from "./pos/_components/pos-management-workspace";
 import { ReceiptPreview } from "./pos/checkouts/[id]/receipt/receipt-preview";
 
@@ -55,6 +56,7 @@ describe("admin routes", () => {
     expect(html).not.toContain("New booth");
   });
   it("renders POS routes and hides controls without POS access", () => {
+    expect(renderToStaticMarkup(<PosSellPage />)).toContain("New Sale");
     expect(renderToStaticMarkup(<SalesCountersPage />)).toContain(
       "Sales Counters",
     );

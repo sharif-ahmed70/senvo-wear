@@ -2,6 +2,7 @@ import {
   ConflictError,
   type PosCart,
   type PosCartLine,
+  type PosCartDetails,
   type PosRepository,
   type SalesCounter,
   type SalesSession,
@@ -14,6 +15,19 @@ type CartRecord = Prisma.PosCartGetPayload<{
   include: {
     checkout: { select: { id: true } };
     lines: true;
+    salesSession: { select: { status: true } };
+  };
+}>;
+type CartDetailsRecord = Prisma.PosCartGetPayload<{
+  include: {
+    checkout: { select: { id: true } };
+    lines: {
+      include: {
+        productVariant: {
+          include: { color: true; product: true; size: true };
+        };
+      };
+    };
     salesSession: { select: { status: true } };
   };
 }>;
@@ -146,6 +160,25 @@ export class PrismaPosRepository implements PosRepository {
     return record ? mapCart(record) : null;
   }
 
+  async findCartDetailsById(id: string, organizationId: string) {
+    const record = await this.prisma.posCart.findFirst({
+      include: {
+        checkout: { select: { id: true } },
+        lines: {
+          include: {
+            productVariant: {
+              include: { color: true, product: true, size: true },
+            },
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        },
+        salesSession: { select: { status: true } },
+      },
+      where: { id, organizationId },
+    });
+    return record ? mapCartDetails(record) : null;
+  }
+
   async findSellableVariant(
     id: string,
     organizationId: string,
@@ -239,6 +272,24 @@ function mapCart(record: CartRecord): PosCart {
     createdAt: record.createdAt,
     id: record.id,
     lines: record.lines.map(mapLine),
+    organizationId: record.organizationId,
+    salesSessionId: record.salesSessionId,
+    sessionStatus: record.salesSession.status,
+    updatedAt: record.updatedAt,
+  };
+}
+function mapCartDetails(record: CartDetailsRecord): PosCartDetails {
+  return {
+    checkoutId: record.checkout?.id ?? null,
+    createdAt: record.createdAt,
+    id: record.id,
+    lines: record.lines.map((line) => ({
+      ...mapLine(line),
+      color: line.productVariant.color.name,
+      productName: line.productVariant.product.name,
+      size: line.productVariant.size.name,
+      sku: line.productVariant.sku,
+    })),
     organizationId: record.organizationId,
     salesSessionId: record.salesSessionId,
     sessionStatus: record.salesSession.status,

@@ -1,5 +1,6 @@
 import type {
   PosCart,
+  PosCartDetails,
   PosCartLine,
   SalesCounter,
   SalesSession,
@@ -31,6 +32,10 @@ export type PosRepository = {
     record: Omit<SalesCounter, "createdAt" | "id" | "updatedAt" | "version">,
   ): Promise<SalesCounter>;
   findCartById(id: string, organizationId: string): Promise<PosCart | null>;
+  findCartDetailsById?(
+    id: string,
+    organizationId: string,
+  ): Promise<PosCartDetails | null>;
   findCartLineById(
     id: string,
     cartId: string,

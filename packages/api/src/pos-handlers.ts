@@ -11,12 +11,14 @@ import {
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
+  getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posEmptyInputSchema,
   removePosCartItemServiceInputSchema,
   updatePosCartItemServiceInputSchema,
   updateSalesCounterStatusServiceInputSchema,
   type PosCartLineContract,
+  type PosCartDetailsContract,
   type PosCheckoutContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
@@ -50,6 +52,10 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<PosCheckoutContract>>;
+  getCart(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosCartDetailsContract>>;
   getReceipt(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -91,6 +97,7 @@ export type PosApiHandlers = {
   createCounter: ApiHandler<SalesCounterContract>;
   listCounters: ApiHandler<SalesCounterContract[]>;
   getCheckout: ApiHandler<PosCheckoutContract>;
+  getCart: ApiHandler<PosCartDetailsContract>;
   getReceipt: ApiHandler<SalesReceiptContract>;
   listCheckouts: ApiHandler<PosCheckoutContract[]>;
   listSessions: ApiHandler<SalesSessionContract[]>;
@@ -151,6 +158,9 @@ export function createPosApiHandlers(dependencies: {
       "READ",
       getPosCheckoutServiceInputSchema,
       (context, input) => dependencies.pos.getCheckout(context, input),
+    ),
+    getCart: handler("READ", getPosCartServiceInputSchema, (context, input) =>
+      dependencies.pos.getCart(context, input),
     ),
     getReceipt: createProtectedApiHandler({
       authenticationService: dependencies.authenticationService,

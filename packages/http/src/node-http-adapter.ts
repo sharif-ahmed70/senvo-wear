@@ -517,6 +517,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 200,
       },
       {
+        handler: handlers.pos.getCart,
+        input: (_body, match) => ({ cartId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/carts\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.checkoutCart,
         input: pathBodyInput("cartId"),
         method: "POST",

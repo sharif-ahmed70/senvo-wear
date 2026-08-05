@@ -32,3 +32,7 @@ The browser cannot provide organization, staff identity, channel, booth, totals,
 - Keyboard-wedge or camera barcode scanners continue to use the existing barcode lookup boundary; no hardware driver belongs in checkout domain logic.
 
 Discounts, tax, returns, refunds, customer CRM, cash drawers, and printer drivers remain outside this foundation.
+
+## Guided selling adapter
+
+The Admin `New Sale` route consumes these boundaries without duplicating checkout logic. Sales sessions retain server ownership of carts. A minimal organization-scoped cart read projection restores unfinished work after refresh, while all mutations and final totals remain server validated. See `docs/architecture/pos-guided-selling-ui.md` for the cashier workflow, payment entry, and retry behavior.

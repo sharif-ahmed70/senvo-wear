@@ -53,6 +53,24 @@ export type PosCart = {
   updatedAt: Date;
 };
 
+export type PosCartDetails = {
+  checkoutId: string | null;
+  createdAt: Date;
+  id: string;
+  lines: Array<
+    PosCartLine & {
+      color: string;
+      productName: string;
+      size: string;
+      sku: string;
+    }
+  >;
+  organizationId: string;
+  salesSessionId: string;
+  sessionStatus: SalesSessionStatus;
+  updatedAt: Date;
+};
+
 export type PosCheckoutStatus = "COMPLETED";
 
 export type PosCheckout = {

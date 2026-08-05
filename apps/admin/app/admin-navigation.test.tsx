@@ -22,6 +22,7 @@ describe("admin navigation", () => {
       "Sales Orders",
       "Sales Sources",
       "Booth History",
+      "New Sale",
       "Sales Counters",
       "Sales Sessions",
       "Checkout History",
@@ -34,6 +35,21 @@ describe("admin navigation", () => {
     }
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('href="/inventory"');
+  });
+
+  it("shows New Sale only when the complete cashier permission set is present", () => {
+    const partial: AdminSession = {
+      ...adminFoundationSession,
+      permissions: ["POS:READ", "POS:CREATE", "POS:UPDATE"],
+    };
+    const html = renderToStaticMarkup(
+      createElement(AdminNavigationList, {
+        currentPath: "/pos/sell",
+        session: partial,
+      }),
+    );
+    expect(html).not.toContain("New Sale");
+    expect(html).toContain("Sales Counters");
   });
 
   it("hides modules without the matching view permission", () => {

@@ -436,6 +436,25 @@ describe("Node HTTP runtime adapter", () => {
     });
   });
 
+  it("maps a strict cart read path without editable trusted context", async () => {
+    const getCart = new RecordingApiHandler(
+      createApiSuccess({ id: movementId, lines: [] }, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: getCart,
+        pos: { getCart } as unknown as PosApiHandlers,
+        postInventoryMovement: getCart,
+      },
+    });
+    const response = await fetch(`${runtime.url}/pos/carts/${movementId}`, {
+      headers: developmentHeaders(suppliedRequestId),
+    });
+    expect(response.status).toBe(200);
+    expect(getCart.requests.at(0)?.input).toEqual({ cartId: movementId });
+    expect(getCart.requests.at(0)?.context.organizationId).toBe(organizationId);
+  });
+
   it("maps the receipt path to an organization-scoped checkout lookup", async () => {
     const receipt = new RecordingApiHandler(
       createApiSuccess({ receiptNumber: "RCP-001" }, suppliedRequestId),

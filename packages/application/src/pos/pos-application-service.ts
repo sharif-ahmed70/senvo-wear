@@ -15,6 +15,7 @@ import {
   listSalesCounters,
   listSalesSessions,
   getCheckoutStatus,
+  getPosCart,
   listCheckoutHistory,
   getSalesReceipt,
   lookupPosSale,
@@ -26,6 +27,7 @@ import {
   type InventoryReadRepository,
   type OrganizationMembershipRepository,
   type PosCartLine,
+  type PosCartDetails,
   type PosCheckout,
   type PosCheckoutRepository,
   type PosRepository,
@@ -43,8 +45,10 @@ import {
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
+  getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
+  posCartDetailsContractSchema,
   posCheckoutContractSchema,
   salesReceiptContractSchema,
   posEmptyInputSchema,
@@ -55,6 +59,7 @@ import {
   updatePosCartItemServiceInputSchema,
   updateSalesCounterStatusServiceInputSchema,
   type PosCartLineContract,
+  type PosCartDetailsContract,
   type PosCheckoutContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
@@ -164,6 +169,18 @@ export class PosApplicationService {
       return (
         await listSalesSessions(this.dependencies.pos, trusted.organizationId)
       ).map(mapSession);
+    });
+  }
+  getCart(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosCartDetailsContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCartServiceInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      return mapCartDetails(
+        await getPosCart(this.dependencies.pos, {
+          ...input,
+          organizationId: trusted.organizationId,
+        }),
+      );
     });
   }
   openSession(context: ApplicationExecutionContext, payload: unknown) {
@@ -488,6 +505,23 @@ function mapLine(record: PosCartLine): PosCartLineContract {
     productVariantId: record.productVariantId,
     quantity: record.quantity,
     unitPriceMinor: record.unitPriceMinor,
+    updatedAt: record.updatedAt.toISOString(),
+  });
+}
+function mapCartDetails(record: PosCartDetails): PosCartDetailsContract {
+  return posCartDetailsContractSchema.parse({
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    lines: record.lines.map((line) => ({
+      ...mapLine(line),
+      color: line.color,
+      productName: line.productName,
+      size: line.size,
+      sku: line.sku,
+    })),
+    salesSessionId: record.salesSessionId,
+    sessionStatus: record.sessionStatus,
     updatedAt: record.updatedAt.toISOString(),
   });
 }

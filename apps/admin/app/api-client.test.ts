@@ -2,6 +2,66 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminApiClient, AdminApiError } from "./_lib/api-client";
 
 describe("AdminApiClient", () => {
+  it("uses POS barcode and cart routes without trusted fields", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {},
+          requestId: "req_pos_sale",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const cartId = "10000000-0000-4000-8000-000000000001";
+    const itemId = "10000000-0000-4000-8000-000000000002";
+    const productVariantId = "10000000-0000-4000-8000-000000000003";
+
+    await client.lookupPosSale(" CODE / 1 ");
+    await client.getPosCart(cartId);
+    await client.addPosCartItem({ cartId, productVariantId, quantity: 1 });
+    await client.updatePosCartItem({ cartId, itemId, quantity: 2 });
+    await client.removePosCartItem({ cartId, itemId });
+    await client.checkoutPosCart({
+      allowOutstanding: false,
+      cartId,
+      idempotencyKey: "pos-safe-retry-1",
+      payments: [{ amountMinor: 250000, method: "CASH" }],
+    });
+
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "https://admin.example.test/pos/barcode/CODE%20%2F%201",
+      `https://admin.example.test/pos/carts/${cartId}`,
+      `https://admin.example.test/pos/carts/${cartId}/items`,
+      `https://admin.example.test/pos/carts/${cartId}/items/${itemId}`,
+      `https://admin.example.test/pos/carts/${cartId}/items/${itemId}`,
+      `https://admin.example.test/pos/carts/${cartId}/checkout`,
+    ]);
+    expect(fetcher.mock.calls.map((call) => call[1]?.method)).toEqual([
+      "GET",
+      "GET",
+      "POST",
+      "PATCH",
+      "DELETE",
+      "POST",
+    ]);
+    const bodies = fetcher.mock.calls.flatMap((call) =>
+      typeof call[1]?.body === "string" ? [call[1].body] : [],
+    );
+    for (const body of bodies) {
+      expect(body).not.toMatch(
+        /organizationId|staffId|permissions|channel|totalMinor/u,
+      );
+    }
+    expect(JSON.parse(bodies.at(-1) ?? "{}")).toEqual({
+      allowOutstanding: false,
+      idempotencyKey: "pos-safe-retry-1",
+      payments: [{ amountMinor: 250000, method: "CASH" }],
+    });
+  });
   it("propagates request IDs and returns a standard success response", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(

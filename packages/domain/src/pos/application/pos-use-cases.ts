@@ -16,6 +16,7 @@ import type { BranchRepository } from "../../organization/repositories/organizat
 import type { SalesSourceRepository } from "../../sales/repositories/sales-order-repositories.js";
 import type {
   PosCartLine,
+  PosCartDetails,
   PosSaleLookup,
   SalesCounter,
   SalesCounterStatus,
@@ -170,6 +171,21 @@ export function listSalesSessions(
   organizationId: string,
 ) {
   return repository.listSessions(assertId(organizationId, "organizationId"));
+}
+
+export async function getPosCart(
+  repository: PosRepository,
+  input: { cartId: string; organizationId: string },
+): Promise<PosCartDetails> {
+  if (!repository.findCartDetailsById) {
+    throw new Error("POS cart read capability is required.");
+  }
+  const cart = await repository.findCartDetailsById(
+    assertId(input.cartId, "cartId"),
+    assertId(input.organizationId, "organizationId"),
+  );
+  if (!cart) throw new NotFoundError("Cart was not found.");
+  return cart;
 }
 
 export async function closeSalesSession(
