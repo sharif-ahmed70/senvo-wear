@@ -85,6 +85,9 @@ describeWithDatabase("Prisma offline POS repository", () => {
     expect(opened.cartId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(opened.status).toBe("OPEN");
     await expect(
+      repository.listOpenSessionsByUser(base.organization.id, base.user.id),
+    ).resolves.toEqual([expect.objectContaining({ id: opened.id })]);
+    await expect(
       repository.openSession({
         counterId: base.counter.id,
         openedAt: new Date(),
@@ -100,6 +103,10 @@ describeWithDatabase("Prisma offline POS repository", () => {
   it("stores server-derived cart prices and keeps closed session history", async () => {
     const base = await seedOrganization("CART");
     const variant = await seedVariant(base.organization.id);
+    const otherCashier = await seedOrganizationMember(
+      base.organization.id,
+      "CART-OTHER-CASHIER",
+    );
     const opened = await repository.openSession({
       counterId: base.counter.id,
       openedAt: new Date("2026-08-03T09:00:00.000Z"),
@@ -119,6 +126,7 @@ describeWithDatabase("Prisma offline POS repository", () => {
         organizationId: base.organization.id,
         productVariantId: variant.id,
         quantity: 2,
+        userId: base.user.id,
       },
     );
     expect(line).toMatchObject({
@@ -126,7 +134,11 @@ describeWithDatabase("Prisma offline POS repository", () => {
       unitPriceMinor: 2500,
     });
     await expect(
-      repository.findCartDetailsById(opened.cartId, base.organization.id),
+      repository.findCartDetailsById(
+        opened.cartId,
+        base.organization.id,
+        base.user.id,
+      ),
     ).resolves.toMatchObject({
       checkoutId: null,
       lines: [
@@ -142,7 +154,18 @@ describeWithDatabase("Prisma offline POS repository", () => {
     });
     const other = await seedOrganization("CART-OTHER");
     await expect(
-      repository.findCartDetailsById(opened.cartId, other.organization.id),
+      repository.findCartDetailsById(
+        opened.cartId,
+        other.organization.id,
+        other.user.id,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      repository.findCartDetailsById(
+        opened.cartId,
+        base.organization.id,
+        otherCashier.id,
+      ),
     ).resolves.toBeNull();
     const closed = await repository.closeSession({
       closedAt: new Date("2026-08-03T10:00:00.000Z"),
@@ -166,7 +189,11 @@ describeWithDatabase("Prisma offline POS repository", () => {
       totalMinor: 5000,
     });
     await expect(
-      repository.findCartDetailsById(base.session.cartId, base.organization.id),
+      repository.findCartDetailsById(
+        base.session.cartId,
+        base.organization.id,
+        base.user.id,
+      ),
     ).resolves.toMatchObject({ checkoutId: result.checkout.id });
     await expect(
       prisma.salesOrder.findUnique({
@@ -670,6 +697,16 @@ async function seedVariant(organizationId: string) {
       sku: "OX-BLK-L",
     },
   });
+}
+
+async function seedOrganizationMember(organizationId: string, label: string) {
+  const user = await prisma.user.create({
+    data: { email: `${label.toLowerCase()}@test.dev`, name: `Staff ${label}` },
+  });
+  await prisma.organizationMembership.create({
+    data: { organizationId, role: "STAFF", userId: user.id },
+  });
+  return user;
 }
 
 async function cleanDatabase() {

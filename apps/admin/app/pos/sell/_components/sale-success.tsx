@@ -1,6 +1,7 @@
 import { CheckCircle2, Printer, ReceiptText, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import type { PosCheckoutContract } from "@senvo/contracts";
+import type { FriendlyPosError } from "../_lib/pos-error-messages";
 import { formatBdt } from "../_lib/money";
 
 const statusLabels = {
@@ -14,11 +15,13 @@ export function SaleSuccess({
   canReadReceipt,
   checkout,
   onNextSale,
+  preparationError,
   preparingNext,
 }: {
   canReadReceipt: boolean;
   checkout: PosCheckoutContract;
   onNextSale: () => void;
+  preparationError: FriendlyPosError | null;
   preparingNext: boolean;
 }) {
   const receiptUrl = `/pos/checkouts/${checkout.id}/receipt`;
@@ -70,6 +73,16 @@ export function SaleSuccess({
             {preparingNext ? "Preparing..." : "Start new sale"}
           </button>
         </div>
+        {preparationError ? (
+          <div className="pos-form-error" role="alert">
+            <strong>The completed sale is safe.</strong>
+            <span>{preparationError.message}</span>
+            {preparationError.requestId ? (
+              <small>Support reference: {preparationError.requestId}</small>
+            ) : null}
+            <span>Use Start new sale again to retry preparation.</span>
+          </div>
+        ) : null}
       </section>
     </main>
   );

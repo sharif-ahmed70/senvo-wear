@@ -455,6 +455,30 @@ describe("Node HTTP runtime adapter", () => {
     expect(getCart.requests.at(0)?.context.organizationId).toBe(organizationId);
   });
 
+  it("maps the trusted current-cashier session path without identity input", async () => {
+    const currentSessions = new RecordingApiHandler(
+      createApiSuccess([], suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: currentSessions,
+        pos: {
+          listCurrentSessions: currentSessions,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: currentSessions,
+      },
+    });
+    const response = await fetch(`${runtime.url}/pos/sessions/current`, {
+      headers: developmentHeaders(suppliedRequestId),
+    });
+    expect(response.status).toBe(200);
+    expect(currentSessions.requests.at(0)?.input).toEqual({});
+    expect(currentSessions.requests.at(0)?.context).toMatchObject({
+      authenticatedUser: { userId },
+      organizationId,
+    });
+  });
+
   it("maps the receipt path to an organization-scoped checkout lookup", async () => {
     const receipt = new RecordingApiHandler(
       createApiSuccess({ receiptNumber: "RCP-001" }, suppliedRequestId),

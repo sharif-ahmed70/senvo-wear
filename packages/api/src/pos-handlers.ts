@@ -68,6 +68,10 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesSessionContract[]>>;
+  listCurrentSessions(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesSessionContract[]>>;
   lookupSale(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -101,6 +105,7 @@ export type PosApiHandlers = {
   getReceipt: ApiHandler<SalesReceiptContract>;
   listCheckouts: ApiHandler<PosCheckoutContract[]>;
   listSessions: ApiHandler<SalesSessionContract[]>;
+  listCurrentSessions: ApiHandler<SalesSessionContract[]>;
   lookupSale: ApiHandler<PosSaleLookupContract>;
   openSession: ApiHandler<SalesSessionContract>;
   removeCartItem: ApiHandler<null>;
@@ -174,6 +179,11 @@ export function createPosApiHandlers(dependencies: {
     ),
     listSessions: handler("READ", posEmptyInputSchema, (context, input) =>
       dependencies.pos.listSessions(context, input),
+    ),
+    listCurrentSessions: handler(
+      "READ",
+      posEmptyInputSchema,
+      (context, input) => dependencies.pos.listCurrentSessions(context, input),
     ),
     lookupSale: handler(
       "READ",

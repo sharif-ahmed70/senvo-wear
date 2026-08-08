@@ -26,6 +26,7 @@ import {
   type FriendlyPosError,
 } from "../_lib/pos-error-messages";
 import { formatBdt } from "../_lib/money";
+import { reconcileNextSale } from "../_lib/reconcile-next-sale";
 import { BarcodeEntry } from "./barcode-entry";
 import { CartLineList } from "./cart-line-list";
 import { PaymentPanel } from "./payment-panel";
@@ -36,7 +37,7 @@ import {
 } from "./selling-context-selector";
 
 const client = new AdminApiClient({
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
+  baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
 });
 const requiredPermissions: readonly AdminPermissionKey[] = [
   "POS:READ",
@@ -88,6 +89,9 @@ function ActivePosSale({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [preparingNext, setPreparingNext] = useState(false);
+  const [nextSaleError, setNextSaleError] = useState<FriendlyPosError | null>(
+    null,
+  );
   const [notice, setNotice] = useState("");
   const [error, setError] = useState<FriendlyPosError | null>(null);
   const scanInput = useRef<HTMLInputElement>(null);
@@ -125,7 +129,7 @@ function ActivePosSale({
     try {
       const [counterResult, sessionResult] = await Promise.all([
         client.listSalesCounters(),
-        client.listSalesSessions(),
+        client.listCurrentSalesSessions(),
       ]);
       const counters = new Map<string, SalesCounterContract>(
         counterResult.data
@@ -272,22 +276,38 @@ function ActivePosSale({
   async function startNextSale() {
     if (!selectedContext || preparingNext) return;
     setPreparingNext(true);
+    setNextSaleError(null);
     try {
-      await client.closeSalesSession({
-        expectedVersion: selectedContext.session.version,
-        sessionId: selectedContext.session.id,
-      });
-      const next = await client.openSalesSession({
-        counterId: selectedContext.counter.id,
-      });
+      const next = await reconcileNextSale(
+        {
+          closeSession: async (input) => {
+            await client.closeSalesSession(input);
+          },
+          listCurrentSessions: async () =>
+            (await client.listCurrentSalesSessions()).data,
+          openSession: async (counterId) =>
+            (await client.openSalesSession({ counterId })).data,
+        },
+        {
+          completedSessionId: selectedContext.session.id,
+          counterId: selectedContext.counter.id,
+        },
+      );
+      const nextCart = (await client.getPosCart(next.cartId)).data;
       checkoutAttempt.current = null;
+      setContexts((current) => [
+        ...current.filter(
+          ({ counter, session }) =>
+            counter.id !== selectedContext.counter.id && session.id !== next.id,
+        ),
+        { counter: selectedContext.counter, session: next },
+      ]);
+      setSelectedSessionId(next.id);
+      setCart(nextCart);
       setCheckout(null);
-      setCart(null);
       setNotice("New sale ready.");
-      await loadContexts();
-      setSelectedSessionId(next.data.id);
     } catch (reason) {
-      setError(friendlyPosError(reason, "session"));
+      setNextSaleError(friendlyPosError(reason, "session"));
     } finally {
       setPreparingNext(false);
     }
@@ -299,6 +319,7 @@ function ActivePosSale({
         canReadReceipt={canReadReceipt}
         checkout={checkout}
         onNextSale={() => void startNextSale()}
+        preparationError={nextSaleError}
         preparingNext={preparingNext}
       />
     );

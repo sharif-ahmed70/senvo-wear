@@ -466,6 +466,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 200,
       },
       {
+        handler: handlers.pos.listCurrentSessions,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/pos\/sessions\/current$/u,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.listSessions,
         input: emptyInput,
         method: "GET",

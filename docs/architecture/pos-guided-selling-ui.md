@@ -6,11 +6,11 @@ The Admin `New Sale` workspace turns the existing POS application boundary into 
 
 ## Selling context and cart lifecycle
 
-A cashier can sell only through an active counter with an open sales session. One valid session is selected automatically; multiple sessions require an explicit counter choice. With no open session, the workspace links to Sales Sessions and never opens one silently.
+A cashier can sell only through an active counter with one of their own open sales sessions. `GET /pos/sessions/current` derives the cashier from trusted application context and returns only that user's open sessions. One valid session is selected automatically; multiple sessions require an explicit counter choice. With no open session, the workspace links to Sales Sessions and never opens one silently.
 
-The server creates one persisted cart when a session opens. The browser does not create or trust a cart identifier. `GET /pos/carts/:id` returns the organization-scoped current projection with display-safe product details and checkout state. The session list supplies the cart ID, so a normal refresh restores the unfinished cart without browser storage. Checked-out carts remain immutable and resolve to their completed checkout.
+The server creates one persisted cart when a session opens. The browser does not create or trust a cart identifier. `GET /pos/carts/:id` and every cart mutation require both the trusted organization and authenticated cashier to match the owning session. A same-organization cashier therefore cannot read or change another cashier's cart. The current-user session list supplies the cart ID, so a normal refresh restores the unfinished cart without browser storage. Checked-out carts remain immutable and resolve to their completed checkout.
 
-`Start new sale` is an explicit command after success. It closes the completed session and opens a new session on the same active counter, producing a fresh server-owned cart.
+`Start new sale` is an explicit reconciliation command after success. It first reloads current-user sessions, uses the fresh session version when closing, and reloads again before opening. If a close or open succeeds but its response is lost, the next attempt observes server state and reuses the already-created replacement session instead of duplicating it. A preparation failure remains inside the completed-sale screen with a retry action; committed order and receipt information are preserved.
 
 ## Barcode and cart interaction
 
@@ -32,7 +32,7 @@ Payment content is normalized before submission. One idempotency key is retained
 
 The workspace requires POS read/create/update, sales create, and payment create access. Due sales require payment approval. Receipt actions require both receipt and payment read access. UI visibility is only guidance; API and application authorization enforce every operation.
 
-The browser cannot submit organization, staff, role, permission, channel, price, total, allocation, reservation, or movement values. Unknown errors are friendly and include only a secondary request support reference.
+The browser cannot submit organization, staff, role, permission, channel, price, total, allocation, reservation, or movement values. The Admin client reads its server origin only from the canonical `NEXT_PUBLIC_SENVO_API_URL` setting. Unknown errors are friendly and include only a secondary request support reference.
 
 ## Accessibility and responsive behavior
 

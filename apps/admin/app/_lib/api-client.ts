@@ -604,6 +604,13 @@ export class AdminApiClient {
     return this.request<SalesSessionContract[]>("/pos/sessions", request);
   }
 
+  listCurrentSalesSessions(request?: AdminApiRequest) {
+    return this.request<SalesSessionContract[]>(
+      "/pos/sessions/current",
+      request,
+    );
+  }
+
   openSalesSession(
     input: OpenSalesSessionServiceInputContract,
     request?: AdminApiRequest,

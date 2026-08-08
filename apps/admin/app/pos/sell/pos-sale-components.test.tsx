@@ -176,6 +176,7 @@ describe("guided POS selling components", () => {
         canReadReceipt={false}
         checkout={checkout()}
         onNextSale={() => undefined}
+        preparationError={null}
         preparingNext={false}
       />,
     );
@@ -190,11 +191,33 @@ describe("guided POS selling components", () => {
         canReadReceipt
         checkout={checkout()}
         onNextSale={() => undefined}
+        preparationError={null}
         preparingNext={false}
       />,
     );
     expect(html).toContain("View receipt");
     expect(html).toContain("Print receipt");
+  });
+
+  it("preserves completed-sale details while showing preparation recovery", () => {
+    const html = renderToStaticMarkup(
+      <SaleSuccess
+        canReadReceipt
+        checkout={checkout()}
+        onNextSale={() => undefined}
+        preparationError={{
+          message: "We could not prepare the next sale.",
+          requestId: "req_recovery_1",
+          uncertain: true,
+        }}
+        preparingNext={false}
+      />,
+    );
+    expect(html).toContain("Sale completed");
+    expect(html).toContain("View receipt");
+    expect(html).toContain("The completed sale is safe.");
+    expect(html).toContain("Use Start new sale again to retry preparation.");
+    expect(html).toContain("req_recovery_1");
   });
 });
 

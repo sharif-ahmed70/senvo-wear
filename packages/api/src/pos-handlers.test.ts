@@ -73,6 +73,21 @@ describe("POS API handlers", () => {
     expect(application.context).toMatchObject({ organizationId, userId });
   });
 
+  it("reads only current cashier sessions through trusted context", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).listCurrentSessions.handle({ context, input: {} });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "POS",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
+  });
+
   it("rejects organization, staff identity, role, and permissions injection", async () => {
     const application = new FakePos();
     const response = await handlers(application).openSession.handle({
@@ -208,6 +223,9 @@ class FakePos implements PosApplication {
     return this.result(context, [] as PosCheckoutContract[]);
   }
   listSessions(context: ApplicationExecutionContext) {
+    return this.result(context, [] as SalesSessionContract[]);
+  }
+  listCurrentSessions(context: ApplicationExecutionContext) {
     return this.result(context, [] as SalesSessionContract[]);
   }
   lookupSale(context: ApplicationExecutionContext) {

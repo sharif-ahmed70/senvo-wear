@@ -22,7 +22,7 @@ Idempotency is scoped by organization, sales session, and key and is sensitive t
 
 ## Security
 
-The browser cannot provide organization, staff identity, channel, booth, totals, allocation policy, reservation, or inventory movement identifiers. Organization-scoped composite foreign keys and repository filters prevent cross-organization references. Active session, counter, user, membership, variant, barcode, and sellable allocation checks run against transaction-fresh data.
+The browser cannot provide organization, staff identity, channel, booth, totals, allocation policy, reservation, or inventory movement identifiers. Current-user session reads derive staff identity from trusted execution context, and cart reads and mutations additionally require the authenticated user to own the cart's sales session. Organization-scoped composite foreign keys and repository filters prevent cross-organization references. Active session, counter, user, membership, variant, barcode, and sellable allocation checks run against transaction-fresh data.
 
 ## Future adapters
 

@@ -92,6 +92,16 @@ export class PrismaPosRepository implements PosRepository {
     return record ? mapSession(record) : null;
   }
 
+  async listOpenSessionsByUser(organizationId: string, openedByUserId: string) {
+    return (
+      await this.prisma.salesSession.findMany({
+        include: { cart: true },
+        orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+        where: { openedByUserId, organizationId, status: "OPEN" },
+      })
+    ).map(mapSession);
+  }
+
   async openSession(record: Parameters<PosRepository["openSession"]>[0]) {
     try {
       const session = await this.prisma.$transaction(async (transaction) => {
@@ -148,19 +158,27 @@ export class PrismaPosRepository implements PosRepository {
     return session ? mapSession(session) : null;
   }
 
-  async findCartById(id: string, organizationId: string) {
+  async findCartById(
+    id: string,
+    organizationId: string,
+    openedByUserId: string,
+  ) {
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
         lines: true,
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId },
+      where: { id, organizationId, salesSession: { openedByUserId } },
     });
     return record ? mapCart(record) : null;
   }
 
-  async findCartDetailsById(id: string, organizationId: string) {
+  async findCartDetailsById(
+    id: string,
+    organizationId: string,
+    openedByUserId: string,
+  ) {
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
@@ -174,7 +192,7 @@ export class PrismaPosRepository implements PosRepository {
         },
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId },
+      where: { id, organizationId, salesSession: { openedByUserId } },
     });
     return record ? mapCartDetails(record) : null;
   }

@@ -497,6 +497,7 @@ describe("AdminApiClient", () => {
       { counterId: "10000000-0000-4000-8000-000000000011" },
       { requestId: "req_pos_client_2" },
     );
+    await client.listCurrentSalesSessions({ requestId: "req_pos_client_5" });
     await client.checkoutPosCart(
       {
         allowOutstanding: false,
@@ -518,6 +519,7 @@ describe("AdminApiClient", () => {
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       "https://admin.example.test/pos/counters",
       "https://admin.example.test/pos/sessions/open",
+      "https://admin.example.test/pos/sessions/current",
       "https://admin.example.test/pos/carts/10000000-0000-4000-8000-000000000012/checkout",
       "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/receipt",
     ]);

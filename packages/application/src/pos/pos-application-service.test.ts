@@ -181,8 +181,14 @@ describe("PosApplicationService cart reads", () => {
         },
       },
       pos: {
-        findCartDetailsById: () =>
-          Promise.resolve({
+        findCartDetailsById: (
+          _id: string,
+          scopedOrganizationId: string,
+          openedByUserId: string,
+        ) => {
+          expect(scopedOrganizationId).toBe(organizationId);
+          expect(openedByUserId).toBe(userId);
+          return Promise.resolve({
             checkoutId: null,
             createdAt: now,
             id: cartId,
@@ -191,7 +197,8 @@ describe("PosApplicationService cart reads", () => {
             salesSessionId: "10000000-0000-4000-8000-000000000004",
             sessionStatus: "OPEN",
             updatedAt: now,
-          }),
+          });
+        },
       } as unknown as PosRepository,
     });
     const result = await service.getCart(context(), { cartId });
@@ -200,6 +207,53 @@ describe("PosApplicationService cart reads", () => {
       ok: true,
     });
     expect(permissions).toEqual([{ action: "READ", resource: "POS" }]);
+  });
+
+  it("lists open sessions only for the trusted current user", async () => {
+    const now = new Date("2026-08-06T10:00:00.000Z");
+    const service = serviceWith({
+      pos: {
+        listOpenSessionsByUser: (
+          scopedOrganizationId: string,
+          openedByUserId: string,
+        ) => {
+          expect(scopedOrganizationId).toBe(organizationId);
+          expect(openedByUserId).toBe(userId);
+          return Promise.resolve([
+            {
+              cartId,
+              closedAt: null,
+              counterId: "10000000-0000-4000-8000-000000000004",
+              createdAt: now,
+              id: "10000000-0000-4000-8000-000000000005",
+              openedAt: now,
+              openedByUserId,
+              organizationId: scopedOrganizationId,
+              status: "OPEN",
+              updatedAt: now,
+              version: 2,
+            },
+          ]);
+        },
+      } as unknown as PosRepository,
+    });
+    const result = await service.listCurrentSessions(context(), {});
+    expect(result).toMatchObject({
+      data: [{ openedByUserId: userId, status: "OPEN", version: 2 }],
+      ok: true,
+    });
+  });
+
+  it("rejects cart access when trusted user identity is absent", async () => {
+    const service = serviceWith({ pos: {} as never });
+    const result = await service.getCart(
+      { organizationId, requestId: "req_no_cashier", userId: null },
+      { cartId },
+    );
+    expect(result).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+      ok: false,
+    });
   });
 });
 

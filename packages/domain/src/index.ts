@@ -123,6 +123,7 @@ export {
   getPosCart,
   listSalesCounters,
   listSalesSessions,
+  listCurrentUserSalesSessions,
   lookupPosSale,
   lookupBarcodeForSale,
   openSalesSession,

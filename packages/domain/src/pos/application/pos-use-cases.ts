@@ -173,9 +173,19 @@ export function listSalesSessions(
   return repository.listSessions(assertId(organizationId, "organizationId"));
 }
 
+export function listCurrentUserSalesSessions(
+  repository: PosRepository,
+  input: { organizationId: string; userId: string },
+) {
+  return repository.listOpenSessionsByUser(
+    assertId(input.organizationId, "organizationId"),
+    assertId(input.userId, "userId"),
+  );
+}
+
 export async function getPosCart(
   repository: PosRepository,
-  input: { cartId: string; organizationId: string },
+  input: { cartId: string; organizationId: string; userId: string },
 ): Promise<PosCartDetails> {
   if (!repository.findCartDetailsById) {
     throw new Error("POS cart read capability is required.");
@@ -183,6 +193,7 @@ export async function getPosCart(
   const cart = await repository.findCartDetailsById(
     assertId(input.cartId, "cartId"),
     assertId(input.organizationId, "organizationId"),
+    assertId(input.userId, "userId"),
   );
   if (!cart) throw new NotFoundError("Cart was not found.");
   return cart;
@@ -261,12 +272,14 @@ export async function addPosCartItem(
     organizationId: string;
     productVariantId: string;
     quantity: number;
+    userId: string;
   },
 ): Promise<PosCartLine> {
   const cart = await requireOpenCart(
     repositories.pos,
     input.cartId,
     input.organizationId,
+    input.userId,
   );
   const variant = await repositories.pos.findSellableVariant(
     assertId(input.productVariantId, "productVariantId"),
@@ -304,12 +317,14 @@ export async function updatePosCartItem(
     itemId: string;
     organizationId: string;
     quantity: number;
+    userId: string;
   },
 ) {
   const cart = await requireOpenCart(
     repository,
     input.cartId,
     input.organizationId,
+    input.userId,
   );
   const line = await repository.findCartLineById(
     assertId(input.itemId, "itemId"),
@@ -331,12 +346,18 @@ export async function updatePosCartItem(
 
 export async function removePosCartItem(
   repository: PosRepository,
-  input: { cartId: string; itemId: string; organizationId: string },
+  input: {
+    cartId: string;
+    itemId: string;
+    organizationId: string;
+    userId: string;
+  },
 ) {
   const cart = await requireOpenCart(
     repository,
     input.cartId,
     input.organizationId,
+    input.userId,
   );
   if (
     !(await repository.removeCartLine(
@@ -352,10 +373,12 @@ async function requireOpenCart(
   repository: PosRepository,
   cartId: string,
   organizationId: string,
+  userId: string,
 ) {
   const cart = await repository.findCartById(
     assertId(cartId, "cartId"),
     assertId(organizationId, "organizationId"),
+    assertId(userId, "userId"),
   );
   if (!cart) throw new NotFoundError("Cart was not found.");
   if (cart.sessionStatus !== "OPEN")

@@ -14,6 +14,7 @@ import {
   createSalesCounter,
   listSalesCounters,
   listSalesSessions,
+  listCurrentUserSalesSessions,
   getCheckoutStatus,
   getPosCart,
   listCheckoutHistory,
@@ -171,14 +172,29 @@ export class PosApplicationService {
       ).map(mapSession);
     });
   }
+  listCurrentSessions(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<SalesSessionContract[]>(context, async (trusted) => {
+      parsePayload(posEmptyInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      const userId = this.requireUserId(trusted);
+      return (
+        await listCurrentUserSalesSessions(this.dependencies.pos, {
+          organizationId: trusted.organizationId,
+          userId,
+        })
+      ).map(mapSession);
+    });
+  }
   getCart(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<PosCartDetailsContract>(context, async (trusted) => {
       const input = parsePayload(getPosCartServiceInputSchema, payload);
       await this.authorize(trusted, "READ");
+      const userId = this.requireUserId(trusted);
       return mapCartDetails(
         await getPosCart(this.dependencies.pos, {
           ...input,
           organizationId: trusted.organizationId,
+          userId,
         }),
       );
     });
@@ -240,6 +256,7 @@ export class PosApplicationService {
     return this.execute<PosCartLineContract>(context, async (trusted) => {
       const input = parsePayload(addPosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "CREATE");
+      const userId = this.requireUserId(trusted);
       return mapLine(
         await addPosCartItem(
           {
@@ -249,6 +266,7 @@ export class PosApplicationService {
           {
             ...input,
             organizationId: trusted.organizationId,
+            userId,
           },
         ),
       );
@@ -258,10 +276,12 @@ export class PosApplicationService {
     return this.execute<PosCartLineContract>(context, async (trusted) => {
       const input = parsePayload(updatePosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "UPDATE");
+      const userId = this.requireUserId(trusted);
       return mapLine(
         await updatePosCartItem(this.dependencies.pos, {
           ...input,
           organizationId: trusted.organizationId,
+          userId,
         }),
       );
     });
@@ -270,9 +290,11 @@ export class PosApplicationService {
     return this.execute<null>(context, async (trusted) => {
       const input = parsePayload(removePosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "UPDATE");
+      const userId = this.requireUserId(trusted);
       await removePosCartItem(this.dependencies.pos, {
         ...input,
         organizationId: trusted.organizationId,
+        userId,
       });
       return null;
     });
@@ -445,6 +467,11 @@ export class PosApplicationService {
       context,
       { action, resource: "POS" },
     );
+  }
+  private requireUserId(context: ValidatedApplicationExecutionContext) {
+    if (!context.userId)
+      throw new AuthenticationError("Authenticated user is required.");
+    return context.userId;
   }
   private async execute<T>(
     rawContext: ApplicationExecutionContext,
