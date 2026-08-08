@@ -9,6 +9,7 @@ import type {
   InventoryMovementRepository,
   InventoryReadRepository,
   OrganizationRepository,
+  PaymentRepository,
   PosCheckoutRepository,
   ReceiptRepository,
   SalesOrderRepository,
@@ -36,6 +37,7 @@ describe("createApplicationServices", () => {
       productVariantRepository: fakeProductVariantRepository,
       posRepository: {} as never,
       posCheckoutRepository: fakePosCheckoutRepository,
+      paymentRepository: fakePaymentRepository,
       receiptRepository: fakeReceiptRepository,
       rolePermissionRepository: {} as never,
       salesOrderRepository: fakeSalesOrderRepository,
@@ -162,7 +164,16 @@ const fakePosCheckoutRepository: PosCheckoutRepository = {
 
 const fakeReceiptRepository: ReceiptRepository = {
   create: () => Promise.reject(unreachableError()),
+  createPaymentCollectionReceipt: () => Promise.reject(unreachableError()),
   findByCheckoutId: () => Promise.resolve(null),
+  findPaymentCollectionReceiptById: () => Promise.resolve(null),
+};
+
+const fakePaymentRepository: PaymentRepository = {
+  create: () => Promise.reject(unreachableError()),
+  createCollection: () => Promise.reject(unreachableError()),
+  findAccountByCheckoutId: () => Promise.resolve(null),
+  prepareCollection: () => Promise.resolve(null),
 };
 
 const fakeSalesOrderRepository: SalesOrderRepository = {

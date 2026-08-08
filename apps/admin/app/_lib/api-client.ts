@@ -59,6 +59,10 @@ import type {
   PosSaleLookupContract,
   SalesReceiptContract,
   CheckoutPosCartServiceInputContract,
+  CollectPosPaymentServiceInputContract,
+  CollectPosPaymentResultContract,
+  PaymentAccountContract,
+  PaymentCollectionReceiptContract,
   CreateSalesCounterServiceInputContract,
   UpdateSalesCounterStatusServiceInputContract,
   OpenSalesSessionServiceInputContract,
@@ -702,6 +706,31 @@ export class AdminApiClient {
   getPosReceipt(checkoutId: string, request?: AdminApiRequest) {
     return this.request<SalesReceiptContract>(
       `/pos/checkouts/${checkoutId}/receipt`,
+      request,
+    );
+  }
+
+  getPosPaymentAccount(checkoutId: string, request?: AdminApiRequest) {
+    return this.request<PaymentAccountContract>(
+      `/pos/checkouts/${checkoutId}/payments`,
+      request,
+    );
+  }
+
+  collectPosPayment(
+    input: CollectPosPaymentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { checkoutId, ...body } = input;
+    return this.request<CollectPosPaymentResultContract>(
+      `/pos/checkouts/${checkoutId}/payment-collections`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  getPaymentCollectionReceipt(collectionId: string, request?: AdminApiRequest) {
+    return this.request<PaymentCollectionReceiptContract>(
+      `/pos/payment-collections/${collectionId}/receipt`,
       request,
     );
   }

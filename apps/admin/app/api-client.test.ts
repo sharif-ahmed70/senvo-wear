@@ -510,6 +510,21 @@ describe("AdminApiClient", () => {
     await client.getPosReceipt("10000000-0000-4000-8000-000000000013", {
       requestId: "req_pos_client_4",
     });
+    await client.getPosPaymentAccount("10000000-0000-4000-8000-000000000013", {
+      requestId: "req_pos_client_6",
+    });
+    await client.collectPosPayment(
+      {
+        checkoutId: "10000000-0000-4000-8000-000000000013",
+        idempotencyKey: "payment-collection-001",
+        payments: [{ amountMinor: 500, method: "CASH" }],
+      },
+      { requestId: "req_pos_client_7" },
+    );
+    await client.getPaymentCollectionReceipt(
+      "10000000-0000-4000-8000-000000000014",
+      { requestId: "req_pos_client_8" },
+    );
     const bodies = fetcher.mock.calls.map(
       (call) =>
         JSON.parse(
@@ -522,6 +537,9 @@ describe("AdminApiClient", () => {
       "https://admin.example.test/pos/sessions/current",
       "https://admin.example.test/pos/carts/10000000-0000-4000-8000-000000000012/checkout",
       "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/receipt",
+      "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/payments",
+      "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/payment-collections",
+      "https://admin.example.test/pos/payment-collections/10000000-0000-4000-8000-000000000014/receipt",
     ]);
     for (const body of bodies) {
       expect(body).not.toHaveProperty("organizationId");

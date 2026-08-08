@@ -268,6 +268,9 @@ model Organization {
   salesReceipts SalesReceipt[]
   salesReceiptLines SalesReceiptLine[]
   salesReceiptPayments SalesReceiptPayment[]
+  paymentCollections PaymentCollection[]
+  paymentCollectionLines PaymentCollectionLine[]
+  paymentCollectionReceipts PaymentCollectionReceipt[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
   auditEntries AuditEntry[]
@@ -291,6 +294,7 @@ model User {
   openedSalesSessions SalesSession[]
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
+  acceptedPaymentCollections PaymentCollection[]
 
   @@index([status])
   @@map("users")
@@ -331,6 +335,7 @@ model OrganizationMembership {
   openedSalesSessions SalesSession[]
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
+  acceptedPaymentCollections PaymentCollection[]
 
   @@unique([userId, organizationId])
   @@unique([id, organizationId])
@@ -748,6 +753,8 @@ model PosCheckoutRecord {
   salesOrder   SalesOrder             @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   paymentBatch PaymentBatch?
   receipt      SalesReceipt?
+  paymentCollections PaymentCollection[]
+  paymentCollectionReceipts PaymentCollectionReceipt[]
 
   @@unique([id, organizationId])
   @@unique([cartId, organizationId])
@@ -785,6 +792,7 @@ model PaymentBatch {
   membership   OrganizationMembership  @relation(fields: [staffId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_staff_org_fkey")
   lines        PaymentLine[]
   receipt      SalesReceipt?
+  collections  PaymentCollection[]
 
   @@unique([id, organizationId], map: "payment_batches_id_org_key")
   @@unique([checkoutId, organizationId], map: "payment_batches_checkout_org_key")
@@ -812,6 +820,92 @@ model PaymentLine {
   @@unique([paymentBatchId, lineNumber], map: "payment_lines_batch_line_key")
   @@index([organizationId, method, createdAt], map: "payment_lines_org_method_created_idx")
   @@map("payment_lines")
+}
+
+model PaymentCollection {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  checkoutId         String   @map("checkout_id") @db.Uuid
+  salesOrderId       String   @map("sales_order_id") @db.Uuid
+  paymentBatchId     String   @map("payment_batch_id") @db.Uuid
+  acceptedByUserId   String   @map("accepted_by_user_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(64)
+  requestSignature   String   @map("request_signature") @db.Text
+  currencyCode       String   @map("currency_code") @db.VarChar(3)
+  amountMinor        Int      @map("amount_minor")
+  balanceBeforeMinor Int      @map("balance_before_minor")
+  balanceAfterMinor  Int      @map("balance_after_minor")
+  createdAt          DateTime @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  checkout PosCheckoutRecord @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collections_checkout_org_fkey")
+  salesOrder SalesOrder @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collections_order_org_fkey")
+  paymentBatch PaymentBatch @relation(fields: [paymentBatchId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collections_batch_org_fkey")
+  acceptedBy User @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  acceptedMembership OrganizationMembership @relation(fields: [acceptedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collections_staff_org_fkey")
+  lines PaymentCollectionLine[]
+  receipt PaymentCollectionReceipt?
+
+  @@unique([id, organizationId], map: "payment_collections_id_org_key")
+  @@unique([organizationId, checkoutId, idempotencyKey], map: "payment_collections_org_checkout_idem_key")
+  @@index([organizationId, checkoutId, createdAt, id], map: "payment_collections_org_checkout_created_idx")
+  @@index([organizationId, acceptedByUserId, createdAt], map: "payment_collections_org_staff_created_idx")
+  @@map("payment_collections")
+}
+
+model PaymentCollectionLine {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  collectionId   String        @map("collection_id") @db.Uuid
+  lineNumber     Int           @map("line_number")
+  method         PaymentMethod
+  amountMinor    Int           @map("amount_minor")
+  reference      String?       @db.VarChar(120)
+  createdAt      DateTime      @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  collection PaymentCollection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collection_lines_collection_org_fkey")
+
+  @@unique([collectionId, lineNumber], map: "payment_collection_lines_collection_line_key")
+  @@index([organizationId, collectionId], map: "payment_collection_lines_org_collection_idx")
+  @@map("payment_collection_lines")
+}
+
+model PaymentCollectionReceipt {
+  id                       String               @id @default(uuid()) @db.Uuid
+  organizationId           String               @map("organization_id") @db.Uuid
+  collectionId             String               @map("collection_id") @db.Uuid
+  checkoutId               String               @map("checkout_id") @db.Uuid
+  salesOrderId             String               @map("sales_order_id") @db.Uuid
+  receiptNumber            String               @map("receipt_number") @db.VarChar(64)
+  organizationName         String               @map("organization_name") @db.VarChar(160)
+  organizationPhone        String?              @map("organization_phone") @db.VarChar(40)
+  organizationEmail        String?              @map("organization_email") @db.VarChar(254)
+  organizationAddressLine1 String?              @map("organization_address_line_1") @db.VarChar(240)
+  organizationAddressLine2 String?              @map("organization_address_line_2") @db.VarChar(240)
+  organizationCity         String?              @map("organization_city") @db.VarChar(120)
+  organizationDistrict     String?              @map("organization_district") @db.VarChar(120)
+  organizationPostalCode   String?              @map("organization_postal_code") @db.VarChar(120)
+  orderNumber              String               @map("order_number") @db.VarChar(64)
+  acceptedByName           String               @map("accepted_by_name") @db.VarChar(254)
+  currencyCode             String               @map("currency_code") @db.VarChar(3)
+  amountMinor              Int                  @map("amount_minor")
+  totalMinor               Int                  @map("total_minor")
+  cumulativePaidMinor      Int                  @map("cumulative_paid_minor")
+  outstandingMinor         Int                  @map("outstanding_minor")
+  paymentStatus            PaymentBalanceStatus @map("payment_status")
+  collectedAt              DateTime             @map("collected_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  collection PaymentCollection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collection_receipts_collection_org_fkey")
+  checkout PosCheckoutRecord @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collection_receipts_checkout_org_fkey")
+  salesOrder SalesOrder @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_collection_receipts_order_org_fkey")
+
+  @@unique([id, organizationId], map: "payment_collection_receipts_id_org_key")
+  @@unique([collectionId, organizationId], map: "payment_collection_receipts_collection_org_key")
+  @@unique([organizationId, receiptNumber], map: "payment_collection_receipts_org_number_key")
+  @@index([organizationId, collectedAt, id], map: "payment_collection_receipts_org_collected_idx")
+  @@map("payment_collection_receipts")
 }
 
 model SalesReceipt {
@@ -1122,6 +1216,8 @@ model SalesOrder {
   posCheckout          PosCheckoutRecord?
   paymentBatch         PaymentBatch?
   salesReceipt         SalesReceipt?
+  paymentCollections   PaymentCollection[]
+  paymentCollectionReceipts PaymentCollectionReceipt[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, orderNumber])

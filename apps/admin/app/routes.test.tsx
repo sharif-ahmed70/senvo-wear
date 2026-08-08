@@ -37,6 +37,8 @@ import PosCheckoutsPage from "./pos/checkouts/page";
 import PosSellPage from "./pos/sell/page";
 import { PosManagementWorkspace } from "./pos/_components/pos-management-workspace";
 import { ReceiptPreview } from "./pos/checkouts/[id]/receipt/receipt-preview";
+import { CheckoutPaymentWorkspace } from "./pos/checkouts/[id]/checkout-payment-workspace";
+import { PaymentReceiptPreview } from "./pos/payment-collections/[id]/receipt/payment-receipt-preview";
 
 describe("admin routes", () => {
   it("renders sales source and booth history routes", () => {
@@ -81,6 +83,24 @@ describe("admin routes", () => {
     );
     expect(html).toContain("Receipt access unavailable");
     expect(html).not.toContain("Print");
+  });
+  it("hides outstanding collection and payment receipts without payment access", () => {
+    expect(
+      renderToStaticMarkup(
+        <CheckoutPaymentWorkspace
+          checkoutId="10000000-0000-4000-8000-000000000001"
+          permissions={[]}
+        />,
+      ),
+    ).toContain("Payment access unavailable");
+    expect(
+      renderToStaticMarkup(
+        <PaymentReceiptPreview
+          collectionId="10000000-0000-4000-8000-000000000001"
+          permissions={["POS:READ"]}
+        />,
+      ),
+    ).toContain("Receipt access unavailable");
   });
   it.each([
     ["Dashboard", AdminPage],

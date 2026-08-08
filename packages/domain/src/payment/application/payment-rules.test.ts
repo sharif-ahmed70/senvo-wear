@@ -1,5 +1,7 @@
 import { BusinessRuleError, ValidationApplicationError } from "../../errors.js";
 import {
+  calculateCumulativePaymentBalance,
+  calculatePaymentCollection,
   calculatePaymentBalance,
   createPaymentRequestSignature,
   normalizePaymentInstructions,
@@ -112,6 +114,39 @@ describe("checkout payment rules", () => {
     expect(createPaymentRequestSignature(first, false)).not.toBe(
       createPaymentRequestSignature(first, true),
     );
+  });
+
+  it("derives cumulative balances across partial collections", () => {
+    expect(
+      calculateCumulativePaymentBalance(10_000, 2_000, [1_500, 2_500]),
+    ).toEqual({
+      outstandingMinor: 4_000,
+      paidMinor: 6_000,
+      status: "PARTIALLY_PAID",
+    });
+    expect(
+      calculatePaymentCollection(10_000, 6_000, [
+        { amountMinor: 4_000, method: "CASH", reference: null },
+      ]),
+    ).toMatchObject({
+      amountMinor: 4_000,
+      balanceBeforeMinor: 4_000,
+      outstandingMinor: 0,
+      status: "PAID",
+    });
+  });
+
+  it("rejects over-collection and collecting an already-paid balance", () => {
+    expect(() =>
+      calculatePaymentCollection(10_000, 6_000, [
+        { amountMinor: 4_001, method: "CASH", reference: null },
+      ]),
+    ).toThrow(BusinessRuleError);
+    expect(() =>
+      calculatePaymentCollection(10_000, 10_000, [
+        { amountMinor: 1, method: "CASH", reference: null },
+      ]),
+    ).toThrow(BusinessRuleError);
   });
 });
 

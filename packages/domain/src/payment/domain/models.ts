@@ -42,3 +42,64 @@ export type PaymentBalance = {
   paidMinor: number;
   status: PaymentBalanceStatus;
 };
+
+export type PaymentCollectionLine = PaymentInstruction & {
+  collectionId: string;
+  createdAt: Date;
+  id: string;
+  lineNumber: number;
+  organizationId: string;
+};
+
+export type PaymentCollection = {
+  acceptedByName: string;
+  acceptedByUserId: string;
+  amountMinor: number;
+  balanceAfterMinor: number;
+  balanceBeforeMinor: number;
+  checkoutId: string;
+  createdAt: Date;
+  currencyCode: "BDT";
+  id: string;
+  idempotencyKey: string;
+  lines: PaymentCollectionLine[];
+  organizationId: string;
+  receiptId: string;
+  receiptNumber: string;
+  requestSignature: string;
+  salesOrderId: string;
+};
+
+export type PaymentAccount = {
+  checkoutId: string;
+  collections: PaymentCollection[];
+  cumulativePaidMinor: number | null;
+  currencyCode: "BDT";
+  initialPaidMinor: number | null;
+  initialPayments: PaymentInstruction[];
+  legacyPaymentRecorded: boolean;
+  orderNumber: string;
+  organizationId: string;
+  outstandingMinor: number | null;
+  status: CheckoutPaymentStatus;
+  totalMinor: number;
+};
+
+export type PaymentCollectionPreparation = {
+  acceptedByName: string;
+  checkoutId: string;
+  collections: PaymentCollection[];
+  initialPayment: PaymentBatch | null;
+  orderNumber: string;
+  organizationAddressLine1: string | null;
+  organizationAddressLine2: string | null;
+  organizationCity: string | null;
+  organizationDistrict: string | null;
+  organizationEmail: string | null;
+  organizationId: string;
+  organizationName: string;
+  organizationPhone: string | null;
+  organizationPostalCode: string | null;
+  salesOrderId: string;
+  totalMinor: number;
+};

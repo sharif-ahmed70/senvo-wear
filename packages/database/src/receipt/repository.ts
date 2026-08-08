@@ -1,22 +1,32 @@
 import type {
+  CreatePaymentCollectionReceiptRecord,
   CreateSalesReceiptRecord,
+  PaymentCollectionReceipt,
   ReceiptRepository,
   SalesReceipt,
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-type ReceiptPrismaClient = Pick<PrismaClient, "salesReceipt">;
+type ReceiptPrismaClient = Pick<
+  PrismaClient,
+  "paymentCollectionReceipt" | "salesReceipt"
+>;
 const receiptInclude = {
   lines: { orderBy: { lineNumber: "asc" } },
   payments: { orderBy: { lineNumber: "asc" } },
 } as const;
+const collectionReceiptInclude = {
+  collection: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
+} as const;
 type ReceiptRecord = Prisma.SalesReceiptGetPayload<{
   include: typeof receiptInclude;
+}>;
+type CollectionReceiptRecord = Prisma.PaymentCollectionReceiptGetPayload<{
+  include: typeof collectionReceiptInclude;
 }>;
 
 export class PrismaReceiptRepository implements ReceiptRepository {
   constructor(private readonly prisma: ReceiptPrismaClient) {}
-
   async create(record: CreateSalesReceiptRecord): Promise<SalesReceipt> {
     const { lines, payments, ...receipt } = record;
     return mapReceipt(
@@ -24,21 +34,40 @@ export class PrismaReceiptRepository implements ReceiptRepository {
         data: {
           ...receipt,
           lines: { create: lines.map((line) => ({ ...line })) },
-          payments: {
-            create: payments.map((payment) => ({ ...payment })),
-          },
+          payments: { create: payments.map((payment) => ({ ...payment })) },
         },
         include: receiptInclude,
       }),
     );
   }
-
   async findByCheckoutId(checkoutId: string, organizationId: string) {
     const record = await this.prisma.salesReceipt.findFirst({
       include: receiptInclude,
       where: { checkoutId, organizationId },
     });
     return record ? mapReceipt(record) : null;
+  }
+  async createPaymentCollectionReceipt(
+    record: CreatePaymentCollectionReceiptRecord,
+  ) {
+    const { payments, ...receipt } = record;
+    void payments;
+    return mapCollectionReceipt(
+      await this.prisma.paymentCollectionReceipt.create({
+        data: receipt,
+        include: collectionReceiptInclude,
+      }),
+    );
+  }
+  async findPaymentCollectionReceiptById(
+    collectionId: string,
+    organizationId: string,
+  ) {
+    const record = await this.prisma.paymentCollectionReceipt.findFirst({
+      include: collectionReceiptInclude,
+      where: { collectionId, organizationId },
+    });
+    return record ? mapCollectionReceipt(record) : null;
   }
 }
 
@@ -93,6 +122,42 @@ function mapReceipt(record: ReceiptRecord): SalesReceipt {
     sourceName: record.sourceName,
     staffName: record.staffName,
     subtotalMinor: record.subtotalMinor,
+    totalMinor: record.totalMinor,
+  };
+}
+
+function mapCollectionReceipt(
+  record: CollectionReceiptRecord,
+): PaymentCollectionReceipt {
+  return {
+    acceptedByName: record.acceptedByName,
+    amountMinor: record.amountMinor,
+    checkoutId: record.checkoutId,
+    collectedAt: record.collectedAt,
+    collectionId: record.collectionId,
+    cumulativePaidMinor: record.cumulativePaidMinor,
+    currencyCode: "BDT",
+    id: record.id,
+    orderNumber: record.orderNumber,
+    organizationAddressLine1: record.organizationAddressLine1,
+    organizationAddressLine2: record.organizationAddressLine2,
+    organizationCity: record.organizationCity,
+    organizationDistrict: record.organizationDistrict,
+    organizationEmail: record.organizationEmail,
+    organizationId: record.organizationId,
+    organizationName: record.organizationName,
+    organizationPhone: record.organizationPhone,
+    organizationPostalCode: record.organizationPostalCode,
+    outstandingMinor: record.outstandingMinor,
+    paymentStatus: record.paymentStatus,
+    payments: record.collection.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      reference: line.reference,
+    })),
+    receiptNumber: record.receiptNumber,
+    salesOrderId: record.salesOrderId,
     totalMinor: record.totalMinor,
   };
 }

@@ -6,11 +6,13 @@ import type {
 } from "@senvo/application";
 import {
   addPosCartItemServiceInputSchema,
+  collectPosPaymentServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
+  getPaymentCollectionReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posEmptyInputSchema,
@@ -20,6 +22,9 @@ import {
   type PosCartLineContract,
   type PosCartDetailsContract,
   type PosCheckoutContract,
+  type CollectPosPaymentResultContract,
+  type PaymentAccountContract,
+  type PaymentCollectionReceiptContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
   type SalesCounterContract,
@@ -28,6 +33,10 @@ import {
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
 export type PosApplication = {
+  collectPayment(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<CollectPosPaymentResultContract>>;
   addCartItem(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -60,6 +69,14 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesReceiptContract>>;
+  getPaymentAccount(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PaymentAccountContract>>;
+  getPaymentCollectionReceipt(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PaymentCollectionReceiptContract>>;
   listCheckouts(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -95,6 +112,7 @@ export type PosApplication = {
 };
 
 export type PosApiHandlers = {
+  collectPayment: ApiHandler<CollectPosPaymentResultContract>;
   addCartItem: ApiHandler<PosCartLineContract>;
   closeSession: ApiHandler<SalesSessionContract>;
   checkoutCart: ApiHandler<PosCheckoutContract>;
@@ -103,6 +121,8 @@ export type PosApiHandlers = {
   getCheckout: ApiHandler<PosCheckoutContract>;
   getCart: ApiHandler<PosCartDetailsContract>;
   getReceipt: ApiHandler<SalesReceiptContract>;
+  getPaymentAccount: ApiHandler<PaymentAccountContract>;
+  getPaymentCollectionReceipt: ApiHandler<PaymentCollectionReceiptContract>;
   listCheckouts: ApiHandler<PosCheckoutContract[]>;
   listSessions: ApiHandler<SalesSessionContract[]>;
   listCurrentSessions: ApiHandler<SalesSessionContract[]>;
@@ -136,6 +156,14 @@ export function createPosApiHandlers(dependencies: {
       permission: { action, resource: "POS" },
     });
   return {
+    collectPayment: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.collectPayment(context, input),
+      inputSchema: collectPosPaymentServiceInputSchema,
+      permission: { action: "CREATE", resource: "PAYMENT" },
+    }),
     addCartItem: handler(
       "CREATE",
       addPosCartItemServiceInputSchema,
@@ -172,6 +200,22 @@ export function createPosApiHandlers(dependencies: {
       authorizationService: dependencies.authorizationService,
       execute: (context, input) => dependencies.pos.getReceipt(context, input),
       inputSchema: getPosCheckoutServiceInputSchema,
+      permission: { action: "READ", resource: "RECEIPT" },
+    }),
+    getPaymentAccount: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.getPaymentAccount(context, input),
+      inputSchema: getPosCheckoutServiceInputSchema,
+      permission: { action: "READ", resource: "PAYMENT" },
+    }),
+    getPaymentCollectionReceipt: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.getPaymentCollectionReceipt(context, input),
+      inputSchema: getPaymentCollectionReceiptServiceInputSchema,
       permission: { action: "READ", resource: "RECEIPT" },
     }),
     listCheckouts: handler("READ", posEmptyInputSchema, (context, input) =>

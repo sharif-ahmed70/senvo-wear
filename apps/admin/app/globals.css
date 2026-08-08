@@ -2428,6 +2428,34 @@ a {
   display: grid;
   gap: 10px;
 }
+.pos-payment-line {
+  align-items: end;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr minmax(180px, 1.4fr) auto;
+  margin: 12px 0;
+  padding: 14px;
+}
+.pos-payment-line label {
+  display: grid;
+  font-weight: 650;
+  gap: 6px;
+}
+.pos-payment-line button,
+.pos-primary-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  min-height: 42px;
+}
+@media (max-width: 760px) {
+  .pos-payment-line {
+    grid-template-columns: 1fr;
+  }
+}
 .pos-payment-lines fieldset {
   align-items: start;
   border: 1px solid var(--admin-border);

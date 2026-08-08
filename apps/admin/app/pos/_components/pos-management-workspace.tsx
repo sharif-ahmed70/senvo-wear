@@ -60,6 +60,8 @@ export function PosManagementWorkspace({
     />
   ) : (
     <CheckoutHistory
+      canCollect={permissions.includes("PAYMENT:CREATE")}
+      canReadPayment={permissions.includes("PAYMENT:READ")}
       canReadReceipt={
         permissions.includes("RECEIPT:READ") &&
         permissions.includes("PAYMENT:READ")
@@ -68,7 +70,15 @@ export function PosManagementWorkspace({
   );
 }
 
-function CheckoutHistory({ canReadReceipt }: { canReadReceipt: boolean }) {
+function CheckoutHistory({
+  canCollect,
+  canReadPayment,
+  canReadReceipt,
+}: {
+  canCollect: boolean;
+  canReadPayment: boolean;
+  canReadReceipt: boolean;
+}) {
   const [checkouts, setCheckouts] = useState<PosCheckoutContract[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,10 +121,11 @@ function CheckoutHistory({ canReadReceipt }: { canReadReceipt: boolean }) {
                 <th>Counter</th>
                 <th>Team member</th>
                 <th>Amount</th>
-                <th>Paid</th>
-                <th>Outstanding</th>
+                <th>Amount paid</th>
+                <th>Amount due</th>
                 <th>Payment</th>
                 <th>Receipt</th>
+                <th>Action</th>
                 <th>Time</th>
               </tr>
             </thead>
@@ -122,7 +133,12 @@ function CheckoutHistory({ canReadReceipt }: { canReadReceipt: boolean }) {
               {checkouts.map((checkout) => (
                 <tr key={checkout.id}>
                   <td data-label="Order">
-                    <strong>{checkout.orderNumber}</strong>
+                    <Link
+                      className="pos-receipt-link"
+                      href={`/pos/checkouts/${checkout.id}`}
+                    >
+                      <strong>{checkout.orderNumber}</strong>
+                    </Link>
                   </td>
                   <td data-label="Counter">{checkout.counterName}</td>
                   <td data-label="Team member">{checkout.staffName}</td>
@@ -154,6 +170,25 @@ function CheckoutHistory({ canReadReceipt }: { canReadReceipt: boolean }) {
                       <span className="pos-muted">
                         {checkout.receiptId ? "Restricted" : "Unavailable"}
                       </span>
+                    )}
+                  </td>
+                  <td data-label="Action">
+                    {canCollect && (checkout.outstandingMinor ?? 0) > 0 ? (
+                      <Link
+                        className="pos-receipt-link"
+                        href={`/pos/checkouts/${checkout.id}`}
+                      >
+                        Collect payment
+                      </Link>
+                    ) : canReadPayment ? (
+                      <Link
+                        className="pos-receipt-link"
+                        href={`/pos/checkouts/${checkout.id}`}
+                      >
+                        View details
+                      </Link>
+                    ) : (
+                      <span className="pos-muted">Restricted</span>
                     )}
                   </td>
                   <td data-label="Time">{formatDate(checkout.completedAt)}</td>

@@ -15,6 +15,7 @@ import {
   PrismaSalesSourceRepository,
   PrismaPosRepository,
   PrismaPosCheckoutRepository,
+  PrismaPaymentRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
@@ -43,6 +44,7 @@ import type {
   SalesSourceRepository,
   PosRepository,
   PosCheckoutRepository,
+  PaymentRepository,
   ReceiptRepository,
   RolePermissionRepository,
   UserRepository,
@@ -78,6 +80,7 @@ export type CreateApplicationServicesOptions = {
   organizationProfileRepository?: OrganizationProfileRepository;
   posRepository?: PosRepository;
   posCheckoutRepository?: PosCheckoutRepository;
+  paymentRepository?: PaymentRepository;
   receiptRepository?: ReceiptRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
@@ -129,6 +132,7 @@ export function createApplicationServices(
   let productVariantRepository = options.productVariantRepository;
   let posRepository = options.posRepository;
   let posCheckoutRepository = options.posCheckoutRepository;
+  let paymentRepository = options.paymentRepository;
   let receiptRepository = options.receiptRepository;
   let sizeRepository = options.sizeRepository;
 
@@ -151,6 +155,7 @@ export function createApplicationServices(
     !productVariantRepository ||
     !posRepository ||
     !posCheckoutRepository ||
+    !paymentRepository ||
     !receiptRepository ||
     !sizeRepository
   ) {
@@ -247,6 +252,9 @@ export function createApplicationServices(
   receiptRepository ??= new PrismaReceiptRepository(
     requirePrismaClient(prismaClient),
   );
+  paymentRepository ??= new PrismaPaymentRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   return {
     catalog: new CatalogApplicationService({
@@ -294,6 +302,7 @@ export function createApplicationServices(
       inventory: inventoryReadRepository,
       memberships: membershipRepository,
       pos: posRepository,
+      payments: paymentRepository,
       receipts: receiptRepository,
       requestIdGenerator: options.requestIdGenerator,
       salesSources:

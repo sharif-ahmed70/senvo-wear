@@ -61,3 +61,30 @@ export type SalesReceipt = {
 };
 
 export type ReceiptDocument = SalesReceipt;
+
+export type PaymentCollectionReceipt = {
+  acceptedByName: string;
+  amountMinor: number;
+  checkoutId: string;
+  collectedAt: Date;
+  collectionId: string;
+  cumulativePaidMinor: number;
+  currencyCode: "BDT";
+  id: string;
+  orderNumber: string;
+  organizationAddressLine1: string | null;
+  organizationAddressLine2: string | null;
+  organizationCity: string | null;
+  organizationDistrict: string | null;
+  organizationEmail: string | null;
+  organizationId: string;
+  organizationName: string;
+  organizationPhone: string | null;
+  organizationPostalCode: string | null;
+  outstandingMinor: number;
+  paymentStatus: PaymentBalanceStatus;
+  payments: SalesReceiptPayment[];
+  receiptNumber: string;
+  salesOrderId: string;
+  totalMinor: number;
+};
