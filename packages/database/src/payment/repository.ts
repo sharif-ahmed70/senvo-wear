@@ -15,6 +15,7 @@ type PaymentPrismaClient = Pick<
   | "$queryRaw"
   | "paymentBatch"
   | "paymentCollection"
+  | "paymentCollectionLine"
   | "posCheckoutRecord"
   | "user"
 >;
@@ -73,22 +74,26 @@ export class PrismaPaymentRepository implements PaymentRepository {
     const created = await this.prisma.paymentCollection.create({
       data: {
         ...collection,
-        lines: {
-          create: lines.map((line, index) => ({
-            ...line,
-            createdAt: record.createdAt,
-            lineNumber: index + 1,
-            organizationId: record.organizationId,
-          })),
-        },
       },
+    });
+    await this.prisma.paymentCollectionLine.createMany({
+      data: lines.map((line, index) => ({
+        ...line,
+        collectionId: created.id,
+        createdAt: record.createdAt,
+        lineNumber: index + 1,
+        organizationId: record.organizationId,
+      })),
+    });
+    const persisted = await this.prisma.paymentCollection.findUniqueOrThrow({
       include: {
         acceptedBy: collectionInclude.acceptedBy,
         lines: collectionInclude.lines,
       },
+      where: { id: created.id },
     });
     return mapCollection({
-      ...created,
+      ...persisted,
       receipt: { id: receiptId, receiptNumber },
     });
   }
