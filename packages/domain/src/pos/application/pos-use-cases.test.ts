@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 import type {
   PosCart,
+  PosCartDetails,
   PosCartLine,
   SalesCounter,
   SalesSession,
@@ -15,17 +16,115 @@ import type { PosRepository } from "../repositories/pos-repository.js";
 import {
   addPosCartItem,
   createSalesCounter,
+  getPosCart,
+  listCurrentUserSalesSessions,
   lookupPosSale,
   openSalesSession,
+  removePosCartItem,
+  updatePosCartItem,
 } from "./pos-use-cases.js";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
 const userId = "10000000-0000-4000-8000-000000000003";
+const otherUserId = "10000000-0000-4000-8000-000000000006";
 const branchId = "10000000-0000-4000-8000-000000000004";
 const variantId = "10000000-0000-4000-8000-000000000005";
 
 describe("offline POS use cases", () => {
+  it("reads only an organization-scoped persisted cart projection", async () => {
+    const pos = new FakePos();
+    pos.cartDetails = {
+      checkoutId: null,
+      createdAt: new Date(),
+      id: branchId,
+      lines: [],
+      organizationId,
+      salesSessionId: userId,
+      sessionStatus: "OPEN",
+      updatedAt: new Date(),
+    };
+    await expect(
+      getPosCart(pos, { cartId: branchId, organizationId, userId }),
+    ).resolves.toBe(pos.cartDetails);
+    await expect(
+      getPosCart(pos, {
+        cartId: branchId,
+        organizationId: otherOrganizationId,
+        userId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      getPosCart(pos, {
+        cartId: branchId,
+        organizationId,
+        userId: otherUserId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("lists only open sessions owned by the trusted user", async () => {
+    const pos = new FakePos();
+    pos.sessions.push(
+      session({
+        counterId: counter().id,
+        openedAt: new Date(),
+        openedByUserId: userId,
+        organizationId,
+      }),
+      session({
+        counterId: branchId,
+        openedAt: new Date(),
+        openedByUserId: otherUserId,
+        organizationId,
+      }),
+    );
+    await expect(
+      listCurrentUserSalesSessions(pos, { organizationId, userId }),
+    ).resolves.toEqual([expect.objectContaining({ openedByUserId: userId })]);
+  });
+
+  it("rejects every cart mutation from another cashier in the organization", async () => {
+    const pos = new FakePos();
+    pos.cart = {
+      createdAt: new Date(),
+      id: branchId,
+      lines: [],
+      organizationId,
+      salesSessionId: userId,
+      sessionStatus: "OPEN",
+      updatedAt: new Date(),
+    };
+    await expect(
+      addPosCartItem(
+        { inventory: {} as never, pos },
+        {
+          cartId: branchId,
+          organizationId,
+          productVariantId: variantId,
+          quantity: 1,
+          userId: otherUserId,
+        },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      updatePosCartItem(pos, {
+        cartId: branchId,
+        itemId: variantId,
+        organizationId,
+        quantity: 2,
+        userId: otherUserId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      removePosCartItem(pos, {
+        cartId: branchId,
+        itemId: variantId,
+        organizationId,
+        userId: otherUserId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
   it("creates a normalized organization-scoped store counter", async () => {
     const pos = new FakePos();
     const result = await createSalesCounter(
@@ -158,6 +257,7 @@ describe("offline POS use cases", () => {
         organizationId,
         productVariantId: variantId,
         quantity: 3,
+        userId,
       },
     );
     expect(line).toMatchObject({
@@ -211,8 +311,11 @@ describe("offline POS use cases", () => {
 });
 
 class FakePos implements PosRepository {
+  cartDetails: PosCartDetails | null = null;
   counters: SalesCounter[] = [];
   cart: PosCart | null = null;
+  cartOwnerId = userId;
+  sessions: SalesSession[] = [];
   variant: SellableVariant | null = null;
   createCounter(record: Parameters<PosRepository["createCounter"]>[0]) {
     const value = counter(record);
@@ -239,10 +342,21 @@ class FakePos implements PosRepository {
   openSession(record: Parameters<PosRepository["openSession"]>[0]) {
     return Promise.resolve(session(record));
   }
-  findCartById(id: string, org: string) {
+  findCartById(id: string, org: string, openedByUserId: string) {
     return Promise.resolve(
-      this.cart?.id === id && this.cart.organizationId === org
+      this.cart?.id === id &&
+        this.cart.organizationId === org &&
+        this.cartOwnerId === openedByUserId
         ? this.cart
+        : null,
+    );
+  }
+  findCartDetailsById(id: string, org: string, openedByUserId: string) {
+    return Promise.resolve(
+      this.cartDetails?.id === id &&
+        this.cartDetails.organizationId === org &&
+        this.cartOwnerId === openedByUserId
+        ? this.cartDetails
         : null,
     );
   }
@@ -270,6 +384,16 @@ class FakePos implements PosRepository {
   }
   listSessions() {
     return Promise.resolve([]);
+  }
+  listOpenSessionsByUser(org: string, openedByUserId: string) {
+    return Promise.resolve(
+      this.sessions.filter(
+        (item) =>
+          item.organizationId === org &&
+          item.openedByUserId === openedByUserId &&
+          item.status === "OPEN",
+      ),
+    );
   }
   removeCartLine() {
     return Promise.resolve(false);

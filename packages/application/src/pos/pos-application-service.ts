@@ -14,7 +14,9 @@ import {
   createSalesCounter,
   listSalesCounters,
   listSalesSessions,
+  listCurrentUserSalesSessions,
   getCheckoutStatus,
+  getPosCart,
   listCheckoutHistory,
   getSalesReceipt,
   lookupPosSale,
@@ -26,6 +28,7 @@ import {
   type InventoryReadRepository,
   type OrganizationMembershipRepository,
   type PosCartLine,
+  type PosCartDetails,
   type PosCheckout,
   type PosCheckoutRepository,
   type PosRepository,
@@ -43,8 +46,10 @@ import {
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
+  getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
+  posCartDetailsContractSchema,
   posCheckoutContractSchema,
   salesReceiptContractSchema,
   posEmptyInputSchema,
@@ -55,6 +60,7 @@ import {
   updatePosCartItemServiceInputSchema,
   updateSalesCounterStatusServiceInputSchema,
   type PosCartLineContract,
+  type PosCartDetailsContract,
   type PosCheckoutContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
@@ -166,6 +172,33 @@ export class PosApplicationService {
       ).map(mapSession);
     });
   }
+  listCurrentSessions(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<SalesSessionContract[]>(context, async (trusted) => {
+      parsePayload(posEmptyInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      const userId = this.requireUserId(trusted);
+      return (
+        await listCurrentUserSalesSessions(this.dependencies.pos, {
+          organizationId: trusted.organizationId,
+          userId,
+        })
+      ).map(mapSession);
+    });
+  }
+  getCart(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosCartDetailsContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCartServiceInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      const userId = this.requireUserId(trusted);
+      return mapCartDetails(
+        await getPosCart(this.dependencies.pos, {
+          ...input,
+          organizationId: trusted.organizationId,
+          userId,
+        }),
+      );
+    });
+  }
   openSession(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<SalesSessionContract>(context, async (trusted) => {
       const input = parsePayload(openSalesSessionServiceInputSchema, payload);
@@ -223,6 +256,7 @@ export class PosApplicationService {
     return this.execute<PosCartLineContract>(context, async (trusted) => {
       const input = parsePayload(addPosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "CREATE");
+      const userId = this.requireUserId(trusted);
       return mapLine(
         await addPosCartItem(
           {
@@ -232,6 +266,7 @@ export class PosApplicationService {
           {
             ...input,
             organizationId: trusted.organizationId,
+            userId,
           },
         ),
       );
@@ -241,10 +276,12 @@ export class PosApplicationService {
     return this.execute<PosCartLineContract>(context, async (trusted) => {
       const input = parsePayload(updatePosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "UPDATE");
+      const userId = this.requireUserId(trusted);
       return mapLine(
         await updatePosCartItem(this.dependencies.pos, {
           ...input,
           organizationId: trusted.organizationId,
+          userId,
         }),
       );
     });
@@ -253,9 +290,11 @@ export class PosApplicationService {
     return this.execute<null>(context, async (trusted) => {
       const input = parsePayload(removePosCartItemServiceInputSchema, payload);
       await this.authorize(trusted, "UPDATE");
+      const userId = this.requireUserId(trusted);
       await removePosCartItem(this.dependencies.pos, {
         ...input,
         organizationId: trusted.organizationId,
+        userId,
       });
       return null;
     });
@@ -429,6 +468,11 @@ export class PosApplicationService {
       { action, resource: "POS" },
     );
   }
+  private requireUserId(context: ValidatedApplicationExecutionContext) {
+    if (!context.userId)
+      throw new AuthenticationError("Authenticated user is required.");
+    return context.userId;
+  }
   private async execute<T>(
     rawContext: ApplicationExecutionContext,
     action: (context: ValidatedApplicationExecutionContext) => Promise<T>,
@@ -488,6 +532,23 @@ function mapLine(record: PosCartLine): PosCartLineContract {
     productVariantId: record.productVariantId,
     quantity: record.quantity,
     unitPriceMinor: record.unitPriceMinor,
+    updatedAt: record.updatedAt.toISOString(),
+  });
+}
+function mapCartDetails(record: PosCartDetails): PosCartDetailsContract {
+  return posCartDetailsContractSchema.parse({
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    lines: record.lines.map((line) => ({
+      ...mapLine(line),
+      color: line.color,
+      productName: line.productName,
+      size: line.size,
+      sku: line.sku,
+    })),
+    salesSessionId: record.salesSessionId,
+    sessionStatus: record.sessionStatus,
     updatedAt: record.updatedAt.toISOString(),
   });
 }

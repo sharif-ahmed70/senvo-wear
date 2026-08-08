@@ -3,6 +3,7 @@ import {
   AuthorizationError,
   type PosCheckoutPreparation,
   type PosCheckoutRepository,
+  type PosRepository,
   type SalesOrder,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
@@ -168,10 +169,99 @@ describe("PosApplicationService checkout", () => {
   });
 });
 
+describe("PosApplicationService cart reads", () => {
+  it("authorizes POS read and maps the current cart projection", async () => {
+    const permissions: Array<{ action: string; resource: string }> = [];
+    const now = new Date("2026-08-06T10:00:00.000Z");
+    const service = serviceWith({
+      authorizationService: {
+        authorize: (_context, permission) => {
+          permissions.push(permission);
+          return Promise.resolve();
+        },
+      },
+      pos: {
+        findCartDetailsById: (
+          _id: string,
+          scopedOrganizationId: string,
+          openedByUserId: string,
+        ) => {
+          expect(scopedOrganizationId).toBe(organizationId);
+          expect(openedByUserId).toBe(userId);
+          return Promise.resolve({
+            checkoutId: null,
+            createdAt: now,
+            id: cartId,
+            lines: [],
+            organizationId,
+            salesSessionId: "10000000-0000-4000-8000-000000000004",
+            sessionStatus: "OPEN",
+            updatedAt: now,
+          });
+        },
+      } as unknown as PosRepository,
+    });
+    const result = await service.getCart(context(), { cartId });
+    expect(result).toMatchObject({
+      data: { id: cartId, lines: [], sessionStatus: "OPEN" },
+      ok: true,
+    });
+    expect(permissions).toEqual([{ action: "READ", resource: "POS" }]);
+  });
+
+  it("lists open sessions only for the trusted current user", async () => {
+    const now = new Date("2026-08-06T10:00:00.000Z");
+    const service = serviceWith({
+      pos: {
+        listOpenSessionsByUser: (
+          scopedOrganizationId: string,
+          openedByUserId: string,
+        ) => {
+          expect(scopedOrganizationId).toBe(organizationId);
+          expect(openedByUserId).toBe(userId);
+          return Promise.resolve([
+            {
+              cartId,
+              closedAt: null,
+              counterId: "10000000-0000-4000-8000-000000000004",
+              createdAt: now,
+              id: "10000000-0000-4000-8000-000000000005",
+              openedAt: now,
+              openedByUserId,
+              organizationId: scopedOrganizationId,
+              status: "OPEN",
+              updatedAt: now,
+              version: 2,
+            },
+          ]);
+        },
+      } as unknown as PosRepository,
+    });
+    const result = await service.listCurrentSessions(context(), {});
+    expect(result).toMatchObject({
+      data: [{ openedByUserId: userId, status: "OPEN", version: 2 }],
+      ok: true,
+    });
+  });
+
+  it("rejects cart access when trusted user identity is absent", async () => {
+    const service = serviceWith({ pos: {} as never });
+    const result = await service.getCart(
+      { organizationId, requestId: "req_no_cashier", userId: null },
+      { cartId },
+    );
+    expect(result).toMatchObject({
+      error: { code: "UNAUTHORIZED" },
+      ok: false,
+    });
+  });
+});
+
 function serviceWith(overrides: {
   authenticationService?: ApplicationAuthenticationService;
   authorizationService?: ApplicationAuthorizationService;
   transactionManager?: ApplicationTransactionManager;
+  pos?: PosRepository;
 }) {
   return new PosApplicationService({
     authenticationService:
@@ -185,7 +275,7 @@ function serviceWith(overrides: {
     clock: { now: () => new Date("2026-08-03T10:00:00.000Z") },
     inventory: {} as never,
     memberships: {} as never,
-    pos: {} as never,
+    pos: overrides.pos ?? ({} as never),
     receipts: {} as never,
     salesSources: {} as never,
     transactionManager: overrides.transactionManager ?? transactionManager,

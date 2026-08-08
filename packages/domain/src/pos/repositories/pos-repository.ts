@@ -1,5 +1,6 @@
 import type {
   PosCart,
+  PosCartDetails,
   PosCartLine,
   SalesCounter,
   SalesSession,
@@ -30,7 +31,16 @@ export type PosRepository = {
   createCounter(
     record: Omit<SalesCounter, "createdAt" | "id" | "updatedAt" | "version">,
   ): Promise<SalesCounter>;
-  findCartById(id: string, organizationId: string): Promise<PosCart | null>;
+  findCartById(
+    id: string,
+    organizationId: string,
+    openedByUserId: string,
+  ): Promise<PosCart | null>;
+  findCartDetailsById?(
+    id: string,
+    organizationId: string,
+    openedByUserId: string,
+  ): Promise<PosCartDetails | null>;
   findCartLineById(
     id: string,
     cartId: string,
@@ -48,6 +58,10 @@ export type PosRepository = {
     counterId: string,
     organizationId: string,
   ): Promise<SalesSession | null>;
+  listOpenSessionsByUser(
+    organizationId: string,
+    openedByUserId: string,
+  ): Promise<SalesSession[]>;
   findSellableVariant(
     id: string,
     organizationId: string,

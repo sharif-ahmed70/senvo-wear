@@ -22,7 +22,7 @@ Idempotency is scoped by organization, sales session, and key and is sensitive t
 
 ## Security
 
-The browser cannot provide organization, staff identity, channel, booth, totals, allocation policy, reservation, or inventory movement identifiers. Organization-scoped composite foreign keys and repository filters prevent cross-organization references. Active session, counter, user, membership, variant, barcode, and sellable allocation checks run against transaction-fresh data.
+The browser cannot provide organization, staff identity, channel, booth, totals, allocation policy, reservation, or inventory movement identifiers. Current-user session reads derive staff identity from trusted execution context, and cart reads and mutations additionally require the authenticated user to own the cart's sales session. Organization-scoped composite foreign keys and repository filters prevent cross-organization references. Active session, counter, user, membership, variant, barcode, and sellable allocation checks run against transaction-fresh data.
 
 ## Future adapters
 
@@ -32,3 +32,7 @@ The browser cannot provide organization, staff identity, channel, booth, totals,
 - Keyboard-wedge or camera barcode scanners continue to use the existing barcode lookup boundary; no hardware driver belongs in checkout domain logic.
 
 Discounts, tax, returns, refunds, customer CRM, cash drawers, and printer drivers remain outside this foundation.
+
+## Guided selling adapter
+
+The Admin `New Sale` route consumes these boundaries without duplicating checkout logic. Sales sessions retain server ownership of carts. A minimal organization-scoped cart read projection restores unfinished work after refresh, while all mutations and final totals remain server validated. See `docs/architecture/pos-guided-selling-ui.md` for the cashier workflow, payment entry, and retry behavior.

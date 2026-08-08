@@ -54,12 +54,18 @@ import type {
   SalesCounterContract,
   SalesSessionContract,
   PosCheckoutContract,
+  PosCartDetailsContract,
+  PosCartLineContract,
+  PosSaleLookupContract,
   SalesReceiptContract,
   CheckoutPosCartServiceInputContract,
   CreateSalesCounterServiceInputContract,
   UpdateSalesCounterStatusServiceInputContract,
   OpenSalesSessionServiceInputContract,
   CloseSalesSessionServiceInputContract,
+  AddPosCartItemServiceInputContract,
+  UpdatePosCartItemServiceInputContract,
+  RemovePosCartItemServiceInputContract,
 } from "@senvo/contracts";
 
 export type AdminApiClientOptions = {
@@ -598,6 +604,13 @@ export class AdminApiClient {
     return this.request<SalesSessionContract[]>("/pos/sessions", request);
   }
 
+  listCurrentSalesSessions(request?: AdminApiRequest) {
+    return this.request<SalesSessionContract[]>(
+      "/pos/sessions/current",
+      request,
+    );
+  }
+
   openSalesSession(
     input: OpenSalesSessionServiceInputContract,
     request?: AdminApiRequest,
@@ -617,6 +630,53 @@ export class AdminApiClient {
     return this.request<SalesSessionContract>(
       `/pos/sessions/${sessionId}/close`,
       { ...request, body, method: "POST" },
+    );
+  }
+
+  lookupPosSale(value: string, request?: AdminApiRequest) {
+    return this.request<PosSaleLookupContract>(
+      `/pos/barcode/${encodeURIComponent(value.trim())}`,
+      request,
+    );
+  }
+
+  getPosCart(cartId: string, request?: AdminApiRequest) {
+    return this.request<PosCartDetailsContract>(
+      `/pos/carts/${cartId}`,
+      request,
+    );
+  }
+
+  addPosCartItem(
+    input: AddPosCartItemServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { cartId, ...body } = input;
+    return this.request<PosCartLineContract>(`/pos/carts/${cartId}/items`, {
+      ...request,
+      body,
+      method: "POST",
+    });
+  }
+
+  updatePosCartItem(
+    input: UpdatePosCartItemServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { cartId, itemId, ...body } = input;
+    return this.request<PosCartLineContract>(
+      `/pos/carts/${cartId}/items/${itemId}`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  removePosCartItem(
+    input: RemovePosCartItemServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<null>(
+      `/pos/carts/${input.cartId}/items/${input.itemId}`,
+      { ...request, method: "DELETE" },
     );
   }
 

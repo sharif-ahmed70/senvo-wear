@@ -45,11 +45,13 @@ export type AdminNavigationItem = {
     | "stores"
     | "team"
     | "roles"
+    | "newSale"
     | "counter"
     | "sessions"
     | "checkouts";
   label: string;
   permission?: AdminPermissionKey;
+  permissions?: readonly AdminPermissionKey[];
 };
 
 export const adminNavigationItems: readonly AdminNavigationItem[] = [
@@ -91,9 +93,21 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     permission: "SALES:READ",
   },
   {
-    href: "/pos/counters",
-    icon: "counter",
-    label: "Sales Counters",
+    href: "/pos/sell",
+    icon: "newSale",
+    label: "New Sale",
+    permissions: [
+      "POS:READ",
+      "POS:CREATE",
+      "POS:UPDATE",
+      "SALES:CREATE",
+      "PAYMENT:CREATE",
+    ],
+  },
+  {
+    href: "/pos/checkouts",
+    icon: "checkouts",
+    label: "Checkout History",
     permission: "POS:READ",
   },
   {
@@ -103,9 +117,9 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     permission: "POS:READ",
   },
   {
-    href: "/pos/checkouts",
-    icon: "checkouts",
-    label: "Checkout History",
+    href: "/pos/counters",
+    icon: "counter",
+    label: "Sales Counters",
     permission: "POS:READ",
   },
   {
@@ -148,6 +162,9 @@ export function visibleAdminNavigation(
 ): readonly AdminNavigationItem[] {
   const permissions = new Set(session.permissions);
   return adminNavigationItems.filter(
-    (item) => !item.permission || permissions.has(item.permission),
+    (item) =>
+      (!item.permission || permissions.has(item.permission)) &&
+      (!item.permissions ||
+        item.permissions.every((key) => permissions.has(key))),
   );
 }
