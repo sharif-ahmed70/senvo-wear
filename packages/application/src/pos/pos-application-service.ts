@@ -1057,7 +1057,7 @@ function normalizeError(error: unknown): ApplicationServiceError {
         ? "IDEMPOTENCY_CONFLICT"
         : "CONFLICT",
       message: error.message.includes("idempotency key")
-        ? "This return attempt was already used with different details."
+        ? "This request was already used with different details."
         : "The request conflicts with the current information.",
     });
   if (error instanceof BusinessRuleError)

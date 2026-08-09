@@ -10,6 +10,7 @@ import {
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
 import {
+  createApiFailure,
   createApiSuccess,
   postInventoryMovementServiceInputSchema,
   type ApiResponse,
@@ -433,6 +434,45 @@ describe("Node HTTP runtime adapter", () => {
       cartId: movementId,
       idempotencyKey: "checkout-http-001",
       payments: [{ amountMinor: 2500, method: "CASH" }],
+    });
+  });
+
+  it("maps idempotency conflicts to HTTP 409 without changing the API code", async () => {
+    const checkout = new RecordingApiHandler(
+      createApiFailure({
+        code: "CONFLICT.IDEMPOTENCY",
+        message: "This request was already used with different details.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: checkout,
+        pos: { checkoutCart: checkout } as unknown as PosApiHandlers,
+        postInventoryMovement: checkout,
+      },
+    });
+
+    const response = await fetch(
+      `${runtime.url}/pos/carts/${movementId}/checkout`,
+      {
+        body: JSON.stringify({
+          allowOutstanding: false,
+          idempotencyKey: "checkout-http-001",
+          payments: [{ amountMinor: 2500, method: "CASH" }],
+        }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "CONFLICT.IDEMPOTENCY",
+        message: "This request was already used with different details.",
+      },
+      success: false,
     });
   });
 

@@ -45,8 +45,10 @@ import { PaymentReceiptPreview } from "./pos/payment-collections/[id]/receipt/pa
 import {
   CheckoutReturnWorkspace,
   ReturnSuccessState,
+  messageFor as returnMessageFor,
 } from "./pos/checkouts/[id]/checkout-return-workspace";
 import { ReturnReceiptPreview } from "./pos/returns/[id]/receipt/return-receipt-preview";
+import { AdminApiError } from "./_lib/api-client";
 
 describe("admin routes", () => {
   it("renders sales source and booth history routes", () => {
@@ -127,6 +129,20 @@ describe("admin routes", () => {
     );
     expect(receipt).toContain("Receipt access unavailable");
     expect(receipt).not.toContain("Print");
+  });
+  it("keeps idempotency conflict wording specific inside the return UI", () => {
+    expect(
+      returnMessageFor(
+        new AdminApiError({
+          code: "CONFLICT.IDEMPOTENCY",
+          message: "This request was already used with different details.",
+          requestId: "req_return_conflict",
+          status: 409,
+        }),
+      ),
+    ).toBe(
+      "This return attempt was already used with different details. (req_return_conflict)",
+    );
   });
   it("shows refund due without claiming a refund and keeps recovery actions", () => {
     const account = {

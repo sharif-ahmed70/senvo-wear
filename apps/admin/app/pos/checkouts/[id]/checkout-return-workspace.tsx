@@ -554,7 +554,7 @@ function State({
   );
 }
 
-function messageFor(reason: unknown) {
+export function messageFor(reason: unknown) {
   if (!(reason instanceof AdminApiError))
     return "We could not confirm the return result. Retry safely.";
   const messages: Partial<Record<string, string>> = {
