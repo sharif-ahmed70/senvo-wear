@@ -96,18 +96,27 @@ describe("payment refund use cases", () => {
     expect(overRepository.writes).toBe(0);
   });
 
-  it("replays the same key and payload without duplicate writes", async () => {
+  it("replays semantically identical cash references without duplicate writes", async () => {
     const refunds = new FakeRefunds(preparation());
     const receipts = new FakeRefundReceipts();
-    await recordCheckoutRefund(
+    const first = await recordCheckoutRefund(
       { receipts, refunds },
       input([{ amountMinor: 500, method: "CASH" }]),
     );
     const replay = await recordCheckoutRefund(
       { receipts, refunds },
-      input([{ amountMinor: 500, method: "CASH" }]),
+      input([
+        {
+          amountMinor: 500,
+          method: "CASH",
+          reference: "stale-browser-value",
+        },
+      ]),
     );
+    expect(first.refund.lines[0]?.reference).toBeNull();
+    expect(receipts.created?.lines[0]?.reference).toBeNull();
     expect(replay.replayed).toBe(true);
+    expect(replay.refund.requestSignature).toBe(first.refund.requestSignature);
     expect(refunds.writes).toBe(1);
     expect(receipts.writes).toBe(1);
   });

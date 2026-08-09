@@ -742,6 +742,51 @@ describeWithDatabase("Prisma offline POS repository", () => {
     ).resolves.toBeNull();
   });
 
+  it("persists stale cash refund references as null in lines and receipts", async () => {
+    const base = await seedCheckout("REFUND-CASH-REFERENCE", 5, 2);
+    const completed = await completeCheckout(
+      base,
+      "checkout-refund-cash-reference-001",
+    );
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "refund-cash-reference-return-001",
+    );
+
+    const result = await recordRefund(
+      base,
+      completed.checkout.id,
+      "refund-cash-reference-001",
+      [
+        {
+          amountMinor: 1_000,
+          method: "CASH",
+          reference: "stale-browser-value",
+        },
+      ],
+    );
+
+    const persistedLine = await prisma.paymentRefundLine.findFirstOrThrow({
+      where: { method: "CASH", refundId: result.refund.id },
+    });
+    expect(persistedLine.reference).toBeNull();
+    const receipt = await new PrismaReceiptRepository(prisma).findByRefundId(
+      result.refund.id,
+      base.organization.id,
+    );
+    expect(receipt?.lines).toEqual([
+      expect.objectContaining({ method: "CASH", reference: null }),
+    ]);
+  });
+
   it("rolls back refund, receipt, lines, and audit together", async () => {
     const base = await seedCheckout("REFUND-ROLLBACK", 5, 1);
     const completed = await completeCheckout(

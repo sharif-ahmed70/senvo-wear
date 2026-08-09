@@ -29,12 +29,13 @@ import { formatBdt, parseTaka, takaInput } from "../../sell/_lib/money";
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
 });
-type DraftLine = {
+export type RefundDraftLine = {
   amount: string;
   method: PaymentMethodContract;
   reference: string;
 };
-const blankLine = (amount = ""): DraftLine => ({
+export const maxRefundMethodLines = 8;
+const blankLine = (amount = ""): RefundDraftLine => ({
   amount,
   method: "CASH",
   reference: "",
@@ -68,7 +69,7 @@ export function CheckoutRefundWorkspace({
   const [account, setAccount] = useState<PaymentRefundAccountContract | null>(
     null,
   );
-  const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
+  const [lines, setLines] = useState<RefundDraftLine[]>([blankLine()]);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(canRead);
   const [saving, setSaving] = useState(false);
@@ -111,11 +112,7 @@ export function CheckoutRefundWorkspace({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!account?.refundableMinor) return;
-    const refunds = lines.map((line) => ({
-      amountMinor: parseTaka(line.amount),
-      method: line.method,
-      reference: line.reference.trim() || undefined,
-    }));
+    const refunds = createRefundPayload(lines);
     if (
       refunds.some((line) => line.amountMinor === null || line.amountMinor <= 0)
     ) {
@@ -320,7 +317,13 @@ export function CheckoutRefundWorkspace({
               </div>
               <button
                 className="pos-secondary-button"
-                onClick={() => setLines((items) => [...items, blankLine()])}
+                disabled={lines.length >= maxRefundMethodLines}
+                onClick={() => setLines(appendRefundMethod)}
+                title={
+                  lines.length >= maxRefundMethodLines
+                    ? "A refund can use up to 8 methods."
+                    : undefined
+                }
                 type="button"
               >
                 <Plus size={16} /> Add method
@@ -482,14 +485,44 @@ export function CheckoutRefundWorkspace({
 
 function updateLine(
   index: number,
-  patch: Partial<DraftLine>,
-  setLines: Dispatch<SetStateAction<DraftLine[]>>,
+  patch: Partial<RefundDraftLine>,
+  setLines: Dispatch<SetStateAction<RefundDraftLine[]>>,
 ) {
-  setLines((items) =>
-    items.map((item, itemIndex) =>
-      itemIndex === index ? { ...item, ...patch } : item,
-    ),
+  setLines((items) => updateRefundMethod(items, index, patch));
+}
+
+export function updateRefundMethod(
+  items: readonly RefundDraftLine[],
+  index: number,
+  patch: Partial<RefundDraftLine>,
+): RefundDraftLine[] {
+  return items.map((item, itemIndex) =>
+    itemIndex === index
+      ? {
+          ...item,
+          ...patch,
+          ...(patch.method === "CASH" ? { reference: "" } : {}),
+        }
+      : item,
   );
+}
+
+export function appendRefundMethod(
+  items: readonly RefundDraftLine[],
+): RefundDraftLine[] {
+  return items.length >= maxRefundMethodLines
+    ? [...items]
+    : [...items, blankLine()];
+}
+
+export function createRefundPayload(items: readonly RefundDraftLine[]) {
+  return items.map((line) => ({
+    amountMinor: parseTaka(line.amount),
+    method: line.method,
+    ...(line.method === "CASH"
+      ? {}
+      : { reference: line.reference.trim() || undefined }),
+  }));
 }
 function messageFor(reason: unknown) {
   if (!(reason instanceof AdminApiError))

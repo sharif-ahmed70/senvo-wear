@@ -118,6 +118,21 @@ export function normalizePaymentInstructions(
   });
 }
 
+export function normalizePaymentRefundInstructions(
+  values: readonly {
+    amountMinor: number;
+    method: PaymentMethod;
+    reference?: string | null;
+  }[],
+): PaymentInstruction[] {
+  return normalizePaymentInstructions(
+    values.map((value) =>
+      value.method === "CASH" ? { ...value, reference: null } : value,
+    ),
+    false,
+  );
+}
+
 export function calculatePaymentBalance(
   payableMinor: number,
   payments: readonly PaymentInstruction[],

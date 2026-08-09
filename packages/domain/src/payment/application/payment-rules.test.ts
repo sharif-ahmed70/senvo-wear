@@ -8,6 +8,7 @@ import {
   createPaymentRequestSignature,
   createPaymentRefundRequestSignature,
   normalizePaymentInstructions,
+  normalizePaymentRefundInstructions,
 } from "./payment-rules.js";
 import { describe, expect, it } from "vitest";
 
@@ -110,6 +111,54 @@ describe("checkout payment rules", () => {
         refunds[1]!,
       ]),
     );
+  });
+
+  it("canonicalizes clean and stale cash refund references identically", () => {
+    const clean = normalizePaymentRefundInstructions([
+      { amountMinor: 1_000, method: "CASH" },
+    ]);
+    const stale = normalizePaymentRefundInstructions([
+      {
+        amountMinor: 1_000,
+        method: "CASH",
+        reference: "stale-browser-value",
+      },
+    ]);
+
+    expect(clean).toEqual([
+      { amountMinor: 1_000, method: "CASH", reference: null },
+    ]);
+    expect(stale).toEqual(clean);
+    expect(createPaymentRefundRequestSignature(stale)).toBe(
+      createPaymentRefundRequestSignature(clean),
+    );
+  });
+
+  it.each(["CARD", "MOBILE_BANKING", "BANK_TRANSFER"] as const)(
+    "still requires a reference for %s refunds",
+    (method) => {
+      expect(() =>
+        normalizePaymentRefundInstructions([{ amountMinor: 1_000, method }]),
+      ).toThrow(ValidationApplicationError);
+    },
+  );
+
+  it("preserves non-cash refund reference normalization", () => {
+    expect(
+      normalizePaymentRefundInstructions([
+        {
+          amountMinor: 1_000,
+          method: "MOBILE_BANKING",
+          reference: "  REFUND   TXN  42  ",
+        },
+      ]),
+    ).toEqual([
+      {
+        amountMinor: 1_000,
+        method: "MOBILE_BANKING",
+        reference: "REFUND TXN 42",
+      },
+    ]);
   });
   it("accepts fully paid cash, non-cash, and split tenders", () => {
     expect(balance([{ amountMinor: 5000, method: "CASH" }], 5000)).toEqual({

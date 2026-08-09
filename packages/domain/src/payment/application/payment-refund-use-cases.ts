@@ -18,7 +18,7 @@ import {
   calculateCheckoutSettlement,
   calculatePaymentRefund,
   createPaymentRefundRequestSignature,
-  normalizePaymentInstructions,
+  normalizePaymentRefundInstructions,
 } from "./payment-rules.js";
 
 const uuidPattern =
@@ -79,7 +79,7 @@ export async function recordCheckoutRefund(
   const refundId = assertId(input.refundId, "refundId");
   const receiptId = assertId(input.receiptId, "receiptId");
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  const refunds = normalizePaymentInstructions(input.refunds, false);
+  const refunds = normalizePaymentRefundInstructions(input.refunds);
   const requestSignature = createPaymentRefundRequestSignature(refunds);
   const preparation = await repositories.refunds.prepare(
     checkoutId,
