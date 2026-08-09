@@ -1,0 +1,340 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+  ApplicationError,
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  ValidationApplicationError,
+  createSalesOrder,
+  reserveSalesOrder,
+  type StorefrontCatalog,
+  type StorefrontProduct,
+  type StorefrontRepository,
+} from "@senvo/domain";
+import {
+  storefrontCatalogQuerySchema,
+  storefrontCheckoutInputSchema,
+  storefrontCheckoutResultSchema,
+  storefrontProductQuerySchema,
+  type StorefrontCheckoutResultContract,
+} from "@senvo/contracts";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
+import { validateExecutionContext } from "../context/execution-context.js";
+import {
+  ApplicationServiceError,
+  type ApplicationServiceResult,
+} from "../errors/application-error.js";
+
+export type StorefrontApplicationServiceDependencies = {
+  organizationCode: string;
+  repository: StorefrontRepository;
+  requestIdGenerator?: () => string;
+  transactionManager: ApplicationTransactionManager;
+};
+
+export class StorefrontApplicationService {
+  private readonly organizationCode: string;
+  private readonly repository: StorefrontRepository;
+  private readonly requestIdGenerator: () => string;
+  private readonly transactionManager: ApplicationTransactionManager;
+
+  constructor(dependencies: StorefrontApplicationServiceDependencies) {
+    this.organizationCode = dependencies.organizationCode.trim().toUpperCase();
+    this.repository = dependencies.repository;
+    this.requestIdGenerator =
+      dependencies.requestIdGenerator ?? (() => `req_${randomUUID()}`);
+    this.transactionManager = dependencies.transactionManager;
+  }
+
+  listCatalog(
+    requestId: string,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<StorefrontCatalog>> {
+    return this.execute(requestId, async () => {
+      const input = storefrontCatalogQuerySchema.parse(payload);
+      const organization = await this.resolveOrganization();
+      return this.repository.listCatalog({
+        ...input,
+        organizationId: organization.id,
+      });
+    });
+  }
+
+  getProduct(
+    requestId: string,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<StorefrontProduct>> {
+    return this.execute(requestId, async () => {
+      const input = storefrontProductQuerySchema.parse(payload);
+      const organization = await this.resolveOrganization();
+      const product = await this.repository.getProductBySlug(
+        organization.id,
+        input.slug,
+      );
+      if (!product)
+        throw new NotFoundError("Storefront product was not found.");
+      return product;
+    });
+  }
+
+  checkout(
+    requestId: string,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<StorefrontCheckoutResultContract>> {
+    return this.execute(requestId, async () => {
+      const input = storefrontCheckoutInputSchema.parse(payload);
+      const organization = await this.resolveOrganization();
+      const normalized = normalizeCheckout(input);
+      const signature = createHash("sha256")
+        .update(JSON.stringify(normalized))
+        .digest("hex");
+      const context = validateExecutionContext({
+        actorType: "ANONYMOUS",
+        authenticationState: "ANONYMOUS",
+        organizationId: organization.id,
+        permissions: null,
+        requestId: requestId || this.requestIdGenerator(),
+        source: "STOREFRONT",
+        userId: null,
+      });
+      return this.transactionManager.execute(context, async (transaction) => {
+        const storefront = transaction.storefrontRepository;
+        const sales = transaction.salesOrderLifecycleRepository;
+        if (!storefront || !sales) {
+          throw new Error(
+            "Storefront transaction capabilities are unavailable.",
+          );
+        }
+        await storefront.lockCheckoutAttempt(
+          organization.id,
+          normalized.idempotencyKey,
+        );
+        const replay = await storefront.findCheckoutByIdempotencyKey(
+          organization.id,
+          normalized.idempotencyKey,
+        );
+        if (replay) {
+          if (replay.requestSignature !== signature) {
+            throw new ConflictError(
+              "Storefront idempotency key was already used with different details.",
+            );
+          }
+          if (replay.status !== "RESERVED") {
+            throw new ConflictError(
+              "The existing storefront order is no longer reserved.",
+            );
+          }
+          return storefrontCheckoutResultSchema.parse({
+            currencyCode: replay.currencyCode,
+            orderId: replay.orderId,
+            orderNumber: replay.orderNumber,
+            paymentPreference: replay.paymentPreference,
+            status: replay.status,
+            totalMinor: replay.totalMinor,
+          });
+        }
+
+        const facts = await storefront.loadCheckoutFacts(
+          organization.id,
+          normalized.lines.map((line) => line.productVariantId),
+        );
+        const prices = new Map(
+          facts.variants.map((variant) => [
+            variant.id,
+            variant.sellingPriceMinor,
+          ]),
+        );
+        const reference = createHash("sha256")
+          .update(`${organization.id}:${normalized.idempotencyKey}`)
+          .digest("hex")
+          .slice(0, 20)
+          .toUpperCase();
+        const draft = await createSalesOrder(sales, {
+          allocationPolicyId: facts.allocationPolicyId,
+          channel: "ONLINE",
+          currencyCode: "BDT",
+          customerEmail: normalized.customer.email ?? null,
+          customerName: normalized.customer.name,
+          customerPhone: normalized.customer.phone,
+          deliveryAddressLine1: normalized.deliveryAddress.line1,
+          deliveryAddressLine2: normalized.deliveryAddress.line2 ?? null,
+          deliveryCity: normalized.deliveryAddress.city,
+          deliveryDistrict: normalized.deliveryAddress.district,
+          deliveryPostalCode: normalized.deliveryAddress.postalCode ?? null,
+          idempotencyKey: normalized.idempotencyKey,
+          lines: normalized.lines.map((line) => {
+            const unitPriceMinor = prices.get(line.productVariantId);
+            if (unitPriceMinor === undefined) {
+              throw new NotFoundError(
+                "A selected product is no longer available.",
+              );
+            }
+            return {
+              productVariantId: line.productVariantId,
+              quantity: line.quantity,
+              unitPriceMinor,
+            };
+          }),
+          note: normalized.note ?? null,
+          orderNumber: `WEB-${reference}`,
+          organizationId: organization.id,
+        });
+        const reserved = await reserveSalesOrder(sales, {
+          expectedVersion: draft.version,
+          organizationId: organization.id,
+          reservationIdempotencyKey: `storefront-reservation:${normalized.idempotencyKey}`,
+          reservationNumber: `WEB-RSV-${reference}`,
+          salesOrderId: draft.id,
+        });
+        await storefront.createCommerceProfile({
+          id: randomUUID(),
+          organizationId: organization.id,
+          paymentPreference: "CASH_ON_DELIVERY",
+          requestSignature: signature,
+          salesOrderId: reserved.id,
+          source: "STOREFRONT",
+        });
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "STOREFRONT_ORDER_PLACED",
+          actor: { userId: null },
+          metadata: {
+            channel: "ONLINE",
+            lineCount: reserved.lines.length,
+            orderNumber: reserved.orderNumber,
+            paymentPreference: "CASH_ON_DELIVERY",
+            requestId: context.requestId,
+            totalMinor: reserved.totalMinor,
+            unitCount: reserved.lines.reduce(
+              (total, line) => total + line.quantity,
+              0,
+            ),
+          },
+          organizationId: organization.id,
+          resource: "SALES_ORDER",
+          resourceId: reserved.id,
+        });
+        return storefrontCheckoutResultSchema.parse({
+          currencyCode: reserved.currencyCode,
+          orderId: reserved.id,
+          orderNumber: reserved.orderNumber,
+          paymentPreference: "CASH_ON_DELIVERY",
+          status: reserved.status,
+          totalMinor: reserved.totalMinor,
+        });
+      });
+    });
+  }
+
+  private async resolveOrganization() {
+    if (!this.organizationCode) {
+      throw new BusinessRuleError("Storefront tenant is not configured.");
+    }
+    const organization = await this.repository.resolveActiveOrganizationByCode(
+      this.organizationCode,
+    );
+    if (!organization) throw new NotFoundError("Storefront is unavailable.");
+    return organization;
+  }
+
+  private async execute<T>(
+    requestId: string,
+    operation: () => Promise<T>,
+  ): Promise<ApplicationServiceResult<T>> {
+    const resolvedRequestId = requestId || this.requestIdGenerator();
+    try {
+      return { data: await operation(), ok: true };
+    } catch (error) {
+      return {
+        error: normalizeError(error).toShape(resolvedRequestId),
+        ok: false,
+      };
+    }
+  }
+}
+
+function normalizeCheckout(
+  input: ReturnType<typeof storefrontCheckoutInputSchema.parse>,
+) {
+  const quantities = new Map<string, number>();
+  for (const line of input.lines) {
+    quantities.set(
+      line.productVariantId,
+      (quantities.get(line.productVariantId) ?? 0) + line.quantity,
+    );
+  }
+  const lines = [...quantities.entries()]
+    .map(([productVariantId, quantity]) => {
+      if (quantity > 20)
+        throw new ValidationApplicationError(
+          "A product quantity cannot exceed 20.",
+        );
+      return { productVariantId, quantity };
+    })
+    .sort((left, right) =>
+      left.productVariantId.localeCompare(right.productVariantId),
+    );
+  return {
+    ...input,
+    customer: {
+      ...input.customer,
+      phone: normalizeBangladeshPhone(input.customer.phone),
+    },
+    idempotencyKey: input.idempotencyKey.toLowerCase(),
+    lines,
+  };
+}
+
+function normalizeBangladeshPhone(value: string): string {
+  const digits = value.replace(/\D/gu, "");
+  const local = digits.startsWith("880") ? `0${digits.slice(3)}` : digits;
+  if (!/^01[3-9][0-9]{8}$/u.test(local)) {
+    throw new ValidationApplicationError(
+      "Enter a valid Bangladesh mobile number.",
+    );
+  }
+  return `+880${local.slice(1)}`;
+}
+
+function normalizeError(error: unknown): ApplicationServiceError {
+  if (error instanceof ApplicationServiceError) return error;
+  if (
+    error instanceof ValidationApplicationError ||
+    (error instanceof Error && error.name === "ZodError")
+  ) {
+    return new ApplicationServiceError({
+      code: "VALIDATION_ERROR",
+      message: "Input is invalid.",
+    });
+  }
+  if (error instanceof NotFoundError) {
+    return new ApplicationServiceError({
+      code: "NOT_FOUND",
+      message: error.publicMessage,
+    });
+  }
+  if (error instanceof ConflictError) {
+    return new ApplicationServiceError({
+      code: error.message.toLowerCase().includes("idempotency")
+        ? "IDEMPOTENCY_CONFLICT"
+        : "CONFLICT",
+      message: "This request was already used with different details.",
+    });
+  }
+  if (error instanceof BusinessRuleError) {
+    return new ApplicationServiceError({
+      code: "BUSINESS_RULE_VIOLATION",
+      message: error.publicMessage,
+    });
+  }
+  if (error instanceof ApplicationError) {
+    return new ApplicationServiceError({
+      code: "INTERNAL_ERROR",
+      message: "The request could not be completed.",
+    });
+  }
+  return new ApplicationServiceError({
+    code: "INTERNAL_ERROR",
+    message: "An unexpected error occurred.",
+    retryable: true,
+  });
+}

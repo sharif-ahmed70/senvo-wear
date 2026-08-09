@@ -13,6 +13,7 @@ import type {
   PosApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
+  StorefrontApiHandlers,
 } from "@senvo/api";
 import {
   createApiFailure,
@@ -46,6 +47,7 @@ type HttpRoute = {
   method: "DELETE" | "GET" | "PATCH" | "POST";
   path: RegExp;
   successStatus: number;
+  public?: boolean;
 };
 
 export type SenvoHttpHandlers = {
@@ -57,6 +59,7 @@ export type SenvoHttpHandlers = {
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
+  storefront?: StorefrontApiHandlers;
 };
 
 export type NodeHttpAdapterOptions = {
@@ -116,10 +119,17 @@ async function handleRequest(input: {
       );
       return;
     }
-    const requestContext = await input.contextFactory.create({
-      headers: input.request.headers,
-      requestId,
-    });
+    const requestContext = matchedRoute.route.public
+      ? {
+          authenticatedUser: null,
+          organizationId: "",
+          permissions: [],
+          requestId,
+        }
+      : await input.contextFactory.create({
+          headers: input.request.headers,
+          requestId,
+        });
     const body =
       input.request.method === "GET"
         ? {}
@@ -276,6 +286,36 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         201,
         "productId",
       ),
+    );
+  }
+  if (handlers.storefront) {
+    routes.push(
+      {
+        handler: handlers.storefront.listCatalog,
+        input: queryInput,
+        method: "GET",
+        path: /^\/storefront\/catalog$/u,
+        public: true,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.storefront.getProduct,
+        input: (_body, match) => ({
+          slug: decodeURIComponent(match.groups?.slug ?? ""),
+        }),
+        method: "GET",
+        path: /^\/storefront\/products\/(?<slug>[a-z0-9-]+)$/u,
+        public: true,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.storefront.checkout,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/storefront\/checkouts$/u,
+        public: true,
+        successStatus: 201,
+      },
     );
   }
   if (handlers.inventoryRead) {

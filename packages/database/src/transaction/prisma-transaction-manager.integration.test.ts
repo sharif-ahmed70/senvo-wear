@@ -2,10 +2,13 @@ import {
   createInventoryMovement,
   createSalesOrder,
   postInventoryMovement,
+  reserveSalesOrder,
 } from "@senvo/domain";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "../index.js";
 import { PrismaInventoryMovementRepository } from "../inventory/repositories.js";
+import { PrismaStorefrontRepository } from "../storefront/repository.js";
 import { PrismaTransactionManager } from "./prisma-transaction-manager.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -43,6 +46,7 @@ describeWithDatabase("Prisma transactional audit integration", () => {
     await prisma.salesCounter.deleteMany();
     await prisma.auditEntry.deleteMany();
     await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrderCommerceProfile.deleteMany();
     await prisma.salesOrder.deleteMany();
     await prisma.inventoryReservationLine.deleteMany();
     await prisma.inventoryReservation.deleteMany();
@@ -236,6 +240,182 @@ describeWithDatabase("Prisma transactional audit integration", () => {
     );
   });
 
+  it("commits storefront order, reservation, COD profile, and audit atomically", async () => {
+    const base = await createBase("STOREFRONT-COMMIT");
+    await seedOnHand(base, 2);
+    const result = await placeStorefrontOrder(base, "storefront-commit");
+    expect(result.status).toBe("RESERVED");
+    await expect(
+      prisma.salesOrderCommerceProfile.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.inventoryReservation.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          action: "STOREFRONT_ORDER_PLACED",
+          organizationId: base.organization.id,
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.salesOrder.delete({ where: { id: result.id } }),
+    ).rejects.toThrow();
+  });
+
+  it("publishes only active tenant catalog with customer-safe availability", async () => {
+    const [base, other] = await Promise.all([
+      createBase("STOREFRONT-CATALOG"),
+      createBase("STOREFRONT-CATALOG-OTHER"),
+    ]);
+    await seedOnHand(base, 2);
+    const storefront = new PrismaStorefrontRepository(prisma);
+    const catalog = await storefront.listCatalog({
+      organizationId: base.organization.id,
+    });
+    expect(catalog.products).toHaveLength(1);
+    expect(catalog.products[0]).toMatchObject({
+      id: base.product.id,
+      variants: [
+        expect.objectContaining({
+          availability: "IN_STOCK",
+          sellingPriceMinor: 1000,
+        }),
+      ],
+    });
+    expect(
+      catalog.products.some((product) => product.id === other.product.id),
+    ).toBe(false);
+    await expect(
+      storefront.listCatalog({
+        category: `category-${"STOREFRONT-CATALOG".toLowerCase()}`,
+        color: `COLOR-STOREFRONT-CATALOG`,
+        organizationId: base.organization.id,
+        search: "product-storefront",
+        size: `SIZE-STOREFRONT-CATALOG`,
+      }),
+    ).resolves.toMatchObject({
+      products: [expect.objectContaining({ id: base.product.id })],
+    });
+    await prisma.product.update({
+      data: { status: "INACTIVE" },
+      where: { id: base.product.id },
+    });
+    await expect(
+      storefront.listCatalog({ organizationId: base.organization.id }),
+    ).resolves.toMatchObject({ products: [] });
+  });
+
+  it("rolls back every storefront write when checkout fails", async () => {
+    const base = await createBase("STOREFRONT-ROLLBACK");
+    await seedOnHand(base, 1);
+    await expect(
+      transactionManager.execute(
+        createContext(base.organization.id, null, "storefront-rollback"),
+        async (transaction) => {
+          const sales = transaction.salesOrderLifecycleRepository;
+          const storefront = transaction.storefrontRepository;
+          if (!sales || !storefront)
+            throw new Error("Missing storefront transaction capabilities.");
+          const draft = await createSalesOrder(
+            sales,
+            storefrontOrderInput(base, "rollback"),
+          );
+          const reserved = await reserveSalesOrder(sales, {
+            expectedVersion: draft.version,
+            organizationId: base.organization.id,
+            reservationIdempotencyKey: "storefront-reservation:rollback",
+            reservationNumber: "WEB-RSV-ROLLBACK",
+            salesOrderId: draft.id,
+          });
+          await storefront.createCommerceProfile({
+            id: randomUUID(),
+            organizationId: base.organization.id,
+            paymentPreference: "CASH_ON_DELIVERY",
+            requestSignature: "rollback",
+            salesOrderId: reserved.id,
+            source: "STOREFRONT",
+          });
+          throw new Error("Force storefront rollback.");
+        },
+      ),
+    ).rejects.toThrow("Force storefront rollback.");
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.inventoryReservation.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.salesOrderCommerceProfile.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it("prevents two concurrent storefront checkouts from overselling", async () => {
+    const base = await createBase("STOREFRONT-RACE");
+    await seedOnHand(base, 1);
+    const attempts = await Promise.allSettled([
+      placeStorefrontOrder(base, "race-a"),
+      placeStorefrontOrder(base, "race-b"),
+    ]);
+    expect(
+      attempts.filter((attempt) => attempt.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      attempts.filter((attempt) => attempt.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.inventoryReservation.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.salesOrderCommerceProfile.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          action: "STOREFRONT_ORDER_PLACED",
+          organizationId: base.organization.id,
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("does not satisfy a storefront order from another organization inventory", async () => {
+    const [empty, stocked] = await Promise.all([
+      createBase("STOREFRONT-EMPTY"),
+      createBase("STOREFRONT-OTHER"),
+    ]);
+    await seedOnHand(stocked, 5);
+    await expect(
+      placeStorefrontOrder(empty, "tenant-isolation"),
+    ).rejects.toThrow();
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: empty.organization.id },
+      }),
+    ).resolves.toBe(0);
+  });
+
   async function createAuditedOrder(
     context: TestApplicationContext,
     base: Awaited<ReturnType<typeof createBase>>,
@@ -255,6 +435,48 @@ describeWithDatabase("Prisma transactional audit integration", () => {
         resourceId: order.id,
       });
       return { auditId: audit.id, orderId: order.id };
+    });
+  }
+
+  async function placeStorefrontOrder(
+    base: Awaited<ReturnType<typeof createBase>>,
+    key: string,
+  ) {
+    const context = createContext(base.organization.id, null, key);
+    return transactionManager.execute(context, async (transaction) => {
+      const sales = transaction.salesOrderLifecycleRepository;
+      const storefront = transaction.storefrontRepository;
+      if (!sales || !storefront)
+        throw new Error("Missing storefront transaction capabilities.");
+      await storefront.lockCheckoutAttempt(base.organization.id, key);
+      const draft = await createSalesOrder(
+        sales,
+        storefrontOrderInput(base, key),
+      );
+      const reserved = await reserveSalesOrder(sales, {
+        expectedVersion: draft.version,
+        organizationId: base.organization.id,
+        reservationIdempotencyKey: `storefront-reservation:${key}`,
+        reservationNumber: `WEB-RSV-${key.toUpperCase()}`,
+        salesOrderId: draft.id,
+      });
+      await storefront.createCommerceProfile({
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: key,
+        salesOrderId: reserved.id,
+        source: "STOREFRONT",
+      });
+      await transaction.auditWriter.recordWithinTransaction({
+        action: "STOREFRONT_ORDER_PLACED",
+        actor: { userId: null },
+        metadata: { channel: "ONLINE" },
+        organizationId: base.organization.id,
+        resource: "SALES_ORDER",
+        resourceId: reserved.id,
+      });
+      return reserved;
     });
   }
 
@@ -318,10 +540,82 @@ describeWithDatabase("Prisma transactional audit integration", () => {
         productId: product.id,
         sizeId: size.id,
         sku: `SKU-${suffix}`,
+        sellingPriceMinor: 1000,
         status: "ACTIVE",
       },
     });
-    return { location, organization, variant };
+    const policy = await prisma.inventoryAllocationPolicy.create({
+      data: {
+        code: `POLICY-${suffix}`,
+        name: `Policy ${suffix}`,
+        organizationId: organization.id,
+        status: "ACTIVE",
+      },
+    });
+    await prisma.inventoryAllocationPolicyLocation.create({
+      data: {
+        organizationId: organization.id,
+        policyId: policy.id,
+        priority: 1,
+        stockLocationId: location.id,
+      },
+    });
+    return { location, organization, policy, product, variant };
+  }
+
+  async function seedOnHand(
+    base: Awaited<ReturnType<typeof createBase>>,
+    quantity: number,
+  ) {
+    const movement = await prisma.inventoryMovement.create({
+      data: {
+        destinationLocationId: base.location.id,
+        idempotencyKey: `seed-${base.organization.code}`,
+        movementNumber: `SEED-${base.organization.code}`,
+        occurredAt: new Date("2026-08-11T00:00:00.000Z"),
+        organizationId: base.organization.id,
+        payloadSignature: "{}",
+        postedAt: new Date("2026-08-11T00:00:00.000Z"),
+        status: "POSTED",
+        type: "OPENING",
+        version: 2,
+      },
+    });
+    await prisma.inventoryMovementLine.create({
+      data: {
+        lineNumber: 1,
+        movementId: movement.id,
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        quantity,
+      },
+    });
+  }
+
+  function storefrontOrderInput(
+    base: Awaited<ReturnType<typeof createBase>>,
+    key: string,
+  ) {
+    return {
+      allocationPolicyId: base.policy.id,
+      channel: "ONLINE" as const,
+      currencyCode: "BDT",
+      customerName: "Guest Customer",
+      customerPhone: "+8801712345678",
+      deliveryAddressLine1: "House 10",
+      deliveryCity: "Dhaka",
+      deliveryDistrict: "Dhaka",
+      idempotencyKey: `storefront:${key}`,
+      lines: [
+        {
+          productVariantId: base.variant.id,
+          quantity: 1,
+          unitPriceMinor: 1000,
+        },
+      ],
+      orderNumber: `WEB-${key.toUpperCase()}`,
+      organizationId: base.organization.id,
+    };
   }
 
   function createUser(suffix: string) {

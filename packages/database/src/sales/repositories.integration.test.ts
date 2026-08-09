@@ -59,6 +59,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
     await prisma.salesSession.deleteMany();
     await prisma.salesCounter.deleteMany();
     await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrderCommerceProfile.deleteMany();
     await prisma.salesOrder.deleteMany();
     await prisma.salesBooth.deleteMany();
     await prisma.inventoryReservationLine.deleteMany();
@@ -87,6 +88,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
 
   afterAll(async () => {
     await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrderCommerceProfile.deleteMany();
     await prisma.salesOrder.deleteMany();
     await prisma.salesBooth.deleteMany();
     await prisma.$disconnect();

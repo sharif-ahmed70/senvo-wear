@@ -273,6 +273,35 @@ describe("admin routes", () => {
     expect(html).not.toContain("Search order number");
   });
 
+  it("offers an Online orders queue filter to authorized staff", () => {
+    const html = renderToStaticMarkup(
+      createElement(SalesOrdersWorkspace, {
+        permissions: ["SALES_ORDER:READ"],
+        view: "list",
+      }),
+    );
+    expect(html).toContain("Online orders");
+    expect(html).toContain('value="ONLINE"');
+  });
+
+  it("labels storefront COD as unpaid without creating payment history", () => {
+    const order = salesOrderDetails("RESERVED");
+    order.commerce = {
+      paymentPreference: "CASH_ON_DELIVERY",
+      source: "STOREFRONT",
+    };
+    const html = renderToStaticMarkup(
+      createElement(SalesOrderDetailsPanel, {
+        busy: false,
+        canUpdate: false,
+        onAction: () => undefined,
+        order,
+      }),
+    );
+    expect(html).toContain("Cash on delivery - Unpaid");
+    expect(html).not.toContain(">Paid<");
+  });
+
   it.each([
     ["DRAFT", ["Reserve", "Cancel"]],
     ["RESERVED", ["Confirm", "Cancel"]],
@@ -329,6 +358,7 @@ function salesOrderDetails(
   return {
     boothId: null,
     channel: "ONLINE",
+    commerce: null,
     currencyCode: "BDT",
     customer: { email: "buyer@test.dev", name: "Buyer", phone: "01700000000" },
     delivery: {

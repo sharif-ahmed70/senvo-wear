@@ -12,6 +12,7 @@ type SalesReadPrismaClient = Pick<PrismaClient, "salesOrder">;
 type DetailsRecord = Prisma.SalesOrderGetPayload<{
   include: {
     fulfillmentMovement: true;
+    commerceProfile: true;
     inventoryReservation: { include: { stockLocation: true } };
     lines: true;
   };
@@ -22,11 +23,18 @@ type SalesCursor = {
   order: SalesOrderDateOrder;
 };
 type ListRecord = {
+  channel: SalesOrderListReadItem["channel"];
+  commerceProfile: {
+    paymentPreference: "CASH_ON_DELIVERY";
+    source: "STOREFRONT";
+  } | null;
   createdAt: Date;
   currencyCode: string;
   customerEmail: string | null;
   customerName: string | null;
   customerPhone: string | null;
+  deliveryCity: string | null;
+  deliveryDistrict: string | null;
   id: string;
   orderNumber: string;
   status: SalesOrderListReadItem["status"];
@@ -45,11 +53,15 @@ export class PrismaSalesOrderReadRepository implements SalesOrderReadRepository 
     const records = await this.prisma.salesOrder.findMany({
       orderBy: [{ createdAt: direction }, { id: direction }],
       select: {
+        channel: true,
+        commerceProfile: { select: { paymentPreference: true, source: true } },
         createdAt: true,
         currencyCode: true,
         customerEmail: true,
         customerName: true,
         customerPhone: true,
+        deliveryCity: true,
+        deliveryDistrict: true,
         id: true,
         orderNumber: true,
         status: true,
@@ -58,6 +70,7 @@ export class PrismaSalesOrderReadRepository implements SalesOrderReadRepository 
       take: input.pageSize + 1,
       where: {
         organizationId: input.organizationId,
+        ...(input.channel ? { channel: input.channel } : {}),
         ...(input.search
           ? {
               orderNumber: {
@@ -103,6 +116,7 @@ export class PrismaSalesOrderReadRepository implements SalesOrderReadRepository 
   }): Promise<SalesOrderDetailsReadItem | null> {
     const record = await this.prisma.salesOrder.findFirst({
       include: {
+        commerceProfile: true,
         fulfillmentMovement: true,
         inventoryReservation: { include: { stockLocation: true } },
         lines: { orderBy: { lineNumber: "asc" } },
@@ -115,12 +129,18 @@ export class PrismaSalesOrderReadRepository implements SalesOrderReadRepository 
 
 function mapListItem(record: ListRecord): SalesOrderListReadItem {
   return {
+    channel: record.channel,
+    commerce: record.commerceProfile,
     createdAt: record.createdAt,
     currencyCode: record.currencyCode,
     customer: {
       email: record.customerEmail,
       name: record.customerName,
       phone: record.customerPhone,
+    },
+    delivery: {
+      city: record.deliveryCity,
+      district: record.deliveryDistrict,
     },
     id: record.id,
     orderNumber: record.orderNumber,
@@ -135,6 +155,7 @@ function mapDetails(record: DetailsRecord): SalesOrderDetailsReadItem {
   return {
     boothId: record.boothId,
     channel: record.channel,
+    commerce: record.commerceProfile,
     currencyCode: record.currencyCode,
     customer: {
       email: record.customerEmail,

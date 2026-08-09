@@ -1,5 +1,5 @@
 import { NotFoundError, ValidationApplicationError } from "../../errors.js";
-import type { SalesOrderStatus } from "../domain/models.js";
+import type { SalesOrderChannel, SalesOrderStatus } from "../domain/models.js";
 import type {
   SalesOrderDateOrder,
   SalesOrderDetailsReadItem,
@@ -11,6 +11,7 @@ const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export type ListSalesOrderReadInput = {
+  channel?: SalesOrderChannel;
   cursor?: string;
   order?: SalesOrderDateOrder;
   organizationId: string;
@@ -25,6 +26,7 @@ export function listSalesOrderReadModel(
 ): Promise<SalesOrderReadPage> {
   return repository.list({
     cursor: normalizeCursor(input.cursor),
+    channel: input.channel,
     order: input.order ?? "NEWEST",
     organizationId: assertId(input.organizationId, "organizationId"),
     pageSize: normalizePageSize(input.pageSize),

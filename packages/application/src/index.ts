@@ -1,4 +1,5 @@
 export { createApplicationServices } from "./composition/create-application-services.js";
+export { StorefrontApplicationService } from "./storefront/storefront-application-service.js";
 export { CatalogApplicationService } from "./catalog/catalog-application-service.js";
 export { OrganizationApplicationService } from "./organization/organization-application-service.js";
 export type { OrganizationApplicationServiceDependencies } from "./organization/organization-application-service.js";

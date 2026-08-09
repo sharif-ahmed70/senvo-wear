@@ -624,6 +624,17 @@ export type {
   TransactionContext,
   TransactionManager,
 } from "./transaction/transaction-context.js";
+export type {
+  CommerceOrderSource,
+  CommercePaymentPreference,
+  StorefrontAvailability,
+  StorefrontCatalog,
+  StorefrontCheckoutFacts,
+  StorefrontCommerceProfile,
+  StorefrontProduct,
+  StorefrontVariant,
+} from "./storefront/models.js";
+export type { StorefrontRepository } from "./storefront/repository.js";
 export { RepositoryAuditWriter } from "./audit/application/audit-writer.js";
 export type { AuditWriter } from "./audit/application/audit-writer.js";
 export type {

@@ -67,6 +67,14 @@ enum ProductVariantStatus {
   ARCHIVED
 }
 
+enum CommerceOrderSource {
+  STOREFRONT
+}
+
+enum CommercePaymentPreference {
+  CASH_ON_DELIVERY
+}
+
 enum BarcodeType {
   EAN13
   CODE128
@@ -274,6 +282,7 @@ model Organization {
   inventoryAllocationPolicies InventoryAllocationPolicy[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
   salesOrders SalesOrder[]
+  salesOrderCommerceProfiles SalesOrderCommerceProfile[]
   salesBooths SalesBooth[]
   salesCounters SalesCounter[]
   salesSessions SalesSession[]
@@ -977,6 +986,24 @@ model PosSaleReturn {
   @@map("pos_sale_returns")
 }
 
+model SalesOrderCommerceProfile {
+  id                String                     @id @default(uuid()) @db.Uuid
+  organizationId    String                     @map("organization_id") @db.Uuid
+  salesOrderId      String                     @map("sales_order_id") @db.Uuid
+  source            CommerceOrderSource        @default(STOREFRONT)
+  paymentPreference CommercePaymentPreference  @map("payment_preference")
+  requestSignature  String                     @map("request_signature") @db.Text
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrder   SalesOrder   @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([salesOrderId, organizationId])
+  @@index([organizationId, source, createdAt, id])
+  @@map("sales_order_commerce_profiles")
+}
+
 model PaymentRefund {
   id               String   @id @default(uuid()) @db.Uuid
   organizationId   String   @map("organization_id") @db.Uuid
@@ -1451,6 +1478,7 @@ model SalesOrder {
   paymentRefundReceipts PaymentRefundReceipt[]
   posSaleReturns PosSaleReturn[]
   posReturnReceipts PosReturnReceipt[]
+  commerceProfile SalesOrderCommerceProfile?
 
   @@unique([id, organizationId])
   @@unique([organizationId, orderNumber])

@@ -48,6 +48,43 @@ export type ProtectedApiHandlerOptions<TInput, TOutput> = {
   permission: Parameters<ApplicationAuthorizationService["authorize"]>[1];
 };
 
+export type PublicApiHandlerOptions<TInput, TOutput> = {
+  execute(
+    requestId: string,
+    input: TInput,
+  ): Promise<ApplicationServiceResult<TOutput>>;
+  inputSchema: StrictInputSchema<TInput>;
+};
+
+export function createPublicApiHandler<TInput, TOutput>(
+  options: PublicApiHandlerOptions<TInput, TOutput>,
+): ApiHandler<TOutput> {
+  return {
+    async handle(request): Promise<ApiResponse<TOutput>> {
+      const parsed = options.inputSchema.safeParse(request.input);
+      if (!parsed.success) {
+        return createApiFailure({
+          code: "VALIDATION.INVALID_INPUT",
+          fieldErrors: mapFieldErrors(parsed.error.issues),
+          message: "Input is invalid.",
+          requestId: request.context.requestId,
+        });
+      }
+      try {
+        const result = await options.execute(
+          request.context.requestId,
+          parsed.data,
+        );
+        return result.ok
+          ? createApiSuccess(result.data, request.context.requestId)
+          : mapApplicationFailure(result.error, request.context.requestId);
+      } catch (error) {
+        return mapThrownError(error, request.context.requestId);
+      }
+    },
+  };
+}
+
 export function createProtectedApiHandler<TInput, TOutput>(
   options: ProtectedApiHandlerOptions<TInput, TOutput>,
 ): ApiHandler<TOutput> {

@@ -4,7 +4,11 @@ import type {
   InventoryMovementRepository,
 } from "../inventory/repositories/inventory-repositories.js";
 import type { PosCheckoutRepository } from "../pos/repositories/pos-checkout-repository.js";
-import type { SalesOrderCreationRepository } from "../sales/repositories/sales-order-repositories.js";
+import type {
+  SalesOrderCreationRepository,
+  SalesOrderRepository,
+} from "../sales/repositories/sales-order-repositories.js";
+import type { StorefrontRepository } from "../storefront/repository.js";
 import type { PosCheckoutSalesOrderRepository } from "../pos/application/checkout-use-cases.js";
 import type { PaymentRepository } from "../payment/repositories/payment-repository.js";
 import type { ReceiptRepository } from "../receipt/repositories/receipt-repository.js";
@@ -32,6 +36,8 @@ export type TransactionContext<TApplicationContext> = {
   posReturnRepository?: PosReturnRepository;
   posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
   salesOrderRepository: SalesOrderCreationRepository;
+  salesOrderLifecycleRepository?: SalesOrderRepository;
+  storefrontRepository?: StorefrontRepository;
 };
 
 export type TransactionManager<TApplicationContext> = {

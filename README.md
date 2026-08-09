@@ -1,10 +1,10 @@
 # SENVO Wear
 
-SENVO Wear is the technical foundation for a future data-driven clothing business ecosystem. The current repository is only a bootstrap: it prepares the monorepo, shared package boundaries, quality gates, documentation, and database tooling without implementing business features.
+SENVO Wear is a modular clothing ERP with operational Admin, POS, and customer Storefront applications backed by shared domain, application, API, PostgreSQL, authorization, transaction, and audit boundaries.
 
 ## Current Status
 
-Foundation plus the first business identity slice. Organization and catalog identity models exist for taxonomy and product/variant identity only. There is no authentication, storefront commerce, POS transaction flow, inventory logic, pricing, payment integration, CRM, dashboard workflow, or order model.
+The repository includes organization/team access, catalog and barcodes, inventory and reservations, sales orders, POS checkout/payment/receipts/returns/refunds, and the first guest Storefront commerce vertical slice. See [docs/product-status.md](docs/product-status.md) before planning new product work.
 
 ## Architecture Summary
 
@@ -12,9 +12,9 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 ## Repository Structure
 
-- `apps/storefront`: future customer storefront, currently a minimal foundation page on port `3000`.
-- `apps/admin`: future admin and owner operations app, currently a minimal foundation shell on port `3001`.
-- `apps/pos`: future online-first showroom POS, currently a minimal touch-friendly shell on port `3002`.
+- `apps/storefront`: public catalog, guest bag, checkout, and order confirmation on port `3000`.
+- `apps/admin`: owner/staff operational workspace on port `3001`.
+- `apps/pos`: guided showroom selling workflow on port `3002`.
 - `packages/ui`: small accessible UI primitives and design tokens.
 - `packages/database`: PostgreSQL-ready Prisma foundation.
 - `packages/domain`: domain boundary documentation and neutral types.
@@ -54,6 +54,8 @@ Required foundation variables:
 - `DATABASE_URL`: PostgreSQL connection string for Prisma commands that need datasource validation.
 - `APP_ENV`: server-side environment label such as `development`, `staging`, or `production`.
 - `NEXT_PUBLIC_APP_ENV`: non-secret application environment label.
+- `STOREFRONT_ORGANIZATION_CODE`: server-only organization code used to resolve the public Storefront tenant.
+- `NEXT_PUBLIC_SENVO_API_URL`: public HTTP API base URL consumed by Storefront and Admin clients.
 
 For database verification, copy `.env.test.example` into an untracked local file or export equivalent values. Test database names must clearly include `test`; scripts refuse production-like environment labels and production/staging-looking database targets.
 

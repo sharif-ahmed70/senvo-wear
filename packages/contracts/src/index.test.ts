@@ -88,6 +88,9 @@ import {
   createApiSuccess,
   paginationMetaSchema,
   stockLocationPageContractSchema,
+  storefrontCatalogQuerySchema,
+  storefrontCheckoutInputSchema,
+  storefrontProductQuerySchema,
   variantInventoryAvailabilityContractSchema,
   assignOrganizationMembershipRoleInputSchema,
   assignRolePermissionInputSchema,
@@ -102,6 +105,65 @@ import {
 } from "./index.js";
 
 describe("API contracts", () => {
+  it("accepts safe storefront discovery filters and valid product slugs", () => {
+    expect(
+      storefrontCatalogQuerySchema.parse({
+        category: "everyday",
+        color: "BLACK",
+        page: "2",
+        pageSize: "48",
+        search: "tee",
+        size: "M",
+      }),
+    ).toMatchObject({ page: 2, pageSize: 48 });
+    expect(
+      storefrontProductQuerySchema.safeParse({ slug: "everyday-tee" }).success,
+    ).toBe(true);
+    expect(
+      storefrontCatalogQuerySchema.safeParse({ organizationId: "untrusted" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("bounds guest checkout and rejects browser-controlled order facts", () => {
+    const valid = {
+      customer: { name: "Guest Buyer", phone: "01712345678" },
+      deliveryAddress: {
+        city: "Dhaka",
+        district: "Dhaka",
+        line1: "House 10, Road 2",
+      },
+      idempotencyKey: "web:checkout-contract-001",
+      lines: [
+        {
+          productVariantId: "10000000-0000-4000-8000-000000000001",
+          quantity: 1,
+        },
+      ],
+      paymentPreference: "CASH_ON_DELIVERY",
+    };
+    expect(storefrontCheckoutInputSchema.safeParse(valid).success).toBe(true);
+    expect(
+      storefrontCheckoutInputSchema.safeParse({
+        ...valid,
+        lines: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      storefrontCheckoutInputSchema.safeParse({
+        ...valid,
+        lines: [{ ...valid.lines[0], quantity: 21 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      storefrontCheckoutInputSchema.safeParse({
+        ...valid,
+        organizationId: "10000000-0000-4000-8000-000000000002",
+        totalMinor: 1,
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts only a cart ID for POS cart reads", () => {
     const cartId = "10000000-0000-4000-8000-000000000001";
     expect(getPosCartServiceInputSchema.safeParse({ cartId }).success).toBe(
