@@ -11,11 +11,14 @@ import {
   checkoutCart as completePosCheckout,
   changeSalesCounterStatus,
   closeSalesSession,
+  collectOutstandingPayment,
   createSalesCounter,
   listSalesCounters,
   listSalesSessions,
   listCurrentUserSalesSessions,
   getCheckoutStatus,
+  getPaymentAccount,
+  getPaymentCollectionReceipt,
   getPosCart,
   listCheckoutHistory,
   getSalesReceipt,
@@ -32,6 +35,10 @@ import {
   type PosCheckout,
   type PosCheckoutRepository,
   type PosRepository,
+  type PaymentAccount,
+  type PaymentCollection,
+  type PaymentCollectionReceipt,
+  type PaymentRepository,
   type ReceiptRepository,
   type SalesReceipt,
   type SalesCounter,
@@ -41,16 +48,21 @@ import {
 } from "@senvo/domain";
 import {
   addPosCartItemServiceInputSchema,
+  collectPosPaymentResultContractSchema,
+  collectPosPaymentServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
+  getPaymentCollectionReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
   posCartDetailsContractSchema,
   posCheckoutContractSchema,
+  paymentAccountContractSchema,
+  paymentCollectionReceiptContractSchema,
   salesReceiptContractSchema,
   posEmptyInputSchema,
   posSaleLookupContractSchema,
@@ -62,6 +74,9 @@ import {
   type PosCartLineContract,
   type PosCartDetailsContract,
   type PosCheckoutContract,
+  type CollectPosPaymentResultContract,
+  type PaymentAccountContract,
+  type PaymentCollectionReceiptContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
   type SalesCounterContract,
@@ -107,6 +122,7 @@ export type PosApplicationServiceDependencies = {
   inventory: InventoryReadRepository;
   memberships: OrganizationMembershipRepository;
   pos: PosRepository;
+  payments: PaymentRepository;
   receipts: ReceiptRepository;
   requestIdGenerator?: () => string;
   salesSources: SalesSourceRepository;
@@ -458,6 +474,137 @@ export class PosApplicationService {
     });
   }
 
+  getPaymentAccount(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PaymentAccountContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        { action: "READ", resource: "POS" },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        { action: "READ", resource: "PAYMENT" },
+      );
+      return mapPaymentAccount(
+        await getPaymentAccount(this.dependencies.payments, {
+          ...input,
+          organizationId: trusted.organizationId,
+        }),
+      );
+    });
+  }
+
+  collectPayment(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<CollectPosPaymentResultContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          collectPosPaymentServiceInputSchema,
+          payload,
+        );
+        await requireAuthentication(this.dependencies.authenticationService, {
+          requestId: trusted.requestId,
+          userId: trusted.userId,
+        });
+        const userId = this.requireUserId(trusted);
+        return this.dependencies.transactionManager.execute(
+          trusted,
+          async (transaction) => {
+            await requireAuthorization(
+              this.dependencies.authorizationService,
+              transaction.applicationContext,
+              { action: "READ", resource: "POS" },
+            );
+            await requireAuthorization(
+              this.dependencies.authorizationService,
+              transaction.applicationContext,
+              { action: "CREATE", resource: "PAYMENT" },
+            );
+            if (
+              !transaction.paymentRepository ||
+              !transaction.receiptRepository
+            )
+              throw new Error(
+                "Payment collection transaction capability is required.",
+              );
+            const result = await collectOutstandingPayment(
+              {
+                payments: transaction.paymentRepository,
+                receipts: transaction.receiptRepository,
+              },
+              {
+                ...input,
+                acceptedByUserId: userId,
+                collectedAt: this.dependencies.clock.now(),
+                collectionId: crypto.randomUUID(),
+                organizationId: trusted.organizationId,
+                receiptId: crypto.randomUUID(),
+              },
+            );
+            if (!result.replayed)
+              await transaction.auditWriter.recordWithinTransaction({
+                action: "POS_OUTSTANDING_PAYMENT_COLLECTED",
+                actor: { userId },
+                metadata: {
+                  amountMinor: result.collection.amountMinor,
+                  checkoutId: input.checkoutId,
+                  collectionId: result.collection.id,
+                  cumulativePaidMinor: result.account.cumulativePaidMinor ?? 0,
+                  outstandingMinor: result.account.outstandingMinor ?? 0,
+                  paymentLineCount: result.collection.lines.length,
+                  paymentReceiptId: result.collection.receiptId,
+                  paymentStatus: result.account.status,
+                  requestId: trusted.requestId,
+                  salesOrderId: result.collection.salesOrderId,
+                },
+                organizationId: trusted.organizationId,
+                resource: "PAYMENT_COLLECTION",
+                resourceId: result.collection.id,
+              });
+            return collectPosPaymentResultContractSchema.parse({
+              account: mapPaymentAccount(result.account),
+              collection: mapPaymentCollection(result.collection),
+              replayed: result.replayed,
+            });
+          },
+        );
+      },
+    );
+  }
+
+  getPaymentCollectionReceipt(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.execute<PaymentCollectionReceiptContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          getPaymentCollectionReceiptServiceInputSchema,
+          payload,
+        );
+        await requireAuthorization(
+          this.dependencies.authorizationService,
+          trusted,
+          { action: "READ", resource: "RECEIPT" },
+        );
+        await requireAuthorization(
+          this.dependencies.authorizationService,
+          trusted,
+          { action: "READ", resource: "PAYMENT" },
+        );
+        return mapPaymentCollectionReceipt(
+          await getPaymentCollectionReceipt(this.dependencies.receipts, {
+            ...input,
+            organizationId: trusted.organizationId,
+          }),
+        );
+      },
+    );
+  }
+
   private authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -580,6 +727,53 @@ function mapReceipt(record: SalesReceipt): SalesReceiptContract {
   return salesReceiptContractSchema.parse({
     ...record,
     issuedAt: record.issuedAt.toISOString(),
+  });
+}
+function mapPaymentCollection(record: PaymentCollection) {
+  return {
+    acceptedByName: record.acceptedByName,
+    amountMinor: record.amountMinor,
+    balanceAfterMinor: record.balanceAfterMinor,
+    balanceBeforeMinor: record.balanceBeforeMinor,
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt.toISOString(),
+    currencyCode: record.currencyCode,
+    id: record.id,
+    idempotencyKey: record.idempotencyKey,
+    lines: record.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      collectionId: line.collectionId,
+      createdAt: line.createdAt.toISOString(),
+      id: line.id,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      reference: line.reference,
+    })),
+    receiptId: record.receiptId,
+    receiptNumber: record.receiptNumber,
+  };
+}
+function mapPaymentAccount(record: PaymentAccount): PaymentAccountContract {
+  return paymentAccountContractSchema.parse({
+    checkoutId: record.checkoutId,
+    collections: record.collections.map(mapPaymentCollection),
+    cumulativePaidMinor: record.cumulativePaidMinor,
+    currencyCode: record.currencyCode,
+    initialPaidMinor: record.initialPaidMinor,
+    initialPayments: record.initialPayments,
+    legacyPaymentRecorded: record.legacyPaymentRecorded,
+    orderNumber: record.orderNumber,
+    outstandingMinor: record.outstandingMinor,
+    status: record.status,
+    totalMinor: record.totalMinor,
+  });
+}
+function mapPaymentCollectionReceipt(
+  record: PaymentCollectionReceipt,
+): PaymentCollectionReceiptContract {
+  return paymentCollectionReceiptContractSchema.parse({
+    ...record,
+    collectedAt: record.collectedAt.toISOString(),
   });
 }
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {

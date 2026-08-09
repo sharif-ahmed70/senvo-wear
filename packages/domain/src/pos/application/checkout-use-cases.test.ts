@@ -266,6 +266,15 @@ class FakePaymentRepository implements PaymentRepository {
       })),
     } satisfies PaymentBatch);
   }
+  createCollection(): Promise<never> {
+    return Promise.reject(new Error("Not used by checkout tests."));
+  }
+  findAccountByCheckoutId() {
+    return Promise.resolve(null);
+  }
+  prepareCollection() {
+    return Promise.resolve(null);
+  }
 }
 
 class FakeReceiptRepository implements ReceiptRepository {
@@ -275,6 +284,12 @@ class FakeReceiptRepository implements ReceiptRepository {
     return Promise.resolve(record as SalesReceipt);
   }
   findByCheckoutId() {
+    return Promise.resolve(null);
+  }
+  createPaymentCollectionReceipt(): Promise<never> {
+    return Promise.reject(new Error("Not used by checkout tests."));
+  }
+  findPaymentCollectionReceiptById() {
     return Promise.resolve(null);
   }
 }

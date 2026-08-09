@@ -1,5 +1,7 @@
 # POS Checkout Foundation
 
+Checkout list/detail balances are cumulative read projections: the immutable checkout-time payment plus later immutable collections. Collection ownership, locking, idempotency, and receipts are documented in [POS Outstanding Balance Collection](./pos-outstanding-balance-collection.md).
+
 ## Purpose
 
 POS checkout converts one organization-scoped cart into a fulfilled sales order. It coordinates existing sales order, inventory allocation, reservation consumption, transaction, and audit boundaries; it does not replace them.

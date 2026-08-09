@@ -135,7 +135,10 @@ export {
 export type { PosRepository } from "./pos/repositories/pos-repository.js";
 export type { PosCheckoutRepository } from "./pos/repositories/pos-checkout-repository.js";
 export {
+  calculateCumulativePaymentBalance,
+  calculatePaymentCollection,
   calculatePaymentBalance,
+  createPaymentCollectionRequestSignature,
   createPaymentRequestSignature,
   normalizePaymentInstructions,
 } from "./payment/application/payment-rules.js";
@@ -144,23 +147,37 @@ export type {
   PaymentBalance,
   PaymentBalanceStatus,
   PaymentBatch,
+  PaymentAccount,
+  PaymentCollection,
+  PaymentCollectionLine,
+  PaymentCollectionPreparation,
   PaymentInstruction,
   PaymentLine,
   PaymentMethod,
 } from "./payment/domain/models.js";
 export type {
   CreatePaymentBatchRecord,
+  CreatePaymentCollectionRecord,
   PaymentRepository,
 } from "./payment/repositories/payment-repository.js";
-export { getSalesReceipt } from "./receipt/application/receipt-use-cases.js";
+export {
+  collectOutstandingPayment,
+  getPaymentAccount,
+} from "./payment/application/payment-collection-use-cases.js";
+export {
+  getPaymentCollectionReceipt,
+  getSalesReceipt,
+} from "./receipt/application/receipt-use-cases.js";
 export type {
   ReceiptDocument,
+  PaymentCollectionReceipt,
   SalesReceipt,
   SalesReceiptLine,
   SalesReceiptPayment,
 } from "./receipt/domain/models.js";
 export type {
   CreateSalesReceiptRecord,
+  CreatePaymentCollectionReceiptRecord,
   ReceiptRepository,
 } from "./receipt/repositories/receipt-repository.js";
 export {

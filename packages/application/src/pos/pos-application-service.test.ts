@@ -38,6 +38,7 @@ describe("PosApplicationService checkout", () => {
       inventory: {} as never,
       memberships: {} as never,
       pos: {} as never,
+      payments: {} as never,
       receipts: {} as never,
       salesSources: {} as never,
       transactionManager,
@@ -276,6 +277,7 @@ function serviceWith(overrides: {
     inventory: {} as never,
     memberships: {} as never,
     pos: overrides.pos ?? ({} as never),
+    payments: {} as never,
     receipts: {} as never,
     salesSources: {} as never,
     transactionManager: overrides.transactionManager ?? transactionManager,
@@ -483,6 +485,10 @@ function successfulTransaction(
                 paymentBatchId: record.id,
               })),
             }),
+          createCollection: () =>
+            Promise.reject(new Error("Unexpected collection.")),
+          findAccountByCheckoutId: () => Promise.resolve(null),
+          prepareCollection: () => Promise.resolve(null),
         },
         posCheckoutRepository: {
           ...checkouts,
@@ -514,7 +520,10 @@ function successfulTransaction(
         },
         receiptRepository: {
           create: (record: never) => Promise.resolve(record),
+          createPaymentCollectionReceipt: () =>
+            Promise.reject(new Error("Unexpected collection receipt.")),
           findByCheckoutId: () => Promise.resolve(null),
+          findPaymentCollectionReceiptById: () => Promise.resolve(null),
         },
         salesOrderRepository: {} as never,
       }),

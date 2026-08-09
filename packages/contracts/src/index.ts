@@ -3148,6 +3148,82 @@ export const getPosCheckoutServiceInputSchema = z
   .object({ checkoutId: idSchema })
   .strict();
 
+export const collectPosPaymentServiceInputSchema = z
+  .object({
+    checkoutId: idSchema,
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/u),
+    payments: z.array(checkoutPaymentInstructionSchema).min(1).max(8),
+  })
+  .strict();
+export const getPaymentCollectionReceiptServiceInputSchema = z
+  .object({ collectionId: idSchema })
+  .strict();
+
+export const paymentCollectionLineContractSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    collectionId: idSchema,
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    lineNumber: z.number().int().positive(),
+    method: paymentMethodSchema,
+    reference: z.string().nullable(),
+  })
+  .strict();
+export const paymentCollectionContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    amountMinor: minorUnitAmountSchema.positive(),
+    balanceAfterMinor: minorUnitAmountSchema,
+    balanceBeforeMinor: minorUnitAmountSchema.positive(),
+    checkoutId: idSchema,
+    createdAt: isoTimestampSchema,
+    currencyCode: z.literal("BDT"),
+    id: idSchema,
+    idempotencyKey: z.string(),
+    lines: z.array(paymentCollectionLineContractSchema).min(1).max(8),
+    receiptId: idSchema,
+    receiptNumber: z.string(),
+  })
+  .strict();
+export const paymentAccountContractSchema = z
+  .object({
+    checkoutId: idSchema,
+    collections: z.array(paymentCollectionContractSchema),
+    cumulativePaidMinor: minorUnitAmountSchema.nullable(),
+    currencyCode: z.literal("BDT"),
+    initialPaidMinor: minorUnitAmountSchema.nullable(),
+    initialPayments: z
+      .array(
+        z
+          .object({
+            amountMinor: minorUnitAmountSchema.positive(),
+            method: paymentMethodSchema,
+            reference: z.string().nullable(),
+          })
+          .strict(),
+      )
+      .max(8),
+    legacyPaymentRecorded: z.boolean(),
+    orderNumber: z.string(),
+    outstandingMinor: minorUnitAmountSchema.nullable(),
+    status: checkoutPaymentStatusSchema,
+    totalMinor: minorUnitAmountSchema,
+  })
+  .strict();
+export const collectPosPaymentResultContractSchema = z
+  .object({
+    account: paymentAccountContractSchema,
+    collection: paymentCollectionContractSchema,
+    replayed: z.boolean(),
+  })
+  .strict();
+
 export const salesReceiptLineContractSchema = z
   .object({
     color: z.string().nullable(),
@@ -3206,6 +3282,34 @@ export const salesReceiptContractSchema = z
   })
   .strict();
 
+export const paymentCollectionReceiptContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    amountMinor: minorUnitAmountSchema.positive(),
+    checkoutId: idSchema,
+    collectedAt: isoTimestampSchema,
+    collectionId: idSchema,
+    cumulativePaidMinor: minorUnitAmountSchema,
+    currencyCode: z.literal("BDT"),
+    id: idSchema,
+    orderNumber: z.string(),
+    organizationAddressLine1: z.string().nullable(),
+    organizationAddressLine2: z.string().nullable(),
+    organizationCity: z.string().nullable(),
+    organizationDistrict: z.string().nullable(),
+    organizationEmail: z.string().nullable(),
+    organizationName: z.string(),
+    organizationPhone: z.string().nullable(),
+    organizationPostalCode: z.string().nullable(),
+    outstandingMinor: minorUnitAmountSchema,
+    paymentStatus: paymentBalanceStatusSchema,
+    payments: z.array(salesReceiptPaymentContractSchema).min(1).max(8),
+    receiptNumber: z.string(),
+    salesOrderId: idSchema,
+    totalMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
 export type SalesCounterContract = z.infer<typeof salesCounterContractSchema>;
 export type SalesSessionContract = z.infer<typeof salesSessionContractSchema>;
 export type PosCartLineContract = z.infer<typeof posCartLineContractSchema>;
@@ -3224,6 +3328,21 @@ export type PaymentBalanceStatusContract = z.infer<
 export type SalesReceiptContract = z.infer<typeof salesReceiptContractSchema>;
 export type GetPosCheckoutServiceInputContract = z.infer<
   typeof getPosCheckoutServiceInputSchema
+>;
+export type CollectPosPaymentServiceInputContract = z.infer<
+  typeof collectPosPaymentServiceInputSchema
+>;
+export type PaymentCollectionContract = z.infer<
+  typeof paymentCollectionContractSchema
+>;
+export type PaymentAccountContract = z.infer<
+  typeof paymentAccountContractSchema
+>;
+export type CollectPosPaymentResultContract = z.infer<
+  typeof collectPosPaymentResultContractSchema
+>;
+export type PaymentCollectionReceiptContract = z.infer<
+  typeof paymentCollectionReceiptContractSchema
 >;
 export type CreateSalesCounterServiceInputContract = z.infer<
   typeof createSalesCounterServiceInputSchema

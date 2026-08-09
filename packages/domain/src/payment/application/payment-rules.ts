@@ -105,6 +105,108 @@ export function createPaymentRequestSignature(
   return JSON.stringify({ allowOutstanding, payments });
 }
 
+export function createPaymentCollectionRequestSignature(
+  payments: readonly PaymentInstruction[],
+): string {
+  return JSON.stringify({ payments });
+}
+
+export function calculateCumulativePaymentBalance(
+  payableMinor: number,
+  initialPaidMinor: number,
+  collectionAmounts: readonly number[],
+): PaymentBalance {
+  assertMinorUnit(payableMinor, "checkout total", true);
+  assertMinorUnit(initialPaidMinor, "initial payment", true);
+  let paidMinor = initialPaidMinor;
+  for (const amount of collectionAmounts) {
+    assertMinorUnit(amount, "collection amount", false);
+    const next = paidMinor + amount;
+    if (!Number.isSafeInteger(next) || next > maxIntegerMinorUnit) {
+      throw new ValidationApplicationError(
+        "cumulative payment exceeds the supported range.",
+      );
+    }
+    paidMinor = next;
+  }
+  if (paidMinor > payableMinor) {
+    throw new BusinessRuleError(
+      "Cumulative payment exceeds the checkout total.",
+    );
+  }
+  const outstandingMinor = payableMinor - paidMinor;
+  return {
+    outstandingMinor,
+    paidMinor,
+    status:
+      paidMinor === payableMinor
+        ? "PAID"
+        : paidMinor === 0
+          ? "UNPAID"
+          : "PARTIALLY_PAID",
+  };
+}
+
+export function calculatePaymentCollection(
+  payableMinor: number,
+  currentPaidMinor: number,
+  payments: readonly PaymentInstruction[],
+): PaymentBalance & { amountMinor: number; balanceBeforeMinor: number } {
+  const current = calculateCumulativePaymentBalance(
+    payableMinor,
+    currentPaidMinor,
+    [],
+  );
+  if (current.outstandingMinor === 0) {
+    throw new BusinessRuleError("The checkout is already paid in full.");
+  }
+  let amountMinor = 0;
+  for (const payment of payments) {
+    const next = amountMinor + payment.amountMinor;
+    if (!Number.isSafeInteger(next) || next > maxIntegerMinorUnit) {
+      throw new ValidationApplicationError(
+        "collection total exceeds the supported range.",
+      );
+    }
+    amountMinor = next;
+  }
+  if (amountMinor <= 0) {
+    throw new ValidationApplicationError(
+      "collection amount must be greater than zero.",
+    );
+  }
+  if (amountMinor > current.outstandingMinor) {
+    throw new BusinessRuleError(
+      "The collection exceeds the current outstanding balance.",
+    );
+  }
+  const next = calculateCumulativePaymentBalance(
+    payableMinor,
+    currentPaidMinor,
+    [amountMinor],
+  );
+  return {
+    ...next,
+    amountMinor,
+    balanceBeforeMinor: current.outstandingMinor,
+  };
+}
+
+function assertMinorUnit(
+  value: number,
+  field: string,
+  allowZero: boolean,
+): void {
+  if (
+    !Number.isInteger(value) ||
+    !Number.isSafeInteger(value) ||
+    value < (allowZero ? 0 : 1) ||
+    value > maxIntegerMinorUnit
+  ) {
+    throw new ValidationApplicationError(`${field} is invalid.`);
+  }
+}
+
 function normalizeReference(value: string | null | undefined): string | null {
   if (value === undefined || value === null) return null;
   const normalized = value.trim().replace(/\s+/gu, " ");

@@ -3,6 +3,7 @@ import {
   ConflictError,
   addPosCartItem,
   checkoutCart,
+  collectOutstandingPayment,
   openSalesSession,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -345,6 +346,105 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await expect(prisma.paymentBatch.count()).resolves.toBe(0);
     await expect(prisma.salesReceipt.count()).resolves.toBe(0);
     await expect(prisma.auditEntry.count()).resolves.toBe(0);
+  });
+
+  it("collects outstanding balances idempotently with organization-scoped immutable receipts", async () => {
+    const base = await seedCheckout("COLLECT", 10, 4);
+    const completed = await completeCheckout(base, "checkout-collect-001", {
+      allowOutstanding: true,
+      payments: [{ amountMinor: 3_000, method: "CASH" }],
+    });
+    const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
+    const collect = (
+      idempotencyKey = "collection-retry-001",
+      amountMinor = 2_000,
+    ) =>
+      manager.execute(
+        {
+          organizationId: base.organization.id,
+          requestId: "request-collection",
+          userId: base.user.id,
+        },
+        async (transaction) => {
+          if (!transaction.paymentRepository || !transaction.receiptRepository)
+            throw new Error(
+              "Payment collection transaction capability is missing.",
+            );
+          return collectOutstandingPayment(
+            {
+              payments: transaction.paymentRepository,
+              receipts: transaction.receiptRepository,
+            },
+            {
+              acceptedByUserId: base.user.id,
+              checkoutId: completed.checkout.id,
+              collectedAt: new Date("2026-08-09T10:00:00.000Z"),
+              collectionId: crypto.randomUUID(),
+              idempotencyKey,
+              organizationId: base.organization.id,
+              payments: [
+                {
+                  amountMinor,
+                  method: "CARD",
+                  reference: "CARD-COLLECT-1",
+                },
+              ],
+              receiptId: crypto.randomUUID(),
+            },
+          );
+        },
+      );
+    const identical = await Promise.all([collect(), collect()]);
+    const first = identical.find((result) => !result.replayed)!;
+    const replay = identical.find((result) => result.replayed)!;
+    expect(first).toMatchObject({
+      replayed: false,
+      account: { cumulativePaidMinor: 5_000, outstandingMinor: 5_000 },
+    });
+    expect(replay).toMatchObject({
+      replayed: true,
+      collection: { id: first.collection.id },
+    });
+    await expect(prisma.paymentCollection.count()).resolves.toBe(1);
+    await expect(prisma.paymentCollectionReceipt.count()).resolves.toBe(1);
+    const competing = await Promise.allSettled([
+      collect("collection-competing-001", 3_000),
+      collect("collection-competing-002", 3_000),
+    ]);
+    expect(
+      competing.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      competing.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(prisma.paymentCollection.count()).resolves.toBe(2);
+    const account = await new (
+      await import("../payment/repository.js")
+    ).PrismaPaymentRepository(prisma).findAccountByCheckoutId(
+      completed.checkout.id,
+      base.organization.id,
+    );
+    expect(account).toMatchObject({
+      cumulativePaidMinor: 8_000,
+      outstandingMinor: 2_000,
+    });
+    const other = await seedOrganization("COLLECT-OTHER");
+    const payments = new (
+      await import("../payment/repository.js")
+    ).PrismaPaymentRepository(prisma);
+    await expect(
+      payments.findAccountByCheckoutId(
+        completed.checkout.id,
+        other.organization.id,
+      ),
+    ).resolves.toBeNull();
+    const originalReceipt = await prisma.salesReceipt.findUniqueOrThrow({
+      where: { id: completed.checkout.receiptId! },
+    });
+    expect(originalReceipt).toMatchObject({
+      paidMinor: 3_000,
+      outstandingMinor: 7_000,
+    });
   });
 
   it("rolls back the order, reservation, movement, checkout, and audit when stock is insufficient", async () => {
@@ -710,6 +810,9 @@ async function seedOrganizationMember(organizationId: string, label: string) {
 }
 
 async function cleanDatabase() {
+  await prisma.paymentCollectionReceipt.deleteMany();
+  await prisma.paymentCollectionLine.deleteMany();
+  await prisma.paymentCollection.deleteMany();
   await prisma.salesReceiptPayment.deleteMany();
   await prisma.salesReceiptLine.deleteMany();
   await prisma.salesReceipt.deleteMany();

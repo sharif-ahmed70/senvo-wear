@@ -1,5 +1,8 @@
 import { NotFoundError, ValidationApplicationError } from "../../errors.js";
-import type { SalesReceipt } from "../domain/models.js";
+import type {
+  PaymentCollectionReceipt,
+  SalesReceipt,
+} from "../domain/models.js";
 import type { ReceiptRepository } from "../repositories/receipt-repository.js";
 
 const uuidPattern =
@@ -13,6 +16,18 @@ export async function getSalesReceipt(
   const organizationId = assertId(input.organizationId, "organizationId");
   const receipt = await repository.findByCheckoutId(checkoutId, organizationId);
   if (!receipt) throw new NotFoundError("Receipt was not found.");
+  return receipt;
+}
+
+export async function getPaymentCollectionReceipt(
+  repository: ReceiptRepository,
+  input: { collectionId: string; organizationId: string },
+): Promise<PaymentCollectionReceipt> {
+  const receipt = await repository.findPaymentCollectionReceiptById(
+    assertId(input.collectionId, "collectionId"),
+    assertId(input.organizationId, "organizationId"),
+  );
+  if (!receipt) throw new NotFoundError("Payment receipt was not found.");
   return receipt;
 }
 

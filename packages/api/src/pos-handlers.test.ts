@@ -159,6 +159,42 @@ describe("POS API handlers", () => {
     });
     expect(application.context).toMatchObject({ organizationId, userId });
   });
+
+  it("uses PAYMENT CREATE and rejects trusted field injection for collections", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const valid = await handlers(
+      application,
+      authorization,
+    ).collectPayment.handle({
+      context,
+      input: {
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        idempotencyKey: "payment-collection-001",
+        payments: [{ amountMinor: 500, method: "CASH" }],
+      },
+    });
+    expect(valid.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "CREATE",
+      resource: "PAYMENT",
+    });
+    const injected = await handlers(application).collectPayment.handle({
+      context,
+      input: {
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        idempotencyKey: "payment-collection-002",
+        organizationId,
+        acceptedByUserId: userId,
+        outstandingMinor: 500,
+        payments: [{ amountMinor: 500, method: "CASH" }],
+      },
+    });
+    expect(injected).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -198,6 +234,9 @@ class FakePos implements PosApplication {
   addCartItem(context: ApplicationExecutionContext) {
     return this.result(context, {} as PosCartLineContract);
   }
+  collectPayment(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
   closeSession(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesSessionContract);
   }
@@ -218,6 +257,12 @@ class FakePos implements PosApplication {
   }
   getReceipt(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesReceiptContract);
+  }
+  getPaymentAccount(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  getPaymentCollectionReceipt(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
   }
   listCheckouts(context: ApplicationExecutionContext) {
     return this.result(context, [] as PosCheckoutContract[]);

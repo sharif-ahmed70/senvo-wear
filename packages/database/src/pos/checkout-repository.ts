@@ -16,8 +16,10 @@ const checkoutInclude = {
   paymentBatch: {
     select: {
       id: true,
+      collections: { select: { amountMinor: true } },
       outstandingMinor: true,
       paidMinor: true,
+      payableMinor: true,
       requestSignature: true,
       status: true,
     },
@@ -171,6 +173,17 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
 }
 
 function mapCheckout(record: CheckoutRecord): PosCheckout {
+  const collectedMinor =
+    record.paymentBatch?.collections.reduce(
+      (total, collection) => total + collection.amountMinor,
+      0,
+    ) ?? 0;
+  const paidMinor = record.paymentBatch
+    ? record.paymentBatch.paidMinor + collectedMinor
+    : null;
+  const outstandingMinor = record.paymentBatch
+    ? record.paymentBatch.payableMinor - (paidMinor ?? 0)
+    : null;
   return {
     cartId: record.cartId,
     completedAt: record.completedAt,
@@ -181,11 +194,18 @@ function mapCheckout(record: CheckoutRecord): PosCheckout {
     idempotencyKey: record.idempotencyKey,
     orderNumber: record.salesOrder.orderNumber,
     organizationId: record.organizationId,
-    outstandingMinor: record.paymentBatch?.outstandingMinor ?? null,
-    paidMinor: record.paymentBatch?.paidMinor ?? null,
+    outstandingMinor,
+    paidMinor,
     paymentBatchId: record.paymentBatch?.id ?? null,
     paymentRequestSignature: record.paymentBatch?.requestSignature ?? null,
-    paymentStatus: record.paymentBatch?.status ?? "UNRECORDED",
+    paymentStatus:
+      paidMinor === null
+        ? "UNRECORDED"
+        : outstandingMinor === 0
+          ? "PAID"
+          : paidMinor === 0
+            ? "UNPAID"
+            : "PARTIALLY_PAID",
     receiptId: record.receipt?.id ?? null,
     receiptNumber: record.receipt?.receiptNumber ?? null,
     salesOrderId: record.salesOrderId,

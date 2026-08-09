@@ -1,5 +1,7 @@
 # POS Payment and Receipt Foundation
 
+Later outstanding-balance payments are append-only collections with separate payment receipts. See [POS Outstanding Balance Collection](./pos-outstanding-balance-collection.md). The original payment batch and sales receipt are never updated to represent later collections.
+
 ## Purpose
 
 This foundation records accepted checkout-time tenders and issues one durable sales receipt for every new POS checkout. POS remains the cross-domain coordinator; payment owns tender facts and receipt owns the historical document snapshot.
