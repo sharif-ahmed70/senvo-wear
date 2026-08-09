@@ -14,9 +14,9 @@ CREATE TABLE "sales_order_commerce_profiles" (
 
 CREATE UNIQUE INDEX "sales_order_commerce_profiles_id_organization_id_key"
 ON "sales_order_commerce_profiles"("id", "organization_id");
-CREATE UNIQUE INDEX "sales_order_commerce_profiles_sales_order_id_organization_key"
+CREATE UNIQUE INDEX "sales_order_commerce_profiles_sales_order_id_organization_i_key"
 ON "sales_order_commerce_profiles"("sales_order_id", "organization_id");
-CREATE INDEX "sales_order_commerce_profiles_organization_id_source_created_at_id_idx"
+CREATE INDEX "sales_order_commerce_profiles_organization_id_source_create_idx"
 ON "sales_order_commerce_profiles"("organization_id", "source", "created_at", "id");
 
 ALTER TABLE "sales_order_commerce_profiles"
@@ -24,5 +24,5 @@ ADD CONSTRAINT "sales_order_commerce_profiles_organization_id_fkey"
 FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 ALTER TABLE "sales_order_commerce_profiles"
-ADD CONSTRAINT "sales_order_commerce_profiles_sales_order_id_organization_id_fkey"
+ADD CONSTRAINT "sales_order_commerce_profiles_sales_order_id_organization__fkey"
 FOREIGN KEY ("sales_order_id", "organization_id") REFERENCES "sales_orders"("id", "organization_id") ON DELETE RESTRICT ON UPDATE CASCADE;
