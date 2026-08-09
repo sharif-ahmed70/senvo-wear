@@ -54,7 +54,6 @@ export class PrismaPosReturnRepository implements PosReturnRepository {
             ...line,
             createdAt: record.createdAt,
             lineNumber: index + 1,
-            organizationId: record.organizationId,
           })),
         },
       },
