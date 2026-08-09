@@ -1,5 +1,6 @@
 import {
   calculateCumulativePaymentBalance,
+  calculateCheckoutSettlement,
   type CreatePaymentBatchRecord,
   type CreatePaymentCollectionRecord,
   type PaymentAccount,
@@ -32,6 +33,7 @@ const accountInclude = {
     include: collectionInclude,
     orderBy: { createdAt: "asc" },
   },
+  posSaleReturns: { select: { totalCreditMinor: true } },
   salesOrder: { select: { orderNumber: true } },
 } as const;
 type BatchRecord = Prisma.PaymentBatchGetPayload<{
@@ -152,6 +154,7 @@ export class PrismaPaymentRepository implements PaymentRepository {
       organizationName: record.organization.name,
       organizationPhone: record.organization.phone,
       organizationPostalCode: record.organization.postalCode,
+      returnCreditMinor: sumReturnCredit(record.posSaleReturns),
       salesOrderId: record.salesOrderId,
       totalMinor: record.totalMinor,
     };
@@ -219,8 +222,10 @@ function mapCollection(record: CollectionRecord): PaymentCollection {
 }
 
 function mapAccount(record: AccountRecord): PaymentAccount {
+  const returnCreditMinor = sumReturnCredit(record.posSaleReturns);
   if (!record.paymentBatch)
     return {
+      adjustedPayableMinor: null,
       checkoutId: record.id,
       collections: [],
       cumulativePaidMinor: null,
@@ -229,8 +234,12 @@ function mapAccount(record: AccountRecord): PaymentAccount {
       initialPayments: [],
       legacyPaymentRecorded: false,
       orderNumber: record.salesOrder.orderNumber,
+      originalPayableMinor: record.totalMinor,
       organizationId: record.organizationId,
       outstandingMinor: null,
+      refundableMinor: null,
+      returnCreditMinor,
+      settlementStatus: "UNRECORDED",
       status: "UNRECORDED",
       totalMinor: record.totalMinor,
     };
@@ -240,7 +249,13 @@ function mapAccount(record: AccountRecord): PaymentAccount {
     record.paymentBatch.paidMinor,
     collections.map((item) => item.amountMinor),
   );
+  const settlement = calculateCheckoutSettlement(
+    record.paymentBatch.payableMinor,
+    balance.paidMinor,
+    returnCreditMinor,
+  );
   return {
+    adjustedPayableMinor: settlement.adjustedPayableMinor,
     checkoutId: record.id,
     collections,
     cumulativePaidMinor: balance.paidMinor,
@@ -253,9 +268,19 @@ function mapAccount(record: AccountRecord): PaymentAccount {
     })),
     legacyPaymentRecorded: true,
     orderNumber: record.salesOrder.orderNumber,
+    originalPayableMinor: record.paymentBatch.payableMinor,
     organizationId: record.organizationId,
-    outstandingMinor: balance.outstandingMinor,
-    status: balance.status,
+    outstandingMinor: settlement.outstandingMinor,
+    refundableMinor: settlement.refundableMinor,
+    returnCreditMinor,
+    settlementStatus: settlement.status,
+    status: settlement.status,
     totalMinor: record.paymentBatch.payableMinor,
   };
+}
+
+function sumReturnCredit(
+  returns: readonly { totalCreditMinor: number }[],
+): number {
+  return returns.reduce((total, item) => total + item.totalCreditMinor, 0);
 }

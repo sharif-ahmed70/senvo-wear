@@ -109,6 +109,30 @@ describe("outstanding payment collection", () => {
       ),
     ).rejects.toBeInstanceOf(BusinessRuleError);
   });
+
+  it("cannot collect above the return-adjusted amount due", async () => {
+    const adjusted = preparation();
+    adjusted.returnCreditMinor = 2_000;
+    await expect(
+      collectOutstandingPayment(
+        { payments: new FakePayments(adjusted), receipts: new FakeReceipts() },
+        input(5_001),
+      ),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+
+    const valid = preparation();
+    valid.returnCreditMinor = 2_000;
+    const receipts = new FakeReceipts();
+    await collectOutstandingPayment(
+      { payments: new FakePayments(valid), receipts },
+      input(5_000),
+    );
+    expect(receipts.created).toMatchObject({
+      cumulativePaidMinor: 8_000,
+      outstandingMinor: 0,
+      totalMinor: 8_000,
+    });
+  });
 });
 
 function input(amountMinor: number, idempotencyKey = "payment-collection-001") {
@@ -167,6 +191,7 @@ function preparation(): PaymentCollectionPreparation {
     organizationName: "SENVO",
     organizationPhone: null,
     organizationPostalCode: null,
+    returnCreditMinor: 0,
     salesOrderId: ids.order,
     totalMinor: 10_000,
   };
@@ -228,6 +253,7 @@ class FakePayments implements PaymentRepository {
     );
     const outstandingMinor = 7_000 - collected;
     return Promise.resolve({
+      adjustedPayableMinor: 10_000,
       checkoutId: ids.checkout,
       collections: this.prep.collections,
       cumulativePaidMinor: 3_000 + collected,
@@ -238,8 +264,12 @@ class FakePayments implements PaymentRepository {
       ],
       legacyPaymentRecorded: true,
       orderNumber: "POS-001",
+      originalPayableMinor: 10_000,
       organizationId: ids.organization,
       outstandingMinor,
+      refundableMinor: 0,
+      returnCreditMinor: 0,
+      settlementStatus: outstandingMinor === 0 ? "PAID" : "PARTIALLY_PAID",
       status: outstandingMinor === 0 ? "PAID" : "PARTIALLY_PAID",
       totalMinor: 10_000,
     });

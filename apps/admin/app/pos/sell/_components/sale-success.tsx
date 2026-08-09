@@ -7,6 +7,8 @@ import { formatBdt } from "../_lib/money";
 const statusLabels = {
   PAID: "Paid",
   PARTIALLY_PAID: "Partially paid",
+  REFUND_DUE: "Refund due",
+  SETTLED: "Settled by return",
   UNPAID: "Payment due",
   UNRECORDED: "Payment not recorded",
 } as const;

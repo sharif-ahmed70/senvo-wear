@@ -525,6 +525,27 @@ describe("AdminApiClient", () => {
       "10000000-0000-4000-8000-000000000014",
       { requestId: "req_pos_client_8" },
     );
+    await client.getPosReturns("10000000-0000-4000-8000-000000000013", {
+      requestId: "req_pos_client_9",
+    });
+    await client.createPosReturn(
+      {
+        checkoutId: "10000000-0000-4000-8000-000000000013",
+        destinationLocationId: "10000000-0000-4000-8000-000000000015",
+        idempotencyKey: "return-client-001",
+        lines: [
+          {
+            quantity: 1,
+            salesOrderLineId: "10000000-0000-4000-8000-000000000016",
+          },
+        ],
+        reasonCode: "SIZE_OR_FIT",
+      },
+      { requestId: "req_pos_client_10" },
+    );
+    await client.getPosReturnReceipt("10000000-0000-4000-8000-000000000017", {
+      requestId: "req_pos_client_11",
+    });
     const bodies = fetcher.mock.calls.map(
       (call) =>
         JSON.parse(
@@ -540,6 +561,9 @@ describe("AdminApiClient", () => {
       "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/payments",
       "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/payment-collections",
       "https://admin.example.test/pos/payment-collections/10000000-0000-4000-8000-000000000014/receipt",
+      "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/returns",
+      "https://admin.example.test/pos/checkouts/10000000-0000-4000-8000-000000000013/returns",
+      "https://admin.example.test/pos/returns/10000000-0000-4000-8000-000000000017/receipt",
     ]);
     for (const body of bodies) {
       expect(body).not.toHaveProperty("organizationId");

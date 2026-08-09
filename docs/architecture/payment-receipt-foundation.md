@@ -1,5 +1,7 @@
 # POS Payment and Receipt Foundation
 
+Return receipts are separate immutable documents and never rewrite the original sales or payment receipt. They state return credit and **Refund due** without claiming that money was refunded.
+
 Later outstanding-balance payments are append-only collections with separate payment receipts. See [POS Outstanding Balance Collection](./pos-outstanding-balance-collection.md). The original payment batch and sales receipt are never updated to represent later collections.
 
 ## Purpose

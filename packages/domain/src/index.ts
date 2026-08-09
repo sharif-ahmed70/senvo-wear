@@ -108,6 +108,25 @@ export type {
   SalesSessionStatus,
   SellableVariant,
 } from "./pos/domain/models.js";
+export type {
+  PosReturnAccount,
+  PosReturnReasonCode,
+  PosReturnReceipt,
+  PosReturnableLine,
+  PosSaleReturn,
+  PosSaleReturnLine,
+} from "./pos/domain/return-models.js";
+export {
+  calculateAllocatedReturnCredit,
+  getPosReturnAccount,
+  getPosReturnReceipt,
+  recordPosSaleReturn,
+} from "./pos/application/return-use-cases.js";
+export type {
+  CreatePosSaleReturnRecord,
+  PosReturnPreparation,
+  PosReturnRepository,
+} from "./pos/repositories/pos-return-repository.js";
 export {
   checkoutCart,
   getCheckoutStatus,
@@ -136,6 +155,7 @@ export type { PosRepository } from "./pos/repositories/pos-repository.js";
 export type { PosCheckoutRepository } from "./pos/repositories/pos-checkout-repository.js";
 export {
   calculateCumulativePaymentBalance,
+  calculateCheckoutSettlement,
   calculatePaymentCollection,
   calculatePaymentBalance,
   createPaymentCollectionRequestSignature,
@@ -144,6 +164,7 @@ export {
 } from "./payment/application/payment-rules.js";
 export type {
   CheckoutPaymentStatus,
+  CheckoutSettlementStatus,
   PaymentBalance,
   PaymentBalanceStatus,
   PaymentBatch,
@@ -176,8 +197,10 @@ export type {
   SalesReceiptPayment,
 } from "./receipt/domain/models.js";
 export type {
+  CreatePosReturnReceiptRecord,
   CreateSalesReceiptRecord,
   CreatePaymentCollectionReceiptRecord,
+  PosReturnReceiptRepository,
   ReceiptRepository,
 } from "./receipt/repositories/receipt-repository.js";
 export {

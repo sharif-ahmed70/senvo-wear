@@ -669,6 +669,8 @@ function Status({
     | "OPEN"
     | "PAID"
     | "PARTIALLY_PAID"
+    | "REFUND_DUE"
+    | "SETTLED"
     | "UNPAID"
     | "UNRECORDED";
 }) {
@@ -680,6 +682,8 @@ function Status({
     OPEN: "Open",
     PAID: "Paid",
     PARTIALLY_PAID: "Partially paid",
+    REFUND_DUE: "Refund due",
+    SETTLED: "Settled by return",
     UNPAID: "Unpaid",
     UNRECORDED: "Not recorded",
   } as const;

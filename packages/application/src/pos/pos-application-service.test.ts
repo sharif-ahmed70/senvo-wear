@@ -256,6 +256,42 @@ describe("PosApplicationService cart reads", () => {
       ok: false,
     });
   });
+
+  it("requires the complete manager-level return permission combination", async () => {
+    const calls: Array<{ action: string; resource: string }> = [];
+    const service = serviceWith({
+      authorizationService: {
+        authorize: (_context, permission) => {
+          calls.push(permission);
+          if (
+            permission.action === "APPROVE" &&
+            permission.resource === "PAYMENT"
+          )
+            throw new AuthorizationError("Return approval denied.");
+          return Promise.resolve();
+        },
+      },
+    });
+    const result = await service.createReturn(context(), {
+      checkoutId: cartId,
+      destinationLocationId: "10000000-0000-4000-8000-000000000020",
+      idempotencyKey: "return-service-001",
+      lines: [
+        {
+          quantity: 1,
+          salesOrderLineId: "10000000-0000-4000-8000-000000000021",
+        },
+      ],
+      reasonCode: "SIZE_OR_FIT",
+    });
+    expect(result).toMatchObject({ error: { code: "FORBIDDEN" }, ok: false });
+    expect(calls).toEqual([
+      { action: "UPDATE", resource: "POS" },
+      { action: "UPDATE", resource: "SALES" },
+      { action: "CREATE", resource: "INVENTORY" },
+      { action: "APPROVE", resource: "PAYMENT" },
+    ]);
+  });
 });
 
 function serviceWith(overrides: {

@@ -57,7 +57,10 @@ export type CreateInventoryMovementInput = {
 };
 
 export async function createInventoryMovement(
-  repository: InventoryMovementRepository,
+  repository: Pick<
+    InventoryMovementRepository,
+    "createDraft" | "findByIdempotencyKey"
+  >,
   input: CreateInventoryMovementInput,
 ): Promise<InventoryMovement> {
   const record = normalizeCreateMovementInput(input);

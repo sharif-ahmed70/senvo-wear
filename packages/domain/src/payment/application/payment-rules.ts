@@ -1,6 +1,7 @@
 import { BusinessRuleError, ValidationApplicationError } from "../../errors.js";
 import type {
   PaymentBalance,
+  CheckoutSettlementStatus,
   PaymentInstruction,
   PaymentMethod,
 } from "../domain/models.js";
@@ -13,6 +14,59 @@ const methods = [
   "MOBILE_BANKING",
   "BANK_TRANSFER",
 ] as const satisfies readonly PaymentMethod[];
+
+export type CheckoutSettlement = {
+  adjustedPayableMinor: number;
+  cumulativeReceivedMinor: number;
+  originalPayableMinor: number;
+  outstandingMinor: number;
+  refundableMinor: number;
+  returnCreditMinor: number;
+  status: Exclude<CheckoutSettlementStatus, "UNRECORDED">;
+};
+
+export function calculateCheckoutSettlement(
+  originalPayableMinor: number,
+  cumulativeReceivedMinor: number,
+  returnCreditMinor: number,
+): CheckoutSettlement {
+  assertMinorUnit(originalPayableMinor, "original payable", true);
+  assertMinorUnit(cumulativeReceivedMinor, "cumulative received", true);
+  assertMinorUnit(returnCreditMinor, "return credit", true);
+  if (returnCreditMinor > originalPayableMinor) {
+    throw new BusinessRuleError(
+      "Return credit exceeds the original payable amount.",
+    );
+  }
+  const adjustedPayableMinor = originalPayableMinor - returnCreditMinor;
+  const outstandingMinor = Math.max(
+    adjustedPayableMinor - cumulativeReceivedMinor,
+    0,
+  );
+  const refundableMinor = Math.max(
+    cumulativeReceivedMinor - adjustedPayableMinor,
+    0,
+  );
+  const status: CheckoutSettlement["status"] =
+    refundableMinor > 0
+      ? "REFUND_DUE"
+      : adjustedPayableMinor === 0 && cumulativeReceivedMinor === 0
+        ? "SETTLED"
+        : cumulativeReceivedMinor === adjustedPayableMinor
+          ? "PAID"
+          : cumulativeReceivedMinor === 0
+            ? "UNPAID"
+            : "PARTIALLY_PAID";
+  return {
+    adjustedPayableMinor,
+    cumulativeReceivedMinor,
+    originalPayableMinor,
+    outstandingMinor,
+    refundableMinor,
+    returnCreditMinor,
+    status,
+  };
+}
 
 export function normalizePaymentInstructions(
   values: readonly {

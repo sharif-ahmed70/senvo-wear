@@ -7,12 +7,14 @@ import type {
 import {
   addPosCartItemServiceInputSchema,
   collectPosPaymentServiceInputSchema,
+  createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
+  getPosReturnReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posEmptyInputSchema,
@@ -25,6 +27,9 @@ import {
   type CollectPosPaymentResultContract,
   type PaymentAccountContract,
   type PaymentCollectionReceiptContract,
+  type PosReturnAccountContract,
+  type PosReturnReceiptContract,
+  type PosReturnResultContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
   type SalesCounterContract,
@@ -37,6 +42,18 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<CollectPosPaymentResultContract>>;
+  createReturn(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosReturnResultContract>>;
+  getReturns(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosReturnAccountContract>>;
+  getReturnReceipt(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosReturnReceiptContract>>;
   addCartItem(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -113,6 +130,9 @@ export type PosApplication = {
 
 export type PosApiHandlers = {
   collectPayment: ApiHandler<CollectPosPaymentResultContract>;
+  createReturn: ApiHandler<PosReturnResultContract>;
+  getReturns: ApiHandler<PosReturnAccountContract>;
+  getReturnReceipt: ApiHandler<PosReturnReceiptContract>;
   addCartItem: ApiHandler<PosCartLineContract>;
   closeSession: ApiHandler<SalesSessionContract>;
   checkoutCart: ApiHandler<PosCheckoutContract>;
@@ -163,6 +183,24 @@ export function createPosApiHandlers(dependencies: {
         dependencies.pos.collectPayment(context, input),
       inputSchema: collectPosPaymentServiceInputSchema,
       permission: { action: "CREATE", resource: "PAYMENT" },
+    }),
+    createReturn: handler(
+      "UPDATE",
+      createPosReturnServiceInputSchema,
+      (context, input) => dependencies.pos.createReturn(context, input),
+    ),
+    getReturns: handler(
+      "READ",
+      getPosCheckoutServiceInputSchema,
+      (context, input) => dependencies.pos.getReturns(context, input),
+    ),
+    getReturnReceipt: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.getReturnReceipt(context, input),
+      inputSchema: getPosReturnReceiptServiceInputSchema,
+      permission: { action: "READ", resource: "RECEIPT" },
     }),
     addCartItem: handler(
       "CREATE",

@@ -1,6 +1,7 @@
 import { BusinessRuleError, ValidationApplicationError } from "../../errors.js";
 import {
   calculateCumulativePaymentBalance,
+  calculateCheckoutSettlement,
   calculatePaymentCollection,
   calculatePaymentBalance,
   createPaymentRequestSignature,
@@ -9,6 +10,31 @@ import {
 import { describe, expect, it } from "vitest";
 
 describe("checkout payment rules", () => {
+  it("derives return-adjusted due, refund due, and full-unpaid settlement", () => {
+    expect(calculateCheckoutSettlement(10_000, 3_000, 2_000)).toMatchObject({
+      adjustedPayableMinor: 8_000,
+      outstandingMinor: 5_000,
+      refundableMinor: 0,
+      status: "PARTIALLY_PAID",
+    });
+    expect(calculateCheckoutSettlement(10_000, 10_000, 3_000)).toMatchObject({
+      adjustedPayableMinor: 7_000,
+      outstandingMinor: 0,
+      refundableMinor: 3_000,
+      status: "REFUND_DUE",
+    });
+    expect(calculateCheckoutSettlement(10_000, 7_000, 5_000)).toMatchObject({
+      adjustedPayableMinor: 5_000,
+      refundableMinor: 2_000,
+      status: "REFUND_DUE",
+    });
+    expect(calculateCheckoutSettlement(10_000, 0, 10_000)).toMatchObject({
+      adjustedPayableMinor: 0,
+      outstandingMinor: 0,
+      refundableMinor: 0,
+      status: "SETTLED",
+    });
+  });
   it("accepts fully paid cash, non-cash, and split tenders", () => {
     expect(balance([{ amountMinor: 5000, method: "CASH" }], 5000)).toEqual({
       outstandingMinor: 0,

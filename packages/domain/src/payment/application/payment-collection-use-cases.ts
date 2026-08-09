@@ -7,6 +7,7 @@ import {
 import type { ReceiptRepository } from "../../receipt/repositories/receipt-repository.js";
 import {
   calculateCumulativePaymentBalance,
+  calculateCheckoutSettlement,
   calculatePaymentCollection,
   createPaymentCollectionRequestSignature,
   normalizePaymentInstructions,
@@ -96,8 +97,16 @@ export async function collectOutstandingPayment(
     preparation.initialPayment.paidMinor,
     preparation.collections.map((collection) => collection.amountMinor),
   );
-  const balance = calculatePaymentCollection(
+  const settlement = calculateCheckoutSettlement(
     preparation.initialPayment.payableMinor,
+    current.paidMinor,
+    preparation.returnCreditMinor,
+  );
+  if (settlement.outstandingMinor === 0) {
+    throw new BusinessRuleError("This checkout has no outstanding balance.");
+  }
+  const balance = calculatePaymentCollection(
+    settlement.adjustedPayableMinor,
     current.paidMinor,
     payments,
   );
@@ -151,7 +160,7 @@ export async function collectOutstandingPayment(
     })),
     receiptNumber,
     salesOrderId: preparation.salesOrderId,
-    totalMinor: preparation.initialPayment.payableMinor,
+    totalMinor: settlement.adjustedPayableMinor,
   });
   const account = await repositories.payments.findAccountByCheckoutId(
     checkoutId,
@@ -168,6 +177,7 @@ function accountFromPreparation(
   const initial = preparation.initialPayment;
   if (!initial) {
     return {
+      adjustedPayableMinor: null,
       checkoutId: preparation.checkoutId,
       collections: [],
       cumulativePaidMinor: null,
@@ -176,8 +186,12 @@ function accountFromPreparation(
       initialPayments: [],
       legacyPaymentRecorded: false,
       orderNumber: preparation.orderNumber,
+      originalPayableMinor: preparation.totalMinor,
       organizationId: preparation.organizationId,
       outstandingMinor: null,
+      refundableMinor: null,
+      returnCreditMinor: preparation.returnCreditMinor,
+      settlementStatus: "UNRECORDED",
       status: "UNRECORDED",
       totalMinor: preparation.totalMinor,
     };
@@ -187,7 +201,13 @@ function accountFromPreparation(
     initial.paidMinor,
     preparation.collections.map((collection) => collection.amountMinor),
   );
+  const settlement = calculateCheckoutSettlement(
+    initial.payableMinor,
+    balance.paidMinor,
+    preparation.returnCreditMinor,
+  );
   return {
+    adjustedPayableMinor: settlement.adjustedPayableMinor,
     checkoutId: preparation.checkoutId,
     collections: preparation.collections,
     cumulativePaidMinor: balance.paidMinor,
@@ -196,9 +216,13 @@ function accountFromPreparation(
     initialPayments: initial.lines,
     legacyPaymentRecorded: true,
     orderNumber: preparation.orderNumber,
+    originalPayableMinor: initial.payableMinor,
     organizationId: preparation.organizationId,
-    outstandingMinor: balance.outstandingMinor,
-    status: balance.status,
+    outstandingMinor: settlement.outstandingMinor,
+    refundableMinor: settlement.refundableMinor,
+    returnCreditMinor: settlement.returnCreditMinor,
+    settlementStatus: settlement.status,
+    status: settlement.status,
     totalMinor: initial.payableMinor,
   };
 }

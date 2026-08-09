@@ -1,5 +1,7 @@
 # POS Outstanding Balance Collection
 
+Collection validation uses the return-adjusted payable. Returns and collections serialize on the same checkout-row lock, so a collection cannot exceed the amount legally due at its transaction order.
+
 ## Purpose
 
 Completed POS orders may carry an unpaid balance. A later collection is a new financial fact; it does not rewrite the checkout-time `PaymentBatch` or `SalesReceipt`.

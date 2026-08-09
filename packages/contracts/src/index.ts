@@ -446,11 +446,13 @@ export const disableCredentialInputSchema = z
 
 export const auditActionSchema = z.enum([
   "INVENTORY_MOVEMENT_POSTED",
+  "POS_SALE_RETURN_RECORDED",
   "SALES_ORDER_CREATED",
 ]);
 
 export const auditResourceSchema = z.enum([
   "INVENTORY_MOVEMENT",
+  "POS_RETURN",
   "SALES_ORDER",
 ]);
 
@@ -3077,9 +3079,13 @@ export const paymentBalanceStatusSchema = z.enum([
   "PARTIALLY_PAID",
   "PAID",
 ]);
-export const checkoutPaymentStatusSchema = z.union([
-  paymentBalanceStatusSchema,
-  z.literal("UNRECORDED"),
+export const checkoutPaymentStatusSchema = z.enum([
+  "UNPAID",
+  "PARTIALLY_PAID",
+  "PAID",
+  "REFUND_DUE",
+  "SETTLED",
+  "UNRECORDED",
 ]);
 export const checkoutPaymentInstructionSchema = z
   .object({
@@ -3193,6 +3199,7 @@ export const paymentCollectionContractSchema = z
   .strict();
 export const paymentAccountContractSchema = z
   .object({
+    adjustedPayableMinor: minorUnitAmountSchema.nullable(),
     checkoutId: idSchema,
     collections: z.array(paymentCollectionContractSchema),
     cumulativePaidMinor: minorUnitAmountSchema.nullable(),
@@ -3211,9 +3218,162 @@ export const paymentAccountContractSchema = z
       .max(8),
     legacyPaymentRecorded: z.boolean(),
     orderNumber: z.string(),
+    originalPayableMinor: minorUnitAmountSchema,
     outstandingMinor: minorUnitAmountSchema.nullable(),
+    refundableMinor: minorUnitAmountSchema.nullable(),
+    returnCreditMinor: minorUnitAmountSchema,
+    settlementStatus: checkoutPaymentStatusSchema,
     status: checkoutPaymentStatusSchema,
     totalMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+export const posReturnReasonCodeSchema = z.enum([
+  "SIZE_OR_FIT",
+  "DEFECTIVE",
+  "WRONG_ITEM",
+  "CHANGED_MIND",
+  "OTHER",
+]);
+export const posReturnLineContractSchema = z
+  .object({
+    colorSnapshot: z.string().nullable(),
+    id: idSchema,
+    lineCreditMinor: minorUnitAmountSchema,
+    lineNumber: z.number().int().positive(),
+    productNameSnapshot: z.string(),
+    productVariantId: idSchema,
+    quantity: z.number().int().positive(),
+    salesOrderLineId: idSchema,
+    sizeSnapshot: z.string().nullable(),
+    skuSnapshot: z.string(),
+    unitPriceMinor: minorUnitAmountSchema,
+  })
+  .strict();
+export const posSaleReturnContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    checkoutId: idSchema,
+    createdAt: isoTimestampSchema,
+    destinationLocationId: idSchema,
+    destinationLocationName: z.string(),
+    id: idSchema,
+    inventoryMovementId: idSchema,
+    lines: z.array(posReturnLineContractSchema).min(1).max(100),
+    reasonCode: posReturnReasonCodeSchema,
+    reasonNote: z.string().nullable(),
+    receiptId: idSchema,
+    receiptNumber: z.string(),
+    returnedAt: isoTimestampSchema,
+    totalCreditMinor: minorUnitAmountSchema,
+  })
+  .strict();
+export const posReturnAccountContractSchema = z
+  .object({
+    adjustedPayableMinor: minorUnitAmountSchema.nullable(),
+    checkoutId: idSchema,
+    cumulativeReceivedMinor: minorUnitAmountSchema.nullable(),
+    legacyPaymentRecorded: z.boolean(),
+    lines: z.array(
+      z
+        .object({
+          colorSnapshot: z.string().nullable(),
+          originalLineTotalMinor: minorUnitAmountSchema,
+          productNameSnapshot: z.string(),
+          productVariantId: idSchema,
+          returnableQuantity: z.number().int().nonnegative(),
+          returnedQuantity: z.number().int().nonnegative(),
+          salesOrderLineId: idSchema,
+          sizeSnapshot: z.string().nullable(),
+          skuSnapshot: z.string(),
+          soldQuantity: z.number().int().positive(),
+          unitPriceMinor: minorUnitAmountSchema,
+        })
+        .strict(),
+    ),
+    orderNumber: z.string(),
+    originalTotalMinor: minorUnitAmountSchema,
+    outstandingMinor: minorUnitAmountSchema.nullable(),
+    refundableMinor: minorUnitAmountSchema.nullable(),
+    returnCreditMinor: minorUnitAmountSchema,
+    returns: z.array(posSaleReturnContractSchema),
+    settlementStatus: checkoutPaymentStatusSchema,
+  })
+  .strict();
+export const createPosReturnServiceInputSchema = z
+  .object({
+    checkoutId: idSchema,
+    destinationLocationId: idSchema,
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/u),
+    lines: z
+      .array(
+        z
+          .object({
+            quantity: z.number().int().positive(),
+            salesOrderLineId: idSchema,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+    reasonCode: posReturnReasonCodeSchema,
+    reasonNote: z.string().trim().min(1).max(500).nullable().optional(),
+  })
+  .strict();
+export const posReturnResultContractSchema = z
+  .object({
+    account: posReturnAccountContractSchema,
+    replayed: z.boolean(),
+    saleReturn: posSaleReturnContractSchema,
+  })
+  .strict();
+export const getPosReturnReceiptServiceInputSchema = z
+  .object({ returnId: idSchema })
+  .strict();
+export const posReturnReceiptContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    adjustedPayableMinor: minorUnitAmountSchema,
+    collectedReceiptNumber: z.string().nullable(),
+    cumulativeReceivedMinor: minorUnitAmountSchema,
+    cumulativeReturnCreditMinor: minorUnitAmountSchema,
+    destinationLocationName: z.string(),
+    id: idSchema,
+    lines: z.array(
+      posReturnLineContractSchema.pick({
+        colorSnapshot: true,
+        lineCreditMinor: true,
+        lineNumber: true,
+        productNameSnapshot: true,
+        quantity: true,
+        sizeSnapshot: true,
+        skuSnapshot: true,
+      }),
+    ),
+    orderNumber: z.string(),
+    organizationAddressLine1: z.string().nullable(),
+    organizationAddressLine2: z.string().nullable(),
+    organizationCity: z.string().nullable(),
+    organizationDistrict: z.string().nullable(),
+    organizationEmail: z.string().nullable(),
+    organizationName: z.string(),
+    organizationPhone: z.string().nullable(),
+    organizationPostalCode: z.string().nullable(),
+    originalTotalMinor: minorUnitAmountSchema,
+    outstandingMinor: minorUnitAmountSchema,
+    reasonCode: posReturnReasonCodeSchema,
+    reasonNote: z.string().nullable(),
+    receiptNumber: z.string(),
+    refundableMinor: minorUnitAmountSchema,
+    returnId: idSchema,
+    returnedAt: isoTimestampSchema,
+    settlementStatus: checkoutPaymentStatusSchema.exclude(["UNRECORDED"]),
+    totalCreditMinor: minorUnitAmountSchema,
   })
   .strict();
 export const collectPosPaymentResultContractSchema = z
@@ -3343,6 +3503,20 @@ export type CollectPosPaymentResultContract = z.infer<
 >;
 export type PaymentCollectionReceiptContract = z.infer<
   typeof paymentCollectionReceiptContractSchema
+>;
+export type PosReturnAccountContract = z.infer<
+  typeof posReturnAccountContractSchema
+>;
+export type PosReturnReasonCode = z.infer<typeof posReturnReasonCodeSchema>;
+export type CreatePosReturnServiceInputContract = z.infer<
+  typeof createPosReturnServiceInputSchema
+>;
+export type PosSaleReturnContract = z.infer<typeof posSaleReturnContractSchema>;
+export type PosReturnResultContract = z.infer<
+  typeof posReturnResultContractSchema
+>;
+export type PosReturnReceiptContract = z.infer<
+  typeof posReturnReceiptContractSchema
 >;
 export type CreateSalesCounterServiceInputContract = z.infer<
   typeof createSalesCounterServiceInputSchema

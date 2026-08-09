@@ -2,7 +2,9 @@ export type PaymentMethod =
   "CASH" | "CARD" | "MOBILE_BANKING" | "BANK_TRANSFER";
 
 export type PaymentBalanceStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
-export type CheckoutPaymentStatus = PaymentBalanceStatus | "UNRECORDED";
+export type CheckoutSettlementStatus =
+  PaymentBalanceStatus | "REFUND_DUE" | "SETTLED" | "UNRECORDED";
+export type CheckoutPaymentStatus = CheckoutSettlementStatus;
 
 export type PaymentInstruction = {
   amountMinor: number;
@@ -71,6 +73,7 @@ export type PaymentCollection = {
 };
 
 export type PaymentAccount = {
+  adjustedPayableMinor: number | null;
   checkoutId: string;
   collections: PaymentCollection[];
   cumulativePaidMinor: number | null;
@@ -78,10 +81,14 @@ export type PaymentAccount = {
   initialPaidMinor: number | null;
   initialPayments: PaymentInstruction[];
   legacyPaymentRecorded: boolean;
+  originalPayableMinor: number;
   orderNumber: string;
   organizationId: string;
   outstandingMinor: number | null;
-  status: CheckoutPaymentStatus;
+  refundableMinor: number | null;
+  returnCreditMinor: number;
+  settlementStatus: CheckoutSettlementStatus;
+  status: CheckoutSettlementStatus;
   totalMinor: number;
 };
 
@@ -100,6 +107,7 @@ export type PaymentCollectionPreparation = {
   organizationName: string;
   organizationPhone: string | null;
   organizationPostalCode: string | null;
+  returnCreditMinor: number;
   salesOrderId: string;
   totalMinor: number;
 };

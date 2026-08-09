@@ -641,7 +641,9 @@ class FakeTransactionManager implements ApplicationTransactionManager {
       applicationContext,
       auditWriter: this.auditWriter,
       inventoryMovementRepository: {
+        createDraft: () => Promise.reject(unreachableError()),
         findById: () => Promise.reject(unreachableError()),
+        findByIdempotencyKey: () => Promise.reject(unreachableError()),
         post: () => Promise.reject(unreachableError()),
       },
       salesOrderRepository: this.salesOrderRepository,

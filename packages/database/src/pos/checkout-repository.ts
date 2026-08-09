@@ -1,4 +1,5 @@
 import {
+  calculateCheckoutSettlement,
   ConflictError,
   type PosCheckout,
   type PosCheckoutPreparation,
@@ -24,6 +25,7 @@ const checkoutInclude = {
       status: true,
     },
   },
+  posSaleReturns: { select: { totalCreditMinor: true } },
   receipt: { select: { id: true, receiptNumber: true } },
   salesOrder: { select: { orderNumber: true } },
   staff: { select: { name: true } },
@@ -181,9 +183,19 @@ function mapCheckout(record: CheckoutRecord): PosCheckout {
   const paidMinor = record.paymentBatch
     ? record.paymentBatch.paidMinor + collectedMinor
     : null;
-  const outstandingMinor = record.paymentBatch
-    ? record.paymentBatch.payableMinor - (paidMinor ?? 0)
-    : null;
+  const returnCreditMinor = record.posSaleReturns.reduce(
+    (total, saleReturn) => total + saleReturn.totalCreditMinor,
+    0,
+  );
+  const settlement =
+    record.paymentBatch && paidMinor !== null
+      ? calculateCheckoutSettlement(
+          record.paymentBatch.payableMinor,
+          paidMinor,
+          returnCreditMinor,
+        )
+      : null;
+  const outstandingMinor = settlement?.outstandingMinor ?? null;
   return {
     cartId: record.cartId,
     completedAt: record.completedAt,
@@ -198,14 +210,7 @@ function mapCheckout(record: CheckoutRecord): PosCheckout {
     paidMinor,
     paymentBatchId: record.paymentBatch?.id ?? null,
     paymentRequestSignature: record.paymentBatch?.requestSignature ?? null,
-    paymentStatus:
-      paidMinor === null
-        ? "UNRECORDED"
-        : outstandingMinor === 0
-          ? "PAID"
-          : paidMinor === 0
-            ? "UNPAID"
-            : "PARTIALLY_PAID",
+    paymentStatus: settlement?.status ?? "UNRECORDED",
     receiptId: record.receipt?.id ?? null,
     receiptNumber: record.receipt?.receiptNumber ?? null,
     salesOrderId: record.salesOrderId,
