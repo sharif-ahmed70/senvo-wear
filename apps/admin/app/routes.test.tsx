@@ -48,6 +48,8 @@ import {
   messageFor as returnMessageFor,
 } from "./pos/checkouts/[id]/checkout-return-workspace";
 import { ReturnReceiptPreview } from "./pos/returns/[id]/receipt/return-receipt-preview";
+import { CheckoutRefundWorkspace } from "./pos/checkouts/[id]/checkout-refund-workspace";
+import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-preview";
 import { AdminApiError } from "./_lib/api-client";
 
 describe("admin routes", () => {
@@ -130,6 +132,24 @@ describe("admin routes", () => {
     expect(receipt).toContain("Receipt access unavailable");
     expect(receipt).not.toContain("Print");
   });
+  it("hides refund action and refund receipt without the required access", () => {
+    const workspace = renderToStaticMarkup(
+      <CheckoutRefundWorkspace
+        checkoutId="10000000-0000-4000-8000-000000000001"
+        permissions={[]}
+      />,
+    );
+    expect(workspace).toContain("Refund access unavailable");
+    expect(workspace).not.toContain("Record refund");
+    const receipt = renderToStaticMarkup(
+      <RefundReceiptPreview
+        refundId="10000000-0000-4000-8000-000000000001"
+        permissions={["POS:READ"]}
+      />,
+    );
+    expect(receipt).toContain("Receipt access unavailable");
+    expect(receipt).not.toContain("Print");
+  });
   it("keeps idempotency conflict wording specific inside the return UI", () => {
     expect(
       returnMessageFor(
@@ -149,8 +169,10 @@ describe("admin routes", () => {
       adjustedPayableMinor: 7_000,
       checkoutId: "10000000-0000-4000-8000-000000000001",
       cumulativeReceivedMinor: 10_000,
+      cumulativeRefundedMinor: 0,
       legacyPaymentRecorded: true,
       lines: [],
+      netReceivedMinor: 10_000,
       orderNumber: "POS-1001",
       originalTotalMinor: 10_000,
       outstandingMinor: 0,

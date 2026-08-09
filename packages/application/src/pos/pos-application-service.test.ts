@@ -293,6 +293,35 @@ describe("PosApplicationService cart reads", () => {
       { action: "APPROVE", resource: "PAYMENT" },
     ]);
   });
+
+  it("requires trusted PAYMENT CREATE and APPROVE for refunds", async () => {
+    const calls: Array<{ action: string; resource: string }> = [];
+    const service = serviceWith({
+      authorizationService: {
+        authorize: (_context, permission) => {
+          calls.push(permission);
+          if (
+            permission.action === "APPROVE" &&
+            permission.resource === "PAYMENT"
+          )
+            throw new AuthorizationError("Refund approval denied.");
+          return Promise.resolve();
+        },
+      },
+    });
+    const result = await service.createRefund(context(), {
+      checkoutId: cartId,
+      idempotencyKey: "refund-service-001",
+      refunds: [{ amountMinor: 500, method: "CASH" }],
+    });
+    expect(result).toMatchObject({ error: { code: "FORBIDDEN" }, ok: false });
+    expect(calls).toEqual([
+      { action: "READ", resource: "POS" },
+      { action: "READ", resource: "SALES" },
+      { action: "CREATE", resource: "PAYMENT" },
+      { action: "APPROVE", resource: "PAYMENT" },
+    ]);
+  });
 });
 
 describe("PosApplicationService idempotency conflict normalization", () => {
@@ -346,6 +375,23 @@ describe("PosApplicationService idempotency conflict normalization", () => {
       reasonCode: "SIZE_OR_FIT",
     });
 
+    expect(result).toMatchObject({
+      error: {
+        code: "IDEMPOTENCY_CONFLICT",
+        message: "This request was already used with different details.",
+      },
+      ok: false,
+    });
+  });
+
+  it("keeps refund conflicts on the shared idempotency code with neutral copy", async () => {
+    const result = await serviceWith({
+      transactionManager: idempotencyConflictTransactionManager,
+    }).createRefund(context(), {
+      checkoutId: cartId,
+      idempotencyKey: "refund-service-001",
+      refunds: [{ amountMinor: 500, method: "CASH" }],
+    });
     expect(result).toMatchObject({
       error: {
         code: "IDEMPOTENCY_CONFLICT",

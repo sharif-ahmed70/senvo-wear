@@ -198,6 +198,7 @@ export async function recordPosSaleReturn(
     preparation.initialPayment.payableMinor,
     cumulativeReceivedMinor,
     previousCreditMinor + totalCreditMinor,
+    preparation.cumulativeRefundedMinor,
   );
   const compactId = returnId.replaceAll("-", "").toUpperCase();
   const movement = await createInventoryMovement(repositories.inventory, {
@@ -246,9 +247,11 @@ export async function recordPosSaleReturn(
     collectedReceiptNumber: preparation.originalReceiptNumber,
     checkoutId,
     cumulativeReceivedMinor,
+    cumulativeRefundedMinor: settlement.cumulativeRefundedMinor,
     cumulativeReturnCreditMinor: settlement.returnCreditMinor,
     destinationLocationName: destination.name,
     id: receiptId,
+    netReceivedMinor: settlement.netReceivedMinor,
     lines: saleReturn.lines,
     orderNumber: preparation.order.orderNumber,
     organizationAddressLine1: preparation.organization.addressLine1,

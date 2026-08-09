@@ -77,10 +77,13 @@ export type PaymentAccount = {
   checkoutId: string;
   collections: PaymentCollection[];
   cumulativePaidMinor: number | null;
+  cumulativeRefundedMinor: number | null;
+  grossReceivedMinor: number | null;
   currencyCode: "BDT";
   initialPaidMinor: number | null;
   initialPayments: PaymentInstruction[];
   legacyPaymentRecorded: boolean;
+  netReceivedMinor: number | null;
   originalPayableMinor: number;
   orderNumber: string;
   organizationId: string;
@@ -96,6 +99,7 @@ export type PaymentCollectionPreparation = {
   acceptedByName: string;
   checkoutId: string;
   collections: PaymentCollection[];
+  cumulativeRefundedMinor: number;
   initialPayment: PaymentBatch | null;
   orderNumber: string;
   organizationAddressLine1: string | null;

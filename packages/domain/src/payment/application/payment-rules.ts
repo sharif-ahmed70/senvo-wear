@@ -17,7 +17,10 @@ const methods = [
 
 export type CheckoutSettlement = {
   adjustedPayableMinor: number;
+  cumulativeRefundedMinor: number;
   cumulativeReceivedMinor: number;
+  grossReceivedMinor: number;
+  netReceivedMinor: number;
   originalPayableMinor: number;
   outstandingMinor: number;
   refundableMinor: number;
@@ -29,37 +32,42 @@ export function calculateCheckoutSettlement(
   originalPayableMinor: number,
   cumulativeReceivedMinor: number,
   returnCreditMinor: number,
+  cumulativeRefundedMinor = 0,
 ): CheckoutSettlement {
   assertMinorUnit(originalPayableMinor, "original payable", true);
   assertMinorUnit(cumulativeReceivedMinor, "cumulative received", true);
   assertMinorUnit(returnCreditMinor, "return credit", true);
+  assertMinorUnit(cumulativeRefundedMinor, "cumulative refunded", true);
   if (returnCreditMinor > originalPayableMinor) {
     throw new BusinessRuleError(
       "Return credit exceeds the original payable amount.",
     );
   }
+  if (cumulativeRefundedMinor > cumulativeReceivedMinor) {
+    throw new BusinessRuleError(
+      "Cumulative refunds exceed gross received payment.",
+    );
+  }
   const adjustedPayableMinor = originalPayableMinor - returnCreditMinor;
-  const outstandingMinor = Math.max(
-    adjustedPayableMinor - cumulativeReceivedMinor,
-    0,
-  );
-  const refundableMinor = Math.max(
-    cumulativeReceivedMinor - adjustedPayableMinor,
-    0,
-  );
+  const netReceivedMinor = cumulativeReceivedMinor - cumulativeRefundedMinor;
+  const outstandingMinor = Math.max(adjustedPayableMinor - netReceivedMinor, 0);
+  const refundableMinor = Math.max(netReceivedMinor - adjustedPayableMinor, 0);
   const status: CheckoutSettlement["status"] =
     refundableMinor > 0
       ? "REFUND_DUE"
-      : adjustedPayableMinor === 0 && cumulativeReceivedMinor === 0
+      : adjustedPayableMinor === 0 && netReceivedMinor === 0
         ? "SETTLED"
-        : cumulativeReceivedMinor === adjustedPayableMinor
+        : netReceivedMinor === adjustedPayableMinor
           ? "PAID"
-          : cumulativeReceivedMinor === 0
+          : netReceivedMinor === 0
             ? "UNPAID"
             : "PARTIALLY_PAID";
   return {
     adjustedPayableMinor,
+    cumulativeRefundedMinor,
     cumulativeReceivedMinor,
+    grossReceivedMinor: cumulativeReceivedMinor,
+    netReceivedMinor,
     originalPayableMinor,
     outstandingMinor,
     refundableMinor,
@@ -163,6 +171,44 @@ export function createPaymentCollectionRequestSignature(
   payments: readonly PaymentInstruction[],
 ): string {
   return JSON.stringify({ payments });
+}
+
+export function createPaymentRefundRequestSignature(
+  refunds: readonly PaymentInstruction[],
+): string {
+  const normalized = [...refunds].sort((left, right) =>
+    [left.method, left.reference ?? "", left.amountMinor]
+      .join("|")
+      .localeCompare(
+        [right.method, right.reference ?? "", right.amountMinor].join("|"),
+      ),
+  );
+  return JSON.stringify({ refunds: normalized });
+}
+
+export function calculatePaymentRefund(
+  refundableMinor: number,
+  refunds: readonly PaymentInstruction[],
+): number {
+  assertMinorUnit(refundableMinor, "refund due", true);
+  let amountMinor = 0;
+  for (const refund of refunds) {
+    const next = amountMinor + refund.amountMinor;
+    if (!Number.isSafeInteger(next) || next > maxIntegerMinorUnit)
+      throw new ValidationApplicationError(
+        "refund total exceeds the supported range.",
+      );
+    amountMinor = next;
+  }
+  if (amountMinor <= 0)
+    throw new ValidationApplicationError(
+      "refund amount must be greater than zero.",
+    );
+  if (refundableMinor === 0)
+    throw new BusinessRuleError("This checkout has no refund due.");
+  if (amountMinor > refundableMinor)
+    throw new BusinessRuleError("The refund exceeds the current refund due.");
+  return amountMinor;
 }
 
 export function calculateCumulativePaymentBalance(

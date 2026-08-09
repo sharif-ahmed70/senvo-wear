@@ -8,6 +8,7 @@ export type PosReturnPreparation = {
   acceptedByName: string;
   checkoutId: string;
   collections: readonly { amountMinor: number }[];
+  cumulativeRefundedMinor: number;
   destination: {
     id: string;
     isSellable: boolean;

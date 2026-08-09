@@ -3203,6 +3203,8 @@ export const paymentAccountContractSchema = z
     checkoutId: idSchema,
     collections: z.array(paymentCollectionContractSchema),
     cumulativePaidMinor: minorUnitAmountSchema.nullable(),
+    cumulativeRefundedMinor: minorUnitAmountSchema.nullable(),
+    grossReceivedMinor: minorUnitAmountSchema.nullable(),
     currencyCode: z.literal("BDT"),
     initialPaidMinor: minorUnitAmountSchema.nullable(),
     initialPayments: z
@@ -3217,6 +3219,7 @@ export const paymentAccountContractSchema = z
       )
       .max(8),
     legacyPaymentRecorded: z.boolean(),
+    netReceivedMinor: minorUnitAmountSchema.nullable(),
     orderNumber: z.string(),
     originalPayableMinor: minorUnitAmountSchema,
     outstandingMinor: minorUnitAmountSchema.nullable(),
@@ -3225,6 +3228,107 @@ export const paymentAccountContractSchema = z
     settlementStatus: checkoutPaymentStatusSchema,
     status: checkoutPaymentStatusSchema,
     totalMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+export const createPaymentRefundServiceInputSchema = z
+  .object({
+    checkoutId: idSchema,
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]+$/u),
+    refunds: z.array(checkoutPaymentInstructionSchema).min(1).max(8),
+  })
+  .strict();
+export const getPaymentRefundReceiptServiceInputSchema = z
+  .object({ refundId: idSchema })
+  .strict();
+export const paymentRefundLineContractSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    lineNumber: z.number().int().positive(),
+    method: paymentMethodSchema,
+    reference: z.string().nullable(),
+  })
+  .strict();
+export const paymentRefundContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    amountMinor: minorUnitAmountSchema.positive(),
+    checkoutId: idSchema,
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    issuedAt: isoTimestampSchema,
+    lines: z.array(paymentRefundLineContractSchema).min(1).max(8),
+    receiptId: idSchema,
+    receiptNumber: z.string(),
+  })
+  .strict();
+export const paymentRefundAccountContractSchema = z
+  .object({
+    adjustedPayableMinor: minorUnitAmountSchema.nullable(),
+    checkoutId: idSchema,
+    cumulativeRefundedMinor: minorUnitAmountSchema.nullable(),
+    grossReceivedMinor: minorUnitAmountSchema.nullable(),
+    legacyPaymentRecorded: z.boolean(),
+    netReceivedMinor: minorUnitAmountSchema.nullable(),
+    orderNumber: z.string(),
+    originalPayableMinor: minorUnitAmountSchema,
+    outstandingMinor: minorUnitAmountSchema.nullable(),
+    refundableMinor: minorUnitAmountSchema.nullable(),
+    refunds: z.array(paymentRefundContractSchema),
+    returnCreditMinor: minorUnitAmountSchema,
+    settlementStatus: checkoutPaymentStatusSchema,
+  })
+  .strict();
+export const paymentRefundResultContractSchema = z
+  .object({
+    account: paymentRefundAccountContractSchema,
+    refund: paymentRefundContractSchema,
+    replayed: z.boolean(),
+  })
+  .strict();
+export const paymentRefundReceiptContractSchema = z
+  .object({
+    acceptedByName: z.string(),
+    adjustedPayableMinor: minorUnitAmountSchema,
+    amountMinor: minorUnitAmountSchema.positive(),
+    checkoutId: idSchema,
+    cumulativeRefundedMinor: minorUnitAmountSchema,
+    grossReceivedMinor: minorUnitAmountSchema,
+    id: idSchema,
+    issuedAt: isoTimestampSchema,
+    lines: z.array(
+      paymentRefundLineContractSchema.pick({
+        amountMinor: true,
+        lineNumber: true,
+        method: true,
+        reference: true,
+      }),
+    ),
+    netReceivedMinor: minorUnitAmountSchema,
+    orderNumber: z.string(),
+    organizationAddressLine1: z.string().nullable(),
+    organizationAddressLine2: z.string().nullable(),
+    organizationCity: z.string().nullable(),
+    organizationDistrict: z.string().nullable(),
+    organizationEmail: z.string().nullable(),
+    organizationName: z.string(),
+    organizationPhone: z.string().nullable(),
+    organizationPostalCode: z.string().nullable(),
+    originalPayableMinor: minorUnitAmountSchema,
+    originalReceiptNumber: z.string().nullable(),
+    outstandingMinor: minorUnitAmountSchema,
+    receiptNumber: z.string(),
+    refundableMinor: minorUnitAmountSchema,
+    refundId: idSchema,
+    returnCreditMinor: minorUnitAmountSchema,
+    settlementStatus: checkoutPaymentStatusSchema.exclude(["UNRECORDED"]),
   })
   .strict();
 
@@ -3273,7 +3377,9 @@ export const posReturnAccountContractSchema = z
     adjustedPayableMinor: minorUnitAmountSchema.nullable(),
     checkoutId: idSchema,
     cumulativeReceivedMinor: minorUnitAmountSchema.nullable(),
+    cumulativeRefundedMinor: minorUnitAmountSchema.nullable(),
     legacyPaymentRecorded: z.boolean(),
+    netReceivedMinor: minorUnitAmountSchema.nullable(),
     lines: z.array(
       z
         .object({
@@ -3341,9 +3447,11 @@ export const posReturnReceiptContractSchema = z
     adjustedPayableMinor: minorUnitAmountSchema,
     collectedReceiptNumber: z.string().nullable(),
     cumulativeReceivedMinor: minorUnitAmountSchema,
+    cumulativeRefundedMinor: minorUnitAmountSchema,
     cumulativeReturnCreditMinor: minorUnitAmountSchema,
     destinationLocationName: z.string(),
     id: idSchema,
+    netReceivedMinor: minorUnitAmountSchema,
     lines: z.array(
       posReturnLineContractSchema.pick({
         colorSnapshot: true,
@@ -3503,6 +3611,19 @@ export type CollectPosPaymentResultContract = z.infer<
 >;
 export type PaymentCollectionReceiptContract = z.infer<
   typeof paymentCollectionReceiptContractSchema
+>;
+export type CreatePaymentRefundServiceInputContract = z.infer<
+  typeof createPaymentRefundServiceInputSchema
+>;
+export type PaymentRefundContract = z.infer<typeof paymentRefundContractSchema>;
+export type PaymentRefundAccountContract = z.infer<
+  typeof paymentRefundAccountContractSchema
+>;
+export type PaymentRefundResultContract = z.infer<
+  typeof paymentRefundResultContractSchema
+>;
+export type PaymentRefundReceiptContract = z.infer<
+  typeof paymentRefundReceiptContractSchema
 >;
 export type PosReturnAccountContract = z.infer<
   typeof posReturnAccountContractSchema

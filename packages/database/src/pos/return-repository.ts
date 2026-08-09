@@ -24,6 +24,7 @@ const checkoutInclude = {
   organization: true,
   paymentBatch: { select: { paidMinor: true, payableMinor: true } },
   paymentCollections: { select: { amountMinor: true } },
+  paymentRefunds: { select: { amountMinor: true } },
   posSaleReturns: {
     include: returnInclude,
     orderBy: { returnedAt: "asc" },
@@ -125,6 +126,10 @@ export class PrismaPosReturnRepository implements PosReturnRepository {
       acceptedByName: acceptedBy.name ?? acceptedBy.email,
       checkoutId: record.id,
       collections: record.paymentCollections,
+      cumulativeRefundedMinor: record.paymentRefunds.reduce(
+        (total, item) => total + item.amountMinor,
+        0,
+      ),
       destination,
       initialPayment: record.paymentBatch,
       order: {
@@ -235,12 +240,18 @@ function mapAccount(record: CheckoutRecord): PosReturnAccount {
           record.salesOrder.totalMinor,
           cumulativeReceivedMinor,
           returnCreditMinor,
+          record.paymentRefunds.reduce(
+            (total, item) => total + item.amountMinor,
+            0,
+          ),
         );
   return {
     adjustedPayableMinor: settlement?.adjustedPayableMinor ?? null,
     checkoutId: record.id,
     cumulativeReceivedMinor,
+    cumulativeRefundedMinor: settlement?.cumulativeRefundedMinor ?? null,
     legacyPaymentRecorded: record.paymentBatch !== null,
+    netReceivedMinor: settlement?.netReceivedMinor ?? null,
     lines: record.salesOrder.lines.map((line) => {
       const returnedQuantity = returnedByLine.get(line.id) ?? 0;
       return {

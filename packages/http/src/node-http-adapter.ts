@@ -538,6 +538,27 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 200,
       },
       {
+        handler: handlers.pos.getRefunds,
+        input: (_body, match) => ({ checkoutId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/checkouts\/(?<id>[0-9a-f-]+)\/refunds$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.createRefund,
+        input: pathBodyInput("checkoutId"),
+        method: "POST",
+        path: /^\/pos\/checkouts\/(?<id>[0-9a-f-]+)\/refunds$/iu,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.pos.getRefundReceipt,
+        input: (_body, match) => ({ refundId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/refunds\/(?<id>[0-9a-f-]+)\/receipt$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.getReturns,
         input: (_body, match) => ({ checkoutId: match.groups?.id }),
         method: "GET",

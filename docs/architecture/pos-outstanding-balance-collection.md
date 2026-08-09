@@ -1,6 +1,6 @@
 # POS Outstanding Balance Collection
 
-Collection validation uses the return-adjusted payable. Returns and collections serialize on the same checkout-row lock, so a collection cannot exceed the amount legally due at its transaction order.
+Collection validation uses return-adjusted payable and net received after issued refunds. Returns, collections, and refunds serialize on the same checkout-row lock, so a collection cannot use stale settlement or exceed the amount legally due at its transaction order.
 
 ## Purpose
 
@@ -16,7 +16,7 @@ The checkout row is the stable payment-account serialization point. It prevents 
 
 The unique key is `(organization_id, checkout_id, idempotency_key)`. The same normalized payment signature replays the existing collection without another receipt or audit entry; different instructions conflict. The Admin client retains the key after uncertain failure and rotates it only after confirmed success.
 
-Current paid and due amounts are derived from the immutable opening batch plus all immutable collections. Legacy checkouts without an opening batch remain `UNRECORDED` and cannot accept collections.
+Gross received is derived from the immutable opening batch plus all immutable collections. Net received subtracts immutable refunds, and current due is derived from that net value. Legacy checkouts without an opening batch remain `UNRECORDED` and cannot accept collections.
 
 ## Security and receipts
 

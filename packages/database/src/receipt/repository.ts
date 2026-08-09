@@ -3,6 +3,8 @@ import type {
   CreatePosReturnReceiptRecord,
   CreateSalesReceiptRecord,
   PaymentCollectionReceipt,
+  PaymentRefundReceipt,
+  PaymentRefundReceiptRepository,
   PosReturnReceipt,
   ReceiptRepository,
   SalesReceipt,
@@ -11,7 +13,10 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type ReceiptPrismaClient = Pick<
   PrismaClient,
-  "paymentCollectionReceipt" | "posReturnReceipt" | "salesReceipt"
+  | "paymentCollectionReceipt"
+  | "paymentRefundReceipt"
+  | "posReturnReceipt"
+  | "salesReceipt"
 >;
 const receiptInclude = {
   lines: { orderBy: { lineNumber: "asc" } },
@@ -23,6 +28,9 @@ const collectionReceiptInclude = {
 const returnReceiptInclude = {
   saleReturn: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
 } as const;
+const refundReceiptInclude = {
+  refund: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
+} as const;
 type ReceiptRecord = Prisma.SalesReceiptGetPayload<{
   include: typeof receiptInclude;
 }>;
@@ -32,8 +40,13 @@ type CollectionReceiptRecord = Prisma.PaymentCollectionReceiptGetPayload<{
 type ReturnReceiptRecord = Prisma.PosReturnReceiptGetPayload<{
   include: typeof returnReceiptInclude;
 }>;
+type RefundReceiptRecord = Prisma.PaymentRefundReceiptGetPayload<{
+  include: typeof refundReceiptInclude;
+}>;
 
-export class PrismaReceiptRepository implements ReceiptRepository {
+export class PrismaReceiptRepository
+  implements ReceiptRepository, PaymentRefundReceiptRepository
+{
   constructor(private readonly prisma: ReceiptPrismaClient) {}
   async create(record: CreateSalesReceiptRecord): Promise<SalesReceipt> {
     const { lines, payments, ...receipt } = record;
@@ -96,6 +109,28 @@ export class PrismaReceiptRepository implements ReceiptRepository {
       where: { organizationId, returnId },
     });
     return record ? mapReturnReceipt(record) : null;
+  }
+  async createPaymentRefundReceipt(
+    record: PaymentRefundReceipt & {
+      organizationId: string;
+      salesOrderId: string;
+    },
+  ) {
+    const { lines, ...receipt } = record;
+    void lines;
+    return mapRefundReceipt(
+      await this.prisma.paymentRefundReceipt.create({
+        data: receipt,
+        include: refundReceiptInclude,
+      }),
+    );
+  }
+  async findByRefundId(refundId: string, organizationId: string) {
+    const record = await this.prisma.paymentRefundReceipt.findFirst({
+      include: refundReceiptInclude,
+      where: { organizationId, refundId },
+    });
+    return record ? mapRefundReceipt(record) : null;
   }
 }
 
@@ -196,9 +231,11 @@ function mapReturnReceipt(record: ReturnReceiptRecord): PosReturnReceipt {
     adjustedPayableMinor: record.adjustedPayableMinor,
     collectedReceiptNumber: record.originalReceiptNumber,
     cumulativeReceivedMinor: record.cumulativeReceivedMinor,
+    cumulativeRefundedMinor: record.cumulativeRefundedMinor,
     cumulativeReturnCreditMinor: record.cumulativeReturnCreditMinor,
     destinationLocationName: record.destinationLocationName,
     id: record.id,
+    netReceivedMinor: record.netReceivedMinor,
     lines: record.saleReturn.lines.map((line) => ({
       colorSnapshot: line.colorSnapshot,
       lineCreditMinor: line.lineCreditMinor,
@@ -227,6 +264,45 @@ function mapReturnReceipt(record: ReturnReceiptRecord): PosReturnReceipt {
     returnedAt: record.returnedAt,
     settlementStatus: mapReturnSettlementStatus(record.settlementStatus),
     totalCreditMinor: record.totalCreditMinor,
+  };
+}
+
+function mapRefundReceipt(record: RefundReceiptRecord): PaymentRefundReceipt {
+  if (record.settlementStatus === "UNRECORDED")
+    throw new Error("A refund receipt cannot have unrecorded settlement.");
+  return {
+    acceptedByName: record.acceptedByName,
+    adjustedPayableMinor: record.adjustedPayableMinor,
+    amountMinor: record.amountMinor,
+    checkoutId: record.checkoutId,
+    cumulativeRefundedMinor: record.cumulativeRefundedMinor,
+    grossReceivedMinor: record.grossReceivedMinor,
+    id: record.id,
+    issuedAt: record.issuedAt,
+    lines: record.refund.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      reference: line.reference,
+    })),
+    netReceivedMinor: record.netReceivedMinor,
+    orderNumber: record.orderNumber,
+    organizationAddressLine1: record.organizationAddressLine1,
+    organizationAddressLine2: record.organizationAddressLine2,
+    organizationCity: record.organizationCity,
+    organizationDistrict: record.organizationDistrict,
+    organizationEmail: record.organizationEmail,
+    organizationName: record.organizationName,
+    organizationPhone: record.organizationPhone,
+    organizationPostalCode: record.organizationPostalCode,
+    originalPayableMinor: record.originalPayableMinor,
+    originalReceiptNumber: record.originalReceiptNumber,
+    outstandingMinor: record.outstandingMinor,
+    receiptNumber: record.receiptNumber,
+    refundableMinor: record.refundableMinor,
+    refundId: record.refundId,
+    returnCreditMinor: record.returnCreditMinor,
+    settlementStatus: record.settlementStatus,
   };
 }
 

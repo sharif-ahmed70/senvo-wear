@@ -7,6 +7,7 @@ import type {
 import {
   addPosCartItemServiceInputSchema,
   collectPosPaymentServiceInputSchema,
+  createPaymentRefundServiceInputSchema,
   createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
@@ -14,6 +15,7 @@ import {
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
+  getPaymentRefundReceiptServiceInputSchema,
   getPosReturnReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
@@ -27,6 +29,9 @@ import {
   type CollectPosPaymentResultContract,
   type PaymentAccountContract,
   type PaymentCollectionReceiptContract,
+  type PaymentRefundAccountContract,
+  type PaymentRefundReceiptContract,
+  type PaymentRefundResultContract,
   type PosReturnAccountContract,
   type PosReturnReceiptContract,
   type PosReturnResultContract,
@@ -42,6 +47,18 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<CollectPosPaymentResultContract>>;
+  createRefund(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PaymentRefundResultContract>>;
+  getRefunds(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PaymentRefundAccountContract>>;
+  getRefundReceipt(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PaymentRefundReceiptContract>>;
   createReturn(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -130,6 +147,9 @@ export type PosApplication = {
 
 export type PosApiHandlers = {
   collectPayment: ApiHandler<CollectPosPaymentResultContract>;
+  createRefund: ApiHandler<PaymentRefundResultContract>;
+  getRefunds: ApiHandler<PaymentRefundAccountContract>;
+  getRefundReceipt: ApiHandler<PaymentRefundReceiptContract>;
   createReturn: ApiHandler<PosReturnResultContract>;
   getReturns: ApiHandler<PosReturnAccountContract>;
   getReturnReceipt: ApiHandler<PosReturnReceiptContract>;
@@ -183,6 +203,29 @@ export function createPosApiHandlers(dependencies: {
         dependencies.pos.collectPayment(context, input),
       inputSchema: collectPosPaymentServiceInputSchema,
       permission: { action: "CREATE", resource: "PAYMENT" },
+    }),
+    createRefund: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.createRefund(context, input),
+      inputSchema: createPaymentRefundServiceInputSchema,
+      permission: { action: "CREATE", resource: "PAYMENT" },
+    }),
+    getRefunds: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) => dependencies.pos.getRefunds(context, input),
+      inputSchema: getPosCheckoutServiceInputSchema,
+      permission: { action: "READ", resource: "PAYMENT" },
+    }),
+    getRefundReceipt: createProtectedApiHandler({
+      authenticationService: dependencies.authenticationService,
+      authorizationService: dependencies.authorizationService,
+      execute: (context, input) =>
+        dependencies.pos.getRefundReceipt(context, input),
+      inputSchema: getPaymentRefundReceiptServiceInputSchema,
+      permission: { action: "READ", resource: "RECEIPT" },
     }),
     createReturn: handler(
       "UPDATE",

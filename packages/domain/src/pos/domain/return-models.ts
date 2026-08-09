@@ -58,6 +58,8 @@ export type PosReturnAccount = {
   adjustedPayableMinor: number | null;
   checkoutId: string;
   cumulativeReceivedMinor: number | null;
+  cumulativeRefundedMinor: number | null;
+  netReceivedMinor: number | null;
   legacyPaymentRecorded: boolean;
   lines: PosReturnableLine[];
   orderNumber: string;
@@ -75,9 +77,11 @@ export type PosReturnReceipt = {
   adjustedPayableMinor: number;
   collectedReceiptNumber: string | null;
   cumulativeReceivedMinor: number;
+  cumulativeRefundedMinor: number;
   cumulativeReturnCreditMinor: number;
   destinationLocationName: string;
   id: string;
+  netReceivedMinor: number;
   lines: Array<{
     colorSnapshot: string | null;
     lineCreditMinor: number;

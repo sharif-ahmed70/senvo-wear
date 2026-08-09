@@ -1,6 +1,6 @@
 # POS Payment and Receipt Foundation
 
-Return receipts are separate immutable documents and never rewrite the original sales or payment receipt. They state return credit and **Refund due** without claiming that money was refunded.
+Return and refund receipts are separate immutable documents and never rewrite the original sales or payment receipt. A return receipt records credit at return time; a later refund receipt records money confirmed as issued and preserves its own settlement snapshot.
 
 Later outstanding-balance payments are append-only collections with separate payment receipts. See [POS Outstanding Balance Collection](./pos-outstanding-balance-collection.md). The original payment batch and sales receipt are never updated to represent later collections.
 
@@ -44,4 +44,4 @@ The transaction appends `POS_CHECKOUT_COMPLETED`, `POS_PAYMENT_RECORDED`, and `S
 
 ## Deferred boundaries
 
-Gateway authorization, capture, settlement, webhooks, refunds, reversals, chargebacks, post-checkout due collection, tax, discounts, cash drawers, cash change, accounting, customer CRM, receipt printer drivers, USB communication, and label printing remain outside this milestone.
+Gateway authorization, capture, settlement, webhooks, automated provider refunds, reversals, chargebacks, post-checkout due collection, tax, discounts, cash drawers, cash change, accounting, customer CRM, receipt printer drivers, USB communication, and label printing remain outside this milestone.

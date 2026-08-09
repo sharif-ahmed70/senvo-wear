@@ -63,6 +63,10 @@ import type {
   CollectPosPaymentResultContract,
   PaymentAccountContract,
   PaymentCollectionReceiptContract,
+  CreatePaymentRefundServiceInputContract,
+  PaymentRefundAccountContract,
+  PaymentRefundReceiptContract,
+  PaymentRefundResultContract,
   CreatePosReturnServiceInputContract,
   PosReturnAccountContract,
   PosReturnReceiptContract,
@@ -735,6 +739,31 @@ export class AdminApiClient {
   getPaymentCollectionReceipt(collectionId: string, request?: AdminApiRequest) {
     return this.request<PaymentCollectionReceiptContract>(
       `/pos/payment-collections/${collectionId}/receipt`,
+      request,
+    );
+  }
+
+  getPosRefunds(checkoutId: string, request?: AdminApiRequest) {
+    return this.request<PaymentRefundAccountContract>(
+      `/pos/checkouts/${checkoutId}/refunds`,
+      request,
+    );
+  }
+
+  createPosRefund(
+    input: CreatePaymentRefundServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { checkoutId, ...body } = input;
+    return this.request<PaymentRefundResultContract>(
+      `/pos/checkouts/${checkoutId}/refunds`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  getPosRefundReceipt(refundId: string, request?: AdminApiRequest) {
+    return this.request<PaymentRefundReceiptContract>(
+      `/pos/refunds/${refundId}/receipt`,
       request,
     );
   }

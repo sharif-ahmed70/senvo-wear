@@ -539,6 +539,52 @@ describe("Node HTTP runtime adapter", () => {
     expect(receipt.requests.at(0)?.context.organizationId).toBe(organizationId);
   });
 
+  it("maps refund issue and receipt paths without trusted fields", async () => {
+    const createRefund = new RecordingApiHandler(
+      createApiSuccess({ replayed: false }, suppliedRequestId),
+    );
+    const getRefundReceipt = new RecordingApiHandler(
+      createApiSuccess({ receiptNumber: "REF-001" }, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: createRefund,
+        pos: { createRefund, getRefundReceipt } as unknown as PosApiHandlers,
+        postInventoryMovement: createRefund,
+      },
+    });
+    const issueResponse = await fetch(
+      `${runtime.url}/pos/checkouts/${movementId}/refunds`,
+      {
+        body: JSON.stringify({
+          idempotencyKey: "refund-http-001",
+          refunds: [{ amountMinor: 500, method: "CASH" }],
+        }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(issueResponse.status).toBe(201);
+    expect(createRefund.requests.at(0)?.input).toEqual({
+      checkoutId: movementId,
+      idempotencyKey: "refund-http-001",
+      refunds: [{ amountMinor: 500, method: "CASH" }],
+    });
+    expect(createRefund.requests.at(0)?.context).toMatchObject({
+      authenticatedUser: { userId },
+      organizationId,
+    });
+
+    const receiptResponse = await fetch(
+      `${runtime.url}/pos/refunds/${movementId}/receipt`,
+      { headers: developmentHeaders(suppliedRequestId) },
+    );
+    expect(receiptResponse.status).toBe(200);
+    expect(getRefundReceipt.requests.at(0)?.input).toEqual({
+      refundId: movementId,
+    });
+  });
+
   it("does not allow development authentication adapters in production", () => {
     expect(
       () => new DevelopmentAuthenticationService("production" as "development"),
