@@ -195,6 +195,56 @@ describe("POS API handlers", () => {
       success: false,
     });
   });
+
+  it("validates return input and rejects organization or staff injection", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const valid = await handlers(
+      application,
+      authorization,
+    ).createReturn.handle({
+      context,
+      input: {
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        destinationLocationId: "20000000-0000-4000-8000-000000000002",
+        idempotencyKey: "return-attempt-001",
+        lines: [
+          {
+            quantity: 1,
+            salesOrderLineId: "20000000-0000-4000-8000-000000000003",
+          },
+        ],
+        reasonCode: "SIZE_OR_FIT",
+      },
+    });
+    expect(valid.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "POS",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
+    const injected = await handlers(application).createReturn.handle({
+      context,
+      input: {
+        acceptedByUserId: userId,
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        destinationLocationId: "20000000-0000-4000-8000-000000000002",
+        idempotencyKey: "return-attempt-002",
+        lines: [
+          {
+            quantity: 1,
+            salesOrderLineId: "20000000-0000-4000-8000-000000000003",
+          },
+        ],
+        organizationId,
+        reasonCode: "DEFECTIVE",
+      },
+    });
+    expect(injected).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -237,6 +287,9 @@ class FakePos implements PosApplication {
   collectPayment(context: ApplicationExecutionContext) {
     return this.result(context, {} as never);
   }
+  createReturn(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
   closeSession(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesSessionContract);
   }
@@ -262,6 +315,12 @@ class FakePos implements PosApplication {
     return this.result(context, {} as never);
   }
   getPaymentCollectionReceipt(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  getReturns(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  getReturnReceipt(context: ApplicationExecutionContext) {
     return this.result(context, {} as never);
   }
   listCheckouts(context: ApplicationExecutionContext) {

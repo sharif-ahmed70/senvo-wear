@@ -1,7 +1,9 @@
 import type {
   CreatePaymentCollectionReceiptRecord,
+  CreatePosReturnReceiptRecord,
   CreateSalesReceiptRecord,
   PaymentCollectionReceipt,
+  PosReturnReceipt,
   ReceiptRepository,
   SalesReceipt,
 } from "@senvo/domain";
@@ -9,7 +11,7 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type ReceiptPrismaClient = Pick<
   PrismaClient,
-  "paymentCollectionReceipt" | "salesReceipt"
+  "paymentCollectionReceipt" | "posReturnReceipt" | "salesReceipt"
 >;
 const receiptInclude = {
   lines: { orderBy: { lineNumber: "asc" } },
@@ -18,11 +20,17 @@ const receiptInclude = {
 const collectionReceiptInclude = {
   collection: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
 } as const;
+const returnReceiptInclude = {
+  saleReturn: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
+} as const;
 type ReceiptRecord = Prisma.SalesReceiptGetPayload<{
   include: typeof receiptInclude;
 }>;
 type CollectionReceiptRecord = Prisma.PaymentCollectionReceiptGetPayload<{
   include: typeof collectionReceiptInclude;
+}>;
+type ReturnReceiptRecord = Prisma.PosReturnReceiptGetPayload<{
+  include: typeof returnReceiptInclude;
 }>;
 
 export class PrismaReceiptRepository implements ReceiptRepository {
@@ -68,6 +76,26 @@ export class PrismaReceiptRepository implements ReceiptRepository {
       where: { collectionId, organizationId },
     });
     return record ? mapCollectionReceipt(record) : null;
+  }
+  async createPosReturnReceipt(record: CreatePosReturnReceiptRecord) {
+    const { collectedReceiptNumber, lines, ...receipt } = record;
+    void lines;
+    return mapReturnReceipt(
+      await this.prisma.posReturnReceipt.create({
+        data: {
+          ...receipt,
+          originalReceiptNumber: collectedReceiptNumber,
+        },
+        include: returnReceiptInclude,
+      }),
+    );
+  }
+  async findPosReturnReceiptById(returnId: string, organizationId: string) {
+    const record = await this.prisma.posReturnReceipt.findFirst({
+      include: returnReceiptInclude,
+      where: { organizationId, returnId },
+    });
+    return record ? mapReturnReceipt(record) : null;
   }
 }
 
@@ -160,4 +188,52 @@ function mapCollectionReceipt(
     salesOrderId: record.salesOrderId,
     totalMinor: record.totalMinor,
   };
+}
+
+function mapReturnReceipt(record: ReturnReceiptRecord): PosReturnReceipt {
+  return {
+    acceptedByName: record.acceptedByName,
+    adjustedPayableMinor: record.adjustedPayableMinor,
+    collectedReceiptNumber: record.originalReceiptNumber,
+    cumulativeReceivedMinor: record.cumulativeReceivedMinor,
+    cumulativeReturnCreditMinor: record.cumulativeReturnCreditMinor,
+    destinationLocationName: record.destinationLocationName,
+    id: record.id,
+    lines: record.saleReturn.lines.map((line) => ({
+      colorSnapshot: line.colorSnapshot,
+      lineCreditMinor: line.lineCreditMinor,
+      lineNumber: line.lineNumber,
+      productNameSnapshot: line.productNameSnapshot,
+      quantity: line.quantity,
+      sizeSnapshot: line.sizeSnapshot,
+      skuSnapshot: line.skuSnapshot,
+    })),
+    orderNumber: record.orderNumber,
+    organizationAddressLine1: record.organizationAddressLine1,
+    organizationAddressLine2: record.organizationAddressLine2,
+    organizationCity: record.organizationCity,
+    organizationDistrict: record.organizationDistrict,
+    organizationEmail: record.organizationEmail,
+    organizationName: record.organizationName,
+    organizationPhone: record.organizationPhone,
+    organizationPostalCode: record.organizationPostalCode,
+    originalTotalMinor: record.originalTotalMinor,
+    outstandingMinor: record.outstandingMinor,
+    reasonCode: record.reasonCode,
+    reasonNote: record.reasonNote,
+    receiptNumber: record.receiptNumber,
+    refundableMinor: record.refundableMinor,
+    returnId: record.returnId,
+    returnedAt: record.returnedAt,
+    settlementStatus: mapReturnSettlementStatus(record.settlementStatus),
+    totalCreditMinor: record.totalCreditMinor,
+  };
+}
+
+function mapReturnSettlementStatus(
+  status: ReturnReceiptRecord["settlementStatus"],
+): PosReturnReceipt["settlementStatus"] {
+  if (status === "UNRECORDED")
+    throw new Error("A return receipt cannot have an unrecorded settlement.");
+  return status;
 }

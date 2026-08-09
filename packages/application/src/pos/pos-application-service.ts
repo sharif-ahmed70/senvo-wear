@@ -19,11 +19,14 @@ import {
   getCheckoutStatus,
   getPaymentAccount,
   getPaymentCollectionReceipt,
+  getPosReturnAccount,
+  getPosReturnReceipt,
   getPosCart,
   listCheckoutHistory,
   getSalesReceipt,
   lookupPosSale,
   openSalesSession,
+  recordPosSaleReturn,
   removePosCartItem,
   updatePosCartItem,
   type BarcodeRepository,
@@ -39,7 +42,12 @@ import {
   type PaymentCollection,
   type PaymentCollectionReceipt,
   type PaymentRepository,
+  type PosReturnAccount,
+  type PosReturnReceipt,
+  type PosReturnRepository,
+  type PosSaleReturn,
   type ReceiptRepository,
+  type PosReturnReceiptRepository,
   type SalesReceipt,
   type SalesCounter,
   type SalesSession,
@@ -50,12 +58,14 @@ import {
   addPosCartItemServiceInputSchema,
   collectPosPaymentResultContractSchema,
   collectPosPaymentServiceInputSchema,
+  createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
   createSalesCounterServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
+  getPosReturnReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posCartLineContractSchema,
@@ -63,6 +73,9 @@ import {
   posCheckoutContractSchema,
   paymentAccountContractSchema,
   paymentCollectionReceiptContractSchema,
+  posReturnAccountContractSchema,
+  posReturnReceiptContractSchema,
+  posReturnResultContractSchema,
   salesReceiptContractSchema,
   posEmptyInputSchema,
   posSaleLookupContractSchema,
@@ -77,6 +90,9 @@ import {
   type CollectPosPaymentResultContract,
   type PaymentAccountContract,
   type PaymentCollectionReceiptContract,
+  type PosReturnAccountContract,
+  type PosReturnReceiptContract,
+  type PosReturnResultContract,
   type PosSaleLookupContract,
   type SalesReceiptContract,
   type SalesCounterContract,
@@ -124,6 +140,8 @@ export type PosApplicationServiceDependencies = {
   pos: PosRepository;
   payments: PaymentRepository;
   receipts: ReceiptRepository;
+  returns?: PosReturnRepository;
+  returnReceipts?: PosReturnReceiptRepository;
   requestIdGenerator?: () => string;
   salesSources: SalesSourceRepository;
   transactionManager: ApplicationTransactionManager;
@@ -605,6 +623,168 @@ export class PosApplicationService {
     );
   }
 
+  getReturns(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosReturnAccountContract>(context, async (trusted) => {
+      const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "POS",
+        },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "SALES",
+        },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "PAYMENT",
+        },
+      );
+      if (!this.dependencies.returns)
+        throw new Error("POS return read capability is required.");
+      return mapReturnAccount(
+        await getPosReturnAccount(this.dependencies.returns, {
+          checkoutId: input.checkoutId,
+          organizationId: trusted.organizationId,
+        }),
+      );
+    });
+  }
+
+  createReturn(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosReturnResultContract>(context, async (trusted) => {
+      const input = parsePayload(createPosReturnServiceInputSchema, payload);
+      await requireAuthentication(this.dependencies.authenticationService, {
+        requestId: trusted.requestId,
+        userId: trusted.userId,
+      });
+      const userId = this.requireUserId(trusted);
+      return this.dependencies.transactionManager.execute(
+        trusted,
+        async (transaction) => {
+          for (const permission of [
+            { action: "UPDATE", resource: "POS" },
+            { action: "UPDATE", resource: "SALES" },
+            { action: "CREATE", resource: "INVENTORY" },
+            { action: "APPROVE", resource: "PAYMENT" },
+          ] as const) {
+            await requireAuthorization(
+              this.dependencies.authorizationService,
+              transaction.applicationContext,
+              permission,
+            );
+          }
+          if (
+            !transaction.posReturnRepository ||
+            !transaction.posReturnReceiptRepository
+          ) {
+            throw new Error("POS return transaction capability is required.");
+          }
+          const result = await recordPosSaleReturn(
+            {
+              inventory: transaction.inventoryMovementRepository,
+              receipts: transaction.posReturnReceiptRepository,
+              returns: transaction.posReturnRepository,
+            },
+            {
+              ...input,
+              acceptedByUserId: userId,
+              organizationId: trusted.organizationId,
+              receiptId: crypto.randomUUID(),
+              returnId: crypto.randomUUID(),
+              returnedAt: this.dependencies.clock.now(),
+            },
+          );
+          if (!result.replayed) {
+            await transaction.auditWriter.recordWithinTransaction({
+              action: "POS_SALE_RETURN_RECORDED",
+              actor: { userId },
+              metadata: {
+                checkoutId: input.checkoutId,
+                inventoryMovementId: result.saleReturn.inventoryMovementId,
+                lineCount: result.saleReturn.lines.length,
+                reasonCode: result.saleReturn.reasonCode,
+                refundableMinor: result.account.refundableMinor ?? 0,
+                requestId: trusted.requestId,
+                returnCreditMinor: result.saleReturn.totalCreditMinor,
+                returnHoldLocationId: input.destinationLocationId,
+                returnId: result.saleReturn.id,
+                returnReceiptId: result.saleReturn.receiptId,
+                returnedUnitCount: result.saleReturn.lines.reduce(
+                  (total, line) => total + line.quantity,
+                  0,
+                ),
+                salesOrderId: result.saleReturn.salesOrderId,
+                settlementStatus: result.account.settlementStatus,
+                adjustedPayableMinor: result.account.adjustedPayableMinor ?? 0,
+                outstandingMinor: result.account.outstandingMinor ?? 0,
+              },
+              organizationId: trusted.organizationId,
+              resource: "POS_RETURN",
+              resourceId: result.saleReturn.id,
+            });
+          }
+          return posReturnResultContractSchema.parse({
+            account: mapReturnAccount(result.account),
+            replayed: result.replayed,
+            saleReturn: mapSaleReturn(result.saleReturn),
+          });
+        },
+      );
+    });
+  }
+
+  getReturnReceipt(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PosReturnReceiptContract>(context, async (trusted) => {
+      const input = parsePayload(
+        getPosReturnReceiptServiceInputSchema,
+        payload,
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "RECEIPT",
+        },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "PAYMENT",
+        },
+      );
+      await requireAuthorization(
+        this.dependencies.authorizationService,
+        trusted,
+        {
+          action: "READ",
+          resource: "SALES",
+        },
+      );
+      if (!this.dependencies.returnReceipts)
+        throw new Error("POS return receipt capability is required.");
+      return mapReturnReceipt(
+        await getPosReturnReceipt(this.dependencies.returnReceipts, {
+          organizationId: trusted.organizationId,
+          returnId: input.returnId,
+        }),
+      );
+    });
+  }
+
   private authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -755,6 +935,7 @@ function mapPaymentCollection(record: PaymentCollection) {
 }
 function mapPaymentAccount(record: PaymentAccount): PaymentAccountContract {
   return paymentAccountContractSchema.parse({
+    adjustedPayableMinor: record.adjustedPayableMinor,
     checkoutId: record.checkoutId,
     collections: record.collections.map(mapPaymentCollection),
     cumulativePaidMinor: record.cumulativePaidMinor,
@@ -763,7 +944,11 @@ function mapPaymentAccount(record: PaymentAccount): PaymentAccountContract {
     initialPayments: record.initialPayments,
     legacyPaymentRecorded: record.legacyPaymentRecorded,
     orderNumber: record.orderNumber,
+    originalPayableMinor: record.originalPayableMinor,
     outstandingMinor: record.outstandingMinor,
+    refundableMinor: record.refundableMinor,
+    returnCreditMinor: record.returnCreditMinor,
+    settlementStatus: record.settlementStatus,
     status: record.status,
     totalMinor: record.totalMinor,
   });
@@ -774,6 +959,58 @@ function mapPaymentCollectionReceipt(
   return paymentCollectionReceiptContractSchema.parse({
     ...record,
     collectedAt: record.collectedAt.toISOString(),
+  });
+}
+function mapSaleReturn(record: PosSaleReturn) {
+  return {
+    acceptedByName: record.acceptedByName,
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt.toISOString(),
+    destinationLocationId: record.destinationLocationId,
+    destinationLocationName: record.destinationLocationName,
+    id: record.id,
+    inventoryMovementId: record.inventoryMovementId,
+    lines: record.lines.map((line) => ({
+      colorSnapshot: line.colorSnapshot,
+      id: line.id,
+      lineCreditMinor: line.lineCreditMinor,
+      lineNumber: line.lineNumber,
+      productNameSnapshot: line.productNameSnapshot,
+      productVariantId: line.productVariantId,
+      quantity: line.quantity,
+      salesOrderLineId: line.salesOrderLineId,
+      sizeSnapshot: line.sizeSnapshot,
+      skuSnapshot: line.skuSnapshot,
+      unitPriceMinor: line.unitPriceMinor,
+    })),
+    reasonCode: record.reasonCode,
+    reasonNote: record.reasonNote,
+    receiptId: record.receiptId,
+    receiptNumber: record.receiptNumber,
+    returnedAt: record.returnedAt.toISOString(),
+    totalCreditMinor: record.totalCreditMinor,
+  };
+}
+function mapReturnAccount(record: PosReturnAccount): PosReturnAccountContract {
+  return posReturnAccountContractSchema.parse({
+    adjustedPayableMinor: record.adjustedPayableMinor,
+    checkoutId: record.checkoutId,
+    cumulativeReceivedMinor: record.cumulativeReceivedMinor,
+    legacyPaymentRecorded: record.legacyPaymentRecorded,
+    lines: record.lines,
+    orderNumber: record.orderNumber,
+    originalTotalMinor: record.originalTotalMinor,
+    outstandingMinor: record.outstandingMinor,
+    refundableMinor: record.refundableMinor,
+    returnCreditMinor: record.returnCreditMinor,
+    returns: record.returns.map(mapSaleReturn),
+    settlementStatus: record.settlementStatus,
+  });
+}
+function mapReturnReceipt(record: PosReturnReceipt): PosReturnReceiptContract {
+  return posReturnReceiptContractSchema.parse({
+    ...record,
+    returnedAt: record.returnedAt.toISOString(),
   });
 }
 function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {
@@ -816,17 +1053,37 @@ function normalizeError(error: unknown): ApplicationServiceError {
     });
   if (error instanceof ConflictError)
     return new ApplicationServiceError({
-      code: "CONFLICT",
-      message: "The request conflicts with the current information.",
+      code: error.message.includes("idempotency key")
+        ? "IDEMPOTENCY_CONFLICT"
+        : "CONFLICT",
+      message: error.message.includes("idempotency key")
+        ? "This request was already used with different details."
+        : "The request conflicts with the current information.",
     });
   if (error instanceof BusinessRuleError)
     return new ApplicationServiceError({
       code: "BUSINESS_RULE_VIOLATION",
-      message: "The request cannot be completed.",
+      message: mapBusinessRuleMessage(error.message),
     });
   return new ApplicationServiceError({
     code:
       error instanceof ApplicationError ? "INTERNAL_ERROR" : "INTERNAL_ERROR",
     message: "An unexpected error occurred.",
   });
+}
+
+function mapBusinessRuleMessage(message: string): string {
+  if (message.includes("legacy payment checkout"))
+    return "Returns are not available for this older sale yet.";
+  if (message.includes("Return hold"))
+    return "Choose an active Return hold location.";
+  if (message.includes("remaining returnable quantity"))
+    return "This quantity is more than the customer can still return.";
+  if (message.includes("already fully returned"))
+    return "This item has already been fully returned.";
+  if (message.includes("does not belong to this sale"))
+    return "Choose an item from this sale.";
+  if (message.includes("fulfilled POS sales"))
+    return "Only completed POS sales can be returned.";
+  return "The request cannot be completed.";
 }

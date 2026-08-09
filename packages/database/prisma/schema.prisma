@@ -111,6 +111,23 @@ enum PaymentBalanceStatus {
   PAID
 }
 
+enum PosReturnReasonCode {
+  SIZE_OR_FIT
+  DEFECTIVE
+  WRONG_ITEM
+  CHANGED_MIND
+  OTHER
+}
+
+enum CheckoutSettlementStatus {
+  UNRECORDED
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  REFUND_DUE
+  SETTLED
+}
+
 enum InventoryMovementType {
   OPENING
   RECEIPT
@@ -271,6 +288,9 @@ model Organization {
   paymentCollections PaymentCollection[]
   paymentCollectionLines PaymentCollectionLine[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  posSaleReturns PosSaleReturn[]
+  posSaleReturnLines PosSaleReturnLine[]
+  posReturnReceipts PosReturnReceipt[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
   auditEntries AuditEntry[]
@@ -295,6 +315,7 @@ model User {
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
+  acceptedPosSaleReturns PosSaleReturn[]
 
   @@index([status])
   @@map("users")
@@ -336,6 +357,7 @@ model OrganizationMembership {
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
+  acceptedPosSaleReturns PosSaleReturn[]
 
   @@unique([userId, organizationId])
   @@unique([id, organizationId])
@@ -447,6 +469,7 @@ model StockLocation {
   destinationInventoryMovements InventoryMovement[] @relation("InventoryMovementDestinationLocation")
   inventoryReservations InventoryReservation[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
+  posSaleReturns PosSaleReturn[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -606,6 +629,7 @@ model ProductVariant {
   salesOrderLines SalesOrderLine[]
   barcodes VariantBarcode[]
   posCartLines PosCartLine[]
+  posSaleReturnLines PosSaleReturnLine[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, sku])
@@ -755,6 +779,8 @@ model PosCheckoutRecord {
   receipt      SalesReceipt?
   paymentCollections PaymentCollection[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  posSaleReturns PosSaleReturn[]
+  posReturnReceipts PosReturnReceipt[]
 
   @@unique([id, organizationId])
   @@unique([cartId, organizationId])
@@ -908,6 +934,112 @@ model PaymentCollectionReceipt {
   @@map("payment_collection_receipts")
 }
 
+model PosSaleReturn {
+  id                    String              @id @default(uuid()) @db.Uuid
+  organizationId        String              @map("organization_id") @db.Uuid
+  checkoutId            String              @map("checkout_id") @db.Uuid
+  salesOrderId          String              @map("sales_order_id") @db.Uuid
+  destinationLocationId String              @map("destination_location_id") @db.Uuid
+  acceptedByUserId      String              @map("accepted_by_user_id") @db.Uuid
+  inventoryMovementId   String              @map("inventory_movement_id") @db.Uuid
+  idempotencyKey        String              @map("idempotency_key") @db.VarChar(64)
+  requestSignature      String              @map("request_signature") @db.Text
+  reasonCode            PosReturnReasonCode @map("reason_code")
+  reasonNote            String?             @map("reason_note") @db.VarChar(1000)
+  totalCreditMinor      Int                 @map("total_credit_minor")
+  returnedAt            DateTime            @map("returned_at") @db.Timestamptz(6)
+  createdAt             DateTime            @map("created_at") @db.Timestamptz(6)
+
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  checkout            PosCheckoutRecord      @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_returns_checkout_org_fkey")
+  salesOrder          SalesOrder             @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_returns_order_org_fkey")
+  destinationLocation StockLocation          @relation(fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_returns_destination_org_fkey")
+  acceptedBy          User                   @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  acceptedMembership  OrganizationMembership @relation(fields: [acceptedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_returns_staff_org_fkey")
+  inventoryMovement   InventoryMovement      @relation(fields: [inventoryMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_returns_movement_org_fkey")
+  lines               PosSaleReturnLine[]
+  receipt             PosReturnReceipt?
+
+  @@unique([id, organizationId], map: "pos_sale_returns_id_org_key")
+  @@unique([organizationId, checkoutId, idempotencyKey], map: "pos_sale_returns_org_checkout_idem_key")
+  @@unique([inventoryMovementId, organizationId], map: "pos_sale_returns_movement_org_key")
+  @@index([organizationId, checkoutId, returnedAt, id], map: "pos_sale_returns_org_checkout_returned_idx")
+  @@index([organizationId, salesOrderId, returnedAt], map: "pos_sale_returns_org_order_returned_idx")
+  @@index([organizationId, destinationLocationId, returnedAt], map: "pos_sale_returns_org_destination_returned_idx")
+  @@index([organizationId, acceptedByUserId, returnedAt], map: "pos_sale_returns_org_staff_returned_idx")
+  @@map("pos_sale_returns")
+}
+
+model PosSaleReturnLine {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  returnId            String   @map("return_id") @db.Uuid
+  salesOrderLineId    String   @map("sales_order_line_id") @db.Uuid
+  productVariantId    String   @map("product_variant_id") @db.Uuid
+  lineNumber          Int      @map("line_number")
+  productNameSnapshot String   @map("product_name_snapshot") @db.VarChar(160)
+  skuSnapshot         String   @map("sku_snapshot") @db.VarChar(80)
+  colorSnapshot       String?  @map("color_snapshot") @db.VarChar(160)
+  sizeSnapshot        String?  @map("size_snapshot") @db.VarChar(160)
+  quantity            Int
+  unitPriceMinor      Int      @map("unit_price_minor")
+  lineCreditMinor     Int      @map("line_credit_minor")
+  createdAt           DateTime @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saleReturn     PosSaleReturn  @relation(fields: [returnId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_return_lines_return_org_fkey")
+  salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_return_lines_order_line_org_fkey")
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_sale_return_lines_variant_org_fkey")
+
+  @@unique([returnId, lineNumber], map: "pos_sale_return_lines_return_line_key")
+  @@unique([returnId, salesOrderLineId], map: "pos_sale_return_lines_return_order_line_key")
+  @@index([organizationId, salesOrderLineId], map: "pos_sale_return_lines_org_order_line_idx")
+  @@map("pos_sale_return_lines")
+}
+
+model PosReturnReceipt {
+  id                          String                   @id @default(uuid()) @db.Uuid
+  organizationId              String                   @map("organization_id") @db.Uuid
+  returnId                    String                   @map("return_id") @db.Uuid
+  checkoutId                  String                   @map("checkout_id") @db.Uuid
+  salesOrderId                String                   @map("sales_order_id") @db.Uuid
+  receiptNumber               String                   @map("receipt_number") @db.VarChar(64)
+  originalReceiptNumber       String?                  @map("original_receipt_number") @db.VarChar(64)
+  organizationName            String                   @map("organization_name") @db.VarChar(160)
+  organizationPhone           String?                  @map("organization_phone") @db.VarChar(40)
+  organizationEmail           String?                  @map("organization_email") @db.VarChar(254)
+  organizationAddressLine1    String?                  @map("organization_address_line_1") @db.VarChar(240)
+  organizationAddressLine2    String?                  @map("organization_address_line_2") @db.VarChar(240)
+  organizationCity            String?                  @map("organization_city") @db.VarChar(120)
+  organizationDistrict        String?                  @map("organization_district") @db.VarChar(120)
+  organizationPostalCode      String?                  @map("organization_postal_code") @db.VarChar(120)
+  orderNumber                 String                   @map("order_number") @db.VarChar(64)
+  acceptedByName              String                   @map("accepted_by_name") @db.VarChar(254)
+  destinationLocationName     String                   @map("destination_location_name") @db.VarChar(160)
+  reasonCode                  PosReturnReasonCode      @map("reason_code")
+  reasonNote                  String?                  @map("reason_note") @db.VarChar(1000)
+  originalTotalMinor          Int                      @map("original_total_minor")
+  totalCreditMinor            Int                      @map("total_credit_minor")
+  cumulativeReturnCreditMinor Int                      @map("cumulative_return_credit_minor")
+  adjustedPayableMinor        Int                      @map("adjusted_payable_minor")
+  cumulativeReceivedMinor     Int                      @map("cumulative_received_minor")
+  outstandingMinor            Int                      @map("outstanding_minor")
+  refundableMinor             Int                      @map("refundable_minor")
+  settlementStatus            CheckoutSettlementStatus @map("settlement_status")
+  returnedAt                  DateTime                 @map("returned_at") @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  saleReturn   PosSaleReturn     @relation(fields: [returnId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_return_receipts_return_org_fkey")
+  checkout     PosCheckoutRecord @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_return_receipts_checkout_org_fkey")
+  salesOrder   SalesOrder        @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_return_receipts_order_org_fkey")
+
+  @@unique([id, organizationId], map: "pos_return_receipts_id_org_key")
+  @@unique([returnId, organizationId], map: "pos_return_receipts_return_org_key")
+  @@unique([organizationId, receiptNumber], map: "pos_return_receipts_org_number_key")
+  @@index([organizationId, returnedAt, id], map: "pos_return_receipts_org_returned_idx")
+  @@map("pos_return_receipts")
+}
+
 model SalesReceipt {
   id                       String               @id @default(uuid()) @db.Uuid
   organizationId           String               @map("organization_id") @db.Uuid
@@ -1040,6 +1172,7 @@ model InventoryMovement {
   consumedReservation InventoryReservation?     @relation("InventoryReservationConsumption")
   fulfilledSalesOrder SalesOrder?               @relation("SalesOrderFulfillmentMovement")
   lines               InventoryMovementLine[]
+  posSaleReturn       PosSaleReturn?
 
   @@unique([id, organizationId])
   @@unique([organizationId, movementNumber])
@@ -1218,6 +1351,8 @@ model SalesOrder {
   salesReceipt         SalesReceipt?
   paymentCollections   PaymentCollection[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  posSaleReturns PosSaleReturn[]
+  posReturnReceipts PosReturnReceipt[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, orderNumber])
@@ -1277,7 +1412,9 @@ model SalesOrderLine {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   salesOrder     SalesOrder     @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  posSaleReturnLines PosSaleReturnLine[]
 
+  @@unique([id, organizationId], map: "sales_order_lines_id_org_key")
   @@unique([salesOrderId, productVariantId])
   @@unique([salesOrderId, lineNumber])
   @@index([organizationId, productVariantId])

@@ -4,6 +4,7 @@ import {
   addPosCartItem,
   checkoutCart,
   collectOutstandingPayment,
+  recordPosSaleReturn,
   openSalesSession,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import {
 } from "../identity/repositories.js";
 import { PrismaPosRepository } from "./repository.js";
 import { PrismaPosCheckoutRepository } from "./checkout-repository.js";
+import { PrismaPosReturnRepository } from "./return-repository.js";
 import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaTransactionManager } from "../transaction/prisma-transaction-manager.js";
 
@@ -278,6 +280,368 @@ describeWithDatabase("Prisma offline POS repository", () => {
         },
       }),
     ).resolves.toBe(3);
+  });
+
+  it("records repeated partial returns into Return hold with isolated immutable history", async () => {
+    const base = await seedCheckout("RETURN", 5, 2);
+    const completed = await completeCheckout(base, "checkout-return-001");
+    const originalOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: completed.checkout.salesOrderId },
+    });
+    const originalPayment = await prisma.paymentBatch.findFirstOrThrow({
+      where: { checkoutId: completed.checkout.id },
+    });
+    const originalReceipt = await prisma.salesReceipt.findFirstOrThrow({
+      where: { checkoutId: completed.checkout.id },
+    });
+    const originalFulfillment =
+      await prisma.inventoryMovement.findUniqueOrThrow({
+        where: { id: originalOrder.fulfillmentMovementId! },
+      });
+    const originalCollectionCount = await prisma.paymentCollection.count({
+      where: { checkoutId: completed.checkout.id },
+    });
+    const originalCollectionReceiptCount =
+      await prisma.paymentCollectionReceipt.count({
+        where: { checkoutId: completed.checkout.id },
+      });
+    const destination = await prisma.stockLocation.create({
+      data: {
+        branchId: base.branch.id,
+        code: "RETURN-HOLD",
+        isSellable: false,
+        name: "Return hold",
+        organizationId: base.organization.id,
+        status: "ACTIVE",
+        type: "RETURN_HOLD",
+      },
+    });
+    const other = await seedOrganization("RETURN-OTHER");
+    const foreignDestination = await prisma.stockLocation.create({
+      data: {
+        branchId: other.branch.id,
+        code: "RETURN-HOLD",
+        isSellable: false,
+        name: "Foreign return hold",
+        organizationId: other.organization.id,
+        status: "ACTIVE",
+        type: "RETURN_HOLD",
+      },
+    });
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await expect(
+      recordReturn(
+        base,
+        completed.checkout.id,
+        foreignDestination.id,
+        orderLine.id,
+        1,
+        "return-foreign-location-001",
+      ),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    const first = await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "return-partial-001",
+    );
+    expect(first.saleReturn.totalCreditMinor).toBe(2500);
+    const second = await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "return-partial-002",
+    );
+    expect(second.account).toMatchObject({
+      adjustedPayableMinor: 0,
+      refundableMinor: 5000,
+      returnCreditMinor: 5000,
+      settlementStatus: "REFUND_DUE",
+    });
+    await expect(
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-over-001",
+      ),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(
+      prisma.posSaleReturn.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.inventoryMovement.count({
+        where: { referenceType: "POS_RETURN", status: "POSTED" },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.salesOrder.findUniqueOrThrow({ where: { id: originalOrder.id } }),
+    ).resolves.toEqual(originalOrder);
+    await expect(
+      prisma.paymentBatch.findUniqueOrThrow({
+        where: { id: originalPayment.id },
+      }),
+    ).resolves.toEqual(originalPayment);
+    await expect(
+      prisma.salesReceipt.findUniqueOrThrow({
+        where: { id: originalReceipt.id },
+      }),
+    ).resolves.toEqual(originalReceipt);
+    await expect(
+      prisma.inventoryMovement.findUniqueOrThrow({
+        where: { id: originalFulfillment.id },
+      }),
+    ).resolves.toEqual(originalFulfillment);
+    await expect(
+      prisma.paymentCollection.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(originalCollectionCount);
+    await expect(
+      prisma.paymentCollectionReceipt.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(originalCollectionReceiptCount);
+    expect(originalOrder.status).toBe("FULFILLED");
+    expect(originalFulfillment.reversesMovementId).toBeNull();
+    const returns = new PrismaPosReturnRepository(prisma);
+    await expect(
+      returns.findAccount(completed.checkout.id, other.organization.id),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.posCheckoutRecord.delete({ where: { id: completed.checkout.id } }),
+    ).rejects.toMatchObject({ code: "P2003" });
+  });
+
+  it("rolls back return, movement, receipt, and audit together", async () => {
+    const base = await seedCheckout("RETURN-ROLLBACK", 5, 1);
+    const completed = await completeCheckout(
+      base,
+      "checkout-return-rollback-001",
+    );
+    const destination = await prisma.stockLocation.create({
+      data: {
+        branchId: base.branch.id,
+        code: "RETURN-HOLD",
+        isSellable: false,
+        name: "Return hold",
+        organizationId: base.organization.id,
+        status: "ACTIVE",
+        type: "RETURN_HOLD",
+      },
+    });
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await expect(
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-rollback-001",
+        true,
+      ),
+    ).rejects.toThrow("Simulated return audit failure");
+    await expect(
+      prisma.posSaleReturn.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.inventoryMovement.count({
+        where: { referenceType: "POS_RETURN" },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.posReturnReceipt.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.auditEntry.count({
+        where: { action: "POS_SALE_RETURN_RECORDED" },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it("serializes identical retries and competing returns without duplicate stock or credit", async () => {
+    const base = await seedCheckout("RETURN-RACE", 5, 2);
+    const completed = await completeCheckout(base, "checkout-return-race-001");
+    const destination = await prisma.stockLocation.create({
+      data: {
+        branchId: base.branch.id,
+        code: "RETURN-HOLD",
+        isSellable: false,
+        name: "Return hold",
+        organizationId: base.organization.id,
+        status: "ACTIVE",
+        type: "RETURN_HOLD",
+      },
+    });
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    const identical = await Promise.all([
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-race-same-001",
+      ),
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-race-same-001",
+      ),
+    ]);
+    expect(identical.filter((result) => result.replayed)).toHaveLength(1);
+    await expect(
+      prisma.posSaleReturn.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        2,
+        "return-race-same-001",
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+    const competing = await Promise.allSettled([
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-race-new-001",
+      ),
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-race-new-002",
+      ),
+    ]);
+    expect(
+      competing.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      competing.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
+    await expect(
+      prisma.posSaleReturn.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.inventoryMovement.count({
+        where: { referenceType: "POS_RETURN" },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.posReturnReceipt.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          action: "POS_SALE_RETURN_RECORDED",
+          organizationId: base.organization.id,
+        },
+      }),
+    ).resolves.toBe(2);
+  });
+
+  it("serializes return and payment collection on the checkout settlement lock", async () => {
+    const base = await seedCheckout("RETURN-PAYMENT-RACE", 5, 2);
+    const completed = await completeCheckout(
+      base,
+      "checkout-return-payment-race-001",
+      {
+        allowOutstanding: true,
+        payments: [{ amountMinor: 1_000, method: "CASH" }],
+      },
+    );
+    const destination = await prisma.stockLocation.create({
+      data: {
+        branchId: base.branch.id,
+        code: "RETURN-HOLD",
+        isSellable: false,
+        name: "Return hold",
+        organizationId: base.organization.id,
+        status: "ACTIVE",
+        type: "RETURN_HOLD",
+      },
+    });
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    const race = await Promise.allSettled([
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-payment-race-001",
+      ),
+      collectPayment(
+        base,
+        completed.checkout.id,
+        4_000,
+        "collection-return-race-001",
+      ),
+    ]);
+    expect(race[0]?.status).toBe("fulfilled");
+    const account = await new PrismaPosReturnRepository(prisma).findAccount(
+      completed.checkout.id,
+      base.organization.id,
+    );
+    expect(account).not.toBeNull();
+    expect(account!.adjustedPayableMinor).toBe(2_500);
+    expect(account!.outstandingMinor).toBeGreaterThanOrEqual(0);
+    expect(account!.refundableMinor).toBeGreaterThanOrEqual(0);
+    const collectionCount = await prisma.paymentCollection.count({
+      where: { checkoutId: completed.checkout.id },
+    });
+    expect(collectionCount === 0 || collectionCount === 1).toBe(true);
+    if (collectionCount === 0) {
+      expect(account).toMatchObject({
+        cumulativeReceivedMinor: 1_000,
+        outstandingMinor: 1_500,
+        refundableMinor: 0,
+      });
+    } else {
+      expect(account).toMatchObject({
+        cumulativeReceivedMinor: 5_000,
+        outstandingMinor: 0,
+        refundableMinor: 2_500,
+      });
+    }
   });
 
   it("persists deterministic split tender lines and an approved partial balance", async () => {
@@ -737,6 +1101,101 @@ async function completeCheckout(
   );
 }
 
+async function recordReturn(
+  base: Awaited<ReturnType<typeof seedCheckout>>,
+  checkoutId: string,
+  destinationLocationId: string,
+  salesOrderLineId: string,
+  quantity: number,
+  idempotencyKey: string,
+  failAfterWrite = false,
+) {
+  const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
+  return manager.execute(
+    {
+      organizationId: base.organization.id,
+      requestId: `request-${idempotencyKey}`,
+      userId: base.user.id,
+    },
+    async (transaction) => {
+      if (
+        !transaction.posReturnRepository ||
+        !transaction.posReturnReceiptRepository
+      )
+        throw new Error("Return transaction capability is missing.");
+      const result = await recordPosSaleReturn(
+        {
+          inventory: transaction.inventoryMovementRepository,
+          receipts: transaction.posReturnReceiptRepository,
+          returns: transaction.posReturnRepository,
+        },
+        {
+          acceptedByUserId: base.user.id,
+          checkoutId,
+          destinationLocationId,
+          idempotencyKey,
+          lines: [{ quantity, salesOrderLineId }],
+          organizationId: base.organization.id,
+          reasonCode: "SIZE_OR_FIT",
+          receiptId: crypto.randomUUID(),
+          returnId: crypto.randomUUID(),
+          returnedAt: new Date("2026-08-10T10:00:00.000Z"),
+        },
+      );
+      if (!result.replayed)
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "POS_SALE_RETURN_RECORDED",
+          actor: { userId: base.user.id },
+          organizationId: base.organization.id,
+          resource: "POS_RETURN",
+          resourceId: result.saleReturn.id,
+        });
+      if (failAfterWrite) throw new Error("Simulated return audit failure");
+      return result;
+    },
+  );
+}
+
+async function collectPayment(
+  base: Awaited<ReturnType<typeof seedCheckout>>,
+  checkoutId: string,
+  amountMinor: number,
+  idempotencyKey: string,
+) {
+  const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
+  return manager.execute(
+    {
+      organizationId: base.organization.id,
+      requestId: `request-${idempotencyKey}`,
+      userId: base.user.id,
+    },
+    async (transaction) => {
+      if (!transaction.paymentRepository || !transaction.receiptRepository)
+        throw new Error(
+          "Payment collection transaction capability is missing.",
+        );
+      return collectOutstandingPayment(
+        {
+          payments: transaction.paymentRepository,
+          receipts: transaction.receiptRepository,
+        },
+        {
+          acceptedByUserId: base.user.id,
+          checkoutId,
+          collectedAt: new Date("2026-08-10T10:00:00.000Z"),
+          collectionId: crypto.randomUUID(),
+          idempotencyKey,
+          organizationId: base.organization.id,
+          payments: [
+            { amountMinor, method: "CARD", reference: "RETURN-RACE-CARD" },
+          ],
+          receiptId: crypto.randomUUID(),
+        },
+      );
+    },
+  );
+}
+
 async function seedOrganization(label: string) {
   const organization = await prisma.organization.create({
     data: { code: label, name: `Organization ${label}` },
@@ -810,6 +1269,9 @@ async function seedOrganizationMember(organizationId: string, label: string) {
 }
 
 async function cleanDatabase() {
+  await prisma.posReturnReceipt.deleteMany();
+  await prisma.posSaleReturnLine.deleteMany();
+  await prisma.posSaleReturn.deleteMany();
   await prisma.paymentCollectionReceipt.deleteMany();
   await prisma.paymentCollectionLine.deleteMany();
   await prisma.paymentCollection.deleteMany();

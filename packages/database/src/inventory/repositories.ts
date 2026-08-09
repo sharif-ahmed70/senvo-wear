@@ -1505,6 +1505,75 @@ export class PrismaInventoryAvailabilityQueryRepository implements InventoryAvai
 export class PrismaTransactionalInventoryMovementPostingRepository implements InventoryMovementPostingRepository {
   constructor(private readonly transaction: InventoryTransactionClient) {}
 
+  async createDraft(
+    record: CreateInventoryMovementRecord,
+    payloadSignature: string,
+  ): Promise<InventoryMovement> {
+    try {
+      const movement = await this.transaction.inventoryMovement.create({
+        data: {
+          destinationLocationId: record.destinationLocationId,
+          idempotencyKey: record.idempotencyKey,
+          movementNumber: record.movementNumber,
+          note: record.note,
+          occurredAt: record.occurredAt,
+          organizationId: record.organizationId,
+          payloadSignature,
+          referenceId: record.referenceId,
+          referenceType: record.referenceType,
+          sourceLocationId: record.sourceLocationId,
+          type: record.type,
+        },
+      });
+      await this.transaction.inventoryMovementLine.createMany({
+        data: record.lines.map((line, index) => ({
+          lineNumber: index + 1,
+          movementId: movement.id,
+          note: line.note,
+          organizationId: record.organizationId,
+          productVariantId: line.productVariantId,
+          quantity: line.quantity,
+        })),
+      });
+      return mapMovement(
+        await this.transaction.inventoryMovement.findUniqueOrThrow({
+          include: movementInclude,
+          where: { id: movement.id },
+        }),
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const existing = await this.findByIdempotencyKey(
+          record.organizationId,
+          record.idempotencyKey,
+        );
+        if (existing) {
+          const existingSignature = await getPayloadSignatureInTransaction(
+            this.transaction,
+            existing.id,
+            existing.organizationId,
+          );
+          if (existingSignature === payloadSignature) return existing;
+          throw new ConflictError("Idempotency key was already used.");
+        }
+      }
+      mapInventoryIntegrityError(error);
+    }
+  }
+
+  async findByIdempotencyKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<InventoryMovement | null> {
+    const record = await this.transaction.inventoryMovement.findUnique({
+      include: movementInclude,
+      where: {
+        organizationId_idempotencyKey: { idempotencyKey, organizationId },
+      },
+    });
+    return record ? mapMovement(record) : null;
+  }
+
   async findById(
     id: string,
     organizationId: string,

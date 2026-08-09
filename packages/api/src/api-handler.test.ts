@@ -160,6 +160,7 @@ describe("API application gateway", () => {
     ["FORBIDDEN", "AUTHORIZATION.FORBIDDEN"],
     ["NOT_FOUND", "NOT_FOUND.RESOURCE"],
     ["CONFLICT", "CONFLICT.STATE"],
+    ["IDEMPOTENCY_CONFLICT", "CONFLICT.IDEMPOTENCY"],
     ["CONCURRENCY_CONFLICT", "CONCURRENCY.VERSION_MISMATCH"],
     ["INTERNAL_ERROR", "INTERNAL.UNEXPECTED"],
   ] as const)("maps %s application failures to %s", async (code, apiCode) => {

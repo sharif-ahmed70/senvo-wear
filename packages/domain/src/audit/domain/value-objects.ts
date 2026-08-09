@@ -16,6 +16,7 @@ export const auditActions = [
   "POS_CHECKOUT_COMPLETED",
   "POS_PAYMENT_RECORDED",
   "POS_OUTSTANDING_PAYMENT_COLLECTED",
+  "POS_SALE_RETURN_RECORDED",
   "SALES_RECEIPT_ISSUED",
   "SALES_ORDER_CREATED",
 ] as const satisfies readonly AuditAction[];
@@ -25,6 +26,7 @@ export const auditResources = [
   "PAYMENT",
   "PAYMENT_COLLECTION",
   "POS_CHECKOUT",
+  "POS_RETURN",
   "SALES_ORDER",
   "SALES_RECEIPT",
 ] as const satisfies readonly AuditResource[];

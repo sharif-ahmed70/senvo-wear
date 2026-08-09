@@ -29,7 +29,10 @@ import {
   SalesOrderDetailsPanel,
   SalesOrdersWorkspace,
 } from "./sales/orders/_components/sales-orders-workspace";
-import type { SalesOrderDetailsReadContract } from "@senvo/contracts";
+import type {
+  PosReturnAccountContract,
+  SalesOrderDetailsReadContract,
+} from "@senvo/contracts";
 import UsersPage from "./users/page";
 import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
@@ -39,6 +42,13 @@ import { PosManagementWorkspace } from "./pos/_components/pos-management-workspa
 import { ReceiptPreview } from "./pos/checkouts/[id]/receipt/receipt-preview";
 import { CheckoutPaymentWorkspace } from "./pos/checkouts/[id]/checkout-payment-workspace";
 import { PaymentReceiptPreview } from "./pos/payment-collections/[id]/receipt/payment-receipt-preview";
+import {
+  CheckoutReturnWorkspace,
+  ReturnSuccessState,
+  messageFor as returnMessageFor,
+} from "./pos/checkouts/[id]/checkout-return-workspace";
+import { ReturnReceiptPreview } from "./pos/returns/[id]/receipt/return-receipt-preview";
+import { AdminApiError } from "./_lib/api-client";
 
 describe("admin routes", () => {
   it("renders sales source and booth history routes", () => {
@@ -101,6 +111,75 @@ describe("admin routes", () => {
         />,
       ),
     ).toContain("Receipt access unavailable");
+  });
+  it("hides return action and return receipt without the required access", () => {
+    const workspace = renderToStaticMarkup(
+      <CheckoutReturnWorkspace
+        checkoutId="10000000-0000-4000-8000-000000000001"
+        permissions={[]}
+      />,
+    );
+    expect(workspace).toContain("Return access unavailable");
+    expect(workspace).not.toContain("Record return");
+    const receipt = renderToStaticMarkup(
+      <ReturnReceiptPreview
+        returnId="10000000-0000-4000-8000-000000000001"
+        permissions={["POS:READ"]}
+      />,
+    );
+    expect(receipt).toContain("Receipt access unavailable");
+    expect(receipt).not.toContain("Print");
+  });
+  it("keeps idempotency conflict wording specific inside the return UI", () => {
+    expect(
+      returnMessageFor(
+        new AdminApiError({
+          code: "CONFLICT.IDEMPOTENCY",
+          message: "This request was already used with different details.",
+          requestId: "req_return_conflict",
+          status: 409,
+        }),
+      ),
+    ).toBe(
+      "This return attempt was already used with different details. (req_return_conflict)",
+    );
+  });
+  it("shows refund due without claiming a refund and keeps recovery actions", () => {
+    const account = {
+      adjustedPayableMinor: 7_000,
+      checkoutId: "10000000-0000-4000-8000-000000000001",
+      cumulativeReceivedMinor: 10_000,
+      legacyPaymentRecorded: true,
+      lines: [],
+      orderNumber: "POS-1001",
+      originalTotalMinor: 10_000,
+      outstandingMinor: 0,
+      refundableMinor: 3_000,
+      returnCreditMinor: 3_000,
+      returns: [],
+      settlementStatus: "REFUND_DUE",
+    } satisfies PosReturnAccountContract;
+    const html = renderToStaticMarkup(
+      <ReturnSuccessState
+        account={account}
+        canReadReceipt
+        checkoutId={account.checkoutId}
+        hasReturnable
+        onReturnMore={() => undefined}
+        success={{
+          id: "10000000-0000-4000-8000-000000000002",
+          receiptNumber: "RET-1001",
+          totalCreditMinor: 3_000,
+        }}
+      />,
+    );
+    expect(html).toContain("Return recorded");
+    expect(html).toContain("refund has not been issued yet");
+    expect(html).toContain("View return receipt");
+    expect(html).toContain("Print return receipt");
+    expect(html).toContain("Back to sale");
+    expect(html).toContain("Return more items");
+    expect(html).not.toContain(">Refunded<");
   });
   it.each([
     ["Dashboard", AdminPage],

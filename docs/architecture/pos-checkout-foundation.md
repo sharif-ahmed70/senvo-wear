@@ -1,5 +1,7 @@
 # POS Checkout Foundation
 
+Completed checkouts remain immutable after merchandise returns. See [POS Sales Return and Credit](./pos-sales-return-credit.md) for the append-only return, Return hold, and adjusted settlement boundary.
+
 Checkout list/detail balances are cumulative read projections: the immutable checkout-time payment plus later immutable collections. Collection ownership, locking, idempotency, and receipts are documented in [POS Outstanding Balance Collection](./pos-outstanding-balance-collection.md).
 
 ## Purpose

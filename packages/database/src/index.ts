@@ -69,5 +69,6 @@ export { PrismaSalesOrderReadRepository } from "./sales/read-repository.js";
 export { PrismaSalesSourceRepository } from "./sales/source-repository.js";
 export { PrismaPosRepository } from "./pos/repository.js";
 export { PrismaPosCheckoutRepository } from "./pos/checkout-repository.js";
+export { PrismaPosReturnRepository } from "./pos/return-repository.js";
 export { PrismaPaymentRepository } from "./payment/repository.js";
 export { PrismaReceiptRepository } from "./receipt/repository.js";

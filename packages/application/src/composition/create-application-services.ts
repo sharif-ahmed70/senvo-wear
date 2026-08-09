@@ -15,6 +15,7 @@ import {
   PrismaSalesSourceRepository,
   PrismaPosRepository,
   PrismaPosCheckoutRepository,
+  PrismaPosReturnRepository,
   PrismaPaymentRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
@@ -44,8 +45,10 @@ import type {
   SalesSourceRepository,
   PosRepository,
   PosCheckoutRepository,
+  PosReturnRepository,
   PaymentRepository,
   ReceiptRepository,
+  PosReturnReceiptRepository,
   RolePermissionRepository,
   UserRepository,
 } from "@senvo/domain";
@@ -82,6 +85,8 @@ export type CreateApplicationServicesOptions = {
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;
   receiptRepository?: ReceiptRepository;
+  posReturnRepository?: PosReturnRepository;
+  posReturnReceiptRepository?: PosReturnReceiptRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
@@ -134,6 +139,8 @@ export function createApplicationServices(
   let posCheckoutRepository = options.posCheckoutRepository;
   let paymentRepository = options.paymentRepository;
   let receiptRepository = options.receiptRepository;
+  let posReturnRepository = options.posReturnRepository;
+  let posReturnReceiptRepository = options.posReturnReceiptRepository;
   let sizeRepository = options.sizeRepository;
 
   if (
@@ -255,6 +262,10 @@ export function createApplicationServices(
   paymentRepository ??= new PrismaPaymentRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!posReturnRepository && prismaClient)
+    posReturnRepository = new PrismaPosReturnRepository(prismaClient);
+  if (!posReturnReceiptRepository && prismaClient)
+    posReturnReceiptRepository = new PrismaReceiptRepository(prismaClient);
 
   return {
     catalog: new CatalogApplicationService({
@@ -304,6 +315,8 @@ export function createApplicationServices(
       pos: posRepository,
       payments: paymentRepository,
       receipts: receiptRepository,
+      returns: posReturnRepository,
+      returnReceipts: posReturnReceiptRepository,
       requestIdGenerator: options.requestIdGenerator,
       salesSources:
         salesSourceRepository ??
