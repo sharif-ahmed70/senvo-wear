@@ -101,15 +101,18 @@ export async function collectOutstandingPayment(
     preparation.initialPayment.payableMinor,
     current.paidMinor,
     preparation.returnCreditMinor,
+    preparation.cumulativeRefundedMinor,
   );
   if (settlement.outstandingMinor === 0) {
     throw new BusinessRuleError("This checkout has no outstanding balance.");
   }
   const balance = calculatePaymentCollection(
     settlement.adjustedPayableMinor,
-    current.paidMinor,
+    settlement.netReceivedMinor,
     payments,
   );
+  const cumulativePaidMinor =
+    settlement.grossReceivedMinor + balance.amountMinor;
   const suffix = collectionId.replaceAll("-", "").toUpperCase();
   const receiptNumber = `PAY-${suffix}`;
   const collection = await repositories.payments.createCollection({
@@ -137,7 +140,7 @@ export async function collectOutstandingPayment(
     checkoutId,
     collectedAt: input.collectedAt,
     collectionId,
-    cumulativePaidMinor: balance.paidMinor,
+    cumulativePaidMinor,
     currencyCode: "BDT",
     id: receiptId,
     orderNumber: preparation.orderNumber,
@@ -181,10 +184,13 @@ function accountFromPreparation(
       checkoutId: preparation.checkoutId,
       collections: [],
       cumulativePaidMinor: null,
+      cumulativeRefundedMinor: null,
+      grossReceivedMinor: null,
       currencyCode: "BDT",
       initialPaidMinor: null,
       initialPayments: [],
       legacyPaymentRecorded: false,
+      netReceivedMinor: null,
       orderNumber: preparation.orderNumber,
       originalPayableMinor: preparation.totalMinor,
       organizationId: preparation.organizationId,
@@ -205,16 +211,20 @@ function accountFromPreparation(
     initial.payableMinor,
     balance.paidMinor,
     preparation.returnCreditMinor,
+    preparation.cumulativeRefundedMinor,
   );
   return {
     adjustedPayableMinor: settlement.adjustedPayableMinor,
     checkoutId: preparation.checkoutId,
     collections: preparation.collections,
     cumulativePaidMinor: balance.paidMinor,
+    cumulativeRefundedMinor: settlement.cumulativeRefundedMinor,
+    grossReceivedMinor: settlement.grossReceivedMinor,
     currencyCode: "BDT",
     initialPaidMinor: initial.paidMinor,
     initialPayments: initial.lines,
     legacyPaymentRecorded: true,
+    netReceivedMinor: settlement.netReceivedMinor,
     orderNumber: preparation.orderNumber,
     originalPayableMinor: initial.payableMinor,
     organizationId: preparation.organizationId,

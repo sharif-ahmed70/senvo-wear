@@ -10,6 +10,10 @@ import type { PaymentRepository } from "../payment/repositories/payment-reposito
 import type { ReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnRepository } from "../pos/repositories/pos-return-repository.js";
+import type {
+  PaymentRefundReceiptRepository,
+  PaymentRefundRepository,
+} from "../payment/repositories/payment-refund-repository.js";
 
 type TransactionalInventoryMovementRepository =
   InventoryMovementPostingRepository &
@@ -21,6 +25,8 @@ export type TransactionContext<TApplicationContext> = {
   inventoryMovementRepository: TransactionalInventoryMovementRepository;
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;
+  paymentRefundRepository?: PaymentRefundRepository;
+  paymentRefundReceiptRepository?: PaymentRefundReceiptRepository;
   receiptRepository?: ReceiptRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
   posReturnRepository?: PosReturnRepository;

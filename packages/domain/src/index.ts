@@ -157,11 +157,30 @@ export {
   calculateCumulativePaymentBalance,
   calculateCheckoutSettlement,
   calculatePaymentCollection,
+  calculatePaymentRefund,
   calculatePaymentBalance,
   createPaymentCollectionRequestSignature,
+  createPaymentRefundRequestSignature,
   createPaymentRequestSignature,
   normalizePaymentInstructions,
 } from "./payment/application/payment-rules.js";
+export {
+  getPaymentRefundAccount,
+  getPaymentRefundReceipt,
+  recordCheckoutRefund,
+} from "./payment/application/payment-refund-use-cases.js";
+export type {
+  PaymentRefund,
+  PaymentRefundAccount,
+  PaymentRefundLine,
+  PaymentRefundPreparation,
+  PaymentRefundReceipt,
+} from "./payment/domain/refund-models.js";
+export type {
+  CreatePaymentRefundRecord,
+  PaymentRefundReceiptRepository,
+  PaymentRefundRepository,
+} from "./payment/repositories/payment-refund-repository.js";
 export type {
   CheckoutPaymentStatus,
   CheckoutSettlementStatus,

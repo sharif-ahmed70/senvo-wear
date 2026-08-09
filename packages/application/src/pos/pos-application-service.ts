@@ -19,6 +19,8 @@ import {
   getCheckoutStatus,
   getPaymentAccount,
   getPaymentCollectionReceipt,
+  getPaymentRefundAccount,
+  getPaymentRefundReceipt,
   getPosReturnAccount,
   getPosReturnReceipt,
   getPosCart,
@@ -27,6 +29,7 @@ import {
   lookupPosSale,
   openSalesSession,
   recordPosSaleReturn,
+  recordCheckoutRefund,
   removePosCartItem,
   updatePosCartItem,
   type BarcodeRepository,
@@ -41,6 +44,11 @@ import {
   type PaymentAccount,
   type PaymentCollection,
   type PaymentCollectionReceipt,
+  type PaymentRefund,
+  type PaymentRefundAccount,
+  type PaymentRefundReceipt,
+  type PaymentRefundRepository,
+  type PaymentRefundReceiptRepository,
   type PaymentRepository,
   type PosReturnAccount,
   type PosReturnReceipt,
@@ -58,6 +66,7 @@ import {
   addPosCartItemServiceInputSchema,
   collectPosPaymentResultContractSchema,
   collectPosPaymentServiceInputSchema,
+  createPaymentRefundServiceInputSchema,
   createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
@@ -65,6 +74,7 @@ import {
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
+  getPaymentRefundReceiptServiceInputSchema,
   getPosReturnReceiptServiceInputSchema,
   getPosCartServiceInputSchema,
   openSalesSessionServiceInputSchema,
@@ -73,6 +83,9 @@ import {
   posCheckoutContractSchema,
   paymentAccountContractSchema,
   paymentCollectionReceiptContractSchema,
+  paymentRefundAccountContractSchema,
+  paymentRefundReceiptContractSchema,
+  paymentRefundResultContractSchema,
   posReturnAccountContractSchema,
   posReturnReceiptContractSchema,
   posReturnResultContractSchema,
@@ -90,6 +103,9 @@ import {
   type CollectPosPaymentResultContract,
   type PaymentAccountContract,
   type PaymentCollectionReceiptContract,
+  type PaymentRefundAccountContract,
+  type PaymentRefundReceiptContract,
+  type PaymentRefundResultContract,
   type PosReturnAccountContract,
   type PosReturnReceiptContract,
   type PosReturnResultContract,
@@ -139,6 +155,8 @@ export type PosApplicationServiceDependencies = {
   memberships: OrganizationMembershipRepository;
   pos: PosRepository;
   payments: PaymentRepository;
+  refunds?: PaymentRefundRepository;
+  refundReceipts?: PaymentRefundReceiptRepository;
   receipts: ReceiptRepository;
   returns?: PosReturnRepository;
   returnReceipts?: PosReturnReceiptRepository;
@@ -623,6 +641,152 @@ export class PosApplicationService {
     );
   }
 
+  getRefunds(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PaymentRefundAccountContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
+        for (const permission of [
+          { action: "READ", resource: "POS" },
+          { action: "READ", resource: "SALES" },
+          { action: "READ", resource: "PAYMENT" },
+        ] as const) {
+          await requireAuthorization(
+            this.dependencies.authorizationService,
+            trusted,
+            permission,
+          );
+        }
+        if (!this.dependencies.refunds)
+          throw new Error("Payment refund read capability is required.");
+        return mapPaymentRefundAccount(
+          await getPaymentRefundAccount(this.dependencies.refunds, {
+            checkoutId: input.checkoutId,
+            organizationId: trusted.organizationId,
+          }),
+        );
+      },
+    );
+  }
+
+  createRefund(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PaymentRefundResultContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          createPaymentRefundServiceInputSchema,
+          payload,
+        );
+        await requireAuthentication(this.dependencies.authenticationService, {
+          requestId: trusted.requestId,
+          userId: trusted.userId,
+        });
+        const userId = this.requireUserId(trusted);
+        return this.dependencies.transactionManager.execute(
+          trusted,
+          async (transaction) => {
+            for (const permission of [
+              { action: "READ", resource: "POS" },
+              { action: "READ", resource: "SALES" },
+              { action: "CREATE", resource: "PAYMENT" },
+              { action: "APPROVE", resource: "PAYMENT" },
+            ] as const) {
+              await requireAuthorization(
+                this.dependencies.authorizationService,
+                transaction.applicationContext,
+                permission,
+              );
+            }
+            if (
+              !transaction.paymentRefundRepository ||
+              !transaction.paymentRefundReceiptRepository
+            ) {
+              throw new Error(
+                "Payment refund transaction capability is required.",
+              );
+            }
+            const result = await recordCheckoutRefund(
+              {
+                receipts: transaction.paymentRefundReceiptRepository,
+                refunds: transaction.paymentRefundRepository,
+              },
+              {
+                ...input,
+                acceptedByUserId: userId,
+                issuedAt: this.dependencies.clock.now(),
+                organizationId: trusted.organizationId,
+                receiptId: crypto.randomUUID(),
+                refundId: crypto.randomUUID(),
+              },
+            );
+            if (!result.replayed) {
+              await transaction.auditWriter.recordWithinTransaction({
+                action: "POS_REFUND_ISSUED",
+                actor: { userId },
+                metadata: {
+                  amountMinor: result.refund.amountMinor,
+                  checkoutId: input.checkoutId,
+                  cumulativeRefundedMinor:
+                    result.account.cumulativeRefundedMinor ?? 0,
+                  grossReceivedMinor: result.account.grossReceivedMinor ?? 0,
+                  netReceivedMinor: result.account.netReceivedMinor ?? 0,
+                  outstandingMinor: result.account.outstandingMinor ?? 0,
+                  refundableMinor: result.account.refundableMinor ?? 0,
+                  refundDueBeforeMinor: result.refundDueBeforeMinor,
+                  refundId: result.refund.id,
+                  refundLineCount: result.refund.lines.length,
+                  refundReceiptId: result.refund.receiptId,
+                  requestId: trusted.requestId,
+                  salesOrderId: result.refund.salesOrderId,
+                  settlementStatus: result.account.settlementStatus,
+                },
+                organizationId: trusted.organizationId,
+                resource: "PAYMENT_REFUND",
+                resourceId: result.refund.id,
+              });
+            }
+            return paymentRefundResultContractSchema.parse({
+              account: mapPaymentRefundAccount(result.account),
+              refund: mapPaymentRefund(result.refund),
+              replayed: result.replayed,
+            });
+          },
+        );
+      },
+    );
+  }
+
+  getRefundReceipt(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<PaymentRefundReceiptContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          getPaymentRefundReceiptServiceInputSchema,
+          payload,
+        );
+        for (const permission of [
+          { action: "READ", resource: "RECEIPT" },
+          { action: "READ", resource: "PAYMENT" },
+          { action: "READ", resource: "SALES" },
+        ] as const) {
+          await requireAuthorization(
+            this.dependencies.authorizationService,
+            trusted,
+            permission,
+          );
+        }
+        if (!this.dependencies.refundReceipts)
+          throw new Error("Payment refund receipt capability is required.");
+        return mapPaymentRefundReceipt(
+          await getPaymentRefundReceipt(this.dependencies.refundReceipts, {
+            organizationId: trusted.organizationId,
+            refundId: input.refundId,
+          }),
+        );
+      },
+    );
+  }
+
   getReturns(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<PosReturnAccountContract>(context, async (trusted) => {
       const input = parsePayload(getPosCheckoutServiceInputSchema, payload);
@@ -939,10 +1103,13 @@ function mapPaymentAccount(record: PaymentAccount): PaymentAccountContract {
     checkoutId: record.checkoutId,
     collections: record.collections.map(mapPaymentCollection),
     cumulativePaidMinor: record.cumulativePaidMinor,
+    cumulativeRefundedMinor: record.cumulativeRefundedMinor,
     currencyCode: record.currencyCode,
+    grossReceivedMinor: record.grossReceivedMinor,
     initialPaidMinor: record.initialPaidMinor,
     initialPayments: record.initialPayments,
     legacyPaymentRecorded: record.legacyPaymentRecorded,
+    netReceivedMinor: record.netReceivedMinor,
     orderNumber: record.orderNumber,
     originalPayableMinor: record.originalPayableMinor,
     outstandingMinor: record.outstandingMinor,
@@ -959,6 +1126,53 @@ function mapPaymentCollectionReceipt(
   return paymentCollectionReceiptContractSchema.parse({
     ...record,
     collectedAt: record.collectedAt.toISOString(),
+  });
+}
+function mapPaymentRefund(record: PaymentRefund) {
+  return {
+    acceptedByName: record.acceptedByName,
+    amountMinor: record.amountMinor,
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    issuedAt: record.issuedAt.toISOString(),
+    lines: record.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      createdAt: line.createdAt.toISOString(),
+      id: line.id,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      reference: line.reference,
+    })),
+    receiptId: record.receiptId,
+    receiptNumber: record.receiptNumber,
+  };
+}
+function mapPaymentRefundAccount(
+  record: PaymentRefundAccount,
+): PaymentRefundAccountContract {
+  return paymentRefundAccountContractSchema.parse({
+    adjustedPayableMinor: record.adjustedPayableMinor,
+    checkoutId: record.checkoutId,
+    cumulativeRefundedMinor: record.cumulativeRefundedMinor,
+    grossReceivedMinor: record.grossReceivedMinor,
+    legacyPaymentRecorded: record.legacyPaymentRecorded,
+    netReceivedMinor: record.netReceivedMinor,
+    orderNumber: record.orderNumber,
+    originalPayableMinor: record.originalPayableMinor,
+    outstandingMinor: record.outstandingMinor,
+    refundableMinor: record.refundableMinor,
+    refunds: record.refunds.map(mapPaymentRefund),
+    returnCreditMinor: record.returnCreditMinor,
+    settlementStatus: record.settlementStatus,
+  });
+}
+function mapPaymentRefundReceipt(
+  record: PaymentRefundReceipt,
+): PaymentRefundReceiptContract {
+  return paymentRefundReceiptContractSchema.parse({
+    ...record,
+    issuedAt: record.issuedAt.toISOString(),
   });
 }
 function mapSaleReturn(record: PosSaleReturn) {
@@ -996,8 +1210,10 @@ function mapReturnAccount(record: PosReturnAccount): PosReturnAccountContract {
     adjustedPayableMinor: record.adjustedPayableMinor,
     checkoutId: record.checkoutId,
     cumulativeReceivedMinor: record.cumulativeReceivedMinor,
+    cumulativeRefundedMinor: record.cumulativeRefundedMinor,
     legacyPaymentRecorded: record.legacyPaymentRecorded,
     lines: record.lines,
+    netReceivedMinor: record.netReceivedMinor,
     orderNumber: record.orderNumber,
     originalTotalMinor: record.originalTotalMinor,
     outstandingMinor: record.outstandingMinor,

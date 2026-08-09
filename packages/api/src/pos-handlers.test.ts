@@ -245,6 +245,61 @@ describe("POS API handlers", () => {
       success: false,
     });
   });
+
+  it("uses PAYMENT CREATE and rejects trusted refund field injection", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const valid = await handlers(
+      application,
+      authorization,
+    ).createRefund.handle({
+      context,
+      input: {
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        idempotencyKey: "refund-attempt-001",
+        refunds: [{ amountMinor: 500, method: "CASH" }],
+      },
+    });
+    expect(valid.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "CREATE",
+      resource: "PAYMENT",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
+
+    const injected = await handlers(application).createRefund.handle({
+      context,
+      input: {
+        acceptedByUserId: userId,
+        checkoutId: "20000000-0000-4000-8000-000000000001",
+        idempotencyKey: "refund-attempt-002",
+        organizationId,
+        refundableMinor: 500,
+        refunds: [{ amountMinor: 500, method: "CASH" }],
+      },
+    });
+    expect(injected).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+  });
+
+  it("requires receipt permission for refund receipt reads", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).getRefundReceipt.handle({
+      context,
+      input: { refundId: "20000000-0000-4000-8000-000000000001" },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "RECEIPT",
+    });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -287,6 +342,9 @@ class FakePos implements PosApplication {
   collectPayment(context: ApplicationExecutionContext) {
     return this.result(context, {} as never);
   }
+  createRefund(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
   createReturn(context: ApplicationExecutionContext) {
     return this.result(context, {} as never);
   }
@@ -315,6 +373,12 @@ class FakePos implements PosApplication {
     return this.result(context, {} as never);
   }
   getPaymentCollectionReceipt(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  getRefunds(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  getRefundReceipt(context: ApplicationExecutionContext) {
     return this.result(context, {} as never);
   }
   getReturns(context: ApplicationExecutionContext) {

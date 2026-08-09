@@ -4,6 +4,7 @@ import {
   addPosCartItem,
   checkoutCart,
   collectOutstandingPayment,
+  recordCheckoutRefund,
   recordPosSaleReturn,
   openSalesSession,
 } from "@senvo/domain";
@@ -16,6 +17,7 @@ import {
 import { PrismaPosRepository } from "./repository.js";
 import { PrismaPosCheckoutRepository } from "./checkout-repository.js";
 import { PrismaPosReturnRepository } from "./return-repository.js";
+import { PrismaPaymentRefundRepository } from "../payment/refund-repository.js";
 import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaTransactionManager } from "../transaction/prisma-transaction-manager.js";
 
@@ -644,6 +646,325 @@ describeWithDatabase("Prisma offline POS repository", () => {
     }
   });
 
+  it("records split refunds with immutable history, idempotency, and organization isolation", async () => {
+    const base = await seedCheckout("REFUND", 5, 2);
+    const completed = await completeCheckout(base, "checkout-refund-001");
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "refund-source-return-001",
+    );
+    const identical = await Promise.all([
+      recordRefund(base, completed.checkout.id, "refund-record-001", [
+        { amountMinor: 1_000, method: "CASH" },
+        { amountMinor: 500, method: "CARD", reference: "REFUND-CARD-001" },
+      ]),
+      recordRefund(base, completed.checkout.id, "refund-record-001", [
+        { amountMinor: 1_000, method: "CASH" },
+        { amountMinor: 500, method: "CARD", reference: "REFUND-CARD-001" },
+      ]),
+    ]);
+    const first = identical.find((result) => !result.replayed)!;
+    const replay = identical.find((result) => result.replayed)!;
+    expect(first).toMatchObject({
+      account: {
+        cumulativeRefundedMinor: 1_500,
+        grossReceivedMinor: 5_000,
+        netReceivedMinor: 3_500,
+        refundableMinor: 1_000,
+      },
+      replayed: false,
+    });
+    expect(replay).toMatchObject({
+      refund: { id: first.refund.id },
+      replayed: true,
+    });
+    await expect(prisma.paymentRefund.count()).resolves.toBe(1);
+    await expect(prisma.paymentRefundLine.count()).resolves.toBe(2);
+    await expect(prisma.paymentRefundReceipt.count()).resolves.toBe(1);
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          action: "POS_REFUND_ISSUED",
+          organizationId: base.organization.id,
+        },
+      }),
+    ).resolves.toBe(1);
+    const receipt = await prisma.paymentRefundReceipt.findUniqueOrThrow({
+      where: {
+        refundId_organizationId: {
+          organizationId: base.organization.id,
+          refundId: first.refund.id,
+        },
+      },
+    });
+    expect(receipt).toMatchObject({
+      cumulativeRefundedMinor: 1_500,
+      grossReceivedMinor: 5_000,
+      netReceivedMinor: 3_500,
+      refundableMinor: 1_000,
+    });
+    await expect(
+      prisma.paymentRefund.delete({ where: { id: first.refund.id } }),
+    ).rejects.toMatchObject({ code: "P2003" });
+    await expect(
+      prisma.posCheckoutRecord.delete({ where: { id: completed.checkout.id } }),
+    ).rejects.toMatchObject({ code: "P2003" });
+    await expect(
+      prisma.paymentBatch.findUniqueOrThrow({
+        where: {
+          checkoutId_organizationId: {
+            checkoutId: completed.checkout.id,
+            organizationId: base.organization.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ paidMinor: 5_000 });
+    await expect(
+      prisma.posSaleReturn.count({
+        where: { checkoutId: completed.checkout.id },
+      }),
+    ).resolves.toBe(1);
+    const other = await seedOrganization("REFUND-OTHER");
+    const refunds = new PrismaPaymentRefundRepository(prisma);
+    await expect(
+      refunds.findAccountByCheckoutId(
+        completed.checkout.id,
+        other.organization.id,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("persists stale cash refund references as null in lines and receipts", async () => {
+    const base = await seedCheckout("REFUND-CASH-REFERENCE", 5, 2);
+    const completed = await completeCheckout(
+      base,
+      "checkout-refund-cash-reference-001",
+    );
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "refund-cash-reference-return-001",
+    );
+
+    const result = await recordRefund(
+      base,
+      completed.checkout.id,
+      "refund-cash-reference-001",
+      [
+        {
+          amountMinor: 1_000,
+          method: "CASH",
+          reference: "stale-browser-value",
+        },
+      ],
+    );
+
+    const persistedLine = await prisma.paymentRefundLine.findFirstOrThrow({
+      where: { method: "CASH", refundId: result.refund.id },
+    });
+    expect(persistedLine.reference).toBeNull();
+    const receipt = await new PrismaReceiptRepository(prisma).findByRefundId(
+      result.refund.id,
+      base.organization.id,
+    );
+    expect(receipt?.lines).toEqual([
+      expect.objectContaining({ method: "CASH", reference: null }),
+    ]);
+  });
+
+  it("rolls back refund, receipt, lines, and audit together", async () => {
+    const base = await seedCheckout("REFUND-ROLLBACK", 5, 1);
+    const completed = await completeCheckout(
+      base,
+      "checkout-refund-rollback-001",
+    );
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "refund-rollback-return-001",
+    );
+    await expect(
+      recordRefund(
+        base,
+        completed.checkout.id,
+        "refund-rollback-001",
+        [{ amountMinor: 500, method: "CASH" }],
+        true,
+      ),
+    ).rejects.toThrow("Simulated refund audit failure");
+    await expect(prisma.paymentRefund.count()).resolves.toBe(0);
+    await expect(prisma.paymentRefundLine.count()).resolves.toBe(0);
+    await expect(prisma.paymentRefundReceipt.count()).resolves.toBe(0);
+    await expect(
+      prisma.auditEntry.count({ where: { action: "POS_REFUND_ISSUED" } }),
+    ).resolves.toBe(0);
+  });
+
+  it("serializes competing refunds on the checkout settlement lock", async () => {
+    const base = await seedCheckout("REFUND-RACE", 5, 1);
+    const completed = await completeCheckout(base, "checkout-refund-race-001");
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "refund-race-return-001",
+    );
+    const race = await Promise.allSettled([
+      recordRefund(base, completed.checkout.id, "refund-race-a-001", [
+        { amountMinor: 1_500, method: "CASH" },
+      ]),
+      recordRefund(base, completed.checkout.id, "refund-race-b-001", [
+        { amountMinor: 1_500, method: "CASH" },
+      ]),
+    ]);
+    expect(race.filter((result) => result.status === "fulfilled")).toHaveLength(
+      1,
+    );
+    expect(race.filter((result) => result.status === "rejected")).toHaveLength(
+      1,
+    );
+    await expect(prisma.paymentRefund.count()).resolves.toBe(1);
+    const account = await new PrismaPaymentRefundRepository(
+      prisma,
+    ).findAccountByCheckoutId(completed.checkout.id, base.organization.id);
+    expect(account).toMatchObject({
+      cumulativeRefundedMinor: 1_500,
+      refundableMinor: 1_000,
+    });
+  });
+
+  it("serializes a return against a refund with a consistent final settlement", async () => {
+    const base = await seedCheckout("RETURN-REFUND-RACE", 5, 2);
+    const completed = await completeCheckout(
+      base,
+      "checkout-return-refund-race-001",
+    );
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "return-before-refund-race-001",
+    );
+    const race = await Promise.allSettled([
+      recordRefund(base, completed.checkout.id, "refund-with-return-race-001", [
+        { amountMinor: 1_000, method: "CASH" },
+      ]),
+      recordReturn(
+        base,
+        completed.checkout.id,
+        destination.id,
+        orderLine.id,
+        1,
+        "return-with-refund-race-001",
+      ),
+    ]);
+    expect(race.every((result) => result.status === "fulfilled")).toBe(true);
+    const account = await new PrismaPaymentRefundRepository(
+      prisma,
+    ).findAccountByCheckoutId(completed.checkout.id, base.organization.id);
+    expect(account).toMatchObject({
+      adjustedPayableMinor: 0,
+      cumulativeRefundedMinor: 1_000,
+      grossReceivedMinor: 5_000,
+      netReceivedMinor: 4_000,
+      refundableMinor: 4_000,
+      returnCreditMinor: 5_000,
+    });
+  });
+
+  it("serializes payment collection against refund decisions", async () => {
+    const base = await seedCheckout("COLLECTION-REFUND-RACE", 5, 2);
+    const completed = await completeCheckout(
+      base,
+      "checkout-collection-refund-race-001",
+      {
+        allowOutstanding: true,
+        payments: [{ amountMinor: 3_000, method: "CASH" }],
+      },
+    );
+    const destination = await seedReturnHold(base);
+    const orderLine = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: completed.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      completed.checkout.id,
+      destination.id,
+      orderLine.id,
+      1,
+      "return-before-collection-refund-race-001",
+    );
+    const race = await Promise.allSettled([
+      recordRefund(base, completed.checkout.id, "refund-collection-race-001", [
+        { amountMinor: 500, method: "CASH" },
+      ]),
+      collectPayment(
+        base,
+        completed.checkout.id,
+        500,
+        "collection-refund-race-001",
+      ),
+    ]);
+    expect(race.filter((result) => result.status === "fulfilled")).toHaveLength(
+      1,
+    );
+    expect(race.filter((result) => result.status === "rejected")).toHaveLength(
+      1,
+    );
+    const account = await new PrismaPaymentRefundRepository(
+      prisma,
+    ).findAccountByCheckoutId(completed.checkout.id, base.organization.id);
+    expect(account).toMatchObject({
+      adjustedPayableMinor: 2_500,
+      netReceivedMinor: 2_500,
+      outstandingMinor: 0,
+      refundableMinor: 0,
+    });
+    expect(
+      (account?.cumulativeRefundedMinor ?? 0) +
+        (
+          await prisma.paymentCollection.aggregate({
+            _sum: { amountMinor: true },
+            where: { checkoutId: completed.checkout.id },
+          })
+        )._sum.amountMinor!,
+    ).toBe(500);
+  });
+
   it("persists deterministic split tender lines and an approved partial balance", async () => {
     const split = await seedCheckout("SPLIT", 5, 2);
     const splitResult = await completeCheckout(split, "checkout-split-001", {
@@ -1196,6 +1517,74 @@ async function collectPayment(
   );
 }
 
+async function recordRefund(
+  base: Awaited<ReturnType<typeof seedCheckout>>,
+  checkoutId: string,
+  idempotencyKey: string,
+  refunds: readonly {
+    amountMinor: number;
+    method: "BANK_TRANSFER" | "CARD" | "CASH" | "MOBILE_BANKING";
+    reference?: string;
+  }[],
+  failAfterWrite = false,
+) {
+  const manager = new PrismaTransactionManager<CheckoutTestContext>(prisma);
+  return manager.execute(
+    {
+      organizationId: base.organization.id,
+      requestId: `request-${idempotencyKey}`,
+      userId: base.user.id,
+    },
+    async (transaction) => {
+      if (
+        !transaction.paymentRefundRepository ||
+        !transaction.paymentRefundReceiptRepository
+      )
+        throw new Error("Payment refund transaction capability is missing.");
+      const result = await recordCheckoutRefund(
+        {
+          receipts: transaction.paymentRefundReceiptRepository,
+          refunds: transaction.paymentRefundRepository,
+        },
+        {
+          acceptedByUserId: base.user.id,
+          checkoutId,
+          idempotencyKey,
+          issuedAt: new Date("2026-08-10T11:00:00.000Z"),
+          organizationId: base.organization.id,
+          receiptId: crypto.randomUUID(),
+          refundId: crypto.randomUUID(),
+          refunds,
+        },
+      );
+      if (!result.replayed)
+        await transaction.auditWriter.recordWithinTransaction({
+          action: "POS_REFUND_ISSUED",
+          actor: { userId: base.user.id },
+          organizationId: base.organization.id,
+          resource: "PAYMENT_REFUND",
+          resourceId: result.refund.id,
+        });
+      if (failAfterWrite) throw new Error("Simulated refund audit failure");
+      return result;
+    },
+  );
+}
+
+function seedReturnHold(base: Awaited<ReturnType<typeof seedCheckout>>) {
+  return prisma.stockLocation.create({
+    data: {
+      branchId: base.branch.id,
+      code: "RETURN-HOLD",
+      isSellable: false,
+      name: "Return hold",
+      organizationId: base.organization.id,
+      status: "ACTIVE",
+      type: "RETURN_HOLD",
+    },
+  });
+}
+
 async function seedOrganization(label: string) {
   const organization = await prisma.organization.create({
     data: { code: label, name: `Organization ${label}` },
@@ -1269,6 +1658,9 @@ async function seedOrganizationMember(organizationId: string, label: string) {
 }
 
 async function cleanDatabase() {
+  await prisma.paymentRefundReceipt.deleteMany();
+  await prisma.paymentRefundLine.deleteMany();
+  await prisma.paymentRefund.deleteMany();
   await prisma.posReturnReceipt.deleteMany();
   await prisma.posSaleReturnLine.deleteMany();
   await prisma.posSaleReturn.deleteMany();

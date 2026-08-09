@@ -293,6 +293,7 @@ function preparation(): PosReturnPreparation {
     },
     organizationId: ids.organization,
     originalReceiptNumber: "POS-RECEIPT-001",
+    cumulativeRefundedMinor: 0,
     returns: [],
   };
 }
@@ -371,10 +372,12 @@ class FakeReturns implements PosReturnRepository {
       adjustedPayableMinor: 10_000 - credit,
       checkoutId: ids.checkout,
       cumulativeReceivedMinor: 10_000,
+      cumulativeRefundedMinor: 0,
       legacyPaymentRecorded: true,
       lines: [],
       orderNumber: "POS-001",
       organizationId: ids.organization,
+      netReceivedMinor: 10_000,
       originalTotalMinor: 10_000,
       outstandingMinor: 0,
       refundableMinor: credit,

@@ -4,7 +4,7 @@
 
 A completed POS sale stays immutable. Its fulfilled sales order, fulfillment `ISSUE`, checkout-time payment batch, payment collections, sales receipt, and payment receipts remain historical facts. A merchandise return is an append-only `PosSaleReturn` with immutable lines and one immutable return receipt.
 
-The foundation records financial credit but does not issue money. When the customer has paid more than the adjusted sale value, the read model says **Refund due**, never refunded.
+The return foundation records financial credit but does not itself issue money. A later refund is a separate append-only checkout event described in [POS Refund Foundation](./pos-refund-foundation.md); existing return records and receipts remain unchanged.
 
 ## Inventory flow
 
@@ -24,16 +24,17 @@ Integer arithmetic prevents rounding drift. Repeated partial returns cannot exce
 
 ```text
 adjusted payable = original payment-batch payable - completed return credit
-cumulative received = checkout payment + payment collections
-amount due = max(adjusted payable - cumulative received, 0)
-refund due = max(cumulative received - adjusted payable, 0)
+gross received = checkout payment + payment collections
+net received = gross received - issued refunds
+amount due = max(adjusted payable - net received, 0)
+refund due = max(net received - adjusted payable, 0)
 ```
 
 The original `PaymentBatch` status is not rewritten. `PaymentAccount`, checkout projections, return results, and payment collection validation use the shared settlement calculation. Payment collection therefore cannot collect more than the adjusted amount due.
 
 ## Transaction and retry boundary
 
-Return creation and payment collection both lock the organization-scoped checkout row with `FOR UPDATE`. Return-versus-return, return-versus-collection, and collection-versus-collection operations serialize there. One outer Prisma transaction posts inventory, creates return history and receipt, and appends audit. There are no nested transactions.
+Return creation, payment collection, and refund recording all lock the organization-scoped checkout row with `FOR UPDATE`. Their competing operations serialize there. One outer Prisma transaction posts inventory or appends financial history, creates the relevant receipt, and appends audit. There are no nested transactions.
 
 Idempotency uniqueness is organization + checkout + key. A normalized signature contains destination, reason, normalized note, and sorted line IDs/quantities. Matching retries replay; a different payload conflicts. Replays do not duplicate stock, credit, receipts, or audit.
 

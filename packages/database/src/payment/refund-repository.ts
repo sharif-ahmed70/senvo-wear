@@ -1,129 +1,97 @@
 import {
-  calculateCumulativePaymentBalance,
   calculateCheckoutSettlement,
-  type CreatePaymentBatchRecord,
-  type CreatePaymentCollectionRecord,
-  type PaymentAccount,
+  type CreatePaymentRefundRecord,
   type PaymentBatch,
   type PaymentCollection,
-  type PaymentCollectionPreparation,
-  type PaymentRepository,
+  type PaymentRefund,
+  type PaymentRefundAccount,
+  type PaymentRefundPreparation,
+  type PaymentRefundRepository,
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-type PaymentPrismaClient = Pick<
+type RefundPrismaClient = Pick<
   PrismaClient,
   | "$queryRaw"
-  | "paymentBatch"
-  | "paymentCollection"
-  | "paymentCollectionLine"
+  | "paymentRefund"
+  | "paymentRefundLine"
   | "posCheckoutRecord"
   | "user"
 >;
-const batchInclude = { lines: { orderBy: { lineNumber: "asc" } } } as const;
-const collectionInclude = {
+const refundInclude = {
   acceptedBy: { select: { email: true, name: true } },
   lines: { orderBy: { lineNumber: "asc" } },
   receipt: { select: { id: true, receiptNumber: true } },
 } as const;
-const accountInclude = {
+const checkoutInclude = {
   organization: true,
-  paymentBatch: { include: batchInclude },
+  paymentBatch: { include: { lines: { orderBy: { lineNumber: "asc" } } } },
   paymentCollections: {
-    include: collectionInclude,
+    include: {
+      acceptedBy: { select: { email: true, name: true } },
+      lines: { orderBy: { lineNumber: "asc" } },
+      receipt: { select: { id: true, receiptNumber: true } },
+    },
     orderBy: { createdAt: "asc" },
   },
-  paymentRefunds: { select: { amountMinor: true } },
+  paymentRefunds: { include: refundInclude, orderBy: { issuedAt: "asc" } },
   posSaleReturns: { select: { totalCreditMinor: true } },
+  receipt: { select: { receiptNumber: true } },
   salesOrder: { select: { orderNumber: true } },
 } as const;
-type BatchRecord = Prisma.PaymentBatchGetPayload<{
-  include: typeof batchInclude;
+type RefundRecord = Prisma.PaymentRefundGetPayload<{
+  include: typeof refundInclude;
 }>;
-type CollectionRecord = Prisma.PaymentCollectionGetPayload<{
-  include: typeof collectionInclude;
-}>;
-type AccountRecord = Prisma.PosCheckoutRecordGetPayload<{
-  include: typeof accountInclude;
+type CheckoutRecord = Prisma.PosCheckoutRecordGetPayload<{
+  include: typeof checkoutInclude;
 }>;
 
-export class PrismaPaymentRepository implements PaymentRepository {
-  constructor(private readonly prisma: PaymentPrismaClient) {}
+export class PrismaPaymentRefundRepository implements PaymentRefundRepository {
+  constructor(private readonly prisma: RefundPrismaClient) {}
 
-  async create(record: CreatePaymentBatchRecord): Promise<PaymentBatch> {
-    const { lines, ...batch } = record;
-    return mapBatch(
-      await this.prisma.paymentBatch.create({
-        data: {
-          ...batch,
-          lines: {
-            create: lines.map((line, index) => ({
-              ...line,
-              lineNumber: index + 1,
-            })),
-          },
-        },
-        include: batchInclude,
-      }),
-    );
-  }
-
-  async createCollection(
-    record: CreatePaymentCollectionRecord,
-  ): Promise<PaymentCollection> {
-    const { acceptedByName, lines, receiptId, receiptNumber, ...collection } =
-      record;
-    void acceptedByName;
-    const created = await this.prisma.paymentCollection.create({
-      data: {
-        ...collection,
-      },
-    });
-    await this.prisma.paymentCollectionLine.createMany({
+  async create(record: CreatePaymentRefundRecord): Promise<PaymentRefund> {
+    const { lines, receiptId, receiptNumber, ...refund } = record;
+    const created = await this.prisma.paymentRefund.create({ data: refund });
+    await this.prisma.paymentRefundLine.createMany({
       data: lines.map((line, index) => ({
         ...line,
-        collectionId: created.id,
         createdAt: record.createdAt,
         lineNumber: index + 1,
         organizationId: record.organizationId,
+        refundId: created.id,
       })),
     });
-    const persisted = await this.prisma.paymentCollection.findUniqueOrThrow({
+    const persisted = await this.prisma.paymentRefund.findUniqueOrThrow({
       include: {
-        acceptedBy: collectionInclude.acceptedBy,
-        lines: collectionInclude.lines,
+        acceptedBy: refundInclude.acceptedBy,
+        lines: refundInclude.lines,
       },
       where: { id: created.id },
     });
-    return mapCollection({
+    return mapRefund({
       ...persisted,
       receipt: { id: receiptId, receiptNumber },
     });
   }
 
   async findAccountByCheckoutId(checkoutId: string, organizationId: string) {
-    const record = await this.prisma.posCheckoutRecord.findFirst({
-      include: accountInclude,
-      where: { id: checkoutId, organizationId },
-    });
+    const record = await this.findCheckout(checkoutId, organizationId);
     return record ? mapAccount(record) : null;
   }
 
-  async prepareCollection(
+  async prepare(
     checkoutId: string,
     organizationId: string,
     acceptedByUserId: string,
-  ): Promise<PaymentCollectionPreparation | null> {
+  ): Promise<PaymentRefundPreparation | null> {
     await this.prisma.$queryRaw`
       SELECT "id" FROM "pos_checkout_records"
-      WHERE "id" = ${checkoutId}::uuid AND "organization_id" = ${organizationId}::uuid
+      WHERE "id" = ${checkoutId}::uuid
+        AND "organization_id" = ${organizationId}::uuid
       FOR UPDATE
     `;
     const [record, acceptedBy] = await Promise.all([
-      this.prisma.posCheckoutRecord.findFirst({
-        include: accountInclude,
-        where: { id: checkoutId, organizationId },
-      }),
+      this.findCheckout(checkoutId, organizationId),
       this.prisma.user.findFirst({
         select: { email: true, name: true },
         where: {
@@ -136,13 +104,12 @@ export class PrismaPaymentRepository implements PaymentRepository {
     if (!record) return null;
     if (!acceptedBy)
       throw new Error(
-        "Trusted payment collector is not active in the organization.",
+        "Trusted refund staff is not active in the organization.",
       );
     return {
       acceptedByName: acceptedBy.name ?? acceptedBy.email,
       checkoutId: record.id,
       collections: record.paymentCollections.map(mapCollection),
-      cumulativeRefundedMinor: sumRefunds(record.paymentRefunds),
       initialPayment: record.paymentBatch
         ? mapBatch(record.paymentBatch)
         : null,
@@ -156,14 +123,54 @@ export class PrismaPaymentRepository implements PaymentRepository {
       organizationName: record.organization.name,
       organizationPhone: record.organization.phone,
       organizationPostalCode: record.organization.postalCode,
-      returnCreditMinor: sumReturnCredit(record.posSaleReturns),
+      originalReceiptNumber: record.receipt?.receiptNumber ?? null,
+      refunds: record.paymentRefunds.map(mapRefund),
+      returnCreditMinor: record.posSaleReturns.reduce(
+        (sum, item) => sum + item.totalCreditMinor,
+        0,
+      ),
       salesOrderId: record.salesOrderId,
       totalMinor: record.totalMinor,
     };
   }
+
+  private findCheckout(checkoutId: string, organizationId: string) {
+    return this.prisma.posCheckoutRecord.findFirst({
+      include: checkoutInclude,
+      where: { id: checkoutId, organizationId },
+    });
+  }
 }
 
-function mapBatch(record: BatchRecord): PaymentBatch {
+function mapRefund(record: RefundRecord): PaymentRefund {
+  return {
+    acceptedByName: record.acceptedBy.name ?? record.acceptedBy.email,
+    acceptedByUserId: record.acceptedByUserId,
+    amountMinor: record.amountMinor,
+    checkoutId: record.checkoutId,
+    createdAt: record.createdAt,
+    id: record.id,
+    idempotencyKey: record.idempotencyKey,
+    issuedAt: record.issuedAt,
+    lines: record.lines.map((line) => ({
+      amountMinor: line.amountMinor,
+      createdAt: line.createdAt,
+      id: line.id,
+      lineNumber: line.lineNumber,
+      method: line.method,
+      organizationId: line.organizationId,
+      reference: line.reference,
+      refundId: line.refundId,
+    })),
+    organizationId: record.organizationId,
+    receiptId: record.receipt?.id ?? "",
+    receiptNumber: record.receipt?.receiptNumber ?? "",
+    requestSignature: record.requestSignature,
+    salesOrderId: record.salesOrderId,
+  };
+}
+
+function mapBatch(record: CheckoutRecord["paymentBatch"] & {}): PaymentBatch {
   return {
     checkoutId: record.checkoutId,
     counterId: record.counterId,
@@ -193,7 +200,9 @@ function mapBatch(record: BatchRecord): PaymentBatch {
   };
 }
 
-function mapCollection(record: CollectionRecord): PaymentCollection {
+function mapCollection(
+  record: CheckoutRecord["paymentCollections"][number],
+): PaymentCollection {
   return {
     acceptedByName: record.acceptedBy.name ?? record.acceptedBy.email,
     acceptedByUserId: record.acceptedByUserId,
@@ -223,77 +232,56 @@ function mapCollection(record: CollectionRecord): PaymentCollection {
   };
 }
 
-function mapAccount(record: AccountRecord): PaymentAccount {
-  const returnCreditMinor = sumReturnCredit(record.posSaleReturns);
+function mapAccount(record: CheckoutRecord): PaymentRefundAccount {
+  const refunds = record.paymentRefunds.map(mapRefund);
+  const returnCreditMinor = record.posSaleReturns.reduce(
+    (sum, item) => sum + item.totalCreditMinor,
+    0,
+  );
   if (!record.paymentBatch)
     return {
       adjustedPayableMinor: null,
       checkoutId: record.id,
-      collections: [],
-      cumulativePaidMinor: null,
       cumulativeRefundedMinor: null,
       grossReceivedMinor: null,
-      currencyCode: "BDT",
-      initialPaidMinor: null,
-      initialPayments: [],
       legacyPaymentRecorded: false,
       netReceivedMinor: null,
       orderNumber: record.salesOrder.orderNumber,
-      originalPayableMinor: record.totalMinor,
       organizationId: record.organizationId,
+      originalPayableMinor: record.totalMinor,
       outstandingMinor: null,
       refundableMinor: null,
+      refunds,
       returnCreditMinor,
       settlementStatus: "UNRECORDED",
-      status: "UNRECORDED",
-      totalMinor: record.totalMinor,
     };
-  const collections = record.paymentCollections.map(mapCollection);
-  const balance = calculateCumulativePaymentBalance(
-    record.paymentBatch.payableMinor,
-    record.paymentBatch.paidMinor,
-    collections.map((item) => item.amountMinor),
+  const grossReceivedMinor =
+    record.paymentBatch.paidMinor +
+    record.paymentCollections.reduce((sum, item) => sum + item.amountMinor, 0);
+  const cumulativeRefundedMinor = refunds.reduce(
+    (sum, item) => sum + item.amountMinor,
+    0,
   );
   const settlement = calculateCheckoutSettlement(
     record.paymentBatch.payableMinor,
-    balance.paidMinor,
+    grossReceivedMinor,
     returnCreditMinor,
-    sumRefunds(record.paymentRefunds),
+    cumulativeRefundedMinor,
   );
   return {
     adjustedPayableMinor: settlement.adjustedPayableMinor,
     checkoutId: record.id,
-    collections,
-    cumulativePaidMinor: balance.paidMinor,
-    cumulativeRefundedMinor: settlement.cumulativeRefundedMinor,
-    grossReceivedMinor: settlement.grossReceivedMinor,
-    currencyCode: "BDT",
-    initialPaidMinor: record.paymentBatch.paidMinor,
-    initialPayments: record.paymentBatch.lines.map((line) => ({
-      amountMinor: line.amountMinor,
-      method: line.method,
-      reference: line.reference,
-    })),
+    cumulativeRefundedMinor,
+    grossReceivedMinor,
     legacyPaymentRecorded: true,
     netReceivedMinor: settlement.netReceivedMinor,
     orderNumber: record.salesOrder.orderNumber,
-    originalPayableMinor: record.paymentBatch.payableMinor,
     organizationId: record.organizationId,
+    originalPayableMinor: record.paymentBatch.payableMinor,
     outstandingMinor: settlement.outstandingMinor,
     refundableMinor: settlement.refundableMinor,
+    refunds,
     returnCreditMinor,
     settlementStatus: settlement.status,
-    status: settlement.status,
-    totalMinor: record.paymentBatch.payableMinor,
   };
-}
-
-function sumReturnCredit(
-  returns: readonly { totalCreditMinor: number }[],
-): number {
-  return returns.reduce((total, item) => total + item.totalCreditMinor, 0);
-}
-
-function sumRefunds(refunds: readonly { amountMinor: number }[]): number {
-  return refunds.reduce((total, item) => total + item.amountMinor, 0);
 }

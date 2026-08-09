@@ -3,9 +3,12 @@ import {
   calculateCumulativePaymentBalance,
   calculateCheckoutSettlement,
   calculatePaymentCollection,
+  calculatePaymentRefund,
   calculatePaymentBalance,
   createPaymentRequestSignature,
+  createPaymentRefundRequestSignature,
   normalizePaymentInstructions,
+  normalizePaymentRefundInstructions,
 } from "./payment-rules.js";
 import { describe, expect, it } from "vitest";
 
@@ -34,6 +37,128 @@ describe("checkout payment rules", () => {
       refundableMinor: 0,
       status: "SETTLED",
     });
+  });
+
+  it("derives gross, refunded, net, and final refund settlement", () => {
+    expect(
+      calculateCheckoutSettlement(10_000, 10_000, 3_000, 1_000),
+    ).toMatchObject({
+      adjustedPayableMinor: 7_000,
+      cumulativeRefundedMinor: 1_000,
+      grossReceivedMinor: 10_000,
+      netReceivedMinor: 9_000,
+      refundableMinor: 2_000,
+      status: "REFUND_DUE",
+    });
+    expect(
+      calculateCheckoutSettlement(10_000, 10_000, 3_000, 3_000),
+    ).toMatchObject({
+      netReceivedMinor: 7_000,
+      outstandingMinor: 0,
+      refundableMinor: 0,
+      status: "PAID",
+    });
+    expect(
+      calculateCheckoutSettlement(10_000, 10_000, 10_000, 10_000),
+    ).toMatchObject({
+      netReceivedMinor: 0,
+      status: "SETTLED",
+    });
+  });
+
+  it("rejects impossible refunded settlement states", () => {
+    expect(() => calculateCheckoutSettlement(10_000, 3_000, 0, 3_001)).toThrow(
+      BusinessRuleError,
+    );
+    expect(() =>
+      calculateCheckoutSettlement(10_000, 10_000, 0, Number.MAX_SAFE_INTEGER),
+    ).toThrow(ValidationApplicationError);
+  });
+
+  it("supports partial, split, and exact refunds while rejecting zero and over-refund", () => {
+    const split = normalizePaymentInstructions(
+      [
+        { amountMinor: 1_000, method: "CASH" },
+        { amountMinor: 2_000, method: "CARD", reference: " EXT-1 " },
+      ],
+      false,
+    );
+    expect(calculatePaymentRefund(3_000, split)).toBe(3_000);
+    expect(calculatePaymentRefund(3_000, [split[0]!])).toBe(1_000);
+    expect(() => calculatePaymentRefund(0, split)).toThrow(BusinessRuleError);
+    expect(() => calculatePaymentRefund(2_999, split)).toThrow(
+      BusinessRuleError,
+    );
+    expect(() => calculatePaymentRefund(3_000, [])).toThrow(
+      ValidationApplicationError,
+    );
+  });
+
+  it("creates an order-independent signature from normalized refund lines", () => {
+    const refunds = normalizePaymentInstructions(
+      [
+        { amountMinor: 1_000, method: "CASH" },
+        { amountMinor: 2_000, method: "CARD", reference: " EXT-1 " },
+      ],
+      false,
+    );
+    expect(createPaymentRefundRequestSignature(refunds)).toBe(
+      createPaymentRefundRequestSignature([...refunds].reverse()),
+    );
+    expect(createPaymentRefundRequestSignature(refunds)).not.toBe(
+      createPaymentRefundRequestSignature([
+        { ...refunds[0]!, amountMinor: 999 },
+        refunds[1]!,
+      ]),
+    );
+  });
+
+  it("canonicalizes clean and stale cash refund references identically", () => {
+    const clean = normalizePaymentRefundInstructions([
+      { amountMinor: 1_000, method: "CASH" },
+    ]);
+    const stale = normalizePaymentRefundInstructions([
+      {
+        amountMinor: 1_000,
+        method: "CASH",
+        reference: "stale-browser-value",
+      },
+    ]);
+
+    expect(clean).toEqual([
+      { amountMinor: 1_000, method: "CASH", reference: null },
+    ]);
+    expect(stale).toEqual(clean);
+    expect(createPaymentRefundRequestSignature(stale)).toBe(
+      createPaymentRefundRequestSignature(clean),
+    );
+  });
+
+  it.each(["CARD", "MOBILE_BANKING", "BANK_TRANSFER"] as const)(
+    "still requires a reference for %s refunds",
+    (method) => {
+      expect(() =>
+        normalizePaymentRefundInstructions([{ amountMinor: 1_000, method }]),
+      ).toThrow(ValidationApplicationError);
+    },
+  );
+
+  it("preserves non-cash refund reference normalization", () => {
+    expect(
+      normalizePaymentRefundInstructions([
+        {
+          amountMinor: 1_000,
+          method: "MOBILE_BANKING",
+          reference: "  REFUND   TXN  42  ",
+        },
+      ]),
+    ).toEqual([
+      {
+        amountMinor: 1_000,
+        method: "MOBILE_BANKING",
+        reference: "REFUND TXN 42",
+      },
+    ]);
   });
   it("accepts fully paid cash, non-cash, and split tenders", () => {
     expect(balance([{ amountMinor: 5000, method: "CASH" }], 5000)).toEqual({

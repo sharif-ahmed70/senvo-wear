@@ -288,6 +288,9 @@ model Organization {
   paymentCollections PaymentCollection[]
   paymentCollectionLines PaymentCollectionLine[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  paymentRefunds PaymentRefund[]
+  paymentRefundLines PaymentRefundLine[]
+  paymentRefundReceipts PaymentRefundReceipt[]
   posSaleReturns PosSaleReturn[]
   posSaleReturnLines PosSaleReturnLine[]
   posReturnReceipts PosReturnReceipt[]
@@ -315,6 +318,7 @@ model User {
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
+  acceptedPaymentRefunds PaymentRefund[]
   acceptedPosSaleReturns PosSaleReturn[]
 
   @@index([status])
@@ -357,6 +361,7 @@ model OrganizationMembership {
   completedPosCheckouts PosCheckoutRecord[]
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
+  acceptedPaymentRefunds PaymentRefund[]
   acceptedPosSaleReturns PosSaleReturn[]
 
   @@unique([userId, organizationId])
@@ -779,6 +784,8 @@ model PosCheckoutRecord {
   receipt      SalesReceipt?
   paymentCollections PaymentCollection[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  paymentRefunds PaymentRefund[]
+  paymentRefundReceipts PaymentRefundReceipt[]
   posSaleReturns PosSaleReturn[]
   posReturnReceipts PosReturnReceipt[]
 
@@ -970,6 +977,93 @@ model PosSaleReturn {
   @@map("pos_sale_returns")
 }
 
+model PaymentRefund {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  checkoutId       String   @map("checkout_id") @db.Uuid
+  salesOrderId     String   @map("sales_order_id") @db.Uuid
+  acceptedByUserId String   @map("accepted_by_user_id") @db.Uuid
+  idempotencyKey   String   @map("idempotency_key") @db.VarChar(64)
+  requestSignature String   @map("request_signature") @db.Text
+  amountMinor      Int      @map("amount_minor")
+  issuedAt         DateTime @map("issued_at") @db.Timestamptz(6)
+  createdAt        DateTime @map("created_at") @db.Timestamptz(6)
+
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  checkout           PosCheckoutRecord      @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_checkout_org_fkey")
+  salesOrder         SalesOrder             @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_order_org_fkey")
+  acceptedBy         User                   @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  acceptedMembership OrganizationMembership @relation(fields: [acceptedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_staff_org_fkey")
+  lines              PaymentRefundLine[]
+  receipt            PaymentRefundReceipt?
+
+  @@unique([id, organizationId], map: "payment_refunds_id_org_key")
+  @@unique([organizationId, checkoutId, idempotencyKey], map: "payment_refunds_org_checkout_idem_key")
+  @@index([organizationId, checkoutId, issuedAt, id], map: "payment_refunds_org_checkout_issued_idx")
+  @@index([organizationId, acceptedByUserId, issuedAt], map: "payment_refunds_org_staff_issued_idx")
+  @@map("payment_refunds")
+}
+
+model PaymentRefundLine {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  refundId       String        @map("refund_id") @db.Uuid
+  lineNumber     Int           @map("line_number")
+  method         PaymentMethod
+  amountMinor    Int           @map("amount_minor")
+  reference      String?       @db.VarChar(120)
+  createdAt      DateTime      @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  refund       PaymentRefund @relation(fields: [refundId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refund_lines_refund_org_fkey")
+
+  @@unique([refundId, lineNumber], map: "payment_refund_lines_refund_line_key")
+  @@index([organizationId, refundId], map: "payment_refund_lines_org_refund_idx")
+  @@map("payment_refund_lines")
+}
+
+model PaymentRefundReceipt {
+  id                       String                   @id @default(uuid()) @db.Uuid
+  organizationId           String                   @map("organization_id") @db.Uuid
+  refundId                 String                   @map("refund_id") @db.Uuid
+  checkoutId               String                   @map("checkout_id") @db.Uuid
+  salesOrderId             String                   @map("sales_order_id") @db.Uuid
+  receiptNumber            String                   @map("receipt_number") @db.VarChar(64)
+  originalReceiptNumber    String?                  @map("original_receipt_number") @db.VarChar(64)
+  organizationName         String                   @map("organization_name") @db.VarChar(160)
+  organizationPhone        String?                  @map("organization_phone") @db.VarChar(40)
+  organizationEmail        String?                  @map("organization_email") @db.VarChar(254)
+  organizationAddressLine1 String?                  @map("organization_address_line_1") @db.VarChar(240)
+  organizationAddressLine2 String?                  @map("organization_address_line_2") @db.VarChar(240)
+  organizationCity         String?                  @map("organization_city") @db.VarChar(120)
+  organizationDistrict     String?                  @map("organization_district") @db.VarChar(120)
+  organizationPostalCode   String?                  @map("organization_postal_code") @db.VarChar(120)
+  orderNumber              String                   @map("order_number") @db.VarChar(64)
+  acceptedByName           String                   @map("accepted_by_name") @db.VarChar(254)
+  amountMinor              Int                      @map("amount_minor")
+  originalPayableMinor     Int                      @map("original_payable_minor")
+  returnCreditMinor        Int                      @map("return_credit_minor")
+  adjustedPayableMinor     Int                      @map("adjusted_payable_minor")
+  grossReceivedMinor       Int                      @map("gross_received_minor")
+  cumulativeRefundedMinor  Int                      @map("cumulative_refunded_minor")
+  netReceivedMinor         Int                      @map("net_received_minor")
+  outstandingMinor         Int                      @map("outstanding_minor")
+  refundableMinor          Int                      @map("refundable_minor")
+  settlementStatus         CheckoutSettlementStatus @map("settlement_status")
+  issuedAt                 DateTime                 @map("issued_at") @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  refund       PaymentRefund     @relation(fields: [refundId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refund_receipts_refund_org_fkey")
+  checkout     PosCheckoutRecord @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refund_receipts_checkout_org_fkey")
+  salesOrder   SalesOrder        @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refund_receipts_order_org_fkey")
+
+  @@unique([id, organizationId], map: "payment_refund_receipts_id_org_key")
+  @@unique([refundId, organizationId], map: "payment_refund_receipts_refund_org_key")
+  @@unique([organizationId, receiptNumber], map: "payment_refund_receipts_org_number_key")
+  @@index([organizationId, issuedAt, id], map: "payment_refund_receipts_org_issued_idx")
+  @@map("payment_refund_receipts")
+}
+
 model PosSaleReturnLine {
   id                  String   @id @default(uuid()) @db.Uuid
   organizationId      String   @map("organization_id") @db.Uuid
@@ -1023,6 +1117,8 @@ model PosReturnReceipt {
   cumulativeReturnCreditMinor Int                      @map("cumulative_return_credit_minor")
   adjustedPayableMinor        Int                      @map("adjusted_payable_minor")
   cumulativeReceivedMinor     Int                      @map("cumulative_received_minor")
+  cumulativeRefundedMinor     Int                      @map("cumulative_refunded_minor")
+  netReceivedMinor            Int                      @map("net_received_minor")
   outstandingMinor            Int                      @map("outstanding_minor")
   refundableMinor             Int                      @map("refundable_minor")
   settlementStatus            CheckoutSettlementStatus @map("settlement_status")
@@ -1351,6 +1447,8 @@ model SalesOrder {
   salesReceipt         SalesReceipt?
   paymentCollections   PaymentCollection[]
   paymentCollectionReceipts PaymentCollectionReceipt[]
+  paymentRefunds PaymentRefund[]
+  paymentRefundReceipts PaymentRefundReceipt[]
   posSaleReturns PosSaleReturn[]
   posReturnReceipts PosReturnReceipt[]
 

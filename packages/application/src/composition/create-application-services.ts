@@ -17,6 +17,7 @@ import {
   PrismaPosCheckoutRepository,
   PrismaPosReturnRepository,
   PrismaPaymentRepository,
+  PrismaPaymentRefundRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
@@ -47,6 +48,8 @@ import type {
   PosCheckoutRepository,
   PosReturnRepository,
   PaymentRepository,
+  PaymentRefundRepository,
+  PaymentRefundReceiptRepository,
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
@@ -84,6 +87,8 @@ export type CreateApplicationServicesOptions = {
   posRepository?: PosRepository;
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;
+  paymentRefundRepository?: PaymentRefundRepository;
+  paymentRefundReceiptRepository?: PaymentRefundReceiptRepository;
   receiptRepository?: ReceiptRepository;
   posReturnRepository?: PosReturnRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
@@ -138,6 +143,8 @@ export function createApplicationServices(
   let posRepository = options.posRepository;
   let posCheckoutRepository = options.posCheckoutRepository;
   let paymentRepository = options.paymentRepository;
+  let paymentRefundRepository = options.paymentRefundRepository;
+  let paymentRefundReceiptRepository = options.paymentRefundReceiptRepository;
   let receiptRepository = options.receiptRepository;
   let posReturnRepository = options.posReturnRepository;
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
@@ -262,6 +269,10 @@ export function createApplicationServices(
   paymentRepository ??= new PrismaPaymentRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!paymentRefundRepository && prismaClient)
+    paymentRefundRepository = new PrismaPaymentRefundRepository(prismaClient);
+  if (!paymentRefundReceiptRepository && prismaClient)
+    paymentRefundReceiptRepository = new PrismaReceiptRepository(prismaClient);
   if (!posReturnRepository && prismaClient)
     posReturnRepository = new PrismaPosReturnRepository(prismaClient);
   if (!posReturnReceiptRepository && prismaClient)
@@ -314,6 +325,8 @@ export function createApplicationServices(
       memberships: membershipRepository,
       pos: posRepository,
       payments: paymentRepository,
+      refunds: paymentRefundRepository,
+      refundReceipts: paymentRefundReceiptRepository,
       receipts: receiptRepository,
       returns: posReturnRepository,
       returnReceipts: posReturnReceiptRepository,
