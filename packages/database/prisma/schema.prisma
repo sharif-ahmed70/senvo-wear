@@ -67,6 +67,25 @@ enum ProductVariantStatus {
   ARCHIVED
 }
 
+enum MediaType {
+  IMAGE
+}
+
+enum MediaAssetStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CatalogMediaRole {
+  PRIMARY
+  GALLERY
+}
+
+enum CatalogMediaLinkStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum CommerceOrderSource {
   STOREFRONT
 }
@@ -269,6 +288,8 @@ model Organization {
   categories     Category[]
   collections    Collection[]
   colors         Color[]
+  mediaAssets    MediaAsset[]
+  catalogMediaLinks CatalogMediaLink[]
   posCounters    PosCounter[]
   products       Product[]
   sizes          Size[]
@@ -612,6 +633,7 @@ model Product {
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   category     Category            @relation(fields: [categoryId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   collections  ProductCollection[]
+  mediaLinks   CatalogMediaLink[]
   variants     ProductVariant[]
 
   @@unique([id, organizationId])
@@ -620,6 +642,54 @@ model Product {
   @@index([organizationId, categoryId])
   @@index([organizationId, status])
   @@map("products")
+}
+
+model MediaAsset {
+  id               String           @id @default(uuid()) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  storageKey       String           @map("storage_key") @db.VarChar(500)
+  mediaType        MediaType        @default(IMAGE) @map("media_type")
+  contentType      String           @map("content_type") @db.VarChar(100)
+  byteSize         Int              @map("byte_size")
+  altText          String           @map("alt_text") @db.VarChar(240)
+  status           MediaAssetStatus @default(ACTIVE)
+  idempotencyKey   String           @map("idempotency_key") @db.VarChar(120)
+  requestSignature String           @map("request_signature") @db.VarChar(64)
+  version          Int              @default(1)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  catalogLinks CatalogMediaLink[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, storageKey])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt, id])
+  @@map("media_assets")
+}
+
+model CatalogMediaLink {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  mediaAssetId   String                 @map("media_asset_id") @db.Uuid
+  productId      String                 @map("product_id") @db.Uuid
+  role           CatalogMediaRole       @default(PRIMARY)
+  sortOrder      Int                    @default(0) @map("sort_order")
+  status         CatalogMediaLinkStatus @default(ACTIVE)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  mediaAsset   MediaAsset   @relation(fields: [mediaAssetId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  product      Product      @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([mediaAssetId])
+  @@unique([productId], map: "catalog_media_links_one_active_primary_per_product", where: { role: "PRIMARY", status: "ACTIVE" })
+  @@index([organizationId, productId, role, status])
+  @@index([organizationId, mediaAssetId])
+  @@map("catalog_media_links")
 }
 
 model ProductVariant {

@@ -18,6 +18,7 @@ const page = (current: number, hasMore: boolean): StorefrontCatalog => ({
       description: null,
       id: `product-${current}`,
       name: `Product ${current}`,
+      primaryImage: null,
       productCode: `PRODUCT-${current}`,
       slug: `product-${current}`,
       variants: [],

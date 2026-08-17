@@ -14,6 +14,8 @@ import {
   createProductVariantServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
+  removePrimaryProductImageServiceInputSchema,
+  setPrimaryProductImageServiceInputSchema,
   getVariantAvailabilityServiceInputSchema,
   listInventoryAvailabilityServiceInputSchema,
   listInventoryMovementsServiceInputSchema,
@@ -58,6 +60,9 @@ import {
   type PostInventoryMovementServiceInputContract,
   type ProductContract,
   type ProductDetailsContract,
+  type PrimaryProductImageContract,
+  type RemovePrimaryProductImageServiceInputContract,
+  type SetPrimaryProductImageServiceInputContract,
   type ProductVariantContract,
   type SalesOrderServiceContract,
   type SalesOrderDetailsReadContract,
@@ -208,6 +213,18 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductDetailsContract>>;
+  getPrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PrimaryProductImageContract | null>>;
+  setPrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PrimaryProductImageContract>>;
+  removePrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<null>>;
   listCategories(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -267,6 +284,9 @@ export type CatalogApiHandlers = {
   createVariant: ApiHandler<ProductVariantContract>;
   createSize: ApiHandler<SizeContract>;
   getProduct: ApiHandler<ProductDetailsContract>;
+  getPrimaryProductImage: ApiHandler<PrimaryProductImageContract | null>;
+  setPrimaryProductImage: ApiHandler<PrimaryProductImageContract>;
+  removePrimaryProductImage: ApiHandler<null>;
   listCategories: ApiHandler<CategoryContract[]>;
   listCollections: ApiHandler<CollectionContract[]>;
   listColors: ApiHandler<ColorContract[]>;
@@ -373,6 +393,33 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.getProduct(context, input),
       inputSchema: getProductServiceInputSchema,
+    }),
+    getPrimaryProductImage: protectedHandler<
+      RemovePrimaryProductImageServiceInputContract,
+      PrimaryProductImageContract | null
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.getPrimaryProductImage(context, input),
+      inputSchema: removePrimaryProductImageServiceInputSchema,
+    }),
+    setPrimaryProductImage: protectedHandler<
+      SetPrimaryProductImageServiceInputContract,
+      PrimaryProductImageContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.setPrimaryProductImage(context, input),
+      inputSchema: setPrimaryProductImageServiceInputSchema,
+    }),
+    removePrimaryProductImage: protectedHandler<
+      RemovePrimaryProductImageServiceInputContract,
+      null
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.removePrimaryProductImage(context, input),
+      inputSchema: removePrimaryProductImageServiceInputSchema,
     }),
     listCategories: protectedHandler<
       ListCatalogItemsServiceInputContract,

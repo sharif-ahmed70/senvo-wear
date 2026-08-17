@@ -308,6 +308,7 @@ function mapProduct(
     description: product.description,
     id: product.id,
     name: product.name,
+    primaryImage: null,
     productCode: product.productCode,
     slug: product.slug,
     variants: product.variants.map((variant) => ({

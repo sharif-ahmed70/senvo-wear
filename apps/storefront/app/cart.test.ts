@@ -29,6 +29,7 @@ const product = {
   description: null,
   id: "product-1",
   name: "Everyday Tee",
+  primaryImage: null,
   productCode: "TEE",
   slug: "everyday-tee",
   variants: [variant],

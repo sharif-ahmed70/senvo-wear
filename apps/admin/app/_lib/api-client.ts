@@ -25,6 +25,8 @@ import type {
   ListStockLocationsServiceInputContract,
   ProductContract,
   ProductDetailsContract,
+  PrimaryProductImageContract,
+  SetPrimaryProductImageServiceInputContract,
   ProductVariantContract,
   OrganizationProfileContract,
   PublicErrorDetails,
@@ -311,6 +313,24 @@ export class AdminApiClient {
       `/catalog/products/${productId}`,
       request,
     );
+  }
+
+  setPrimaryProductImage(
+    input: SetPrimaryProductImageServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { productId, ...body } = input;
+    return this.request<PrimaryProductImageContract>(
+      `/catalog/products/${productId}/primary-image`,
+      { ...request, body, method: "PUT" },
+    );
+  }
+
+  removePrimaryProductImage(productId: string, request?: AdminApiRequest) {
+    return this.request<null>(`/catalog/products/${productId}/primary-image`, {
+      ...request,
+      method: "DELETE",
+    });
   }
 
   listVariants(productId: string, request?: AdminApiRequest) {

@@ -3,6 +3,7 @@ import {
   PrismaCategoryRepository,
   PrismaCollectionRepository,
   PrismaColorRepository,
+  PrismaCatalogMediaRepository,
   PrismaInventoryMovementRepository,
   PrismaInventoryReadRepository,
   PrismaBranchRepository,
@@ -32,6 +33,7 @@ import type {
   CatalogCategoryManagementRepository,
   CatalogCollectionManagementRepository,
   CatalogColorManagementRepository,
+  CatalogMediaRepository,
   CatalogProductManagementRepository,
   CatalogProductVariantManagementRepository,
   CatalogSizeManagementRepository,
@@ -58,11 +60,16 @@ import type {
   StorefrontRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
+import {
+  LocalFileObjectStorageProvider,
+  type ObjectStorageProvider,
+} from "@senvo/storage";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
 import { systemClock, type Clock } from "../context/clock.js";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { CatalogApplicationService } from "../catalog/catalog-application-service.js";
+import { CatalogMediaApplicationService } from "../catalog/catalog-media-application-service.js";
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
@@ -83,6 +90,7 @@ export type CreateApplicationServicesOptions = {
   inventoryMovementRepository?: InventoryMovementRepository;
   inventoryReadRepository?: InventoryReadRepository;
   logger?: Logger;
+  mediaRepository?: CatalogMediaRepository;
   organizationRepository?: OrganizationRepository;
   membershipRepository?: OrganizationMembershipRepository &
     OrganizationTeamReadRepository;
@@ -107,6 +115,7 @@ export type CreateApplicationServicesOptions = {
   storefrontOrganizationCode?: string;
   storefrontRepository?: StorefrontRepository;
   sizeRepository?: CatalogSizeManagementRepository;
+  storageProvider?: ObjectStorageProvider;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
 };
@@ -138,6 +147,7 @@ export function createApplicationServices(
   let barcodeRepository = options.barcodeRepository;
   let collectionRepository = options.collectionRepository;
   let colorRepository = options.colorRepository;
+  let mediaRepository = options.mediaRepository;
   let organizationRepository = options.organizationRepository;
   let organizationProfileRepository = options.organizationProfileRepository;
   let branchRepository = options.branchRepository;
@@ -243,6 +253,9 @@ export function createApplicationServices(
   colorRepository ??= new PrismaColorRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!mediaRepository && prismaClient) {
+    mediaRepository = new PrismaCatalogMediaRepository(prismaClient);
+  }
   organizationRepository ??= new PrismaOrganizationRepository(
     requirePrismaClient(prismaClient),
   );
@@ -289,6 +302,17 @@ export function createApplicationServices(
   if (!posReturnReceiptRepository && prismaClient)
     posReturnReceiptRepository = new PrismaReceiptRepository(prismaClient);
 
+  const mediaService = mediaRepository
+    ? new CatalogMediaApplicationService({
+        authorizationService: options.authorizationService,
+        media: mediaRepository,
+        products: productRepository,
+        requestIdGenerator: options.requestIdGenerator,
+        storage: resolveStorageProvider(options.storageProvider),
+        transactionManager,
+      })
+    : undefined;
+
   return {
     catalog: new CatalogApplicationService({
       barcodes: barcodeRepository,
@@ -296,6 +320,7 @@ export function createApplicationServices(
       categories: categoryRepository,
       collections: collectionRepository,
       colors: colorRepository,
+      mediaService,
       organizations: organizationRepository,
       products: productRepository,
       productVariants: productVariantRepository,
@@ -360,6 +385,7 @@ export function createApplicationServices(
       transactionManager,
     }),
     storefront: new StorefrontApplicationService({
+      mediaService,
       organizationCode:
         options.storefrontOrganizationCode ??
         process.env.STOREFRONT_ORGANIZATION_CODE ??
@@ -378,4 +404,18 @@ function requirePrismaClient(
     throw new Error("Prisma client is required for default repositories.");
   }
   return prismaClient;
+}
+
+function resolveStorageProvider(
+  provider: ObjectStorageProvider | undefined,
+): ObjectStorageProvider {
+  if (provider) return provider;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "A production object storage provider must be configured explicitly.",
+    );
+  }
+  return new LocalFileObjectStorageProvider(
+    process.env.MEDIA_STORAGE_ROOT ?? ".senvo-media",
+  );
 }

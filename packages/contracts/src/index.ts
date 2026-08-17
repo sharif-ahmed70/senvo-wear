@@ -594,6 +594,34 @@ export const getProductServiceInputSchema = z
   .object({ productId: idSchema })
   .strict();
 
+export const primaryProductImageSchema = z
+  .object({
+    altText: z.string().min(1).max(240),
+    assetId: idSchema,
+    byteSize: z.number().int().positive().max(5_242_880),
+    contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    url: z.string().min(1).max(10_000_000),
+  })
+  .strict();
+
+export const setPrimaryProductImageServiceInputSchema = z
+  .object({
+    altText: z.string().trim().min(1).max(240),
+    contentBase64: z
+      .string()
+      .min(4)
+      .max(6_990_508)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    idempotencyKey: idempotencyKeySchema,
+    productId: idSchema,
+  })
+  .strict();
+
+export const removePrimaryProductImageServiceInputSchema = z
+  .object({ productId: idSchema })
+  .strict();
+
 export const createProductVariantServiceInputSchema =
   createProductVariantInputSchema.omit({ organizationId: true }).strict();
 
@@ -1461,6 +1489,12 @@ export type CreateProductServiceInputContract = z.infer<
 export type GetProductServiceInputContract = z.infer<
   typeof getProductServiceInputSchema
 >;
+export type SetPrimaryProductImageInputContract = z.infer<
+  typeof setPrimaryProductImageServiceInputSchema
+>;
+export type RemovePrimaryProductImageInputContract = z.infer<
+  typeof removePrimaryProductImageServiceInputSchema
+>;
 export type CreateProductVariantServiceInputContract = z.infer<
   typeof createProductVariantServiceInputSchema
 >;
@@ -1744,9 +1778,20 @@ export type ProductVariantContract = CatalogRecordContract & {
 
 export type ProductDetailsContract = {
   collectionIds: string[];
+  primaryImage: PrimaryProductImageContract | null;
   product: ProductContract;
   variants: ProductVariantContract[];
 };
+
+export type PrimaryProductImageContract = z.infer<
+  typeof primaryProductImageSchema
+>;
+export type SetPrimaryProductImageServiceInputContract = z.infer<
+  typeof setPrimaryProductImageServiceInputSchema
+>;
+export type RemovePrimaryProductImageServiceInputContract = z.infer<
+  typeof removePrimaryProductImageServiceInputSchema
+>;
 
 export type VariantBarcodeContract = z.infer<
   typeof variantBarcodeContractSchema
@@ -2106,6 +2151,7 @@ export const barcodeLookupContractSchema = z
 export const productDetailsContractSchema = z
   .object({
     collectionIds: z.array(idSchema),
+    primaryImage: primaryProductImageSchema.nullable(),
     product: productContractSchema,
     variants: z.array(productVariantContractSchema),
   })

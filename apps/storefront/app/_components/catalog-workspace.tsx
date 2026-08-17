@@ -83,7 +83,7 @@ export function CatalogWorkspace() {
     </main>
   );
 }
-function ProductCard({ product }: { product: StorefrontProduct }) {
+export function ProductCard({ product }: { product: StorefrontProduct }) {
   const first =
     product.variants.find((variant) => variant.availability === "IN_STOCK") ??
     product.variants[0];
@@ -101,7 +101,17 @@ function ProductCard({ product }: { product: StorefrontProduct }) {
         href={`/products/${product.slug}`}
         aria-label={`View ${product.name}`}
       >
-        <span>{product.category.name}</span>
+        {product.primaryImage ? (
+          <img
+            alt={product.primaryImage.altText}
+            height={480}
+            loading="lazy"
+            src={product.primaryImage.url}
+            width={480}
+          />
+        ) : (
+          <span>{product.category.name}</span>
+        )}
       </a>
       <div className="product-copy">
         <div>

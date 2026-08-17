@@ -5,6 +5,7 @@ import {
   createProtectedApiHandler,
   type ApiHandler,
   type ApiRequest,
+  type CatalogApiHandlers,
   type OrganizationManagementApiHandlers,
   type PosApiHandlers,
   type StorefrontApiHandlers,
@@ -73,6 +74,7 @@ describe("Node HTTP runtime adapter", () => {
           description: null,
           id: "product-1",
           name: "Everyday Tee",
+          primaryImage: null,
           productCode: "TEE-1",
           slug: "everyday-tee",
           variants: [],
@@ -468,6 +470,72 @@ describe("Node HTTP runtime adapter", () => {
       role: "MANAGER",
       teamMemberId: movementId,
     });
+  });
+
+  it("maps the media product path and allows its bounded upload envelope", async () => {
+    const media = new RecordingApiHandler(
+      createApiSuccess({ assetId: movementId }, suppliedRequestId),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        catalog: {
+          getPrimaryProductImage: fallback,
+          removePrimaryProductImage: fallback,
+          setPrimaryProductImage: media,
+        } as unknown as CatalogApiHandlers,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    const response = await fetch(
+      `${runtime.url}/catalog/products/${movementId}/primary-image`,
+      {
+        body: JSON.stringify({ contentBase64: "A".repeat(1_100_000) }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "PUT",
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(media.requests.at(0)?.input).toMatchObject({
+      productId: movementId,
+    });
+  });
+
+  it("rejects media bodies beyond the dedicated upload limit", async () => {
+    const media = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        catalog: {
+          getPrimaryProductImage: fallback,
+          removePrimaryProductImage: fallback,
+          setPrimaryProductImage: media,
+        } as unknown as CatalogApiHandlers,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    const response = await fetch(
+      `${runtime.url}/catalog/products/${movementId}/primary-image`,
+      {
+        body: JSON.stringify({ contentBase64: "A".repeat(7_100_000) }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "PUT",
+      },
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      error: { code: "VALIDATION.PAYLOAD_TOO_LARGE" },
+      requestId: suppliedRequestId,
+    });
+    expect(media.requests).toHaveLength(0);
   });
 
   it("rejects malformed JSON without calling an API handler", async () => {

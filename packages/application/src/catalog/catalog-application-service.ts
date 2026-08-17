@@ -72,6 +72,9 @@ import {
   type GetProductServiceInputContract,
   type ListCatalogItemsServiceInputContract,
   type ListProductVariantsServiceInputContract,
+  type PrimaryProductImageContract,
+  type RemovePrimaryProductImageServiceInputContract,
+  type SetPrimaryProductImageServiceInputContract,
   type ProductContract,
   type ProductDetailsContract,
   type ProductVariantContract,
@@ -95,6 +98,7 @@ import {
   ValidationApplicationServiceError,
   type ApplicationServiceResult,
 } from "../errors/application-error.js";
+import type { CatalogMediaApplicationService } from "./catalog-media-application-service.js";
 
 type SafeParseSchema<T> = {
   safeParse(input: unknown):
@@ -111,6 +115,7 @@ export type CatalogApplicationServiceDependencies = {
   categories: CatalogCategoryManagementRepository;
   collections: CatalogCollectionManagementRepository;
   colors: CatalogColorManagementRepository;
+  mediaService?: CatalogMediaApplicationService;
   organizations: OrganizationRepository;
   products: CatalogProductManagementRepository;
   productVariants: CatalogProductVariantManagementRepository;
@@ -124,6 +129,7 @@ export class CatalogApplicationService {
   private readonly categories: CatalogCategoryManagementRepository;
   private readonly collections: CatalogCollectionManagementRepository;
   private readonly colors: CatalogColorManagementRepository;
+  private readonly mediaService?: CatalogMediaApplicationService;
   private readonly organizations: OrganizationRepository;
   private readonly products: CatalogProductManagementRepository;
   private readonly productVariants: CatalogProductVariantManagementRepository;
@@ -136,6 +142,7 @@ export class CatalogApplicationService {
     this.categories = dependencies.categories;
     this.collections = dependencies.collections;
     this.colors = dependencies.colors;
+    this.mediaService = dependencies.mediaService;
     this.organizations = dependencies.organizations;
     this.products = dependencies.products;
     this.productVariants = dependencies.productVariants;
@@ -402,11 +409,18 @@ export class CatalogApplicationService {
       if (!product) {
         throw new NotFoundError("Product was not found.");
       }
+      const primaryImage = this.mediaService
+        ? await this.mediaService.readProjection(
+            validated.organizationId,
+            product.id,
+          )
+        : null;
       return productDetailsContractSchema.parse({
         collectionIds: await this.products.listCollectionIds(
           validated.organizationId,
           product.id,
         ),
+        primaryImage,
         product: mapProduct(product),
         variants: (
           await this.productVariants.listByProduct(
@@ -544,6 +558,33 @@ export class CatalogApplicationService {
     });
   }
 
+  getPrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: RemovePrimaryProductImageServiceInputContract,
+  ): Promise<ApplicationServiceResult<PrimaryProductImageContract | null>> {
+    return this.mediaService
+      ? this.mediaService.getPrimaryProductImage(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  setPrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: SetPrimaryProductImageServiceInputContract,
+  ): Promise<ApplicationServiceResult<PrimaryProductImageContract>> {
+    return this.mediaService
+      ? this.mediaService.setPrimaryProductImage(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  removePrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: RemovePrimaryProductImageServiceInputContract,
+  ): Promise<ApplicationServiceResult<null>> {
+    return this.mediaService
+      ? this.mediaService.removePrimaryProductImage(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
   private authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -677,6 +718,16 @@ function mapRecord<T extends { createdAt: Date; updatedAt: Date }>(
   };
 }
 
+function mediaNotConfigured(requestId: string = crypto.randomUUID()) {
+  return {
+    error: new ApplicationServiceError({
+      code: "INTERNAL_ERROR",
+      message: "Product media is not configured.",
+    }).toShape(requestId),
+    ok: false as const,
+  };
+}
+
 export type {
   CreateCategoryServiceInputContract,
   CreateCollectionServiceInputContract,
@@ -690,4 +741,6 @@ export type {
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,
+  RemovePrimaryProductImageServiceInputContract,
+  SetPrimaryProductImageServiceInputContract,
 };

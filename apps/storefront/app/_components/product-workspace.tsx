@@ -43,7 +43,16 @@ export function ProductWorkspace({ slug }: { slug: string }) {
         <ArrowLeft size={17} /> Back to shop
       </Link>
       <div className="detail-visual">
-        <span>{product.category.name}</span>
+        {product.primaryImage ? (
+          <img
+            alt={product.primaryImage.altText}
+            height={720}
+            src={product.primaryImage.url}
+            width={720}
+          />
+        ) : (
+          <span>{product.category.name}</span>
+        )}
       </div>
       <section className="detail-copy">
         <p className="eyebrow">{product.productCode}</p>
