@@ -6,7 +6,8 @@ export type AuditAction =
   | "POS_REFUND_ISSUED"
   | "POS_SALE_RETURN_RECORDED"
   | "SALES_RECEIPT_ISSUED"
-  | "SALES_ORDER_CREATED";
+  | "SALES_ORDER_CREATED"
+  | "STOREFRONT_ORDER_PLACED";
 
 export type AuditResource =
   | "INVENTORY_MOVEMENT"

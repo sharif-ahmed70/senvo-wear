@@ -9,9 +9,15 @@ export type SalesOrderCustomerSnapshot = {
 };
 
 export type SalesOrderListReadItem = {
+  channel: SalesOrderChannel;
+  commerce: {
+    paymentPreference: "CASH_ON_DELIVERY";
+    source: "STOREFRONT";
+  } | null;
   createdAt: Date;
   currencyCode: string;
   customer: SalesOrderCustomerSnapshot;
+  delivery: { city: string | null; district: string | null };
   id: string;
   orderNumber: string;
   status: SalesOrderStatus;
@@ -21,6 +27,10 @@ export type SalesOrderListReadItem = {
 export type SalesOrderDetailsReadItem = {
   boothId: string | null;
   channel: SalesOrderChannel;
+  commerce: {
+    paymentPreference: "CASH_ON_DELIVERY";
+    source: "STOREFRONT";
+  } | null;
   currencyCode: string;
   customer: SalesOrderCustomerSnapshot;
   delivery: {
@@ -98,6 +108,7 @@ export type SalesOrderReadRepository = {
     salesOrderId: string;
   }): Promise<SalesOrderDetailsReadItem | null>;
   list(input: {
+    channel?: SalesOrderChannel;
     cursor?: string;
     order: SalesOrderDateOrder;
     organizationId: string;

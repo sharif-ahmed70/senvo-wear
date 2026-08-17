@@ -1678,6 +1678,7 @@ async function cleanDatabase() {
   await prisma.salesSession.deleteMany();
   await prisma.salesCounter.deleteMany();
   await prisma.salesOrderLine.deleteMany();
+  await prisma.salesOrderCommerceProfile.deleteMany();
   await prisma.salesOrder.deleteMany();
   await prisma.salesBooth.deleteMany();
   await prisma.variantBarcode.deleteMany();

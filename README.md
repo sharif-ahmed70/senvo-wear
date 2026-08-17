@@ -1,10 +1,10 @@
 # SENVO Wear
 
-SENVO Wear is the technical foundation for a future data-driven clothing business ecosystem. The current repository is only a bootstrap: it prepares the monorepo, shared package boundaries, quality gates, documentation, and database tooling without implementing business features.
+SENVO Wear is a modular clothing ERP with operational Admin, POS, and customer Storefront applications backed by shared domain, application, API, PostgreSQL, authorization, transaction, and audit boundaries.
 
 ## Current Status
 
-Foundation plus the first business identity slice. Organization and catalog identity models exist for taxonomy and product/variant identity only. There is no authentication, storefront commerce, POS transaction flow, inventory logic, pricing, payment integration, CRM, dashboard workflow, or order model.
+The repository includes organization/team access, catalog and barcodes, inventory and reservations, sales orders, POS checkout/payment/receipts/returns/refunds, and the first guest Storefront commerce vertical slice. See [docs/product-status.md](docs/product-status.md) before planning new product work.
 
 ## Architecture Summary
 
@@ -12,12 +12,12 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 ## Repository Structure
 
-- `apps/storefront`: future customer storefront, currently a minimal foundation page on port `3000`.
-- `apps/admin`: future admin and owner operations app, currently a minimal foundation shell on port `3001`.
-- `apps/pos`: future online-first showroom POS, currently a minimal touch-friendly shell on port `3002`.
+- `apps/storefront`: public catalog, guest bag, checkout, and order confirmation on port `3000`.
+- `apps/admin`: owner/staff operational workspace on port `3001`.
+- `apps/pos`: standalone showroom POS shell on port `3002`; current guided selling workflows are in `apps/admin`.
 - `packages/ui`: small accessible UI primitives and design tokens.
-- `packages/database`: PostgreSQL-ready Prisma foundation.
-- `packages/domain`: domain boundary documentation and neutral types.
+- `packages/database`: Prisma/PostgreSQL persistence, repositories, migrations, and transaction infrastructure.
+- `packages/domain`: business models, policies, repository contracts, and use cases.
 - `packages/contracts`: API-facing contract boundary.
 - `packages/config`: shared TypeScript, ESLint, and test configuration.
 - `packages/logger`: structured logging boundary.
@@ -30,7 +30,7 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 - Node.js 22 LTS is the repository runtime target. CI pins `22.23.1`; local tooling requires `>=22.13`.
 - pnpm `11.9.0`.
-- PostgreSQL is required for migration and catalog integration verification. No database is required to render the placeholder apps or run static checks.
+- PostgreSQL is required for the full migration and integration verification gate. Static checks, unit tests, and application builds do not require a running database.
 
 Enable pnpm with Corepack if needed:
 
@@ -54,6 +54,8 @@ Required foundation variables:
 - `DATABASE_URL`: PostgreSQL connection string for Prisma commands that need datasource validation.
 - `APP_ENV`: server-side environment label such as `development`, `staging`, or `production`.
 - `NEXT_PUBLIC_APP_ENV`: non-secret application environment label.
+- `STOREFRONT_ORGANIZATION_CODE`: server-only organization code used to resolve the public Storefront tenant.
+- `NEXT_PUBLIC_SENVO_API_URL`: public HTTP API base URL consumed by Storefront and Admin clients.
 
 For database verification, copy `.env.test.example` into an untracked local file or export equivalent values. Test database names must clearly include `test`; scripts refuse production-like environment labels and production/staging-looking database targets.
 
@@ -109,21 +111,20 @@ Production migrations must use reviewed Prisma migrations, not production `db pu
 
 ## Verification Status
 
-- Local static checks and build can run without PostgreSQL.
-- Local verification in this workspace used Node.js 24.18.0; CI is configured to verify Node.js 22.23.1.
-- PostgreSQL migration and catalog integration verification have not run locally because Docker/PostgreSQL are unavailable in this workspace.
-- The first Prisma migration is generated and reviewed, but it has not been applied locally here.
-- CI is configured, including PostgreSQL integration, but this repository has not yet observed a remote CI run.
+- The quality gate covers package boundaries, formatting, linting, typechecking, unit tests, Prisma validation and generation, application builds, and dependency audit.
+- PostgreSQL integration covers migration deploy/status, repository and transaction tests, reset/reapply, a second integration pass, and drift detection.
+- CI runs on Node.js 22.23.1 with PostgreSQL 17.
 
 ## Important Limitations
 
-- Placeholder applications only.
-- No catalog UI, inventory, pricing, orders, or publishing workflow.
+- Production login and session transport is not complete; credential, identity, membership, and authorization foundations exist.
+- Product media and publishing workflows are not implemented.
+- Storefront checkout currently supports guest cash-on-delivery orders; online payment and courier integration are not implemented.
+- The standalone `apps/pos` shell remains a placeholder; current guided POS workflows are served through the Admin application.
 - No real branding or logo system.
 - No production deployment configuration.
-- CI is configured for Node 22 LTS, while this workspace may be verified locally with a different installed runtime.
-- No authentication, payment, courier, CRM, BI, or POS sales implementation.
+- CRM, BI, and analytics are not implemented.
 
 ## Next Planned Milestone
 
-Define the first business domain slice and API contract standards before implementing any user-facing workflow.
+After Storefront Commerce MVP acceptance, the next planned product slice is merchandising and product media.

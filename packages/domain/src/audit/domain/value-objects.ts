@@ -20,6 +20,7 @@ export const auditActions = [
   "POS_SALE_RETURN_RECORDED",
   "SALES_RECEIPT_ISSUED",
   "SALES_ORDER_CREATED",
+  "STOREFRONT_ORDER_PLACED",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [

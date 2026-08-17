@@ -13,6 +13,7 @@ import type {
   PosCheckoutRepository,
   ReceiptRepository,
   SalesOrderRepository,
+  StorefrontRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
@@ -42,6 +43,7 @@ describe("createApplicationServices", () => {
       rolePermissionRepository: {} as never,
       salesOrderRepository: fakeSalesOrderRepository,
       salesSourceRepository: {} as never,
+      storefrontRepository: fakeStorefrontRepository,
       transactionManager: fakeTransactionManager,
       sizeRepository: fakeSizeRepository,
       userRepository: {} as never,
@@ -187,6 +189,24 @@ const fakeSalesOrderRepository: SalesOrderRepository = {
   fulfill: () => Promise.reject(unreachableError()),
   list: () => Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
   reserve: () => Promise.reject(unreachableError()),
+};
+
+const fakeStorefrontRepository: StorefrontRepository = {
+  createCommerceProfile: () => Promise.reject(unreachableError()),
+  findCheckoutByIdempotencyKey: () => Promise.resolve(null),
+  getProductBySlug: () => Promise.resolve(null),
+  listCatalog: () =>
+    Promise.resolve({
+      categories: [],
+      collections: [],
+      hasMore: false,
+      page: 1,
+      pageSize: 24,
+      products: [],
+    }),
+  loadCheckoutFacts: () => Promise.reject(unreachableError()),
+  lockCheckoutAttempt: () => Promise.reject(unreachableError()),
+  resolveActiveOrganizationByCode: () => Promise.resolve(null),
 };
 
 const nullLogger = {

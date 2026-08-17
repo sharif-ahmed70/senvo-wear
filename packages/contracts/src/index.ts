@@ -1184,6 +1184,7 @@ export const listSalesOrdersServiceInputSchema =
 
 export const salesOrderManagementListInputSchema = z
   .object({
+    channel: salesOrderChannelSchema.optional(),
     cursor: cursorSchema.optional(),
     order: z.enum(["NEWEST", "OLDEST"]).optional(),
     pageSize: z.coerce.number().int().min(1).max(100).optional(),
@@ -2489,9 +2490,20 @@ const salesOrderCustomerSnapshotContractSchema = z
 
 export const salesOrderListReadContractSchema = z
   .object({
+    channel: salesOrderChannelSchema,
+    commerce: z
+      .object({
+        paymentPreference: z.literal("CASH_ON_DELIVERY"),
+        source: z.literal("STOREFRONT"),
+      })
+      .strict()
+      .nullable(),
     createdAt: isoTimestampSchema,
     currencyCode: salesOrderCurrencyCodeSchema,
     customer: salesOrderCustomerSnapshotContractSchema,
+    delivery: z
+      .object({ city: z.string().nullable(), district: z.string().nullable() })
+      .strict(),
     id: idSchema,
     orderNumber: z.string(),
     status: salesOrderStatusSchema,
@@ -2503,6 +2515,13 @@ export const salesOrderDetailsReadContractSchema = z
   .object({
     boothId: idSchema.nullable(),
     channel: salesOrderChannelSchema,
+    commerce: z
+      .object({
+        paymentPreference: z.literal("CASH_ON_DELIVERY"),
+        source: z.literal("STOREFRONT"),
+      })
+      .strict()
+      .nullable(),
     currencyCode: salesOrderCurrencyCodeSchema,
     customer: salesOrderCustomerSnapshotContractSchema,
     delivery: z
@@ -3665,6 +3684,86 @@ export type RemovePosCartItemServiceInputContract = z.infer<
 >;
 export type GetPosCartServiceInputContract = z.infer<
   typeof getPosCartServiceInputSchema
+>;
+
+export const storefrontCatalogQuerySchema = z
+  .object({
+    category: z.string().trim().min(1).max(64).optional(),
+    color: z.string().trim().min(1).max(64).optional(),
+    collection: z.string().trim().min(1).max(64).optional(),
+    page: z.coerce.number().int().positive().max(10000).optional(),
+    pageSize: z.coerce.number().int().positive().max(48).optional(),
+    search: z.string().trim().min(1).max(120).optional(),
+    size: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict();
+
+export const storefrontProductQuerySchema = z
+  .object({
+    slug: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  })
+  .strict();
+
+const storefrontCheckoutLineSchema = z
+  .object({
+    productVariantId: idSchema,
+    quantity: z.number().int().positive().max(20),
+    reviewedUnitPriceMinor: minorUnitAmountSchema,
+  })
+  .strict();
+
+export const storefrontCheckoutInputSchema = z
+  .object({
+    customer: z
+      .object({
+        email: z.string().trim().email().max(254).optional(),
+        name: z.string().trim().min(2).max(160),
+        phone: z.string().trim().min(10).max(20),
+      })
+      .strict(),
+    deliveryAddress: z
+      .object({
+        city: z.string().trim().min(2).max(120),
+        district: z.string().trim().min(2).max(120),
+        line1: z.string().trim().min(4).max(240),
+        line2: z.string().trim().max(240).optional(),
+        postalCode: z.string().trim().max(120).optional(),
+      })
+      .strict(),
+    idempotencyKey: idempotencyKeySchema,
+    lines: z.array(storefrontCheckoutLineSchema).min(1).max(20),
+    note: z.string().trim().max(1000).optional(),
+    paymentPreference: z.literal("CASH_ON_DELIVERY"),
+  })
+  .strict();
+
+export const storefrontCheckoutResultSchema = z
+  .object({
+    currencyCode: z.literal("BDT"),
+    orderId: idSchema,
+    orderNumber: z.string(),
+    paymentPreference: z.literal("CASH_ON_DELIVERY"),
+    status: z.literal("RESERVED"),
+    totalMinor: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type StorefrontCatalogQueryContract = z.infer<
+  typeof storefrontCatalogQuerySchema
+>;
+export type StorefrontProductQueryContract = z.infer<
+  typeof storefrontProductQuerySchema
+>;
+export type StorefrontCheckoutInputContract = z.infer<
+  typeof storefrontCheckoutInputSchema
+>;
+export type StorefrontCheckoutResultContract = z.infer<
+  typeof storefrontCheckoutResultSchema
 >;
 
 function validateBoothSalesSource(

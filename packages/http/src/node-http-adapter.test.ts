@@ -7,6 +7,7 @@ import {
   type ApiRequest,
   type OrganizationManagementApiHandlers,
   type PosApiHandlers,
+  type StorefrontApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
 import {
@@ -50,6 +51,99 @@ afterEach(async () => {
 });
 
 describe("Node HTTP runtime adapter", () => {
+  it("routes all public storefront operations without employee headers", async () => {
+    const listCatalog = new RecordingApiHandler(
+      createApiSuccess(
+        {
+          categories: [],
+          collections: [],
+          hasMore: false,
+          page: 1,
+          pageSize: 24,
+          products: [],
+        },
+        suppliedRequestId,
+      ),
+    );
+    const getProduct = new RecordingApiHandler(
+      createApiSuccess(
+        {
+          category: { code: "tops", id: "category-1", name: "Tops" },
+          collection: null,
+          description: null,
+          id: "product-1",
+          name: "Everyday Tee",
+          productCode: "TEE-1",
+          slug: "everyday-tee",
+          variants: [],
+        },
+        suppliedRequestId,
+      ),
+    );
+    const checkout = new RecordingApiHandler(
+      createApiSuccess(
+        {
+          currencyCode: "BDT" as const,
+          orderId: "10000000-0000-4000-8000-000000000010",
+          orderNumber: "WEB-1001",
+          paymentPreference: "CASH_ON_DELIVERY" as const,
+          status: "RESERVED" as const,
+          totalMinor: 2500,
+        },
+        suppliedRequestId,
+      ),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: checkout,
+        postInventoryMovement: checkout,
+        storefront: {
+          checkout,
+          getProduct,
+          listCatalog,
+        } satisfies StorefrontApiHandlers,
+      },
+    });
+    const headers = new Headers({ "x-request-id": suppliedRequestId });
+
+    const catalogResponse = await fetch(
+      `${runtime.url}/storefront/catalog?search=tee`,
+      { headers },
+    );
+    const productResponse = await fetch(
+      `${runtime.url}/storefront/products/everyday-tee`,
+      { headers },
+    );
+    const checkoutResponse = await fetch(
+      `${runtime.url}/storefront/checkouts`,
+      {
+        body: JSON.stringify({ lines: [] }),
+        headers: new Headers({
+          "content-type": "application/json",
+          "x-request-id": suppliedRequestId,
+        }),
+        method: "POST",
+      },
+    );
+
+    expect([
+      catalogResponse.status,
+      productResponse.status,
+      checkoutResponse.status,
+    ]).toEqual([200, 200, 201]);
+    expect(listCatalog.requests[0]).toMatchObject({
+      context: {
+        authenticatedUser: null,
+        organizationId: "",
+        permissions: [],
+        requestId: suppliedRequestId,
+      },
+      input: { search: "tee" },
+    });
+    expect(getProduct.requests[0]?.input).toEqual({ slug: "everyday-tee" });
+    expect(checkout.requests[0]?.input).toEqual({ lines: [] });
+  });
+
   it("routes a sales request and converts development headers to context", async () => {
     const sales = new RecordingApiHandler(
       createApiSuccess({ id: "sales-order-1" }, suppliedRequestId),

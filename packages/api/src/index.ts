@@ -1,10 +1,16 @@
 export {
   createProtectedApiHandler,
+  createPublicApiHandler,
   type ApiHandler,
   type ApiRequest,
   type ProtectedApiHandlerOptions,
   type StrictInputSchema,
 } from "./api-handler.js";
+export {
+  createStorefrontApiHandlers,
+  type StorefrontApiHandlers,
+  type StorefrontApplication,
+} from "./storefront-handlers.js";
 export {
   createCatalogApiHandlers,
   createInventoryReadApiHandlers,

@@ -21,6 +21,7 @@ import {
   PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
+  PrismaStorefrontRepository,
   PrismaRolePermissionRepository,
   PrismaUserRepository,
   createPrismaClient,
@@ -54,6 +55,7 @@ import type {
   PosReturnReceiptRepository,
   RolePermissionRepository,
   UserRepository,
+  StorefrontRepository,
 } from "@senvo/domain";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import type { ApplicationAuthenticationService } from "../context/authentication.js";
@@ -65,6 +67,7 @@ import { InventoryApplicationService } from "../inventory/inventory-application-
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
+import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -101,6 +104,8 @@ export type CreateApplicationServicesOptions = {
   salesOrderReadRepository?: SalesOrderReadRepository;
   salesSourceRepository?: SalesSourceRepository;
   transactionManager?: ApplicationTransactionManager;
+  storefrontOrganizationCode?: string;
+  storefrontRepository?: StorefrontRepository;
   sizeRepository?: CatalogSizeManagementRepository;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
@@ -113,6 +118,7 @@ export type ApplicationServices = {
   organization: OrganizationApplicationService;
   pos: PosApplicationService;
   sales: SalesApplicationService;
+  storefront: StorefrontApplicationService;
 };
 
 export function createApplicationServices(
@@ -149,6 +155,7 @@ export function createApplicationServices(
   let posReturnRepository = options.posReturnRepository;
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
   let sizeRepository = options.sizeRepository;
+  let storefrontRepository = options.storefrontRepository;
 
   if (
     !salesOrderRepository ||
@@ -171,7 +178,8 @@ export function createApplicationServices(
     !posCheckoutRepository ||
     !paymentRepository ||
     !receiptRepository ||
-    !sizeRepository
+    !sizeRepository ||
+    !storefrontRepository
   ) {
     if (!prismaClient) {
       const useSharedPrismaClient =
@@ -182,6 +190,9 @@ export function createApplicationServices(
       ownsPrismaClient = !useSharedPrismaClient;
     }
   }
+  storefrontRepository ??= new PrismaStorefrontRepository(
+    requirePrismaClient(prismaClient),
+  );
 
   if (!inventoryMovementRepository) {
     inventoryMovementRepository = new PrismaInventoryMovementRepository(
@@ -346,6 +357,15 @@ export function createApplicationServices(
       salesOrderRepository,
       salesOrderReadRepository,
       salesSourceRepository,
+      transactionManager,
+    }),
+    storefront: new StorefrontApplicationService({
+      organizationCode:
+        options.storefrontOrganizationCode ??
+        process.env.STOREFRONT_ORGANIZATION_CODE ??
+        "",
+      repository: storefrontRepository,
+      requestIdGenerator: options.requestIdGenerator,
       transactionManager,
     }),
   };

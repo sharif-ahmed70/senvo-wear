@@ -59,12 +59,24 @@ export function SalesOrdersWorkspace({
 function SalesOrderList() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
-  const [filters, setFilters] = useState({ search: "", status: "" });
+  const [channel, setChannel] = useState("");
+  const [filters, setFilters] = useState({
+    channel: "",
+    search: "",
+    status: "",
+  });
   const pager = useSalesPager(
     useCallback(
       (cursor) =>
         client.listSalesOrders({
           cursor,
+          channel: (filters.channel || undefined) as
+            | "ONLINE"
+            | "OFFLINE_STORE"
+            | "EVENT_BOOTH"
+            | "POS"
+            | "MANUAL"
+            | undefined,
           order: "NEWEST",
           pageSize: 25,
           search: filters.search || undefined,
@@ -83,7 +95,7 @@ function SalesOrderList() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     pager.reset();
-    setFilters({ search: search.trim(), status });
+    setFilters({ channel, search: search.trim(), status });
   }
 
   return (
@@ -104,6 +116,20 @@ function SalesOrderList() {
               placeholder="Search order number"
               value={search}
             />
+          </label>
+          <label>
+            <span className="sr-only">Sales source</span>
+            <select
+              onChange={(event) => setChannel(event.target.value)}
+              value={channel}
+            >
+              <option value="">All sales sources</option>
+              <option value="ONLINE">Online orders</option>
+              <option value="OFFLINE_STORE">Store orders</option>
+              <option value="EVENT_BOOTH">Booth orders</option>
+              <option value="POS">POS sales</option>
+              <option value="MANUAL">Manual orders</option>
+            </select>
           </label>
           <label>
             <span className="sr-only">Order status</span>
@@ -151,9 +177,12 @@ function SalesResult({ pager }: { pager: ReturnType<typeof useSalesPager> }) {
             <tr>
               <th>Order</th>
               <th>Customer</th>
+              <th>Sales source</th>
+              <th>Payment</th>
               <th>Status</th>
               <th className="sales-number">Amount</th>
               <th>Date</th>
+              <th>Delivery area</th>
             </tr>
           </thead>
           <tbody>
@@ -165,7 +194,21 @@ function SalesResult({ pager }: { pager: ReturnType<typeof useSalesPager> }) {
                   </Link>
                 </td>
                 <td>
-                  {order.customer.name ?? order.customer.phone ?? "Guest"}
+                  <strong>{order.customer.name ?? "Guest"}</strong>
+                  <br />
+                  <span className="sales-subtle">
+                    {order.customer.phone ?? "No phone"}
+                  </span>
+                </td>
+                <td>
+                  {order.channel === "ONLINE"
+                    ? "Online"
+                    : order.channel.replaceAll("_", " ")}
+                </td>
+                <td>
+                  {order.commerce?.paymentPreference === "CASH_ON_DELIVERY"
+                    ? "Cash on delivery - Unpaid"
+                    : "Not available"}
                 </td>
                 <td>
                   <StatusBadge value={order.status} />
@@ -174,6 +217,11 @@ function SalesResult({ pager }: { pager: ReturnType<typeof useSalesPager> }) {
                   {formatMoney(order.totalMinor, order.currencyCode)}
                 </td>
                 <td>{formatDate(order.createdAt)}</td>
+                <td>
+                  {[order.delivery.district, order.delivery.city]
+                    .filter(Boolean)
+                    .join(", ") || "Not provided"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -304,6 +352,9 @@ export function SalesOrderDetailsPanel({
           <p className="sales-subtle">
             {order.channel} · Created {formatDate(order.timestamps.createdAt)}
           </p>
+          {order.commerce ? (
+            <p className="sales-subtle">Cash on delivery - Unpaid</p>
+          ) : null}
         </div>
         {canUpdate && actions.length > 0 ? (
           <div className="sales-actions">

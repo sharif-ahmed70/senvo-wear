@@ -59,6 +59,7 @@ describeWithDatabase("Prisma organization operation repositories", () => {
     await prisma.salesSession.deleteMany();
     await prisma.salesCounter.deleteMany();
     await prisma.salesOrderLine.deleteMany();
+    await prisma.salesOrderCommerceProfile.deleteMany();
     await prisma.salesOrder.deleteMany();
     await prisma.inventoryReservationLine.deleteMany();
     await prisma.inventoryReservation.deleteMany();
