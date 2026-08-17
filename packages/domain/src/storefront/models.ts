@@ -17,6 +17,17 @@ export type StorefrontProduct = {
   description: string | null;
   id: string;
   name: string;
+  media?: {
+    altText: string;
+    assetId: string;
+    byteSize: number;
+    contentType: string;
+    linkId: string;
+    productVariantId: string | null;
+    role: "PRIMARY" | "GALLERY";
+    sortOrder: number;
+    url: string;
+  }[];
   primaryImage: {
     altText: string;
     assetId: string;

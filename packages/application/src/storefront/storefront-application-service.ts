@@ -72,6 +72,7 @@ export class StorefrontApplicationService {
         ...catalog,
         products: catalog.products.map((product) => ({
           ...product,
+          media: [],
           primaryImage: images.get(product.id) ?? null,
         })),
       };
@@ -93,11 +94,32 @@ export class StorefrontApplicationService {
         throw new NotFoundError("Storefront product was not found.");
       return {
         ...product,
-        primaryImage: this.mediaService
-          ? await this.mediaService.readProjection(organization.id, product.id)
-          : null,
+        ...(this.mediaService
+          ? await this.storefrontMedia(organization.id, product.id)
+          : { media: [], primaryImage: null }),
       };
     });
+  }
+
+  private async storefrontMedia(organizationId: string, productId: string) {
+    if (!this.mediaService) return { media: [], primaryImage: null };
+    const media = await this.mediaService.readMediaProjection(
+      organizationId,
+      productId,
+    );
+    const primary = media.find((item) => item.role === "PRIMARY") ?? null;
+    return {
+      media,
+      primaryImage: primary
+        ? {
+            altText: primary.altText,
+            assetId: primary.assetId,
+            byteSize: primary.byteSize,
+            contentType: primary.contentType,
+            url: primary.url,
+          }
+        : null,
+    };
   }
 
   checkout(

@@ -55,10 +55,12 @@ export type {
   MediaAsset,
   MediaAssetStatus,
   PrimaryProductMedia,
+  ProductMedia,
 } from "./catalog/domain/media-models.js";
 export type {
   CatalogMediaRepository,
   CreatePrimaryProductMediaRecord,
+  CreateProductMediaRecord,
 } from "./catalog/repositories/catalog-media-repository.js";
 export {
   createVariantBarcode,

@@ -26,6 +26,7 @@ import type { PrismaClient } from "../../generated/prisma/client.js";
 
 type CatalogPrismaClient = Pick<
   PrismaClient,
+  | "$executeRaw"
   | "category"
   | "collection"
   | "color"
@@ -304,8 +305,67 @@ export class PrismaProductRepository implements ProductRepository {
     organizationId: string;
     productId: string;
   }): Promise<void> {
+    const last = await this.prisma.productCollection.findFirst({
+      orderBy: [{ sortOrder: "desc" }, { createdAt: "desc" }],
+      select: { sortOrder: true },
+      where: {
+        collectionId: record.collectionId,
+        organizationId: record.organizationId,
+      },
+    });
     await createWithConflictMapping(() =>
-      this.prisma.productCollection.create({ data: record }),
+      this.prisma.productCollection.create({
+        data: { ...record, sortOrder: (last?.sortOrder ?? -1) + 1 },
+      }),
+    );
+  }
+
+  async listCollectionProductOrder(
+    organizationId: string,
+    collectionId: string,
+  ): Promise<string[]> {
+    const records = await this.prisma.productCollection.findMany({
+      orderBy: [
+        { sortOrder: "asc" },
+        { createdAt: "asc" },
+        { productId: "asc" },
+      ],
+      select: { productId: true },
+      where: { collectionId, organizationId },
+    });
+    return records.map((record) => record.productId);
+  }
+
+  async reorderCollectionProducts(record: {
+    collectionId: string;
+    organizationId: string;
+    productIds: readonly string[];
+  }): Promise<void> {
+    await this.prisma
+      .$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${record.organizationId}:${record.collectionId}:collection-order`}, 0))`;
+    const current = await this.listCollectionProductOrder(
+      record.organizationId,
+      record.collectionId,
+    );
+    if (
+      current.length !== record.productIds.length ||
+      current.some((id) => !record.productIds.includes(id))
+    ) {
+      throw new ConflictError(
+        "The collection order must include every assigned product exactly once.",
+      );
+    }
+    await Promise.all(
+      record.productIds.map((productId, sortOrder) =>
+        this.prisma.productCollection.updateMany({
+          data: { sortOrder },
+          where: {
+            collectionId: record.collectionId,
+            organizationId: record.organizationId,
+            productId,
+          },
+        }),
+      ),
     );
   }
 

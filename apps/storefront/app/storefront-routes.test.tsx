@@ -6,6 +6,7 @@ import { CartWorkspace } from "./_components/cart-workspace";
 import { CheckoutWorkspace } from "./_components/checkout-workspace";
 import { OrderSuccess } from "./_components/order-success";
 import type { StorefrontProduct } from "./_lib/storefront-api";
+import { mediaForVariant } from "./_components/product-workspace";
 
 const product: StorefrontProduct = {
   category: { code: "SHIRTS", id: "category-1", name: "Shirts" },
@@ -29,6 +30,42 @@ const product: StorefrontProduct = {
 };
 
 describe("storefront route states", () => {
+  it("uses variant imagery with product fallback and removes duplicate assets", () => {
+    const base = {
+      altText: "Product front",
+      byteSize: 8,
+      contentType: "image/png",
+      role: "GALLERY" as const,
+      sortOrder: 1,
+      url: "data:image/png;base64,iVBORw0KGgo=",
+    };
+    const media = [
+      {
+        ...base,
+        assetId: "asset-product",
+        linkId: "link-product",
+        productVariantId: null,
+      },
+      {
+        ...base,
+        assetId: "asset-variant",
+        linkId: "link-variant",
+        productVariantId: "variant-1",
+      },
+      {
+        ...base,
+        assetId: "asset-variant",
+        linkId: "link-variant-duplicate",
+        productVariantId: "variant-1",
+      },
+    ];
+    expect(
+      mediaForVariant(media, "variant-1").map((item) => item.linkId),
+    ).toEqual(["link-variant"]);
+    expect(
+      mediaForVariant(media, "variant-2").map((item) => item.linkId),
+    ).toEqual(["link-product"]);
+  });
   it("renders a published primary product image with accessible alternative text", () => {
     const html = renderToStaticMarkup(
       createElement(ProductCard, {

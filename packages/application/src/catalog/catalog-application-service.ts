@@ -46,6 +46,8 @@ import {
   createProductVariantServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
+  reorderCollectionProductsServiceInputSchema,
+  listCollectionProductsServiceInputSchema,
   listCatalogItemsServiceInputSchema,
   listProductVariantsServiceInputSchema,
   listVariantBarcodesServiceInputSchema,
@@ -73,6 +75,13 @@ import {
   type ListCatalogItemsServiceInputContract,
   type ListProductVariantsServiceInputContract,
   type PrimaryProductImageContract,
+  type ProductMediaContract,
+  type AddProductMediaServiceInputContract,
+  type ProductMediaLinkServiceInputContract,
+  type ReorderProductMediaServiceInputContract,
+  type UpdateProductMediaServiceInputContract,
+  type ReorderCollectionProductsServiceInputContract,
+  type ListCollectionProductsServiceInputContract,
   type RemovePrimaryProductImageServiceInputContract,
   type SetPrimaryProductImageServiceInputContract,
   type ProductContract,
@@ -99,6 +108,7 @@ import {
   type ApplicationServiceResult,
 } from "../errors/application-error.js";
 import type { CatalogMediaApplicationService } from "./catalog-media-application-service.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 
 type SafeParseSchema<T> = {
   safeParse(input: unknown):
@@ -121,6 +131,7 @@ export type CatalogApplicationServiceDependencies = {
   productVariants: CatalogProductVariantManagementRepository;
   requestIdGenerator?: () => string;
   sizes: CatalogSizeManagementRepository;
+  transactionManager?: ApplicationTransactionManager;
 };
 
 export class CatalogApplicationService {
@@ -135,6 +146,7 @@ export class CatalogApplicationService {
   private readonly productVariants: CatalogProductVariantManagementRepository;
   private readonly requestIdGenerator: () => string;
   private readonly sizes: CatalogSizeManagementRepository;
+  private readonly transactionManager?: ApplicationTransactionManager;
 
   constructor(dependencies: CatalogApplicationServiceDependencies) {
     this.barcodes = dependencies.barcodes;
@@ -149,6 +161,7 @@ export class CatalogApplicationService {
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? (() => crypto.randomUUID());
     this.sizes = dependencies.sizes;
+    this.transactionManager = dependencies.transactionManager;
   }
 
   listCategories(
@@ -415,11 +428,18 @@ export class CatalogApplicationService {
             product.id,
           )
         : null;
+      const media = this.mediaService
+        ? await this.mediaService.readMediaProjection(
+            validated.organizationId,
+            product.id,
+          )
+        : [];
       return productDetailsContractSchema.parse({
         collectionIds: await this.products.listCollectionIds(
           validated.organizationId,
           product.id,
         ),
+        media,
         primaryImage,
         product: mapProduct(product),
         variants: (
@@ -565,6 +585,115 @@ export class CatalogApplicationService {
     return this.mediaService
       ? this.mediaService.getPrimaryProductImage(context, payload)
       : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  listProductMedia(
+    context: ApplicationExecutionContext,
+    payload: RemovePrimaryProductImageServiceInputContract,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.mediaService
+      ? this.mediaService.listProductMedia(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  addProductMedia(
+    context: ApplicationExecutionContext,
+    payload: AddProductMediaServiceInputContract,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>> {
+    return this.mediaService
+      ? this.mediaService.addProductMedia(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  setExistingPrimary(
+    context: ApplicationExecutionContext,
+    payload: ProductMediaLinkServiceInputContract,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.mediaService
+      ? this.mediaService.setExistingPrimary(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  reorderProductMedia(
+    context: ApplicationExecutionContext,
+    payload: ReorderProductMediaServiceInputContract,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.mediaService
+      ? this.mediaService.reorderProductMedia(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  updateProductMedia(
+    context: ApplicationExecutionContext,
+    payload: UpdateProductMediaServiceInputContract,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>> {
+    return this.mediaService
+      ? this.mediaService.updateProductMedia(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  archiveProductMedia(
+    context: ApplicationExecutionContext,
+    payload: ProductMediaLinkServiceInputContract,
+  ): Promise<ApplicationServiceResult<null>> {
+    return this.mediaService
+      ? this.mediaService.archiveProductMedia(context, payload)
+      : Promise.resolve(mediaNotConfigured(context.requestId));
+  }
+
+  reorderCollectionProducts(
+    context: ApplicationExecutionContext,
+    payload: ReorderCollectionProductsServiceInputContract,
+  ): Promise<ApplicationServiceResult<null>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        reorderCollectionProductsServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "UPDATE");
+      if (
+        !(await this.collections.findById(
+          input.collectionId,
+          validated.organizationId,
+        ))
+      )
+        throw new NotFoundError("Collection was not found.");
+      if (!this.transactionManager)
+        throw new Error("Transaction manager is required.");
+      await this.transactionManager.execute(validated, async (transaction) => {
+        if (!transaction.catalogProductRepository)
+          throw new Error("Transactional product repository is unavailable.");
+        await transaction.catalogProductRepository.reorderCollectionProducts({
+          ...input,
+          organizationId: validated.organizationId,
+        });
+      });
+      return null;
+    });
+  }
+
+  listCollectionProducts(
+    context: ApplicationExecutionContext,
+    payload: ListCollectionProductsServiceInputContract,
+  ): Promise<ApplicationServiceResult<string[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        listCollectionProductsServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "READ");
+      if (
+        !(await this.collections.findById(
+          input.collectionId,
+          validated.organizationId,
+        ))
+      )
+        throw new NotFoundError("Collection was not found.");
+      return this.products.listCollectionProductOrder(
+        validated.organizationId,
+        input.collectionId,
+      );
+    });
   }
 
   setPrimaryProductImage(

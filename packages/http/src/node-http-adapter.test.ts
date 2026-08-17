@@ -504,6 +504,46 @@ describe("Node HTTP runtime adapter", () => {
     });
   });
 
+  it("keeps gallery product and link ownership in the HTTP path", async () => {
+    const media = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const linkId = "20000000-0000-4000-8000-000000000099";
+    const runtime = await startRuntime({
+      handlers: {
+        catalog: {
+          updateProductMedia: media,
+        } as unknown as CatalogApiHandlers,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    await fetch(
+      `${runtime.url}/catalog/products/${movementId}/media/${linkId}`,
+      {
+        body: JSON.stringify({
+          altText: "Oxford shirt side",
+          linkId: "browser-link",
+          organizationId: "browser-org",
+          productId: "browser-product",
+          productVariantId: null,
+        }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "PATCH",
+      },
+    );
+    expect(media.requests.at(0)?.input).toEqual({
+      altText: "Oxford shirt side",
+      linkId,
+      organizationId: "browser-org",
+      productId: movementId,
+      productVariantId: null,
+    });
+  });
+
   it("rejects media bodies beyond the dedicated upload limit", async () => {
     const media = new RecordingApiHandler(
       createApiSuccess({}, suppliedRequestId),

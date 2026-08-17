@@ -13,15 +13,16 @@ Read this file first when continuing SENVO Wear product work.
 - Outstanding payment collection
 - Returns, credits, and refunds
 - Storefront Commerce MVP: public catalog, guest cart, COD checkout, inventory reservation, confirmation, and Admin online-order visibility
-- Primary product-image foundation with Admin management and Storefront rendering
+- Product media gallery with canonical primary, variant imagery, accessible Storefront rendering, and Admin management
+- Curated per-collection Storefront product ordering
 
 ## Current
 
-- Phase 1 merchandising foundations
+- Phase 1 merchandising and product-media scope complete
 
 ## Next
 
-- Product galleries, variant imagery, merchandising ordering, and publishing schedules
+- Advanced publishing schedules and media processing
 - Production cloud object storage, image transformations, and CDN optimization
 - Production login and session transport
 - Online payment and courier/order tracking

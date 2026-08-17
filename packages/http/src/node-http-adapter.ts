@@ -185,6 +185,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         201,
       ),
       catalogRoute(
+        "GET",
+        /^\/catalog\/collections\/(?<id>[0-9a-f-]+)\/products$/iu,
+        handlers.catalog.listCollectionProducts,
+        200,
+        "collectionId",
+      ),
+      catalogRoute(
         "PATCH",
         /^\/catalog\/categories\/(?<id>[0-9a-f-]+)\/status$/iu,
         handlers.catalog.updateCategoryStatus,
@@ -270,6 +277,46 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/primary-image$/iu,
         successStatus: 200,
       },
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/media$/iu,
+        handlers.catalog.listProductMedia,
+        200,
+        "productId",
+      ),
+      {
+        handler: handlers.catalog.addProductMedia,
+        input: pathBodyInput("productId"),
+        maximumBodyBytes: 7_100_000,
+        method: "POST",
+        path: /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/media$/iu,
+        successStatus: 201,
+      },
+      productMediaRoute(
+        "PATCH",
+        /^\/catalog\/products\/(?<productId>[0-9a-f-]+)\/media\/reorder$/iu,
+        handlers.catalog.reorderProductMedia,
+      ),
+      productMediaRoute(
+        "PATCH",
+        /^\/catalog\/products\/(?<productId>[0-9a-f-]+)\/media\/(?<linkId>[0-9a-f-]+)\/primary$/iu,
+        handlers.catalog.setExistingPrimary,
+      ),
+      productMediaRoute(
+        "PATCH",
+        /^\/catalog\/products\/(?<productId>[0-9a-f-]+)\/media\/(?<linkId>[0-9a-f-]+)$/iu,
+        handlers.catalog.updateProductMedia,
+      ),
+      productMediaRoute(
+        "DELETE",
+        /^\/catalog\/products\/(?<productId>[0-9a-f-]+)\/media\/(?<linkId>[0-9a-f-]+)$/iu,
+        handlers.catalog.archiveProductMedia,
+      ),
+      productMediaRoute(
+        "PATCH",
+        /^\/catalog\/collections\/(?<collectionId>[0-9a-f-]+)\/products\/reorder$/iu,
+        handlers.catalog.reorderCollectionProducts,
+      ),
       catalogRoute(
         "GET",
         /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/barcodes$/iu,
@@ -706,6 +753,23 @@ function pathBodyInput(field: string): HttpRoute["input"] {
   });
 }
 
+function productMediaRoute(
+  method: HttpRoute["method"],
+  path: RegExp,
+  handler: ApiHandler<unknown>,
+): HttpRoute {
+  return {
+    handler,
+    input: (body, match) => ({
+      ...(isObject(body) ? body : {}),
+      ...match.groups,
+    }),
+    method,
+    path,
+    successStatus: 200,
+  };
+}
+
 function organizationRoute(
   method: HttpRoute["method"],
   path: RegExp,
@@ -830,6 +894,7 @@ function catalogRoute(
   pathIdField?:
     | "barcodeId"
     | "categoryId"
+    | "collectionId"
     | "colorId"
     | "productId"
     | "sizeId"

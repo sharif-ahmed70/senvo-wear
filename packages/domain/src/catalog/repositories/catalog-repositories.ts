@@ -187,12 +187,21 @@ export type CatalogProductManagementRepository = ProductRepository & {
     organizationId: string;
     productId: string;
   }): Promise<void>;
+  listCollectionProductOrder(
+    organizationId: string,
+    collectionId: string,
+  ): Promise<string[]>;
   findById(id: string, organizationId?: string): Promise<Product | null>;
   list(filter: CatalogListFilter): Promise<Product[]>;
   listCollectionIds(
     organizationId: string,
     productId: string,
   ): Promise<string[]>;
+  reorderCollectionProducts(record: {
+    collectionId: string;
+    organizationId: string;
+    productIds: readonly string[];
+  }): Promise<void>;
 };
 
 export type CatalogProductVariantManagementRepository =

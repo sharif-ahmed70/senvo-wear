@@ -12,6 +12,7 @@ export function ProductWorkspace({ slug }: { slug: string }) {
   const [product, setProduct] = useState<StorefrontProduct | null>(null);
   const [variantId, setVariantId] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedImageId, setSelectedImageId] = useState("");
   useEffect(() => {
     void storefrontApi
       .product(slug)
@@ -20,6 +21,9 @@ export function ProductWorkspace({ slug }: { slug: string }) {
         setVariantId(
           value.variants.find((item) => item.availability === "IN_STOCK")?.id ??
             "",
+        );
+        setSelectedImageId(
+          value.media?.find((item) => item.role === "PRIMARY")?.linkId ?? "",
         );
       })
       .catch(() => setMessage("This product is not available right now."));
@@ -37,22 +41,46 @@ export function ProductWorkspace({ slug }: { slug: string }) {
       </main>
     );
   const selected = product.variants.find((variant) => variant.id === variantId);
+  const gallery = mediaForVariant(product.media ?? [], variantId);
+  const selectedImage =
+    gallery.find((image) => image.linkId === selectedImageId) ?? gallery[0];
   return (
     <main className="product-detail">
       <Link className="back" href="/">
         <ArrowLeft size={17} /> Back to shop
       </Link>
       <div className="detail-visual">
-        {product.primaryImage ? (
+        {selectedImage ? (
           <img
-            alt={product.primaryImage.altText}
+            alt={selectedImage.altText}
             height={720}
-            src={product.primaryImage.url}
+            src={selectedImage.url}
             width={720}
           />
         ) : (
           <span>{product.category.name}</span>
         )}
+        {gallery.length > 1 ? (
+          <div aria-label="Product images" className="product-thumbnails">
+            {gallery.map((image, index) => (
+              <button
+                aria-label={`View image ${index + 1}: ${image.altText}`}
+                aria-pressed={selectedImage?.linkId === image.linkId}
+                key={image.linkId}
+                onClick={() => setSelectedImageId(image.linkId)}
+                type="button"
+              >
+                <img
+                  alt=""
+                  height={72}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  src={image.url}
+                  width={72}
+                />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <section className="detail-copy">
         <p className="eyebrow">{product.productCode}</p>
@@ -72,7 +100,10 @@ export function ProductWorkspace({ slug }: { slug: string }) {
                 className={variant.id === variantId ? "selected" : ""}
                 disabled={variant.availability === "OUT_OF_STOCK"}
                 key={variant.id}
-                onClick={() => setVariantId(variant.id)}
+                onClick={() => {
+                  setVariantId(variant.id);
+                  setSelectedImageId("");
+                }}
                 type="button"
               >
                 <i style={{ background: variant.color.hexValue }} />
@@ -100,5 +131,23 @@ export function ProductWorkspace({ slug }: { slug: string }) {
         {message ? <p className="notice success">{message}</p> : null}
       </section>
     </main>
+  );
+}
+
+export function mediaForVariant(
+  media: NonNullable<StorefrontProduct["media"]>,
+  variantId: string,
+) {
+  const variantMedia = media.filter(
+    (image) => image.productVariantId === variantId,
+  );
+  const productMedia = media.filter(
+    (image) => image.role === "PRIMARY" || image.productVariantId === null,
+  );
+  const source = variantMedia.length > 0 ? variantMedia : productMedia;
+  return source.filter(
+    (image, index) =>
+      source.findIndex((candidate) => candidate.assetId === image.assetId) ===
+      index,
   );
 }

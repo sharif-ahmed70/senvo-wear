@@ -326,6 +326,7 @@ export function createApplicationServices(
       productVariants: productVariantRepository,
       requestIdGenerator: options.requestIdGenerator,
       sizes: sizeRepository,
+      transactionManager,
     }),
     disconnect: async () => {
       if (ownsPrismaClient) {

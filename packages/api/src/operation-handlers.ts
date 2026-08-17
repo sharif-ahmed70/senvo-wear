@@ -14,6 +14,12 @@ import {
   createProductVariantServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
+  addProductMediaServiceInputSchema,
+  productMediaLinkServiceInputSchema,
+  reorderProductMediaServiceInputSchema,
+  updateProductMediaServiceInputSchema,
+  reorderCollectionProductsServiceInputSchema,
+  listCollectionProductsServiceInputSchema,
   removePrimaryProductImageServiceInputSchema,
   setPrimaryProductImageServiceInputSchema,
   getVariantAvailabilityServiceInputSchema,
@@ -61,6 +67,13 @@ import {
   type ProductContract,
   type ProductDetailsContract,
   type PrimaryProductImageContract,
+  type ProductMediaContract,
+  type AddProductMediaServiceInputContract,
+  type ProductMediaLinkServiceInputContract,
+  type ReorderProductMediaServiceInputContract,
+  type UpdateProductMediaServiceInputContract,
+  type ReorderCollectionProductsServiceInputContract,
+  type ListCollectionProductsServiceInputContract,
   type RemovePrimaryProductImageServiceInputContract,
   type SetPrimaryProductImageServiceInputContract,
   type ProductVariantContract,
@@ -217,6 +230,38 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<PrimaryProductImageContract | null>>;
+  listProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>>;
+  addProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>>;
+  setExistingPrimary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>>;
+  reorderProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>>;
+  updateProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>>;
+  archiveProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<null>>;
+  reorderCollectionProducts(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<null>>;
+  listCollectionProducts(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<string[]>>;
   setPrimaryProductImage(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -276,6 +321,8 @@ export type CatalogManagementApplication = {
 };
 
 export type CatalogApiHandlers = {
+  addProductMedia: ApiHandler<ProductMediaContract>;
+  archiveProductMedia: ApiHandler<null>;
   createVariantBarcode: ApiHandler<VariantBarcodeContract>;
   createCategory: ApiHandler<CategoryContract>;
   createCollection: ApiHandler<CollectionContract>;
@@ -285,10 +332,15 @@ export type CatalogApiHandlers = {
   createSize: ApiHandler<SizeContract>;
   getProduct: ApiHandler<ProductDetailsContract>;
   getPrimaryProductImage: ApiHandler<PrimaryProductImageContract | null>;
+  listProductMedia: ApiHandler<ProductMediaContract[]>;
+  reorderProductMedia: ApiHandler<ProductMediaContract[]>;
+  reorderCollectionProducts: ApiHandler<null>;
+  setExistingPrimary: ApiHandler<ProductMediaContract[]>;
   setPrimaryProductImage: ApiHandler<PrimaryProductImageContract>;
   removePrimaryProductImage: ApiHandler<null>;
   listCategories: ApiHandler<CategoryContract[]>;
   listCollections: ApiHandler<CollectionContract[]>;
+  listCollectionProducts: ApiHandler<string[]>;
   listColors: ApiHandler<ColorContract[]>;
   listProducts: ApiHandler<ProductContract[]>;
   listSizes: ApiHandler<SizeContract[]>;
@@ -299,6 +351,7 @@ export type CatalogApiHandlers = {
   updateCategoryStatus: ApiHandler<CategoryContract>;
   updateColorStatus: ApiHandler<ColorContract>;
   updateSizeStatus: ApiHandler<SizeContract>;
+  updateProductMedia: ApiHandler<ProductMediaContract>;
 };
 
 export function createCatalogApiHandlers(
@@ -325,6 +378,24 @@ export function createCatalogApiHandlers(
     });
 
   return {
+    addProductMedia: protectedHandler<
+      AddProductMediaServiceInputContract,
+      ProductMediaContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.addProductMedia(context, input),
+      inputSchema: addProductMediaServiceInputSchema,
+    }),
+    archiveProductMedia: protectedHandler<
+      ProductMediaLinkServiceInputContract,
+      null
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.archiveProductMedia(context, input),
+      inputSchema: productMediaLinkServiceInputSchema,
+    }),
     createVariantBarcode: protectedHandler<
       CreateVariantBarcodeServiceInputContract,
       VariantBarcodeContract
@@ -403,6 +474,42 @@ export function createCatalogApiHandlers(
         dependencies.catalog.getPrimaryProductImage(context, input),
       inputSchema: removePrimaryProductImageServiceInputSchema,
     }),
+    listProductMedia: protectedHandler<
+      RemovePrimaryProductImageServiceInputContract,
+      ProductMediaContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.listProductMedia(context, input),
+      inputSchema: removePrimaryProductImageServiceInputSchema,
+    }),
+    reorderProductMedia: protectedHandler<
+      ReorderProductMediaServiceInputContract,
+      ProductMediaContract[]
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.reorderProductMedia(context, input),
+      inputSchema: reorderProductMediaServiceInputSchema,
+    }),
+    reorderCollectionProducts: protectedHandler<
+      ReorderCollectionProductsServiceInputContract,
+      null
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.reorderCollectionProducts(context, input),
+      inputSchema: reorderCollectionProductsServiceInputSchema,
+    }),
+    setExistingPrimary: protectedHandler<
+      ProductMediaLinkServiceInputContract,
+      ProductMediaContract[]
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.setExistingPrimary(context, input),
+      inputSchema: productMediaLinkServiceInputSchema,
+    }),
     setPrimaryProductImage: protectedHandler<
       SetPrimaryProductImageServiceInputContract,
       PrimaryProductImageContract
@@ -438,6 +545,15 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.listCollections(context, input),
       inputSchema: listCatalogItemsServiceInputSchema,
+    }),
+    listCollectionProducts: protectedHandler<
+      ListCollectionProductsServiceInputContract,
+      string[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.catalog.listCollectionProducts(context, input),
+      inputSchema: listCollectionProductsServiceInputSchema,
     }),
     listColors: protectedHandler<
       ListCatalogItemsServiceInputContract,
@@ -528,6 +644,15 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.updateSizeStatus(context, input),
       inputSchema: updateSizeStatusServiceInputSchema,
+    }),
+    updateProductMedia: protectedHandler<
+      UpdateProductMediaServiceInputContract,
+      ProductMediaContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateProductMedia(context, input),
+      inputSchema: updateProductMediaServiceInputSchema,
     }),
   };
 }

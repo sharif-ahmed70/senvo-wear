@@ -32,6 +32,8 @@ import {
   createUserInputSchema,
   disableCredentialInputSchema,
   recordAuditEntryInputSchema,
+  reorderProductMediaServiceInputSchema,
+  addProductMediaServiceInputSchema,
   fulfillSalesOrderInputSchema,
   getPosCartServiceInputSchema,
   fulfillSalesOrderServiceInputSchema,
@@ -103,6 +105,34 @@ import {
   updatePosCounterMetadataInputSchema,
   updateStockLocationMetadataInputSchema,
 } from "./index.js";
+
+describe("catalog media contracts", () => {
+  const productId = "10000000-0000-4000-8000-000000000001";
+  const linkId = "10000000-0000-4000-8000-000000000002";
+
+  it("rejects duplicate media reorder ids", () => {
+    expect(
+      reorderProductMediaServiceInputSchema.safeParse({
+        linkIds: [linkId, linkId],
+        productId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects browser-owned organization and storage fields", () => {
+    expect(
+      addProductMediaServiceInputSchema.safeParse({
+        altText: "Oxford shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-contract-001",
+        organizationId: productId,
+        productId,
+        storageKey: "unsafe/browser/key",
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("API contracts", () => {
   it("accepts safe storefront discovery filters and valid product slugs", () => {

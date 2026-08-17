@@ -674,6 +674,7 @@ model CatalogMediaLink {
   organizationId String                 @map("organization_id") @db.Uuid
   mediaAssetId   String                 @map("media_asset_id") @db.Uuid
   productId      String                 @map("product_id") @db.Uuid
+  productVariantId String?              @map("product_variant_id") @db.Uuid
   role           CatalogMediaRole       @default(PRIMARY)
   sortOrder      Int                    @default(0) @map("sort_order")
   status         CatalogMediaLinkStatus @default(ACTIVE)
@@ -683,11 +684,13 @@ model CatalogMediaLink {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   mediaAsset   MediaAsset   @relation(fields: [mediaAssetId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   product      Product      @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant? @relation(fields: [productVariantId, productId, organizationId], references: [id, productId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "catalog_media_links_variant_product_org_fkey")
 
   @@unique([id, organizationId])
   @@unique([mediaAssetId])
   @@unique([productId], map: "catalog_media_links_one_active_primary_per_product", where: { role: "PRIMARY", status: "ACTIVE" })
   @@index([organizationId, productId, role, status])
+  @@index([organizationId, productId, productVariantId, status, sortOrder], map: "catalog_media_links_org_product_variant_status_order_idx")
   @@index([organizationId, mediaAssetId])
   @@map("catalog_media_links")
 }
@@ -714,8 +717,10 @@ model ProductVariant {
   barcodes VariantBarcode[]
   posCartLines PosCartLine[]
   posSaleReturnLines PosSaleReturnLine[]
+  mediaLinks CatalogMediaLink[]
 
   @@unique([id, organizationId])
+  @@unique([id, productId, organizationId], map: "product_variants_id_product_org_key")
   @@unique([organizationId, sku])
   @@unique([productId, colorId, sizeId])
   @@index([organizationId, productId])
@@ -1327,12 +1332,13 @@ model ProductCollection {
   productId      String   @map("product_id") @db.Uuid
   collectionId   String   @map("collection_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  sortOrder      Int      @default(0) @map("sort_order")
 
   product    Product    @relation(fields: [productId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   collection Collection @relation(fields: [collectionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([productId, collectionId])
-  @@index([organizationId, collectionId])
+  @@index([organizationId, collectionId, sortOrder, createdAt, productId], map: "product_collections_org_collection_order_created_product_idx")
   @@map("product_collections")
 }
 

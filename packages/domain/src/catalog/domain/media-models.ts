@@ -24,6 +24,7 @@ export type CatalogMediaLink = {
   mediaAssetId: string;
   organizationId: string;
   productId: string;
+  productVariantId: string | null;
   role: CatalogMediaRole;
   sortOrder: number;
   status: CatalogMediaLinkStatus;
@@ -34,3 +35,5 @@ export type PrimaryProductMedia = {
   asset: MediaAsset;
   link: CatalogMediaLink;
 };
+
+export type ProductMedia = PrimaryProductMedia;

@@ -604,6 +604,15 @@ export const primaryProductImageSchema = z
   })
   .strict();
 
+export const productMediaSchema = primaryProductImageSchema
+  .extend({
+    linkId: idSchema,
+    productVariantId: idSchema.nullable(),
+    role: z.enum(["PRIMARY", "GALLERY"]),
+    sortOrder: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const setPrimaryProductImageServiceInputSchema = z
   .object({
     altText: z.string().trim().min(1).max(240),
@@ -620,6 +629,53 @@ export const setPrimaryProductImageServiceInputSchema = z
 
 export const removePrimaryProductImageServiceInputSchema = z
   .object({ productId: idSchema })
+  .strict();
+
+export const addProductMediaServiceInputSchema =
+  setPrimaryProductImageServiceInputSchema
+    .extend({ productVariantId: idSchema.nullable().optional() })
+    .strict();
+
+export const productMediaLinkServiceInputSchema = z
+  .object({ linkId: idSchema, productId: idSchema })
+  .strict();
+
+export const reorderProductMediaServiceInputSchema = z
+  .object({
+    linkIds: z.array(idSchema).min(1).max(100),
+    productId: idSchema,
+  })
+  .strict()
+  .refine((input) => new Set(input.linkIds).size === input.linkIds.length, {
+    message: "linkIds must not contain duplicates.",
+    path: ["linkIds"],
+  });
+
+export const updateProductMediaServiceInputSchema = z
+  .object({
+    altText: z.string().trim().min(1).max(240),
+    linkId: idSchema,
+    productId: idSchema,
+    productVariantId: idSchema.nullable(),
+  })
+  .strict();
+
+export const reorderCollectionProductsServiceInputSchema = z
+  .object({
+    collectionId: idSchema,
+    productIds: z.array(idSchema).min(1).max(500),
+  })
+  .strict()
+  .refine(
+    (input) => new Set(input.productIds).size === input.productIds.length,
+    {
+      message: "productIds must not contain duplicates.",
+      path: ["productIds"],
+    },
+  );
+
+export const listCollectionProductsServiceInputSchema = z
+  .object({ collectionId: idSchema })
   .strict();
 
 export const createProductVariantServiceInputSchema =
@@ -1492,6 +1548,24 @@ export type GetProductServiceInputContract = z.infer<
 export type SetPrimaryProductImageInputContract = z.infer<
   typeof setPrimaryProductImageServiceInputSchema
 >;
+export type AddProductMediaInputContract = z.infer<
+  typeof addProductMediaServiceInputSchema
+>;
+export type ProductMediaLinkInputContract = z.infer<
+  typeof productMediaLinkServiceInputSchema
+>;
+export type ReorderProductMediaInputContract = z.infer<
+  typeof reorderProductMediaServiceInputSchema
+>;
+export type UpdateProductMediaInputContract = z.infer<
+  typeof updateProductMediaServiceInputSchema
+>;
+export type ReorderCollectionProductsInputContract = z.infer<
+  typeof reorderCollectionProductsServiceInputSchema
+>;
+export type ListCollectionProductsInputContract = z.infer<
+  typeof listCollectionProductsServiceInputSchema
+>;
 export type RemovePrimaryProductImageInputContract = z.infer<
   typeof removePrimaryProductImageServiceInputSchema
 >;
@@ -1778,6 +1852,7 @@ export type ProductVariantContract = CatalogRecordContract & {
 
 export type ProductDetailsContract = {
   collectionIds: string[];
+  media?: ProductMediaContract[];
   primaryImage: PrimaryProductImageContract | null;
   product: ProductContract;
   variants: ProductVariantContract[];
@@ -1785,6 +1860,25 @@ export type ProductDetailsContract = {
 
 export type PrimaryProductImageContract = z.infer<
   typeof primaryProductImageSchema
+>;
+export type ProductMediaContract = z.infer<typeof productMediaSchema>;
+export type AddProductMediaServiceInputContract = z.infer<
+  typeof addProductMediaServiceInputSchema
+>;
+export type ProductMediaLinkServiceInputContract = z.infer<
+  typeof productMediaLinkServiceInputSchema
+>;
+export type ReorderProductMediaServiceInputContract = z.infer<
+  typeof reorderProductMediaServiceInputSchema
+>;
+export type UpdateProductMediaServiceInputContract = z.infer<
+  typeof updateProductMediaServiceInputSchema
+>;
+export type ReorderCollectionProductsServiceInputContract = z.infer<
+  typeof reorderCollectionProductsServiceInputSchema
+>;
+export type ListCollectionProductsServiceInputContract = z.infer<
+  typeof listCollectionProductsServiceInputSchema
 >;
 export type SetPrimaryProductImageServiceInputContract = z.infer<
   typeof setPrimaryProductImageServiceInputSchema
@@ -2151,6 +2245,7 @@ export const barcodeLookupContractSchema = z
 export const productDetailsContractSchema = z
   .object({
     collectionIds: z.array(idSchema),
+    media: z.array(productMediaSchema).default([]),
     primaryImage: primaryProductImageSchema.nullable(),
     product: productContractSchema,
     variants: z.array(productVariantContractSchema),

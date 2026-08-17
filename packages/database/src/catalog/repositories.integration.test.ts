@@ -623,6 +623,63 @@ describeWithDatabase("Prisma catalog repositories", () => {
     );
   });
 
+  it("orders collection products deterministically and reorders atomically", async () => {
+    const base = await createBaseCatalog(prisma, "ORDER");
+    const secondProduct = await prisma.product.create({
+      data: {
+        categoryId: base.category.id,
+        name: "Second curated product",
+        organizationId: base.organization.id,
+        productCode: "CURATED-SECOND",
+        slug: "curated-second",
+      },
+    });
+    await repositories.products.assignCollection({
+      collectionId: base.collection.id,
+      organizationId: base.organization.id,
+      productId: base.product.id,
+    });
+    await repositories.products.assignCollection({
+      collectionId: base.collection.id,
+      organizationId: base.organization.id,
+      productId: secondProduct.id,
+    });
+    await expect(
+      repositories.products.listCollectionProductOrder(
+        base.organization.id,
+        base.collection.id,
+      ),
+    ).resolves.toEqual([base.product.id, secondProduct.id]);
+    await prisma.$transaction((transaction) =>
+      new PrismaProductRepository(transaction).reorderCollectionProducts({
+        collectionId: base.collection.id,
+        organizationId: base.organization.id,
+        productIds: [secondProduct.id, base.product.id],
+      }),
+    );
+    await expect(
+      repositories.products.listCollectionProductOrder(
+        base.organization.id,
+        base.collection.id,
+      ),
+    ).resolves.toEqual([secondProduct.id, base.product.id]);
+    await expectDbReject(
+      prisma.$transaction((transaction) =>
+        new PrismaProductRepository(transaction).reorderCollectionProducts({
+          collectionId: base.collection.id,
+          organizationId: base.organization.id,
+          productIds: [base.product.id],
+        }),
+      ),
+    );
+    await expect(
+      repositories.products.listCollectionProductOrder(
+        base.organization.id,
+        base.collection.id,
+      ),
+    ).resolves.toEqual([secondProduct.id, base.product.id]);
+  });
+
   it("enforces primary media uniqueness and composite organization ownership", async () => {
     const first = await createBaseCatalog(prisma, "MEDIAA");
     const second = await createBaseCatalog(prisma, "MEDIAB");
@@ -692,6 +749,125 @@ describeWithDatabase("Prisma catalog repositories", () => {
     );
 
     const media = new PrismaCatalogMediaRepository(prisma);
+    const gallery = await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).add({
+        altText: "Oxford shirt side",
+        byteSize: 256,
+        contentType: "image/png",
+        id: crypto.randomUUID(),
+        idempotencyKey: "media-db-request-004",
+        linkId: crypto.randomUUID(),
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        productId: first.product.id,
+        productVariantId: null,
+        requestSignature: "d".repeat(64),
+        role: "GALLERY",
+        storageKey: `organizations/${first.organization.id}/gallery-side.png`,
+      }),
+    );
+    const variantGallery = await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).add({
+        altText: "Oxford shirt black large",
+        byteSize: 256,
+        contentType: "image/png",
+        id: crypto.randomUUID(),
+        idempotencyKey: "media-db-request-005",
+        linkId: crypto.randomUUID(),
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        productId: first.product.id,
+        productVariantId: first.variant.id,
+        requestSignature: "e".repeat(64),
+        role: "GALLERY",
+        storageKey: `organizations/${first.organization.id}/gallery-variant.png`,
+      }),
+    );
+    await expect(
+      media.listProductMedia(first.organization.id, first.product.id),
+    ).resolves.toMatchObject([
+      { link: { role: "PRIMARY" } },
+      { link: { id: gallery.link.id, sortOrder: 1 } },
+      {
+        link: {
+          id: variantGallery.link.id,
+          productVariantId: first.variant.id,
+          sortOrder: 2,
+        },
+      },
+    ]);
+    const otherProduct = await prisma.product.create({
+      data: {
+        categoryId: first.category.id,
+        name: "Wrong Product",
+        organizationId: first.organization.id,
+        productCode: "WRONG-MEDIA",
+        slug: "wrong-media",
+      },
+    });
+    const otherVariant = await prisma.productVariant.create({
+      data: {
+        colorId: first.color.id,
+        organizationId: first.organization.id,
+        productId: otherProduct.id,
+        sizeId: first.size.id,
+        sku: "WRONG-MEDIA-L",
+      },
+    });
+    const wrongProductAsset = await prisma.mediaAsset.create({
+      data: {
+        altText: "Wrong product variant",
+        byteSize: 128,
+        contentType: "image/png",
+        idempotencyKey: "media-db-request-006",
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        requestSignature: "f".repeat(64),
+        storageKey: `organizations/${first.organization.id}/wrong-product.png`,
+      },
+    });
+    await expectDbReject(
+      prisma.catalogMediaLink.create({
+        data: {
+          mediaAssetId: wrongProductAsset.id,
+          organizationId: first.organization.id,
+          productId: first.product.id,
+          productVariantId: otherVariant.id,
+          role: "GALLERY",
+        },
+      }),
+    );
+    await expectDbReject(
+      prisma.$transaction((transaction) =>
+        new PrismaCatalogMediaRepository(transaction).reorder({
+          linkIds: [
+            created.current.link.id,
+            gallery.link.id,
+            crypto.randomUUID(),
+          ],
+          organizationId: first.organization.id,
+          productId: first.product.id,
+        }),
+      ),
+    );
+    await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).reorder({
+        linkIds: [
+          created.current.link.id,
+          variantGallery.link.id,
+          gallery.link.id,
+        ],
+        organizationId: first.organization.id,
+        productId: first.product.id,
+      }),
+    );
+    await expect(
+      media.listProductMedia(first.organization.id, first.product.id),
+    ).resolves.toMatchObject([
+      { link: { id: created.current.link.id, role: "PRIMARY" } },
+      { link: { id: variantGallery.link.id, sortOrder: 1 } },
+      { link: { id: gallery.link.id, sortOrder: 2 } },
+    ]);
     await expect(
       media.findPrimary(second.organization.id, first.product.id),
     ).resolves.toBeNull();
@@ -703,7 +879,24 @@ describeWithDatabase("Prisma catalog repositories", () => {
     );
     await expect(
       media.findPrimary(first.organization.id, first.product.id),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ link: { id: variantGallery.link.id } });
+    await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).archive({
+        linkId: variantGallery.link.id,
+        organizationId: first.organization.id,
+        productId: first.product.id,
+      }),
+    );
+    await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).archive({
+        linkId: gallery.link.id,
+        organizationId: first.organization.id,
+        productId: first.product.id,
+      }),
+    );
+    await expect(
+      media.listProductMedia(first.organization.id, first.product.id),
+    ).resolves.toEqual([]);
     await expect(
       prisma.product.delete({ where: { id: first.product.id } }),
     ).rejects.toThrow();
