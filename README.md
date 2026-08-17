@@ -14,10 +14,10 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 - `apps/storefront`: public catalog, guest bag, checkout, and order confirmation on port `3000`.
 - `apps/admin`: owner/staff operational workspace on port `3001`.
-- `apps/pos`: guided showroom selling workflow on port `3002`.
+- `apps/pos`: standalone showroom POS shell on port `3002`; current guided selling workflows are in `apps/admin`.
 - `packages/ui`: small accessible UI primitives and design tokens.
-- `packages/database`: PostgreSQL-ready Prisma foundation.
-- `packages/domain`: domain boundary documentation and neutral types.
+- `packages/database`: Prisma/PostgreSQL persistence, repositories, migrations, and transaction infrastructure.
+- `packages/domain`: business models, policies, repository contracts, and use cases.
 - `packages/contracts`: API-facing contract boundary.
 - `packages/config`: shared TypeScript, ESLint, and test configuration.
 - `packages/logger`: structured logging boundary.
@@ -30,7 +30,7 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 - Node.js 22 LTS is the repository runtime target. CI pins `22.23.1`; local tooling requires `>=22.13`.
 - pnpm `11.9.0`.
-- PostgreSQL is required for migration and catalog integration verification. No database is required to render the placeholder apps or run static checks.
+- PostgreSQL is required for the full migration and integration verification gate. Static checks, unit tests, and application builds do not require a running database.
 
 Enable pnpm with Corepack if needed:
 
@@ -111,21 +111,20 @@ Production migrations must use reviewed Prisma migrations, not production `db pu
 
 ## Verification Status
 
-- Local static checks and build can run without PostgreSQL.
-- Local verification in this workspace used Node.js 24.18.0; CI is configured to verify Node.js 22.23.1.
-- PostgreSQL migration and catalog integration verification have not run locally because Docker/PostgreSQL are unavailable in this workspace.
-- The first Prisma migration is generated and reviewed, but it has not been applied locally here.
-- CI is configured, including PostgreSQL integration, but this repository has not yet observed a remote CI run.
+- The quality gate covers package boundaries, formatting, linting, typechecking, unit tests, Prisma validation and generation, application builds, and dependency audit.
+- PostgreSQL integration covers migration deploy/status, repository and transaction tests, reset/reapply, a second integration pass, and drift detection.
+- CI runs on Node.js 22.23.1 with PostgreSQL 17.
 
 ## Important Limitations
 
-- Placeholder applications only.
-- No catalog UI, inventory, pricing, orders, or publishing workflow.
+- Production login and session transport is not complete; credential, identity, membership, and authorization foundations exist.
+- Product media and publishing workflows are not implemented.
+- Storefront checkout currently supports guest cash-on-delivery orders; online payment and courier integration are not implemented.
+- The standalone `apps/pos` shell remains a placeholder; current guided POS workflows are served through the Admin application.
 - No real branding or logo system.
 - No production deployment configuration.
-- CI is configured for Node 22 LTS, while this workspace may be verified locally with a different installed runtime.
-- No authentication, payment, courier, CRM, BI, or POS sales implementation.
+- CRM, BI, and analytics are not implemented.
 
 ## Next Planned Milestone
 
-Define the first business domain slice and API contract standards before implementing any user-facing workflow.
+After Storefront Commerce MVP acceptance, the next planned product slice is merchandising and product media.

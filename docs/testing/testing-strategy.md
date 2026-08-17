@@ -1,7 +1,7 @@
 # Testing Strategy
 
-The foundation uses Vitest for lightweight unit tests and Turborepo for workspace orchestration.
+The repository uses Vitest for unit, application, API, UI, and PostgreSQL integration tests, with Turborepo orchestrating workspace checks.
 
-Current tests prove shared package consumption and helper behavior. Future milestones should add tests at the package boundary where behavior is introduced, then app-level tests for user workflows.
+Current suites cover organization isolation, authentication and authorization rules, catalog, inventory locking and reservations, sales orders, POS checkout and payment workflows, returns/refunds, Storefront cart and checkout behavior, HTTP/API mapping, and Admin route behavior.
 
-Boundary checks are part of the quality gate through `pnpm boundary:check`. Database environment behavior, API contracts, and error serialization have focused unit tests.
+Boundary checks are part of the quality gate through `pnpm boundary:check`. CI also deploys migrations to PostgreSQL, runs database integration tests, resets and reapplies migrations, reruns the tests, and verifies Prisma drift.
