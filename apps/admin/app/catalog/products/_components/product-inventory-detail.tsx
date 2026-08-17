@@ -6,9 +6,12 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertCircle,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   ImagePlus,
   LoaderCircle,
+  Star,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -126,10 +129,24 @@ export function ProductInventoryDetail({
       <ProductMedia
         canUpdate={permissions.includes("CATALOG:UPDATE")}
         details={product}
-        onChange={(primaryImage) =>
-          setProduct((current) =>
-            current ? { ...current, primaryImage } : current,
-          )
+        onChange={(media) =>
+          setProduct((current) => {
+            if (!current) return current;
+            const primary = media.find((item) => item.role === "PRIMARY");
+            return {
+              ...current,
+              media,
+              primaryImage: primary
+                ? {
+                    altText: primary.altText,
+                    assetId: primary.assetId,
+                    byteSize: primary.byteSize,
+                    contentType: primary.contentType,
+                    url: primary.url,
+                  }
+                : null,
+            };
+          })
         }
       />
       <section className="inventory-section">
@@ -238,20 +255,19 @@ export function ProductInventoryDetail({
   );
 }
 
-function ProductMedia({
+export function ProductMedia({
   canUpdate,
   details,
   onChange,
 }: {
   canUpdate: boolean;
   details: ProductDetailsContract;
-  onChange: (image: ProductDetailsContract["primaryImage"]) => void;
+  onChange: (media: NonNullable<ProductDetailsContract["media"]>) => void;
 }) {
+  const [media, setMedia] = useState(details.media ?? []);
   const [file, setFile] = useState<File | null>(null);
   const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
-  const [altText, setAltText] = useState(
-    details.primaryImage?.altText ?? details.product.name,
-  );
+  const [altText, setAltText] = useState(details.product.name);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -271,17 +287,18 @@ function ProductMedia({
     setSaving(true);
     setMessage("");
     try {
-      const result = await client.setPrimaryProductImage({
+      const result = await client.addProductMedia({
         altText: altText.trim(),
         contentBase64: await fileToBase64(file),
         contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
         idempotencyKey: uploadIdempotencyKey,
         productId: details.product.id,
+        productVariantId: null,
       });
-      onChange(result.data);
+      updateMedia([...media, result.data]);
       setFile(null);
       setUploadIdempotencyKey("");
-      setMessage("Primary image saved.");
+      setMessage("Image added.");
     } catch (caught) {
       setMessage(messageForError(caught));
     } finally {
@@ -289,13 +306,81 @@ function ProductMedia({
     }
   }
 
-  async function remove() {
+  function updateMedia(next: typeof media) {
+    setMedia(next);
+    onChange(next);
+  }
+
+  async function makePrimary(linkId: string) {
     setSaving(true);
     setMessage("");
     try {
-      await client.removePrimaryProductImage(details.product.id);
-      onChange(null);
-      setMessage("Primary image removed.");
+      const result = await client.setProductMediaPrimary(
+        details.product.id,
+        linkId,
+      );
+      updateMedia(result.data);
+      setMessage("Primary image updated.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function move(linkId: string, direction: -1 | 1) {
+    const index = media.findIndex((item) => item.linkId === linkId);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= media.length) return;
+    const next = [...media];
+    [next[index], next[destination]] = [next[destination]!, next[index]!];
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await client.reorderProductMedia({
+        linkIds: next.map((item) => item.linkId),
+        productId: details.product.id,
+      });
+      updateMedia(result.data);
+      setMessage("Image order saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateItem(
+    linkId: string,
+    next: { altText: string; productVariantId: string | null },
+  ) {
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await client.updateProductMedia({
+        ...next,
+        linkId,
+        productId: details.product.id,
+      });
+      updateMedia(
+        media.map((item) => (item.linkId === linkId ? result.data : item)),
+      );
+      setMessage("Image details saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function archive(linkId: string) {
+    setSaving(true);
+    setMessage("");
+    try {
+      await client.archiveProductMedia(details.product.id, linkId);
+      const result = await client.listProductMedia(details.product.id);
+      updateMedia(result.data);
+      setMessage("Image archived.");
     } catch (caught) {
       setMessage(messageForError(caught));
     } finally {
@@ -307,24 +392,116 @@ function ProductMedia({
     <section className="inventory-section product-media-section">
       <div className="admin-section__heading">
         <div>
-          <h2>Primary product image</h2>
-          <p>The image customers see first in the online shop.</p>
+          <h2>Product images</h2>
+          <p>Choose the first image, order the gallery, and match variants.</p>
         </div>
       </div>
       <div className="product-media-layout">
-        <div className="product-media-preview">
-          {details.primaryImage ? (
-            <img
-              alt={details.primaryImage.altText}
-              height={320}
-              src={details.primaryImage.url}
-              width={320}
-            />
-          ) : (
+        <div className="product-media-gallery">
+          {media.length === 0 ? (
             <div className="product-media-empty">
               <ImagePlus aria-hidden="true" size={28} />
               <span>No image yet</span>
             </div>
+          ) : (
+            media.map((image, index) => (
+              <article className="product-media-item" key={image.linkId}>
+                <img
+                  alt={image.altText}
+                  height={120}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  src={image.url}
+                  width={120}
+                />
+                <div className="product-media-item-copy">
+                  <strong>
+                    {image.role === "PRIMARY"
+                      ? "Primary image"
+                      : `Image ${index + 1}`}
+                  </strong>
+                  <input
+                    aria-label="Image description"
+                    defaultValue={image.altText}
+                    disabled={!canUpdate || saving}
+                    maxLength={240}
+                    onBlur={(event) => {
+                      const value = event.target.value.trim();
+                      if (value && value !== image.altText)
+                        void updateItem(image.linkId, {
+                          altText: value,
+                          productVariantId: image.productVariantId,
+                        });
+                    }}
+                  />
+                  <select
+                    aria-label="Product option"
+                    disabled={!canUpdate || saving}
+                    onChange={(event) =>
+                      void updateItem(image.linkId, {
+                        altText: image.altText,
+                        productVariantId: event.target.value || null,
+                      })
+                    }
+                    value={image.productVariantId ?? ""}
+                  >
+                    <option value="">All product options</option>
+                    {details.variants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>
+                        {variant.sku}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {canUpdate ? (
+                  <div className="product-media-item-actions">
+                    <button
+                      aria-label="Move image up"
+                      disabled={
+                        saving ||
+                        index === 0 ||
+                        media[index - 1]?.role === "PRIMARY"
+                      }
+                      onClick={() => void move(image.linkId, -1)}
+                      title="Move up"
+                      type="button"
+                    >
+                      <ArrowUp size={16} />
+                    </button>
+                    <button
+                      aria-label="Move image down"
+                      disabled={
+                        saving ||
+                        index === media.length - 1 ||
+                        image.role === "PRIMARY"
+                      }
+                      onClick={() => void move(image.linkId, 1)}
+                      title="Move down"
+                      type="button"
+                    >
+                      <ArrowDown size={16} />
+                    </button>
+                    <button
+                      aria-label="Set as primary image"
+                      disabled={saving || image.role === "PRIMARY"}
+                      onClick={() => void makePrimary(image.linkId)}
+                      title="Set as primary"
+                      type="button"
+                    >
+                      <Star size={16} />
+                    </button>
+                    <button
+                      aria-label="Archive image"
+                      disabled={saving}
+                      onClick={() => void archive(image.linkId)}
+                      title="Archive"
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))
           )}
         </div>
         {canUpdate ? (
@@ -365,18 +542,8 @@ function ProductMedia({
                 ) : (
                   <ImagePlus size={16} />
                 )}
-                {details.primaryImage ? "Replace image" : "Upload image"}
+                Add image
               </button>
-              {details.primaryImage ? (
-                <button
-                  className="product-media-remove"
-                  disabled={saving}
-                  onClick={() => void remove()}
-                  type="button"
-                >
-                  <Trash2 size={16} /> Remove
-                </button>
-              ) : null}
             </div>
             {message ? (
               <p className="product-media-message" role="status">

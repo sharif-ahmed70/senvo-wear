@@ -14,6 +14,7 @@ type StorefrontPrismaClient = Pick<
   | "inventoryAllocationPolicy"
   | "organization"
   | "product"
+  | "productCollection"
   | "salesOrderCommerceProfile"
 >;
 
@@ -58,22 +59,35 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
   }): Promise<StorefrontCatalog> {
     const page = input.page ?? 1;
     const pageSize = input.pageSize ?? 24;
+    const collectionOrder = input.collection
+      ? await this.prisma.productCollection.findMany({
+          orderBy: [
+            { sortOrder: "asc" },
+            { createdAt: "asc" },
+            { productId: "asc" },
+          ],
+          select: { productId: true },
+          where: {
+            collection: { slug: input.collection, status: "ACTIVE" },
+            organizationId: input.organizationId,
+          },
+        })
+      : [];
+    const collectionRank = new Map(
+      collectionOrder.map((item, index) => [item.productId, index]),
+    );
     const [products, categories, collections] = await Promise.all([
       this.prisma.product.findMany({
         include: productInclude,
         orderBy: [{ name: "asc" }, { id: "asc" }],
-        skip: (page - 1) * pageSize,
-        take: pageSize + 1,
+        skip: input.collection ? undefined : (page - 1) * pageSize,
+        take: input.collection ? undefined : pageSize + 1,
         where: {
           category: input.category
             ? { slug: input.category, status: "ACTIVE" }
             : { status: "ACTIVE" },
-          collections: input.collection
-            ? {
-                some: {
-                  collection: { slug: input.collection, status: "ACTIVE" },
-                },
-              }
+          id: input.collection
+            ? { in: collectionOrder.map((item) => item.productId) }
             : undefined,
           OR: input.search
             ? [
@@ -115,6 +129,15 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
         where: { organizationId: input.organizationId, status: "ACTIVE" },
       }),
     ]);
+    const orderedProducts = input.collection
+      ? products
+          .sort(
+            (left, right) =>
+              (collectionRank.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+              (collectionRank.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+          )
+          .slice((page - 1) * pageSize, page * pageSize + 1)
+      : products;
     const available = await this.availableVariantIds(input.organizationId);
     const collectionMap = new Map<
       string,
@@ -140,10 +163,10 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
       collections: [...collectionMap.values()].sort((left, right) =>
         left.name.localeCompare(right.name),
       ),
-      hasMore: products.length > pageSize,
+      hasMore: orderedProducts.length > pageSize,
       page,
       pageSize,
-      products: products
+      products: orderedProducts
         .slice(0, pageSize)
         .map((product) => mapProduct(product as never, available)),
     };
@@ -308,6 +331,7 @@ function mapProduct(
     description: product.description,
     id: product.id,
     name: product.name,
+    media: [],
     primaryImage: null,
     productCode: product.productCode,
     slug: product.slug,

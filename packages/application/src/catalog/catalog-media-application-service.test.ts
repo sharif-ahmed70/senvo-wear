@@ -3,6 +3,7 @@ import {
   type CatalogMediaRepository,
   type CatalogProductManagementRepository,
   type CreatePrimaryProductMediaRecord,
+  type CreateProductMediaRecord,
   type PrimaryProductMedia,
 } from "@senvo/domain";
 import { InMemoryObjectStorageProvider } from "@senvo/storage";
@@ -170,12 +171,70 @@ describe("CatalogMediaApplicationService", () => {
     expect(fixture.repository.replaceCount).toBe(1);
     expect(fixture.storage.count()).toBe(1);
   });
+
+  it("rejects duplicate media reorder ids before persistence", async () => {
+    const fixture = createFixture();
+    const linkId = "10000000-0000-4000-8000-000000000010";
+    const result = await fixture.service.reorderProductMedia(context, {
+      linkIds: [linkId, linkId],
+      productId,
+    });
+    expect(result).toMatchObject({
+      error: { code: "VALIDATION_ERROR" },
+      ok: false,
+    });
+  });
+
+  it("adds gallery media without accepting organization or storage identity", async () => {
+    const fixture = createFixture();
+    const result = await fixture.service.addProductMedia(context, {
+      altText: "Oxford side view",
+      contentBase64: png,
+      contentType: "image/png",
+      idempotencyKey: "media-request-010",
+      productId,
+      productVariantId: null,
+    });
+    expect(result).toMatchObject({
+      data: {
+        altText: "Oxford side view",
+        productVariantId: null,
+        role: "GALLERY",
+      },
+      ok: true,
+    });
+    const rejected = await fixture.service.addProductMedia(context, {
+      altText: "Unsafe upload",
+      contentBase64: png,
+      contentType: "image/png",
+      idempotencyKey: "media-request-011",
+      organizationId,
+      productId,
+      storageKey: "browser-owned-key",
+    });
+    expect(rejected).toMatchObject({
+      error: { code: "VALIDATION_ERROR" },
+      ok: false,
+    });
+  });
 });
 
 class MemoryMediaRepository implements CatalogMediaRepository {
   current: PrimaryProductMedia | null = null;
   archived: PrimaryProductMedia[] = [];
   replaceCount = 0;
+
+  async add(record: CreateProductMediaRecord) {
+    const result = await this.replacePrimary(record);
+    result.current.link.role = record.role;
+    result.current.link.productVariantId = record.productVariantId;
+    return result.current;
+  }
+  archive(input: { linkId: string }) {
+    return this.current?.link.id === input.linkId
+      ? this.archivePrimary()
+      : Promise.resolve(null);
+  }
 
   archivePrimary() {
     const current = this.current;
@@ -217,6 +276,25 @@ class MemoryMediaRepository implements CatalogMediaRepository {
         : [],
     );
   }
+  listProductMedia(organizationId: string, requestedProductId: string) {
+    return this.findPrimary(organizationId, requestedProductId).then((item) =>
+      item ? [item] : [],
+    );
+  }
+  reorder() {
+    return Promise.resolve(this.current ? [this.current] : []);
+  }
+  setPrimary() {
+    if (this.current) this.current.link.role = "PRIMARY";
+    return Promise.resolve(this.current ? [this.current] : []);
+  }
+  updateMetadata(input: { altText: string; productVariantId: string | null }) {
+    if (this.current) {
+      this.current.asset.altText = input.altText;
+      this.current.link.productVariantId = input.productVariantId;
+    }
+    return Promise.resolve(this.current);
+  }
   replacePrimary(record: CreatePrimaryProductMediaRecord) {
     const replay = [
       ...this.archived,
@@ -238,7 +316,7 @@ class MemoryMediaRepository implements CatalogMediaRepository {
     const previous = this.current;
     if (previous) this.archived.push(previous);
     const now = new Date("2026-08-17T12:00:00.000Z");
-    this.current = {
+    const created: PrimaryProductMedia = {
       asset: {
         ...record,
         createdAt: now,
@@ -252,13 +330,15 @@ class MemoryMediaRepository implements CatalogMediaRepository {
         mediaAssetId: record.id,
         organizationId: record.organizationId,
         productId: record.productId,
+        productVariantId: null,
         role: "PRIMARY",
         sortOrder: 0,
         status: "ACTIVE",
         updatedAt: now,
       },
     };
-    return Promise.resolve({ current: this.current, previous });
+    this.current = created;
+    return Promise.resolve({ current: created, previous });
   }
 }
 

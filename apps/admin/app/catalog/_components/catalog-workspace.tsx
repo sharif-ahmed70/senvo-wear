@@ -9,6 +9,8 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
   Check,
   LoaderCircle,
   PackageOpen,
@@ -46,6 +48,7 @@ export function CatalogWorkspace({
   const [collections, setCollections] = useState<CollectionContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
+  const [products, setProducts] = useState<ProductContract[]>([]);
   const [state, setState] = useState<"error" | "loading" | "ready">("loading");
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -73,6 +76,9 @@ export function CatalogWorkspace({
           colorResult.data.filter((color) => color.status === "ACTIVE"),
         );
         setSizes(sizeResult.data.filter((size) => size.status === "ACTIVE"));
+      } else if (kind === "collections") {
+        const productResult = await client.listProducts();
+        setProducts(productResult.data);
       }
       setState("ready");
     } catch (caught) {
@@ -156,7 +162,122 @@ export function CatalogWorkspace({
           />
         )}
       </section>
+      {kind === "collections" && records.length > 0 ? (
+        <CollectionOrderManager
+          canUpdate={canUpdate}
+          collections={records as CollectionContract[]}
+          products={products}
+        />
+      ) : null}
     </>
+  );
+}
+
+function CollectionOrderManager({
+  canUpdate,
+  collections,
+  products,
+}: {
+  canUpdate: boolean;
+  collections: CollectionContract[];
+  products: ProductContract[];
+}) {
+  const [collectionId, setCollectionId] = useState(collections[0]?.id ?? "");
+  const [order, setOrder] = useState<string[]>([]);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!collectionId) return;
+    let active = true;
+    void client
+      .listCollectionProducts(collectionId)
+      .then((result) => {
+        if (active) setOrder(result.data);
+      })
+      .catch((caught) => {
+        if (active) setMessage(messageForError(caught));
+      });
+    return () => {
+      active = false;
+    };
+  }, [collectionId]);
+
+  async function move(index: number, direction: -1 | 1) {
+    const destination = index + direction;
+    if (destination < 0 || destination >= order.length) return;
+    const next = [...order];
+    [next[index], next[destination]] = [next[destination]!, next[index]!];
+    setSaving(true);
+    setMessage("");
+    try {
+      await client.reorderCollectionProducts(collectionId, next);
+      setOrder(next);
+      setMessage("Collection order saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const productNames = new Map(
+    products.map((product) => [product.id, product.name]),
+  );
+  return (
+    <section className="admin-section admin-section--compact">
+      <div className="admin-section__heading">
+        <div>
+          <h2>Storefront order</h2>
+          <p>Choose which products customers see first in this collection.</p>
+        </div>
+        <select
+          aria-label="Collection"
+          onChange={(event) => setCollectionId(event.target.value)}
+          value={collectionId}
+        >
+          {collections.map((collection) => (
+            <option key={collection.id} value={collection.id}>
+              {collection.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {order.length === 0 ? (
+        <p>No products are assigned to this collection.</p>
+      ) : (
+        <ol className="collection-order-list">
+          {order.map((productId, index) => (
+            <li key={productId}>
+              <span>{productNames.get(productId) ?? "Catalog product"}</span>
+              {canUpdate ? (
+                <span>
+                  <button
+                    aria-label="Move product up"
+                    disabled={saving || index === 0}
+                    onClick={() => void move(index, -1)}
+                    title="Move up"
+                    type="button"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
+                  <button
+                    aria-label="Move product down"
+                    disabled={saving || index === order.length - 1}
+                    onClick={() => void move(index, 1)}
+                    title="Move down"
+                    type="button"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      )}
+      {message ? <p role="status">{message}</p> : null}
+    </section>
   );
 }
 

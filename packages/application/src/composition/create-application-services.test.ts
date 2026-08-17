@@ -134,7 +134,9 @@ const fakeProductRepository: CatalogProductManagementRepository = {
   findById: () => Promise.resolve(null),
   findBySlug: () => Promise.resolve(null),
   list: () => Promise.resolve([]),
+  listCollectionProductOrder: () => Promise.resolve([]),
   listCollectionIds: () => Promise.resolve([]),
+  reorderCollectionProducts: () => Promise.resolve(),
 };
 
 const fakeProductVariantRepository: CatalogProductVariantManagementRepository =

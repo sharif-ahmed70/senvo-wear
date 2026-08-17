@@ -620,13 +620,41 @@ describe("AdminApiClient", () => {
     await client.removePrimaryProductImage(productId, {
       requestId: "req_media_2",
     });
+    const linkId = "10000000-0000-4000-8000-000000000002";
+    await client.addProductMedia({
+      altText: "Navy oxford side",
+      contentBase64: "iVBORw0KGgo=",
+      contentType: "image/png",
+      idempotencyKey: "media-upload-2",
+      productId,
+      productVariantId: null,
+    });
+    await client.reorderProductMedia({ linkIds: [linkId], productId });
+    await client.setProductMediaPrimary(productId, linkId);
+    await client.updateProductMedia({
+      altText: "Updated description",
+      linkId,
+      productId,
+      productVariantId: null,
+    });
+    await client.archiveProductMedia(productId, linkId);
 
     expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
       `https://admin.example.test/catalog/products/${productId}/primary-image`,
       `https://admin.example.test/catalog/products/${productId}/primary-image`,
+      `https://admin.example.test/catalog/products/${productId}/media`,
+      `https://admin.example.test/catalog/products/${productId}/media/reorder`,
+      `https://admin.example.test/catalog/products/${productId}/media/${linkId}/primary`,
+      `https://admin.example.test/catalog/products/${productId}/media/${linkId}`,
+      `https://admin.example.test/catalog/products/${productId}/media/${linkId}`,
     ]);
     expect(fetcher.mock.calls.map((call) => call[1]?.method)).toEqual([
       "PUT",
+      "DELETE",
+      "POST",
+      "PATCH",
+      "PATCH",
+      "PATCH",
       "DELETE",
     ]);
     const rawBody = fetcher.mock.calls[0]?.[1]?.body;
@@ -637,5 +665,14 @@ describe("AdminApiClient", () => {
     expect(body).not.toHaveProperty("productId");
     expect(body).not.toHaveProperty("organizationId");
     expect(body).not.toHaveProperty("storageKey");
+    for (const call of fetcher.mock.calls.slice(2)) {
+      const candidate = (
+        typeof call[1]?.body === "string" ? JSON.parse(call[1].body) : {}
+      ) as Record<string, unknown>;
+      expect(candidate).not.toHaveProperty("productId");
+      expect(candidate).not.toHaveProperty("linkId");
+      expect(candidate).not.toHaveProperty("organizationId");
+      expect(candidate).not.toHaveProperty("storageKey");
+    }
   });
 });

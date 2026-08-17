@@ -12,6 +12,7 @@ import type {
   ProductContract,
   ProductDetailsContract,
   PrimaryProductImageContract,
+  ProductMediaContract,
   ProductVariantContract,
   SizeContract,
   VariantBarcodeContract,
@@ -430,6 +431,55 @@ describe("catalog API handlers", () => {
     expect(catalog.context).toMatchObject({ organizationId, userId });
     expect(catalog.payloads.at(-1)).not.toHaveProperty("organizationId");
   });
+
+  it("validates complete duplicate-free gallery reorder input", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    const linkId = "30000000-0000-4000-8000-000000000002";
+    const response = await handlers.reorderProductMedia.handle({
+      context,
+      input: {
+        linkIds: [linkId, linkId],
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.payloads).toHaveLength(0);
+  });
+
+  it("enforces CATALOG.UPDATE and strips trusted fields for gallery uploads", async () => {
+    const catalog = new FakeCatalog();
+    const authorization = new FakeAuthorization();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+    const response = await handlers.addProductMedia.handle({
+      context,
+      input: {
+        altText: "Black shirt side",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-gallery-api-001",
+        organizationId,
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(authorization.permission).toBeUndefined();
+    expect(catalog.payloads).toHaveLength(0);
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -518,6 +568,39 @@ class FakeCatalog implements CatalogManagementApplication {
   }
   removePrimaryProductImage(context: ApplicationExecutionContext) {
     return this.success(context, null);
+  }
+  listProductMedia(context: ApplicationExecutionContext) {
+    return this.success(context, [] as ProductMediaContract[]);
+  }
+  addProductMedia(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as ProductMediaContract);
+  }
+  setExistingPrimary(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, [] as ProductMediaContract[]);
+  }
+  reorderProductMedia(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, [] as ProductMediaContract[]);
+  }
+  updateProductMedia(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as ProductMediaContract);
+  }
+  archiveProductMedia(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, null);
+  }
+  reorderCollectionProducts(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    this.payloads.push(payload);
+    return this.success(context, null);
+  }
+  listCollectionProducts(context: ApplicationExecutionContext) {
+    return this.success(context, [] as string[]);
   }
   listCategories(context: ApplicationExecutionContext) {
     return this.success(context, [] as CategoryContract[]);

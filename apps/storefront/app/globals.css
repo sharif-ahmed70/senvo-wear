@@ -418,3 +418,30 @@ footer {
   object-fit: cover;
   width: 100%;
 }
+
+.product-thumbnails {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.product-thumbnails button {
+  background: #fff;
+  border: 1px solid #b9b9b2;
+  border-radius: 4px;
+  flex: 0 0 76px;
+  height: 76px;
+  padding: 2px;
+}
+
+.product-thumbnails button[aria-pressed="true"] {
+  border-color: #151714;
+  box-shadow: 0 0 0 1px #151714;
+}
+
+.product-thumbnails img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}

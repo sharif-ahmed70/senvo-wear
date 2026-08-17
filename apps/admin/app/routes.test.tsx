@@ -7,6 +7,7 @@ import CollectionsPage from "./catalog/collections/page";
 import ColorsPage from "./catalog/colors/page";
 import BarcodesPage from "./catalog/barcodes/page";
 import ProductsPage from "./catalog/products/page";
+import { ProductMedia } from "./catalog/products/_components/product-inventory-detail";
 import SizesPage from "./catalog/sizes/page";
 import { CatalogWorkspace } from "./catalog/_components/catalog-workspace";
 import { BarcodeWorkspace } from "./catalog/barcodes/_components/barcode-workspace";
@@ -53,6 +54,52 @@ import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-
 import { AdminApiError } from "./_lib/api-client";
 
 describe("admin routes", () => {
+  it("renders ordered media controls only with catalog update access", () => {
+    const details = {
+      collectionIds: [],
+      media: [
+        {
+          altText: "Oxford shirt front",
+          assetId: "10000000-0000-4000-8000-000000000001",
+          byteSize: 256,
+          contentType: "image/png" as const,
+          linkId: "10000000-0000-4000-8000-000000000002",
+          productVariantId: null,
+          role: "PRIMARY" as const,
+          sortOrder: 0,
+          url: "data:image/png;base64,iVBORw0KGgo=",
+        },
+      ],
+      primaryImage: null,
+      product: {
+        categoryId: "10000000-0000-4000-8000-000000000003",
+        createdAt: "2026-08-18T00:00:00.000Z",
+        description: null,
+        id: "10000000-0000-4000-8000-000000000004",
+        name: "Oxford Shirt",
+        organizationId: "10000000-0000-4000-8000-000000000005",
+        productCode: "OXFORD",
+        slug: "oxford-shirt",
+        status: "ACTIVE" as const,
+        updatedAt: "2026-08-18T00:00:00.000Z",
+      },
+      variants: [],
+    };
+    const editable = renderToStaticMarkup(
+      <ProductMedia canUpdate details={details} onChange={() => undefined} />,
+    );
+    const readonly = renderToStaticMarkup(
+      <ProductMedia
+        canUpdate={false}
+        details={details}
+        onChange={() => undefined}
+      />,
+    );
+    expect(editable).toContain("Set as primary image");
+    expect(editable).toContain("Move image down");
+    expect(readonly).not.toContain("Set as primary image");
+    expect(readonly).toContain("view-only catalog access");
+  });
   it("renders sales source and booth history routes", () => {
     expect(renderToStaticMarkup(<SalesChannelsPage />)).toContain(
       "Sales Sources",

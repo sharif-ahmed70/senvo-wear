@@ -17,6 +17,7 @@ import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaPosReturnRepository } from "../pos/return-repository.js";
 import { PrismaStorefrontRepository } from "../storefront/repository.js";
 import { PrismaCatalogMediaRepository } from "../catalog/media-repository.js";
+import { PrismaProductRepository } from "../catalog/repositories.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 type TransactionActorContext = {
@@ -45,6 +46,7 @@ export class PrismaTransactionManager<
           ),
         ),
         catalogMediaRepository: new PrismaCatalogMediaRepository(transaction),
+        catalogProductRepository: new PrismaProductRepository(transaction),
         inventoryMovementRepository:
           new PrismaTransactionalInventoryMovementPostingRepository(
             transaction,

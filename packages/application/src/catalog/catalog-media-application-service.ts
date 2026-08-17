@@ -6,11 +6,18 @@ import {
   type CatalogMediaRepository,
   type CatalogProductManagementRepository,
   type PrimaryProductMedia,
+  type ProductMedia,
 } from "@senvo/domain";
 import {
+  addProductMediaServiceInputSchema,
   primaryProductImageSchema,
+  productMediaLinkServiceInputSchema,
+  productMediaSchema,
+  reorderProductMediaServiceInputSchema,
   removePrimaryProductImageServiceInputSchema,
   setPrimaryProductImageServiceInputSchema,
+  updateProductMediaServiceInputSchema,
+  type ProductMediaContract,
   type PrimaryProductImageContract,
 } from "@senvo/contracts";
 import {
@@ -64,6 +71,189 @@ export class CatalogMediaApplicationService {
       await this.authorize(validated, "READ");
       await this.requireProduct(validated.organizationId, input.productId);
       return this.readProjection(validated.organizationId, input.productId);
+    });
+  }
+
+  listProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = removePrimaryProductImageServiceInputSchema.parse(payload);
+      await this.authorize(validated, "READ");
+      await this.requireProduct(validated.organizationId, input.productId);
+      return this.readMediaProjection(
+        validated.organizationId,
+        input.productId,
+      );
+    });
+  }
+
+  addProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>> {
+    return this.execute(context, async (validated) => {
+      const input = addProductMediaServiceInputSchema.parse(payload);
+      await this.authorize(validated, "UPDATE");
+      await this.requireProduct(validated.organizationId, input.productId);
+      const body = decodeAndValidateImage(
+        input.contentBase64,
+        input.contentType,
+      );
+      const requestSignature = signature({
+        ...input,
+        body,
+        productVariantId: input.productVariantId ?? null,
+      });
+      const replay = await this.dependencies.media.findByIdempotencyKey(
+        validated.organizationId,
+        input.idempotencyKey,
+      );
+      if (replay) {
+        if (replay.asset.requestSignature !== requestSignature) {
+          throw new ApplicationServiceError({
+            code: "IDEMPOTENCY_CONFLICT",
+            message: "This request was already used with different details.",
+          });
+        }
+        return this.toMediaProjection(replay);
+      }
+      const assetId = crypto.randomUUID();
+      const storageKey = productImageObjectKey({
+        assetId,
+        contentType: input.contentType,
+        organizationId: validated.organizationId,
+        productId: input.productId,
+      });
+      try {
+        await this.dependencies.storage.upload({
+          body,
+          contentType: input.contentType,
+          key: storageKey,
+          metadata: {
+            organizationId: validated.organizationId,
+            productId: input.productId,
+          },
+        });
+      } catch {
+        throw storageFailure();
+      }
+      try {
+        const current = await this.dependencies.transactionManager.execute(
+          validated,
+          async (transaction) => {
+            if (!transaction.catalogMediaRepository)
+              throw new Error("Transactional media repository is unavailable.");
+            return transaction.catalogMediaRepository.add({
+              altText: input.altText,
+              byteSize: body.byteLength,
+              contentType: input.contentType,
+              id: assetId,
+              idempotencyKey: input.idempotencyKey,
+              linkId: crypto.randomUUID(),
+              mediaType: "IMAGE",
+              organizationId: validated.organizationId,
+              productId: input.productId,
+              productVariantId: input.productVariantId ?? null,
+              requestSignature,
+              role: "GALLERY",
+              storageKey,
+            });
+          },
+        );
+        if (current.asset.id !== assetId)
+          await this.dependencies.storage
+            .delete(storageKey)
+            .catch(() => undefined);
+        return this.toMediaProjection(current);
+      } catch (error) {
+        await this.dependencies.storage
+          .delete(storageKey)
+          .catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  setExistingPrimary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.mutateMedia(context, payload, async (transaction, input) =>
+      transaction.setPrimary(input),
+    );
+  }
+
+  reorderProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = reorderProductMediaServiceInputSchema.parse(payload);
+      await this.authorize(validated, "UPDATE");
+      await this.requireProduct(validated.organizationId, input.productId);
+      const media = await this.dependencies.transactionManager.execute(
+        validated,
+        async (transaction) => {
+          if (!transaction.catalogMediaRepository)
+            throw new Error("Transactional media repository is unavailable.");
+          return transaction.catalogMediaRepository.reorder({
+            ...input,
+            organizationId: validated.organizationId,
+          });
+        },
+      );
+      return Promise.all(media.map((item) => this.toMediaProjection(item)));
+    });
+  }
+
+  updateProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductMediaContract>> {
+    return this.execute(context, async (validated) => {
+      const input = updateProductMediaServiceInputSchema.parse(payload);
+      await this.authorize(validated, "UPDATE");
+      await this.requireProduct(validated.organizationId, input.productId);
+      const media = await this.dependencies.transactionManager.execute(
+        validated,
+        async (transaction) => {
+          if (!transaction.catalogMediaRepository)
+            throw new Error("Transactional media repository is unavailable.");
+          return transaction.catalogMediaRepository.updateMetadata({
+            ...input,
+            organizationId: validated.organizationId,
+          });
+        },
+      );
+      if (!media) throw new NotFoundError("Product image was not found.");
+      return this.toMediaProjection(media);
+    });
+  }
+
+  archiveProductMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<null>> {
+    return this.execute(context, async (validated) => {
+      const input = productMediaLinkServiceInputSchema.parse(payload);
+      await this.authorize(validated, "UPDATE");
+      await this.requireProduct(validated.organizationId, input.productId);
+      const archived = await this.dependencies.transactionManager.execute(
+        validated,
+        async (transaction) => {
+          if (!transaction.catalogMediaRepository)
+            throw new Error("Transactional media repository is unavailable.");
+          return transaction.catalogMediaRepository.archive({
+            ...input,
+            organizationId: validated.organizationId,
+          });
+        },
+      );
+      if (!archived) throw new NotFoundError("Product image was not found.");
+      await this.cleanupArchived(validated.organizationId);
+      return null;
     });
   }
 
@@ -210,6 +400,17 @@ export class CatalogMediaApplicationService {
     );
   }
 
+  async readMediaProjection(
+    organizationId: string,
+    productId: string,
+  ): Promise<ProductMediaContract[]> {
+    const media = await this.dependencies.media.listProductMedia(
+      organizationId,
+      productId,
+    );
+    return Promise.all(media.map((item) => this.toMediaProjection(item)));
+  }
+
   private async toProjection(
     media: PrimaryProductMedia,
   ): Promise<PrimaryProductImageContract> {
@@ -224,6 +425,46 @@ export class CatalogMediaApplicationService {
     } catch {
       throw storageFailure();
     }
+  }
+
+  private async toMediaProjection(
+    media: ProductMedia,
+  ): Promise<ProductMediaContract> {
+    const image = await this.toProjection(media);
+    return productMediaSchema.parse({
+      ...image,
+      linkId: media.link.id,
+      productVariantId: media.link.productVariantId,
+      role: media.link.role,
+      sortOrder: media.link.sortOrder,
+    });
+  }
+
+  private mutateMedia(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+    operation: (
+      repository: CatalogMediaRepository,
+      input: { linkId: string; organizationId: string; productId: string },
+    ) => Promise<ProductMedia[]>,
+  ): Promise<ApplicationServiceResult<ProductMediaContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = productMediaLinkServiceInputSchema.parse(payload);
+      await this.authorize(validated, "UPDATE");
+      await this.requireProduct(validated.organizationId, input.productId);
+      const media = await this.dependencies.transactionManager.execute(
+        validated,
+        async (transaction) => {
+          if (!transaction.catalogMediaRepository)
+            throw new Error("Transactional media repository is unavailable.");
+          return operation(transaction.catalogMediaRepository, {
+            ...input,
+            organizationId: validated.organizationId,
+          });
+        },
+      );
+      return Promise.all(media.map((item) => this.toMediaProjection(item)));
+    });
   }
 
   private async cleanupArchived(organizationId: string): Promise<void> {
@@ -320,16 +561,19 @@ function signature(input: {
   body: Uint8Array;
   contentType: string;
   productId: string;
+  productVariantId?: string | null;
 }): string {
-  return createHash("sha256")
+  const hash = createHash("sha256")
     .update(input.productId)
     .update("\0")
     .update(input.altText)
     .update("\0")
     .update(input.contentType)
     .update("\0")
-    .update(input.body)
-    .digest("hex");
+    .update(input.body);
+  if (input.productVariantId !== undefined)
+    hash.update("\0").update(input.productVariantId ?? "product");
+  return hash.digest("hex");
 }
 
 function normalizeMediaError(error: unknown): ApplicationServiceError {

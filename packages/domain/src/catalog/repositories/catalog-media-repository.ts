@@ -1,5 +1,6 @@
 import type {
   MediaAsset,
+  ProductMedia,
   PrimaryProductMedia,
 } from "../domain/media-models.js";
 
@@ -16,7 +17,18 @@ export type CreatePrimaryProductMediaRecord = Pick<
   | "storageKey"
 > & { linkId: string; productId: string };
 
+export type CreateProductMediaRecord = CreatePrimaryProductMediaRecord & {
+  productVariantId: string | null;
+  role: "GALLERY" | "PRIMARY";
+};
+
 export type CatalogMediaRepository = {
+  add(record: CreateProductMediaRecord): Promise<ProductMedia>;
+  archive(input: {
+    linkId: string;
+    organizationId: string;
+    productId: string;
+  }): Promise<ProductMedia | null>;
   archivePrimary(input: {
     organizationId: string;
     productId: string;
@@ -37,6 +49,27 @@ export type CatalogMediaRepository = {
     organizationId: string,
     productIds: readonly string[],
   ): Promise<PrimaryProductMedia[]>;
+  listProductMedia(
+    organizationId: string,
+    productId: string,
+  ): Promise<ProductMedia[]>;
+  reorder(input: {
+    linkIds: readonly string[];
+    organizationId: string;
+    productId: string;
+  }): Promise<ProductMedia[]>;
+  setPrimary(input: {
+    linkId: string;
+    organizationId: string;
+    productId: string;
+  }): Promise<ProductMedia[]>;
+  updateMetadata(input: {
+    altText: string;
+    linkId: string;
+    organizationId: string;
+    productId: string;
+    productVariantId: string | null;
+  }): Promise<ProductMedia | null>;
   replacePrimary(record: CreatePrimaryProductMediaRecord): Promise<{
     current: PrimaryProductMedia;
     previous: PrimaryProductMedia | null;

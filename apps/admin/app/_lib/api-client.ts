@@ -26,6 +26,10 @@ import type {
   ProductContract,
   ProductDetailsContract,
   PrimaryProductImageContract,
+  ProductMediaContract,
+  AddProductMediaServiceInputContract,
+  ReorderProductMediaServiceInputContract,
+  UpdateProductMediaServiceInputContract,
   SetPrimaryProductImageServiceInputContract,
   ProductVariantContract,
   OrganizationProfileContract,
@@ -331,6 +335,86 @@ export class AdminApiClient {
       ...request,
       method: "DELETE",
     });
+  }
+
+  listProductMedia(productId: string, request?: AdminApiRequest) {
+    return this.request<ProductMediaContract[]>(
+      `/catalog/products/${productId}/media`,
+      request,
+    );
+  }
+
+  addProductMedia(
+    input: AddProductMediaServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { productId, ...body } = input;
+    return this.request<ProductMediaContract>(
+      `/catalog/products/${productId}/media`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  reorderProductMedia(
+    input: ReorderProductMediaServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { productId, ...body } = input;
+    return this.request<ProductMediaContract[]>(
+      `/catalog/products/${productId}/media/reorder`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  setProductMediaPrimary(
+    productId: string,
+    linkId: string,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ProductMediaContract[]>(
+      `/catalog/products/${productId}/media/${linkId}/primary`,
+      { ...request, method: "PATCH" },
+    );
+  }
+
+  updateProductMedia(
+    input: UpdateProductMediaServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { linkId, productId, ...body } = input;
+    return this.request<ProductMediaContract>(
+      `/catalog/products/${productId}/media/${linkId}`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
+  archiveProductMedia(
+    productId: string,
+    linkId: string,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<null>(
+      `/catalog/products/${productId}/media/${linkId}`,
+      { ...request, method: "DELETE" },
+    );
+  }
+
+  listCollectionProducts(collectionId: string, request?: AdminApiRequest) {
+    return this.request<string[]>(
+      `/catalog/collections/${collectionId}/products`,
+      request,
+    );
+  }
+
+  reorderCollectionProducts(
+    collectionId: string,
+    productIds: readonly string[],
+    request?: AdminApiRequest,
+  ) {
+    return this.request<null>(
+      `/catalog/collections/${collectionId}/products/reorder`,
+      { ...request, body: { productIds }, method: "PATCH" },
+    );
   }
 
   listVariants(productId: string, request?: AdminApiRequest) {
