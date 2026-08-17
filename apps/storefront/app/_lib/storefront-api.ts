@@ -39,11 +39,19 @@ type ApiResponse<T> =
       requestId: string;
       success: false;
     };
-const baseUrl = (
-  process.env.NEXT_PUBLIC_SENVO_API_URL ?? "http://localhost:4000"
-).replace(/\/$/u, "");
+export function storefrontApiBaseUrl(
+  configured = process.env.NEXT_PUBLIC_SENVO_API_URL,
+): string {
+  const value = configured?.trim();
+  if (!value) {
+    throw new Error(
+      "NEXT_PUBLIC_SENVO_API_URL is required for Storefront API requests.",
+    );
+  }
+  return value.replace(/\/$/u, "");
+}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${storefrontApiBaseUrl()}${path}`, {
     ...init,
     headers: { "content-type": "application/json", ...init?.headers },
   });

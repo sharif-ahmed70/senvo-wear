@@ -1,43 +1,88 @@
 "use client";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Minus, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { hydrateCart, readCart, writeCart, type CartLine } from "../_lib/cart";
+import { useCallback, useEffect, useState } from "react";
+import {
+  canContinueToCheckout,
+  hydrateStoredCart,
+  readCart,
+  writeCart,
+  type HydratedCart,
+  type HydratedCartLine,
+} from "../_lib/cart";
 import { storefrontApi, taka } from "../_lib/storefront-api";
+
+const emptyCart: HydratedCart = { lines: [], unavailable: [] };
 export function CartWorkspace() {
-  const [lines, setLines] = useState<CartLine[]>([]);
-  const [notice, setNotice] = useState("");
-  useEffect(() => {
-    const stored = readCart(window.localStorage);
-    void storefrontApi
-      .fullCatalog()
-      .then((catalog) => {
-        const hydrated = hydrateCart(stored, catalog);
-        setLines(hydrated.lines);
-        writeCart(window.localStorage, hydrated.lines);
-        if (hydrated.removed > 0)
-          setNotice("Some unavailable items were removed from your bag.");
-        else if (hydrated.changed)
-          setNotice(
-            "Your bag was refreshed with current product details and prices.",
-          );
-      })
-      .catch(() => {
-        setLines(stored);
-        setNotice(
-          "We could not refresh availability. Checkout will verify every item.",
-        );
-      });
+  const [cart, setCart] = useState<HydratedCart>(emptyCart);
+  const [status, setStatus] = useState<"error" | "loading" | "ready">(
+    "loading",
+  );
+  const load = useCallback(async () => {
+    const selections = readCart(window.localStorage);
+    if (selections.length === 0) {
+      setCart(emptyCart);
+      setStatus("ready");
+      return;
+    }
+    setStatus("loading");
+    try {
+      setCart(
+        await hydrateStoredCart(window.localStorage, () =>
+          storefrontApi.fullCatalog(),
+        ),
+      );
+      setStatus("ready");
+    } catch {
+      setCart(emptyCart);
+      setStatus("error");
+    }
   }, []);
-  const save = (next: CartLine[]) => {
-    setLines(next);
-    writeCart(window.localStorage, next);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
+  const save = (lines: HydratedCartLine[]) => {
+    setCart((current) => ({ ...current, lines }));
+    writeCart(window.localStorage, [...lines, ...cart.unavailable]);
   };
-  const total = lines.reduce(
+  const removeUnavailable = (productVariantId: string) => {
+    const unavailable = cart.unavailable.filter(
+      (line) => line.productVariantId !== productVariantId,
+    );
+    setCart((current) => ({ ...current, unavailable }));
+    writeCart(window.localStorage, [...cart.lines, ...unavailable]);
+  };
+  const clear = () => {
+    setCart(emptyCart);
+    writeCart(window.localStorage, []);
+  };
+  const total = cart.lines.reduce(
     (sum, line) => sum + line.quantity * line.unitPriceMinor,
     0,
   );
-  if (lines.length === 0)
+  if (status === "loading")
+    return (
+      <main className="empty" aria-live="polite">
+        <h1>Refreshing your bag</h1>
+        <p>Checking current prices and availability...</p>
+      </main>
+    );
+  if (status === "error")
+    return (
+      <main className="empty" aria-live="polite">
+        <h1>We could not refresh your bag.</h1>
+        <p>
+          Retry to check current prices and availability before checkout. Your
+          selections are still saved.
+        </p>
+        <button className="primary" onClick={() => void load()} type="button">
+          <RefreshCw size={18} /> Retry
+        </button>
+        <Link href="/">Back to shop</Link>
+      </main>
+    );
+  if (cart.lines.length === 0 && cart.unavailable.length === 0)
     return (
       <main className="empty">
         <h1>Your bag is empty</h1>
@@ -47,13 +92,18 @@ export function CartWorkspace() {
         </Link>
       </main>
     );
+  const canCheckout = canContinueToCheckout(status, cart);
   return (
     <main className="cart-page">
       <h1>Your bag</h1>
-      {notice ? <p className="notice">{notice}</p> : null}
+      <p className={`notice${cart.unavailable.length ? " error" : ""}`}>
+        {cart.unavailable.length
+          ? "Some items are no longer available. Remove them before checkout."
+          : "Your bag shows current product details, prices, and availability."}
+      </p>
       <div className="cart-layout">
         <section>
-          {lines.map((line) => (
+          {cart.lines.map((line) => (
             <article className="cart-line" key={line.productVariantId}>
               <div className="cart-thumb" />
               <div>
@@ -70,7 +120,7 @@ export function CartWorkspace() {
                   aria-label="Decrease quantity"
                   onClick={() =>
                     save(
-                      lines.map((item) =>
+                      cart.lines.map((item) =>
                         item.productVariantId === line.productVariantId
                           ? {
                               ...item,
@@ -89,7 +139,7 @@ export function CartWorkspace() {
                   min={1}
                   onChange={(event) =>
                     save(
-                      lines.map((item) =>
+                      cart.lines.map((item) =>
                         item.productVariantId === line.productVariantId
                           ? {
                               ...item,
@@ -109,7 +159,7 @@ export function CartWorkspace() {
                   aria-label="Increase quantity"
                   onClick={() =>
                     save(
-                      lines.map((item) =>
+                      cart.lines.map((item) =>
                         item.productVariantId === line.productVariantId
                           ? {
                               ...item,
@@ -126,7 +176,7 @@ export function CartWorkspace() {
                   aria-label="Remove item"
                   onClick={() =>
                     save(
-                      lines.filter(
+                      cart.lines.filter(
                         (item) =>
                           item.productVariantId !== line.productVariantId,
                       ),
@@ -136,6 +186,24 @@ export function CartWorkspace() {
                   <Trash2 />
                 </button>
               </div>
+            </article>
+          ))}
+          {cart.unavailable.map((line) => (
+            <article
+              className="cart-line unavailable"
+              key={line.productVariantId}
+            >
+              <div className="cart-thumb" />
+              <div>
+                <h2>Unavailable item</h2>
+                <p>This selection can no longer be purchased.</p>
+              </div>
+              <button
+                onClick={() => removeUnavailable(line.productVariantId)}
+                type="button"
+              >
+                <Trash2 size={18} /> Remove
+              </button>
             </article>
           ))}
         </section>
@@ -152,12 +220,18 @@ export function CartWorkspace() {
           <hr />
           <p>
             <span>Total</span>
-            <strong>{taka(total)}</strong>
+            <strong>{canCheckout ? taka(total) : "Review needed"}</strong>
           </p>
-          <Link className="primary link-button" href="/checkout">
-            Continue to checkout
-          </Link>
-          <button onClick={() => save([])} type="button">
+          {canCheckout ? (
+            <Link className="primary link-button" href="/checkout">
+              Continue to checkout
+            </Link>
+          ) : (
+            <button className="primary" disabled type="button">
+              Continue to checkout
+            </button>
+          )}
+          <button onClick={clear} type="button">
             Clear bag
           </button>
           <small>Cash on delivery. You will not be charged online.</small>

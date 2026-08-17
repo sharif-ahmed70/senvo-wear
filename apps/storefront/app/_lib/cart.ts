@@ -3,65 +3,85 @@ import type {
   StorefrontProduct,
   StorefrontVariant,
 } from "./storefront-api";
+
 export const cartStorageKey = "senvo-storefront-cart-v1";
-export type CartLine = {
+export const checkoutPriceRefreshMessage =
+  "Your order was refreshed with current prices. Please review the total before placing the order.";
+
+export type PersistedCartLine = {
+  productVariantId: string;
+  quantity: number;
+};
+
+export type HydratedCartLine = PersistedCartLine & {
+  availability: "IN_STOCK";
   color: string;
   productName: string;
   productSlug: string;
-  productVariantId: string;
-  quantity: number;
   size: string;
   sku: string;
   unitPriceMinor: number;
 };
-export function readCart(storage: Pick<Storage, "getItem">): CartLine[] {
+
+type PersistedCart = {
+  lines: PersistedCartLine[];
+  version: 1;
+};
+
+export type HydratedCart = {
+  lines: HydratedCartLine[];
+  unavailable: PersistedCartLine[];
+};
+
+export function readCart(
+  storage: Pick<Storage, "getItem">,
+): PersistedCartLine[] {
   try {
     const value = JSON.parse(
       storage.getItem(cartStorageKey) ?? "[]",
     ) as unknown;
-    return Array.isArray(value) ? value.filter(isCartLine) : [];
+    const lines = Array.isArray(value)
+      ? value
+      : isPersistedCart(value)
+        ? value.lines
+        : [];
+    return lines.filter(isPersistedCartLine).map(toPersistedLine);
   } catch {
     return [];
   }
 }
+
 export function writeCart(
   storage: Pick<Storage, "setItem">,
-  lines: readonly CartLine[],
+  lines: readonly PersistedCartLine[],
 ): void {
-  storage.setItem(cartStorageKey, JSON.stringify(lines));
+  const cart: PersistedCart = {
+    lines: lines.filter(isPersistedCartLine).map(toPersistedLine),
+    version: 1,
+  };
+  storage.setItem(cartStorageKey, JSON.stringify(cart));
 }
+
 export function addToCart(
-  lines: readonly CartLine[],
-  product: StorefrontProduct,
+  lines: readonly PersistedCartLine[],
   variant: StorefrontVariant,
-): CartLine[] {
+): PersistedCartLine[] {
   if (variant.availability !== "IN_STOCK") return [...lines];
   const existing = lines.find((line) => line.productVariantId === variant.id);
-  if (existing)
+  if (existing) {
     return lines.map((line) =>
       line.productVariantId === variant.id
         ? { ...line, quantity: Math.min(20, line.quantity + 1) }
         : line,
     );
-  return [
-    ...lines,
-    {
-      color: variant.color.name,
-      productName: product.name,
-      productSlug: product.slug,
-      productVariantId: variant.id,
-      quantity: 1,
-      size: variant.size.name,
-      sku: variant.sku,
-      unitPriceMinor: variant.sellingPriceMinor,
-    },
-  ];
+  }
+  return [...lines, { productVariantId: variant.id, quantity: 1 }];
 }
 
 export function hydrateCart(
-  lines: readonly CartLine[],
+  selections: readonly PersistedCartLine[],
   catalog: StorefrontCatalog,
-) {
+): HydratedCart {
   const variants = new Map(
     catalog.products.flatMap((product) =>
       product.variants.map(
@@ -69,37 +89,88 @@ export function hydrateCart(
       ),
     ),
   );
-  let changed = false;
-  let removed = 0;
-  const hydrated: CartLine[] = [];
-  for (const line of lines) {
-    const current = variants.get(line.productVariantId);
+  const lines: HydratedCartLine[] = [];
+  const unavailable: PersistedCartLine[] = [];
+  for (const selection of selections) {
+    const current = variants.get(selection.productVariantId);
     if (!current || current.variant.availability !== "IN_STOCK") {
-      removed += 1;
+      unavailable.push(toPersistedLine(selection));
       continue;
     }
-    const next: CartLine = {
-      ...line,
-      color: current.variant.color.name,
-      productName: current.product.name,
-      productSlug: current.product.slug,
-      size: current.variant.size.name,
-      sku: current.variant.sku,
-      unitPriceMinor: current.variant.sellingPriceMinor,
-    };
-    changed ||= JSON.stringify(next) !== JSON.stringify(line);
-    hydrated.push(next);
+    lines.push(hydrateLine(selection, current.product, current.variant));
   }
-  return { changed, lines: hydrated, removed };
+  return { lines, unavailable };
 }
-function isCartLine(value: unknown): value is CartLine {
+
+export async function hydrateStoredCart(
+  storage: Pick<Storage, "getItem">,
+  loadCatalog: () => Promise<StorefrontCatalog>,
+): Promise<HydratedCart> {
+  const selections = readCart(storage);
+  return hydrateCart(selections, await loadCatalog());
+}
+
+export function canContinueToCheckout(
+  status: "error" | "loading" | "ready",
+  cart: HydratedCart,
+): boolean {
+  return (
+    status === "ready" && cart.lines.length > 0 && cart.unavailable.length === 0
+  );
+}
+
+export function canSubmitCheckout(
+  status: "empty" | "error" | "loading" | "ready" | "unavailable",
+  cart: HydratedCart,
+  submitting: boolean,
+): boolean {
+  return (
+    !submitting &&
+    status === "ready" &&
+    cart.lines.length > 0 &&
+    cart.unavailable.length === 0
+  );
+}
+
+function hydrateLine(
+  selection: PersistedCartLine,
+  product: StorefrontProduct,
+  variant: StorefrontVariant,
+): HydratedCartLine {
+  return {
+    availability: "IN_STOCK",
+    color: variant.color.name,
+    productName: product.name,
+    productSlug: product.slug,
+    productVariantId: variant.id,
+    quantity: selection.quantity,
+    size: variant.size.name,
+    sku: variant.sku,
+    unitPriceMinor: variant.sellingPriceMinor,
+  };
+}
+
+function isPersistedCart(value: unknown): value is PersistedCart {
   if (!value || typeof value !== "object") return false;
-  const item = value as Partial<CartLine>;
+  const cart = value as Partial<PersistedCart>;
+  return cart.version === 1 && Array.isArray(cart.lines);
+}
+
+function isPersistedCartLine(value: unknown): value is PersistedCartLine {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<PersistedCartLine>;
   return (
     typeof item.productVariantId === "string" &&
-    typeof item.productName === "string" &&
+    item.productVariantId.length > 0 &&
     Number.isInteger(item.quantity) &&
     (item.quantity ?? 0) > 0 &&
-    typeof item.unitPriceMinor === "number"
+    (item.quantity ?? 0) <= 20
   );
+}
+
+function toPersistedLine(line: PersistedCartLine): PersistedCartLine {
+  return {
+    productVariantId: line.productVariantId,
+    quantity: line.quantity,
+  };
 }

@@ -91,7 +91,7 @@ function ProductCard({ product }: { product: StorefrontProduct }) {
     if (first)
       writeCart(
         window.localStorage,
-        addToCart(readCart(window.localStorage), product, first),
+        addToCart(readCart(window.localStorage), first),
       );
   };
   return (

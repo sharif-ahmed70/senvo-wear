@@ -288,6 +288,12 @@ button:disabled {
 .checkout-page {
   max-width: 850px;
 }
+.checkout-summary {
+  margin: 24px 0;
+}
+.cart-line.unavailable {
+  color: var(--muted);
+}
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

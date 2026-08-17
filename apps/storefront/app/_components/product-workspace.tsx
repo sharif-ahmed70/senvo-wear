@@ -79,7 +79,7 @@ export function ProductWorkspace({ slug }: { slug: string }) {
             if (selected) {
               writeCart(
                 window.localStorage,
-                addToCart(readCart(window.localStorage), product, selected),
+                addToCart(readCart(window.localStorage), selected),
               );
               setMessage("Added to your bag.");
             }

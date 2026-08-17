@@ -43,6 +43,7 @@ describe("storefront API handlers", () => {
           {
             productVariantId: "22222222-2222-4222-8222-222222222222",
             quantity: 1,
+            reviewedUnitPriceMinor: 129900,
           },
         ],
         organizationId: "11111111-1111-4111-8111-111111111111",
@@ -83,6 +84,7 @@ describe("storefront API handlers", () => {
           {
             productVariantId: "22222222-2222-4222-8222-222222222222",
             quantity: 1,
+            reviewedUnitPriceMinor: 129900,
           },
         ],
         paymentPreference: "CASH_ON_DELIVERY",
@@ -90,6 +92,51 @@ describe("storefront API handlers", () => {
     });
     expect(response).toMatchObject({
       error: { code: "CONFLICT.IDEMPOTENCY" },
+      requestId: context.requestId,
+      success: false,
+    });
+  });
+
+  it("maps reviewed-price changes as a safe business response", async () => {
+    const application = fakeApplication();
+    vi.mocked(application.checkout).mockResolvedValue({
+      error: {
+        code: "BUSINESS_RULE_VIOLATION",
+        message:
+          "Product prices changed. Refresh and review the current total.",
+        requestId: context.requestId,
+        retryable: false,
+      },
+      ok: false,
+    });
+    const response = await createStorefrontApiHandlers(
+      application,
+    ).checkout.handle({
+      context,
+      input: {
+        customer: { name: "Sharif Ahmed", phone: "01712345678" },
+        deliveryAddress: {
+          city: "Dhaka",
+          district: "Dhaka",
+          line1: "House 10",
+        },
+        idempotencyKey: "web:price-change",
+        lines: [
+          {
+            productVariantId: "22222222-2222-4222-8222-222222222222",
+            quantity: 1,
+            reviewedUnitPriceMinor: 1,
+          },
+        ],
+        paymentPreference: "CASH_ON_DELIVERY",
+      },
+    });
+    expect(response).toMatchObject({
+      error: {
+        code: "BUSINESS_RULE.VIOLATION",
+        message:
+          "Product prices changed. Refresh and review the current total.",
+      },
       requestId: context.requestId,
       success: false,
     });

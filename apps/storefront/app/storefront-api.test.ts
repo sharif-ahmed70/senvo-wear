@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { storefrontApi, type StorefrontCatalog } from "./_lib/storefront-api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  storefrontApi,
+  storefrontApiBaseUrl,
+  type StorefrontCatalog,
+} from "./_lib/storefront-api";
 
 const page = (current: number, hasMore: boolean): StorefrontCatalog => ({
   categories: [],
@@ -22,7 +26,24 @@ const page = (current: number, hasMore: boolean): StorefrontCatalog => ({
 });
 
 describe("storefront API catalog hydration", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  const originalApiUrl = process.env.NEXT_PUBLIC_SENVO_API_URL;
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_SENVO_API_URL = "https://api.senvo.test/";
+  });
+  afterEach(() => {
+    process.env.NEXT_PUBLIC_SENVO_API_URL = originalApiUrl;
+    vi.unstubAllGlobals();
+  });
+
+  it("requires canonical API configuration without a localhost fallback", () => {
+    delete process.env.NEXT_PUBLIC_SENVO_API_URL;
+    expect(() => storefrontApiBaseUrl()).toThrow(
+      "NEXT_PUBLIC_SENVO_API_URL is required",
+    );
+    expect(storefrontApiBaseUrl("https://api.senvo.test/")).toBe(
+      "https://api.senvo.test",
+    );
+  });
 
   it("loads every catalog page before hydrating a guest cart", async () => {
     const fetchMock = vi
@@ -54,6 +75,9 @@ describe("storefront API catalog hydration", () => {
       "product-2",
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "https://api.senvo.test/storefront/catalog",
+    );
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
       "page=2&pageSize=48",
     );

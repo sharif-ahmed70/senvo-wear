@@ -144,6 +144,21 @@ export class StorefrontApplicationService {
             variant.sellingPriceMinor,
           ]),
         );
+        for (const line of normalized.lines) {
+          const currentPrice = prices.get(line.productVariantId);
+          if (currentPrice === undefined) {
+            throw new NotFoundError(
+              "A selected product is no longer available.",
+            );
+          }
+          if (currentPrice !== line.reviewedUnitPriceMinor) {
+            throw new ApplicationServiceError({
+              code: "BUSINESS_RULE_VIOLATION",
+              message:
+                "Product prices changed. Refresh and review the current total.",
+            });
+          }
+        }
         const reference = createHash("sha256")
           .update(`${organization.id}:${normalized.idempotencyKey}`)
           .digest("hex")
@@ -255,20 +270,33 @@ export class StorefrontApplicationService {
 function normalizeCheckout(
   input: ReturnType<typeof storefrontCheckoutInputSchema.parse>,
 ) {
-  const quantities = new Map<string, number>();
+  const selections = new Map<
+    string,
+    { quantity: number; reviewedUnitPriceMinor: number }
+  >();
   for (const line of input.lines) {
-    quantities.set(
-      line.productVariantId,
-      (quantities.get(line.productVariantId) ?? 0) + line.quantity,
-    );
+    const existing = selections.get(line.productVariantId);
+    if (
+      existing &&
+      existing.reviewedUnitPriceMinor !== line.reviewedUnitPriceMinor
+    ) {
+      throw new ValidationApplicationError(
+        "A product cannot have conflicting reviewed prices.",
+      );
+    }
+    selections.set(line.productVariantId, {
+      quantity: (existing?.quantity ?? 0) + line.quantity,
+      reviewedUnitPriceMinor: line.reviewedUnitPriceMinor,
+    });
   }
-  const lines = [...quantities.entries()]
-    .map(([productVariantId, quantity]) => {
+  const lines = [...selections.entries()]
+    .map(([productVariantId, selection]) => {
+      const { quantity, reviewedUnitPriceMinor } = selection;
       if (quantity > 20)
         throw new ValidationApplicationError(
           "A product quantity cannot exceed 20.",
         );
-      return { productVariantId, quantity };
+      return { productVariantId, quantity, reviewedUnitPriceMinor };
     })
     .sort((left, right) =>
       left.productVariantId.localeCompare(right.productVariantId),

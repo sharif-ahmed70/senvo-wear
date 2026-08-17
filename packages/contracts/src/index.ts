@@ -3713,6 +3713,7 @@ const storefrontCheckoutLineSchema = z
   .object({
     productVariantId: idSchema,
     quantity: z.number().int().positive().max(20),
+    reviewedUnitPriceMinor: minorUnitAmountSchema,
   })
   .strict();
 

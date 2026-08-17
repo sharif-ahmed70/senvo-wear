@@ -20,7 +20,13 @@ const payload = {
     line1: "House 10, Road 2",
   },
   idempotencyKey: "web:test-order-1",
-  lines: [{ productVariantId: variantId, quantity: 2 }],
+  lines: [
+    {
+      productVariantId: variantId,
+      quantity: 2,
+      reviewedUnitPriceMinor: 129900,
+    },
+  ],
   paymentPreference: "CASH_ON_DELIVERY" as const,
 };
 
@@ -48,6 +54,39 @@ describe("StorefrontApplicationService", () => {
         source: "STOREFRONT",
       }),
     );
+  });
+
+  it("rejects a changed price before order, profile, or audit writes", async () => {
+    const storefront = storefrontRepository();
+    const sales = salesRepository({});
+    const recordAudit = vi.fn(async () => undefined);
+    const service = new StorefrontApplicationService({
+      organizationCode: "SENVO",
+      repository: storefront,
+      transactionManager: transactionManager(storefront, sales, recordAudit),
+    });
+
+    const result = await service.checkout("request-price-change", {
+      ...payload,
+      lines: [
+        {
+          ...payload.lines[0],
+          reviewedUnitPriceMinor: 1,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      error: {
+        code: "BUSINESS_RULE_VIOLATION",
+        message:
+          "Product prices changed. Refresh and review the current total.",
+      },
+      ok: false,
+    });
+    expect(sales.createDraft).not.toHaveBeenCalled();
+    expect(storefront.createCommerceProfile).not.toHaveBeenCalled();
+    expect(recordAudit).not.toHaveBeenCalled();
   });
 
   it("replays a completed same-key checkout without creating a duplicate order", async () => {
@@ -189,12 +228,13 @@ function salesRepository(captured: {
 function transactionManager(
   storefront: StorefrontRepository,
   sales: SalesOrderRepository,
+  recordAudit = vi.fn(async () => undefined),
 ): ApplicationTransactionManager {
   return {
     execute: vi.fn(async (context, operation) =>
       operation({
         applicationContext: context,
-        auditWriter: { recordWithinTransaction: vi.fn(async () => undefined) },
+        auditWriter: { recordWithinTransaction: recordAudit },
         inventoryMovementRepository: {} as never,
         salesOrderLifecycleRepository: sales,
         salesOrderRepository: sales,

@@ -138,6 +138,7 @@ describe("API contracts", () => {
         {
           productVariantId: "10000000-0000-4000-8000-000000000001",
           quantity: 1,
+          reviewedUnitPriceMinor: 129900,
         },
       ],
       paymentPreference: "CASH_ON_DELIVERY",
@@ -153,6 +154,17 @@ describe("API contracts", () => {
       storefrontCheckoutInputSchema.safeParse({
         ...valid,
         lines: [{ ...valid.lines[0], quantity: 21 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      storefrontCheckoutInputSchema.safeParse({
+        ...valid,
+        lines: [
+          {
+            productVariantId: valid.lines[0]?.productVariantId,
+            quantity: 1,
+          },
+        ],
       }).success,
     ).toBe(false);
     expect(

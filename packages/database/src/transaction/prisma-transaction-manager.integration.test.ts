@@ -362,6 +362,48 @@ describeWithDatabase("Prisma transactional audit integration", () => {
     ).resolves.toBe(0);
   });
 
+  it("leaves no storefront writes when the reviewed price is stale", async () => {
+    const base = await createBase("STOREFRONT-PRICE-CHANGE");
+    await seedOnHand(base, 1);
+    await expect(
+      transactionManager.execute(
+        createContext(base.organization.id, null, "storefront-price-change"),
+        async (transaction) => {
+          const storefront = transaction.storefrontRepository;
+          if (!storefront)
+            throw new Error("Missing storefront transaction capabilities.");
+          const facts = await storefront.loadCheckoutFacts(
+            base.organization.id,
+            [base.variant.id],
+          );
+          if (facts.variants[0]?.sellingPriceMinor !== 1) {
+            throw new Error("Reviewed storefront price changed.");
+          }
+        },
+      ),
+    ).rejects.toThrow("Reviewed storefront price changed.");
+    await expect(
+      prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.inventoryReservation.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.salesOrderCommerceProfile.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.auditEntry.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(0);
+  });
+
   it("prevents two concurrent storefront checkouts from overselling", async () => {
     const base = await createBase("STOREFRONT-RACE");
     await seedOnHand(base, 1);

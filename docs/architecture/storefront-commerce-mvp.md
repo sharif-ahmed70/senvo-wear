@@ -10,13 +10,15 @@ The Storefront is a public transport client of the existing API/application boun
 
 ## Checkout
 
-`POST /storefront/checkouts` accepts guest contact/delivery fields, bounded variant quantities, a note, COD preference, and an idempotency key. The application reloads current variant prices and an ACTIVE allocation policy. One outer Prisma transaction creates an ONLINE SalesOrder, reserves stock through the existing reservation lifecycle, creates the one-to-one commerce profile, and appends `STOREFRONT_ORDER_PLACED`.
+`POST /storefront/checkouts` accepts guest contact/delivery fields, bounded variant quantities, a note, COD preference, an idempotency key, and the unit price most recently reviewed from the public read model. The reviewed price is comparison data, not authority. The application reloads current variant prices and rejects a mismatch before any write. One outer Prisma transaction creates an ONLINE SalesOrder, reserves stock through the existing reservation lifecycle, creates the one-to-one commerce profile, and appends `STOREFRONT_ORDER_PLACED`.
 
 Successful orders finish as `RESERVED`. COD is an unpaid preference; checkout creates no PaymentBatch or PaymentLine. Reservation advisory locks remain the oversell control. A failed reservation rolls back the order, commerce profile, and audit entry.
 
 ## Guest State
 
-The browser bag contains non-sensitive variant selection snapshots and bounded quantities. It hydrates against the public catalog to refresh price/product facts and remove inactive or unavailable variants. Browser totals are previews only. Checkout keys survive uncertain retries for unchanged payloads and rotate when customer/cart input changes.
+The persisted browser bag contains only a versioned list of variant IDs and bounded quantities. Legacy records are reduced to those selection fields when read; names, SKU, color, size, availability, and price are never trusted or written back as cart state. Cart and checkout pages hydrate selections from the current public catalog before showing totals or enabling checkout. Refresh failures and unavailable items preserve the selection for retry or editing. Checkout keys survive uncertain retries for unchanged normalized payloads and rotate when customer, cart, or reviewed-price input changes.
+
+`NEXT_PUBLIC_SENVO_API_URL` is required for browser API requests. Local development configures it in the local environment; the runtime has no localhost fallback.
 
 ## Admin
 
