@@ -25,7 +25,8 @@
     "@senvo/contracts": "workspace:*",
     "@senvo/database": "workspace:*",
     "@senvo/domain": "workspace:*",
-    "@senvo/logger": "workspace:*"
+    "@senvo/logger": "workspace:*",
+    "@senvo/storage": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "latest",

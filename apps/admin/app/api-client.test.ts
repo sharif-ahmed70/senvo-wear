@@ -592,4 +592,50 @@ describe("AdminApiClient", () => {
       expect(body).not.toHaveProperty("totalMinor");
     }
   });
+
+  it("uses product media routes without trusted storage or organization fields", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          Response.json({ data: {}, requestId: "req_media_1", success: true }),
+        ),
+      );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const productId = "10000000-0000-4000-8000-000000000001";
+
+    await client.setPrimaryProductImage(
+      {
+        altText: "Navy oxford shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-upload-1",
+        productId,
+      },
+      { requestId: "req_media_1" },
+    );
+    await client.removePrimaryProductImage(productId, {
+      requestId: "req_media_2",
+    });
+
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      `https://admin.example.test/catalog/products/${productId}/primary-image`,
+      `https://admin.example.test/catalog/products/${productId}/primary-image`,
+    ]);
+    expect(fetcher.mock.calls.map((call) => call[1]?.method)).toEqual([
+      "PUT",
+      "DELETE",
+    ]);
+    const rawBody = fetcher.mock.calls[0]?.[1]?.body;
+    expect(typeof rawBody).toBe("string");
+    const body = JSON.parse(
+      typeof rawBody === "string" ? rawBody : "{}",
+    ) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("productId");
+    expect(body).not.toHaveProperty("organizationId");
+    expect(body).not.toHaveProperty("storageKey");
+  });
 });

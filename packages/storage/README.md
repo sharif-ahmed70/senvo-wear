@@ -1,5 +1,17 @@
 # Storage Package
 
-`@senvo/storage` defines a provider-neutral boundary for future S3/R2-style object storage. It does not connect to any real cloud provider and must not contain credentials.
+`@senvo/storage` owns the provider-neutral object-storage contract and the
+server-generated product-media key convention.
 
-Validation, content-type policy, size limits, malware scanning, and signed URL rules should be defined before production use.
+Available adapters:
+
+- `InMemoryObjectStorageProvider` for focused tests.
+- `LocalFileObjectStorageProvider` for local development. Its root defaults to
+  `.senvo-media` and can be changed with `MEDIA_STORAGE_ROOT`.
+
+Application composition requires an explicitly injected provider in production.
+No cloud provider, credentials, bucket names, or signed URLs are committed here.
+The application layer owns image allowlisting, byte limits, content-signature
+checks, idempotency, and database/storage compensation. Malware scanning,
+production signed URL policy, CDN behavior, and image transformation remain
+future hardening work.

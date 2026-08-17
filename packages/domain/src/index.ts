@@ -48,6 +48,18 @@ export type {
   Size,
   VariantBarcode,
 } from "./catalog/domain/models.js";
+export type {
+  CatalogMediaLink,
+  CatalogMediaLinkStatus,
+  CatalogMediaRole,
+  MediaAsset,
+  MediaAssetStatus,
+  PrimaryProductMedia,
+} from "./catalog/domain/media-models.js";
+export type {
+  CatalogMediaRepository,
+  CreatePrimaryProductMediaRecord,
+} from "./catalog/repositories/catalog-media-repository.js";
 export {
   createVariantBarcode,
   listVariantBarcodes,

@@ -18,6 +18,7 @@ import type {
   PaymentRefundReceiptRepository,
   PaymentRefundRepository,
 } from "../payment/repositories/payment-refund-repository.js";
+import type { CatalogMediaRepository } from "../catalog/repositories/catalog-media-repository.js";
 
 type TransactionalInventoryMovementRepository =
   InventoryMovementPostingRepository &
@@ -26,6 +27,7 @@ type TransactionalInventoryMovementRepository =
 export type TransactionContext<TApplicationContext> = {
   applicationContext: TApplicationContext;
   auditWriter: Pick<AuditWriter, "recordWithinTransaction">;
+  catalogMediaRepository?: CatalogMediaRepository;
   inventoryMovementRepository: TransactionalInventoryMovementRepository;
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;

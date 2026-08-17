@@ -405,3 +405,16 @@ footer {
     padding-top: 18px;
   }
 }
+
+.product-visual:has(img),
+.detail-visual:has(img) {
+  padding: 0;
+}
+
+.product-visual img,
+.detail-visual img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}

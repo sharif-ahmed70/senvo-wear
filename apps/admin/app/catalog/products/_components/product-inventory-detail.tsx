@@ -4,7 +4,13 @@ import type {
   ProductDetailsContract,
   VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
-import { AlertCircle, ArrowLeft, LoaderCircle } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ImagePlus,
+  LoaderCircle,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
@@ -117,6 +123,15 @@ export function ProductInventoryDetail({
           {humanize(product.product.status)}
         </span>
       </header>
+      <ProductMedia
+        canUpdate={permissions.includes("CATALOG:UPDATE")}
+        details={product}
+        onChange={(primaryImage) =>
+          setProduct((current) =>
+            current ? { ...current, primaryImage } : current,
+          )
+        }
+      />
       <section className="inventory-section">
         <div className="admin-section__heading">
           <div>
@@ -221,6 +236,169 @@ export function ProductInventoryDetail({
       </section>
     </main>
   );
+}
+
+function ProductMedia({
+  canUpdate,
+  details,
+  onChange,
+}: {
+  canUpdate: boolean;
+  details: ProductDetailsContract;
+  onChange: (image: ProductDetailsContract["primaryImage"]) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadIdempotencyKey, setUploadIdempotencyKey] = useState("");
+  const [altText, setAltText] = useState(
+    details.primaryImage?.altText ?? details.product.name,
+  );
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function upload() {
+    if (!file || !uploadIdempotencyKey) {
+      setMessage("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > 5_242_880) {
+      setMessage("Image must be 5 MB or smaller.");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setMessage("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await client.setPrimaryProductImage({
+        altText: altText.trim(),
+        contentBase64: await fileToBase64(file),
+        contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
+        idempotencyKey: uploadIdempotencyKey,
+        productId: details.product.id,
+      });
+      onChange(result.data);
+      setFile(null);
+      setUploadIdempotencyKey("");
+      setMessage("Primary image saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    setSaving(true);
+    setMessage("");
+    try {
+      await client.removePrimaryProductImage(details.product.id);
+      onChange(null);
+      setMessage("Primary image removed.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="inventory-section product-media-section">
+      <div className="admin-section__heading">
+        <div>
+          <h2>Primary product image</h2>
+          <p>The image customers see first in the online shop.</p>
+        </div>
+      </div>
+      <div className="product-media-layout">
+        <div className="product-media-preview">
+          {details.primaryImage ? (
+            <img
+              alt={details.primaryImage.altText}
+              height={320}
+              src={details.primaryImage.url}
+              width={320}
+            />
+          ) : (
+            <div className="product-media-empty">
+              <ImagePlus aria-hidden="true" size={28} />
+              <span>No image yet</span>
+            </div>
+          )}
+        </div>
+        {canUpdate ? (
+          <div className="product-media-controls">
+            <label>
+              <span>Image file</span>
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                disabled={saving}
+                onChange={(event) => {
+                  const selected = event.target.files?.[0] ?? null;
+                  setFile(selected);
+                  setUploadIdempotencyKey(
+                    selected ? `media_${crypto.randomUUID()}` : "",
+                  );
+                }}
+                type="file"
+              />
+            </label>
+            <label>
+              <span>Image description</span>
+              <input
+                disabled={saving}
+                maxLength={240}
+                onChange={(event) => setAltText(event.target.value)}
+                required
+                value={altText}
+              />
+            </label>
+            <div className="product-media-actions">
+              <button
+                disabled={saving || !file || !altText.trim()}
+                onClick={() => void upload()}
+                type="button"
+              >
+                {saving ? (
+                  <LoaderCircle className="inventory-spin" size={16} />
+                ) : (
+                  <ImagePlus size={16} />
+                )}
+                {details.primaryImage ? "Replace image" : "Upload image"}
+              </button>
+              {details.primaryImage ? (
+                <button
+                  className="product-media-remove"
+                  disabled={saving}
+                  onClick={() => void remove()}
+                  type="button"
+                >
+                  <Trash2 size={16} /> Remove
+                </button>
+              ) : null}
+            </div>
+            {message ? (
+              <p className="product-media-message" role="status">
+                {message}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="product-media-readonly">
+            You have view-only catalog access.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return window.btoa(binary);
 }
 
 function ProductState({

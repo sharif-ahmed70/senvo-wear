@@ -17,6 +17,13 @@ export type StorefrontProduct = {
   description: string | null;
   id: string;
   name: string;
+  primaryImage: {
+    altText: string;
+    assetId: string;
+    byteSize: number;
+    contentType: string;
+    url: string;
+  } | null;
   productCode: string;
   slug: string;
   variants: StorefrontVariant[];

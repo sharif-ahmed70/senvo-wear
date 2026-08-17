@@ -33,6 +33,7 @@ pnpm-debug.log*
 *.db
 *.sqlite
 *.sqlite3
+.senvo-media/
 
 .DS_Store
 Thumbs.db

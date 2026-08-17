@@ -11,11 +11,12 @@ import type {
   ColorContract,
   ProductContract,
   ProductDetailsContract,
+  PrimaryProductImageContract,
   ProductVariantContract,
   SizeContract,
   VariantBarcodeContract,
 } from "@senvo/contracts";
-import { AuthorizationError } from "@senvo/domain";
+import { AuthenticationError, AuthorizationError } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import {
   createCatalogApiHandlers,
@@ -299,6 +300,136 @@ describe("catalog API handlers", () => {
     });
     expect(catalog.context).toMatchObject({ organizationId, userId });
   });
+
+  it("rejects a client-provided storage key before the media use case", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    const response = await handlers.setPrimaryProductImage.handle({
+      context,
+      input: {
+        altText: "Black shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-request-101",
+        productId: "30000000-0000-4000-8000-000000000001",
+        storageKey: "client/chosen/path.png",
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      requestId,
+      success: false,
+    });
+    expect(catalog.payloads).toHaveLength(0);
+  });
+
+  it("rejects unsupported primary image MIME before the use case", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    const response = await handlers.setPrimaryProductImage.handle({
+      context,
+      input: {
+        altText: "Black shirt",
+        contentBase64: "R0lGODlh",
+        contentType: "image/gif",
+        idempotencyKey: "media-request-unsupported",
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(catalog.payloads).toHaveLength(0);
+  });
+
+  it("returns a safe authentication error for a primary image write", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService: {
+        authenticate: () =>
+          Promise.reject(new AuthenticationError("Missing identity.")),
+      },
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    const response = await handlers.setPrimaryProductImage.handle({
+      context: { ...context, authenticatedUser: null },
+      input: {
+        altText: "Black shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-request-unauthorized",
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(response).toEqual({
+      error: {
+        code: "AUTHENTICATION.REQUIRED",
+        message: "Authentication is required.",
+      },
+      requestId,
+      success: false,
+    });
+    expect(catalog.payloads).toHaveLength(0);
+  });
+
+  it("enforces CATALOG.UPDATE for primary image changes", async () => {
+    const authorization = new FakeAuthorization();
+    authorization.reject = true;
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog: new FakeCatalog(),
+    });
+    const response = await handlers.setPrimaryProductImage.handle({
+      context,
+      input: {
+        altText: "Black shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-request-102",
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "CATALOG",
+    });
+    expect(response).toMatchObject({
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+      success: false,
+    });
+  });
+
+  it("passes only normalized media input and trusted context", async () => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    await handlers.setPrimaryProductImage.handle({
+      context,
+      input: {
+        altText: "Black shirt",
+        contentBase64: "iVBORw0KGgo=",
+        contentType: "image/png",
+        idempotencyKey: "media-request-103",
+        productId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(catalog.context).toMatchObject({ organizationId, userId });
+    expect(catalog.payloads.at(-1)).not.toHaveProperty("organizationId");
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -374,6 +505,19 @@ class FakeCatalog implements CatalogManagementApplication {
   }
   getProduct(context: ApplicationExecutionContext) {
     return this.success(context, {} as ProductDetailsContract);
+  }
+  getPrimaryProductImage(context: ApplicationExecutionContext) {
+    return this.success(context, null as PrimaryProductImageContract | null);
+  }
+  setPrimaryProductImage(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    this.payloads.push(payload);
+    return this.success(context, {} as PrimaryProductImageContract);
+  }
+  removePrimaryProductImage(context: ApplicationExecutionContext) {
+    return this.success(context, null);
   }
   listCategories(context: ApplicationExecutionContext) {
     return this.success(context, [] as CategoryContract[]);

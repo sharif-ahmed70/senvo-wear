@@ -17,6 +17,7 @@ import {
   storefrontCheckoutResultSchema,
   storefrontProductQuerySchema,
   type StorefrontCheckoutResultContract,
+  type PrimaryProductImageContract,
 } from "@senvo/contracts";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { validateExecutionContext } from "../context/execution-context.js";
@@ -24,12 +25,14 @@ import {
   ApplicationServiceError,
   type ApplicationServiceResult,
 } from "../errors/application-error.js";
+import type { CatalogMediaApplicationService } from "../catalog/catalog-media-application-service.js";
 
 export type StorefrontApplicationServiceDependencies = {
   organizationCode: string;
   repository: StorefrontRepository;
   requestIdGenerator?: () => string;
   transactionManager: ApplicationTransactionManager;
+  mediaService?: CatalogMediaApplicationService;
 };
 
 export class StorefrontApplicationService {
@@ -37,6 +40,7 @@ export class StorefrontApplicationService {
   private readonly repository: StorefrontRepository;
   private readonly requestIdGenerator: () => string;
   private readonly transactionManager: ApplicationTransactionManager;
+  private readonly mediaService?: CatalogMediaApplicationService;
 
   constructor(dependencies: StorefrontApplicationServiceDependencies) {
     this.organizationCode = dependencies.organizationCode.trim().toUpperCase();
@@ -44,6 +48,7 @@ export class StorefrontApplicationService {
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? (() => `req_${randomUUID()}`);
     this.transactionManager = dependencies.transactionManager;
+    this.mediaService = dependencies.mediaService;
   }
 
   listCatalog(
@@ -53,10 +58,23 @@ export class StorefrontApplicationService {
     return this.execute(requestId, async () => {
       const input = storefrontCatalogQuerySchema.parse(payload);
       const organization = await this.resolveOrganization();
-      return this.repository.listCatalog({
+      const catalog = await this.repository.listCatalog({
         ...input,
         organizationId: organization.id,
       });
+      const images = this.mediaService
+        ? await this.mediaService.readProjections(
+            organization.id,
+            catalog.products.map((product) => product.id),
+          )
+        : new Map<string, PrimaryProductImageContract>();
+      return {
+        ...catalog,
+        products: catalog.products.map((product) => ({
+          ...product,
+          primaryImage: images.get(product.id) ?? null,
+        })),
+      };
     });
   }
 
@@ -73,7 +91,12 @@ export class StorefrontApplicationService {
       );
       if (!product)
         throw new NotFoundError("Storefront product was not found.");
-      return product;
+      return {
+        ...product,
+        primaryImage: this.mediaService
+          ? await this.mediaService.readProjection(organization.id, product.id)
+          : null,
+      };
     });
   }
 

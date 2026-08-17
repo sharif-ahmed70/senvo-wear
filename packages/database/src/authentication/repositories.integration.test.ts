@@ -48,6 +48,8 @@ describeWithDatabase("Prisma authentication repositories", () => {
     await prisma.inventoryMovement.deleteMany();
     await prisma.inventoryAllocationPolicyLocation.deleteMany();
     await prisma.inventoryAllocationPolicy.deleteMany();
+    await prisma.catalogMediaLink.deleteMany();
+    await prisma.mediaAsset.deleteMany();
     await prisma.productCollection.deleteMany();
     await prisma.productVariant.deleteMany();
     await prisma.product.deleteMany();

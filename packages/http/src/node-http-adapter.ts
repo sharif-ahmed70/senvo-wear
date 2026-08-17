@@ -44,7 +44,8 @@ type HttpRoute = {
     match: RegExpMatchArray,
     request: IncomingMessage,
   ): unknown;
-  method: "DELETE" | "GET" | "PATCH" | "POST";
+  maximumBodyBytes?: number;
+  method: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
   path: RegExp;
   successStatus: number;
   public?: boolean;
@@ -133,7 +134,10 @@ async function handleRequest(input: {
     const body =
       input.request.method === "GET"
         ? {}
-        : await readJsonBody(input.request, input.maximumBodyBytes);
+        : await readJsonBody(
+            input.request,
+            matchedRoute.route.maximumBodyBytes ?? input.maximumBodyBytes,
+          );
     const apiResponse = await matchedRoute.route.handler.handle({
       context: requestContext,
       input: matchedRoute.route.input(body, matchedRoute.match, input.request),
@@ -244,6 +248,28 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         200,
         "productId",
       ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/primary-image$/iu,
+        handlers.catalog.getPrimaryProductImage,
+        200,
+        "productId",
+      ),
+      {
+        handler: handlers.catalog.setPrimaryProductImage,
+        input: pathBodyInput("productId"),
+        maximumBodyBytes: 7_100_000,
+        method: "PUT",
+        path: /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/primary-image$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.catalog.removePrimaryProductImage,
+        input: pathBodyInput("productId"),
+        method: "DELETE",
+        path: /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/primary-image$/iu,
+        successStatus: 200,
+      },
       catalogRoute(
         "GET",
         /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/barcodes$/iu,

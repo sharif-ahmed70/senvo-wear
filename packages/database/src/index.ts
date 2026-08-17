@@ -34,6 +34,7 @@ export {
   PrismaProductVariantRepository,
   PrismaSizeRepository,
 } from "./catalog/repositories.js";
+export { PrismaCatalogMediaRepository } from "./catalog/media-repository.js";
 export { PrismaBarcodeRepository } from "./catalog/barcode-repository.js";
 export {
   PrismaBranchRepository,

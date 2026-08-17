@@ -9,6 +9,7 @@ import {
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient, PrismaBarcodeRepository } from "../index.js";
+import { PrismaCatalogMediaRepository } from "./media-repository.js";
 import {
   PrismaCategoryRepository,
   PrismaCollectionRepository,
@@ -72,6 +73,8 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await prisma.inventoryAllocationPolicyLocation.deleteMany();
     await prisma.inventoryAllocationPolicy.deleteMany();
     await prisma.variantBarcode.deleteMany();
+    await prisma.catalogMediaLink.deleteMany();
+    await prisma.mediaAsset.deleteMany();
     await prisma.productCollection.deleteMany();
     await prisma.productVariant.deleteMany();
     await prisma.product.deleteMany();
@@ -618,6 +621,92 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await expectDbReject(
       prisma.productVariant.delete({ where: { id: first.variant.id } }),
     );
+  });
+
+  it("enforces primary media uniqueness and composite organization ownership", async () => {
+    const first = await createBaseCatalog(prisma, "MEDIAA");
+    const second = await createBaseCatalog(prisma, "MEDIAB");
+    const created = await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).replacePrimary({
+        altText: "Oxford shirt front",
+        byteSize: 512,
+        contentType: "image/png",
+        id: crypto.randomUUID(),
+        idempotencyKey: "media-db-request-001",
+        linkId: crypto.randomUUID(),
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        productId: first.product.id,
+        requestSignature: "a".repeat(64),
+        storageKey: `organizations/${first.organization.id}/products/${first.product.id}/primary.png`,
+      }),
+    );
+    expect(created.current.link.productId).toBe(first.product.id);
+
+    const duplicateAsset = await prisma.mediaAsset.create({
+      data: {
+        altText: "Duplicate primary",
+        byteSize: 256,
+        contentType: "image/png",
+        idempotencyKey: "media-db-request-002",
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        requestSignature: "b".repeat(64),
+        storageKey: `organizations/${first.organization.id}/duplicate.png`,
+      },
+    });
+    await expectDbReject(
+      prisma.catalogMediaLink.create({
+        data: {
+          mediaAssetId: duplicateAsset.id,
+          organizationId: first.organization.id,
+          productId: first.product.id,
+          role: "PRIMARY",
+          status: "ACTIVE",
+        },
+      }),
+    );
+
+    const crossTenantAsset = await prisma.mediaAsset.create({
+      data: {
+        altText: "Tenant A asset",
+        byteSize: 128,
+        contentType: "image/png",
+        idempotencyKey: "media-db-request-003",
+        mediaType: "IMAGE",
+        organizationId: first.organization.id,
+        requestSignature: "c".repeat(64),
+        storageKey: `organizations/${first.organization.id}/cross.png`,
+      },
+    });
+    await expectDbReject(
+      prisma.catalogMediaLink.create({
+        data: {
+          mediaAssetId: crossTenantAsset.id,
+          organizationId: second.organization.id,
+          productId: second.product.id,
+          role: "PRIMARY",
+          status: "ACTIVE",
+        },
+      }),
+    );
+
+    const media = new PrismaCatalogMediaRepository(prisma);
+    await expect(
+      media.findPrimary(second.organization.id, first.product.id),
+    ).resolves.toBeNull();
+    await prisma.$transaction((transaction) =>
+      new PrismaCatalogMediaRepository(transaction).archivePrimary({
+        organizationId: first.organization.id,
+        productId: first.product.id,
+      }),
+    );
+    await expect(
+      media.findPrimary(first.organization.id, first.product.id),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.product.delete({ where: { id: first.product.id } }),
+    ).rejects.toThrow();
   });
 });
 
