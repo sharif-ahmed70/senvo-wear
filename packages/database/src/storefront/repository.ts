@@ -262,7 +262,7 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
   async createCommerceProfile(input: {
     id: string;
     organizationId: string;
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     requestSignature: string;
     salesOrderId: string;
     source: "STOREFRONT";

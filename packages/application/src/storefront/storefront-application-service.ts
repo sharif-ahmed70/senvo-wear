@@ -20,6 +20,7 @@ import {
   type PrimaryProductImageContract,
 } from "@senvo/contracts";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
+import type { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import { validateExecutionContext } from "../context/execution-context.js";
 import {
   ApplicationServiceError,
@@ -33,6 +34,7 @@ export type StorefrontApplicationServiceDependencies = {
   requestIdGenerator?: () => string;
   transactionManager: ApplicationTransactionManager;
   mediaService?: CatalogMediaApplicationService;
+  onlinePayments?: OnlinePaymentApplicationService;
 };
 
 export class StorefrontApplicationService {
@@ -41,6 +43,7 @@ export class StorefrontApplicationService {
   private readonly requestIdGenerator: () => string;
   private readonly transactionManager: ApplicationTransactionManager;
   private readonly mediaService?: CatalogMediaApplicationService;
+  private readonly onlinePayments?: OnlinePaymentApplicationService;
 
   constructor(dependencies: StorefrontApplicationServiceDependencies) {
     this.organizationCode = dependencies.organizationCode.trim().toUpperCase();
@@ -49,6 +52,7 @@ export class StorefrontApplicationService {
       dependencies.requestIdGenerator ?? (() => `req_${randomUUID()}`);
     this.transactionManager = dependencies.transactionManager;
     this.mediaService = dependencies.mediaService;
+    this.onlinePayments = dependencies.onlinePayments;
   }
 
   listCatalog(
@@ -142,147 +146,206 @@ export class StorefrontApplicationService {
         source: "STOREFRONT",
         userId: null,
       });
-      return this.transactionManager.execute(context, async (transaction) => {
-        const storefront = transaction.storefrontRepository;
-        const sales = transaction.salesOrderLifecycleRepository;
-        if (!storefront || !sales) {
-          throw new Error(
-            "Storefront transaction capabilities are unavailable.",
+      const checkout = await this.transactionManager.execute(
+        context,
+        async (transaction) => {
+          const storefront = transaction.storefrontRepository;
+          const sales = transaction.salesOrderLifecycleRepository;
+          if (!storefront || !sales) {
+            throw new Error(
+              "Storefront transaction capabilities are unavailable.",
+            );
+          }
+          await storefront.lockCheckoutAttempt(
+            organization.id,
+            normalized.idempotencyKey,
           );
-        }
-        await storefront.lockCheckoutAttempt(
-          organization.id,
-          normalized.idempotencyKey,
-        );
-        const replay = await storefront.findCheckoutByIdempotencyKey(
-          organization.id,
-          normalized.idempotencyKey,
-        );
-        if (replay) {
-          if (replay.requestSignature !== signature) {
-            throw new ConflictError(
-              "Storefront idempotency key was already used with different details.",
-            );
-          }
-          if (replay.status !== "RESERVED") {
-            throw new ConflictError(
-              "The existing storefront order is no longer reserved.",
-            );
-          }
-          return storefrontCheckoutResultSchema.parse({
-            currencyCode: replay.currencyCode,
-            orderId: replay.orderId,
-            orderNumber: replay.orderNumber,
-            paymentPreference: replay.paymentPreference,
-            status: replay.status,
-            totalMinor: replay.totalMinor,
-          });
-        }
-
-        const facts = await storefront.loadCheckoutFacts(
-          organization.id,
-          normalized.lines.map((line) => line.productVariantId),
-        );
-        const prices = new Map(
-          facts.variants.map((variant) => [
-            variant.id,
-            variant.sellingPriceMinor,
-          ]),
-        );
-        for (const line of normalized.lines) {
-          const currentPrice = prices.get(line.productVariantId);
-          if (currentPrice === undefined) {
-            throw new NotFoundError(
-              "A selected product is no longer available.",
-            );
-          }
-          if (currentPrice !== line.reviewedUnitPriceMinor) {
-            throw new ApplicationServiceError({
-              code: "BUSINESS_RULE_VIOLATION",
-              message:
-                "Product prices changed. Refresh and review the current total.",
+          const replay = await storefront.findCheckoutByIdempotencyKey(
+            organization.id,
+            normalized.idempotencyKey,
+          );
+          if (replay) {
+            if (replay.requestSignature !== signature) {
+              throw new ConflictError(
+                "Storefront idempotency key was already used with different details.",
+              );
+            }
+            if (
+              replay.paymentPreference === "CASH_ON_DELIVERY" &&
+              replay.status !== "RESERVED"
+            ) {
+              throw new ConflictError(
+                "The existing storefront order is no longer reserved.",
+              );
+            }
+            return storefrontCheckoutResultSchema.parse({
+              currencyCode: replay.currencyCode,
+              orderId: replay.orderId,
+              orderNumber: replay.orderNumber,
+              payment: null,
+              paymentPreference: replay.paymentPreference,
+              status: replay.status,
+              totalMinor: replay.totalMinor,
             });
           }
-        }
-        const reference = createHash("sha256")
-          .update(`${organization.id}:${normalized.idempotencyKey}`)
-          .digest("hex")
-          .slice(0, 20)
-          .toUpperCase();
-        const draft = await createSalesOrder(sales, {
-          allocationPolicyId: facts.allocationPolicyId,
-          channel: "ONLINE",
-          currencyCode: "BDT",
-          customerEmail: normalized.customer.email ?? null,
-          customerName: normalized.customer.name,
-          customerPhone: normalized.customer.phone,
-          deliveryAddressLine1: normalized.deliveryAddress.line1,
-          deliveryAddressLine2: normalized.deliveryAddress.line2 ?? null,
-          deliveryCity: normalized.deliveryAddress.city,
-          deliveryDistrict: normalized.deliveryAddress.district,
-          deliveryPostalCode: normalized.deliveryAddress.postalCode ?? null,
-          idempotencyKey: normalized.idempotencyKey,
-          lines: normalized.lines.map((line) => {
-            const unitPriceMinor = prices.get(line.productVariantId);
-            if (unitPriceMinor === undefined) {
+
+          const facts = await storefront.loadCheckoutFacts(
+            organization.id,
+            normalized.lines.map((line) => line.productVariantId),
+          );
+          const prices = new Map(
+            facts.variants.map((variant) => [
+              variant.id,
+              variant.sellingPriceMinor,
+            ]),
+          );
+          for (const line of normalized.lines) {
+            const currentPrice = prices.get(line.productVariantId);
+            if (currentPrice === undefined) {
               throw new NotFoundError(
                 "A selected product is no longer available.",
               );
             }
-            return {
-              productVariantId: line.productVariantId,
-              quantity: line.quantity,
-              unitPriceMinor,
-            };
-          }),
-          note: normalized.note ?? null,
-          orderNumber: `WEB-${reference}`,
-          organizationId: organization.id,
-        });
-        const reserved = await reserveSalesOrder(sales, {
-          expectedVersion: draft.version,
-          organizationId: organization.id,
-          reservationIdempotencyKey: `storefront-reservation:${normalized.idempotencyKey}`,
-          reservationNumber: `WEB-RSV-${reference}`,
-          salesOrderId: draft.id,
-        });
-        await storefront.createCommerceProfile({
-          id: randomUUID(),
-          organizationId: organization.id,
-          paymentPreference: "CASH_ON_DELIVERY",
-          requestSignature: signature,
-          salesOrderId: reserved.id,
-          source: "STOREFRONT",
-        });
-        await transaction.auditWriter.recordWithinTransaction({
-          action: "STOREFRONT_ORDER_PLACED",
-          actor: { userId: null },
-          metadata: {
+            if (currentPrice !== line.reviewedUnitPriceMinor) {
+              throw new ApplicationServiceError({
+                code: "BUSINESS_RULE_VIOLATION",
+                message:
+                  "Product prices changed. Refresh and review the current total.",
+              });
+            }
+          }
+          const reference = createHash("sha256")
+            .update(`${organization.id}:${normalized.idempotencyKey}`)
+            .digest("hex")
+            .slice(0, 20)
+            .toUpperCase();
+          const draft = await createSalesOrder(sales, {
+            allocationPolicyId: facts.allocationPolicyId,
             channel: "ONLINE",
-            lineCount: reserved.lines.length,
+            currencyCode: "BDT",
+            customerEmail: normalized.customer.email ?? null,
+            customerName: normalized.customer.name,
+            customerPhone: normalized.customer.phone,
+            deliveryAddressLine1: normalized.deliveryAddress.line1,
+            deliveryAddressLine2: normalized.deliveryAddress.line2 ?? null,
+            deliveryCity: normalized.deliveryAddress.city,
+            deliveryDistrict: normalized.deliveryAddress.district,
+            deliveryPostalCode: normalized.deliveryAddress.postalCode ?? null,
+            idempotencyKey: normalized.idempotencyKey,
+            lines: normalized.lines.map((line) => {
+              const unitPriceMinor = prices.get(line.productVariantId);
+              if (unitPriceMinor === undefined) {
+                throw new NotFoundError(
+                  "A selected product is no longer available.",
+                );
+              }
+              return {
+                productVariantId: line.productVariantId,
+                quantity: line.quantity,
+                unitPriceMinor,
+              };
+            }),
+            note: normalized.note ?? null,
+            orderNumber: `WEB-${reference}`,
+            organizationId: organization.id,
+          });
+          const reserved = await reserveSalesOrder(sales, {
+            expectedVersion: draft.version,
+            organizationId: organization.id,
+            reservationIdempotencyKey: `storefront-reservation:${normalized.idempotencyKey}`,
+            reservationNumber: `WEB-RSV-${reference}`,
+            salesOrderId: draft.id,
+          });
+          await storefront.createCommerceProfile({
+            id: randomUUID(),
+            organizationId: organization.id,
+            paymentPreference: normalized.paymentPreference,
+            requestSignature: signature,
+            salesOrderId: reserved.id,
+            source: "STOREFRONT",
+          });
+          await transaction.auditWriter.recordWithinTransaction({
+            action: "STOREFRONT_ORDER_PLACED",
+            actor: { userId: null },
+            metadata: {
+              channel: "ONLINE",
+              lineCount: reserved.lines.length,
+              orderNumber: reserved.orderNumber,
+              paymentPreference: normalized.paymentPreference,
+              requestId: context.requestId,
+              totalMinor: reserved.totalMinor,
+              unitCount: reserved.lines.reduce(
+                (total, line) => total + line.quantity,
+                0,
+              ),
+            },
+            organizationId: organization.id,
+            resource: "SALES_ORDER",
+            resourceId: reserved.id,
+          });
+          return storefrontCheckoutResultSchema.parse({
+            currencyCode: reserved.currencyCode,
+            orderId: reserved.id,
             orderNumber: reserved.orderNumber,
-            paymentPreference: "CASH_ON_DELIVERY",
-            requestId: context.requestId,
+            payment: null,
+            paymentPreference: normalized.paymentPreference,
+            status: reserved.status,
             totalMinor: reserved.totalMinor,
-            unitCount: reserved.lines.reduce(
-              (total, line) => total + line.quantity,
-              0,
-            ),
-          },
-          organizationId: organization.id,
-          resource: "SALES_ORDER",
-          resourceId: reserved.id,
-        });
-        return storefrontCheckoutResultSchema.parse({
-          currencyCode: reserved.currencyCode,
-          orderId: reserved.id,
-          orderNumber: reserved.orderNumber,
-          paymentPreference: "CASH_ON_DELIVERY",
-          status: reserved.status,
-          totalMinor: reserved.totalMinor,
-        });
+          });
+        },
+      );
+      if (checkout.paymentPreference !== "ONLINE_PAYMENT") return checkout;
+      if (!this.onlinePayments) {
+        throw new BusinessRuleError("Online payment is unavailable.");
+      }
+      const paymentKey = createHash("sha256")
+        .update(`storefront-payment:${normalized.idempotencyKey}`)
+        .digest("hex");
+      const attempt = await this.onlinePayments.initiateForCheckout({
+        idempotencyKey: paymentKey,
+        organizationId: organization.id,
+        requestId: context.requestId,
+        salesOrderId: checkout.orderId,
+      });
+      return storefrontCheckoutResultSchema.parse({
+        ...checkout,
+        payment: {
+          publicToken: attempt.publicToken,
+          redirectUrl: attempt.redirectUrl,
+          resolutionStatus: attempt.resolutionStatus,
+          status: attempt.status,
+        },
       });
     });
+  }
+
+  paymentOptions(requestId: string) {
+    if (!this.onlinePayments) {
+      return Promise.resolve({
+        data: {
+          methods: ["CASH_ON_DELIVERY"] as Array<
+            "CASH_ON_DELIVERY" | "ONLINE_PAYMENT"
+          >,
+        },
+        ok: true as const,
+      });
+    }
+    return this.onlinePayments.options(requestId);
+  }
+
+  paymentStatus(requestId: string, payload: unknown) {
+    if (!this.onlinePayments) return unavailablePaymentResult(requestId);
+    return this.onlinePayments.status(requestId, payload);
+  }
+
+  retryPayment(requestId: string, payload: unknown) {
+    if (!this.onlinePayments) return unavailablePaymentResult(requestId);
+    return this.onlinePayments.retry(requestId, payload);
+  }
+
+  paymentNotification(requestId: string, payload: unknown) {
+    if (!this.onlinePayments) return unavailablePaymentResult(requestId);
+    return this.onlinePayments.notification(requestId, payload);
   }
 
   private async resolveOrganization() {
@@ -310,6 +373,16 @@ export class StorefrontApplicationService {
       };
     }
   }
+}
+
+function unavailablePaymentResult(requestId: string) {
+  return Promise.resolve({
+    error: new ApplicationServiceError({
+      code: "BUSINESS_RULE_VIOLATION",
+      message: "Online payment is unavailable.",
+    }).toShape(requestId),
+    ok: false as const,
+  });
 }
 
 function normalizeCheckout(

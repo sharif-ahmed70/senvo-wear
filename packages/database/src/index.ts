@@ -73,5 +73,6 @@ export { PrismaPosCheckoutRepository } from "./pos/checkout-repository.js";
 export { PrismaPosReturnRepository } from "./pos/return-repository.js";
 export { PrismaPaymentRepository } from "./payment/repository.js";
 export { PrismaPaymentRefundRepository } from "./payment/refund-repository.js";
+export { PrismaOnlinePaymentRepository } from "./payment/online-payment-repository.js";
 export { PrismaReceiptRepository } from "./receipt/repository.js";
 export { PrismaStorefrontRepository } from "./storefront/repository.js";

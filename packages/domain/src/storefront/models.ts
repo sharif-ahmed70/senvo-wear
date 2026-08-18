@@ -1,6 +1,6 @@
 export type StorefrontAvailability = "IN_STOCK" | "OUT_OF_STOCK";
 export type CommerceOrderSource = "STOREFRONT";
-export type CommercePaymentPreference = "CASH_ON_DELIVERY";
+export type CommercePaymentPreference = "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
 
 export type StorefrontVariant = {
   availability: StorefrontAvailability;

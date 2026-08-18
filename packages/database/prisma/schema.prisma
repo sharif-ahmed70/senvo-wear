@@ -92,6 +92,47 @@ enum CommerceOrderSource {
 
 enum CommercePaymentPreference {
   CASH_ON_DELIVERY
+  ONLINE_PAYMENT
+}
+
+enum OnlinePaymentProvider {
+  SSLCOMMERZ
+}
+
+enum OnlinePaymentAttemptStatus {
+  CREATED
+  SESSION_READY
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum OnlinePaymentResolutionStatus {
+  NORMAL
+  REVIEW_REQUIRED
+  REFUND_REQUIRED
+}
+
+enum ProviderNotificationProcessingStatus {
+  RECEIVED
+  PROCESSED
+  REJECTED
+  FAILED
+}
+
+enum PaymentReconciliationOutcome {
+  MATCHED
+  MISMATCH
+}
+
+enum ProviderRefundStatus {
+  CREATED
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
 }
 
 enum BarcodeType {
@@ -130,6 +171,7 @@ enum PaymentMethod {
   CARD
   MOBILE_BANKING
   BANK_TRANSFER
+  ONLINE_GATEWAY
 }
 
 enum PaymentBalanceStatus {
@@ -321,6 +363,10 @@ model Organization {
   paymentRefunds PaymentRefund[]
   paymentRefundLines PaymentRefundLine[]
   paymentRefundReceipts PaymentRefundReceipt[]
+  onlinePaymentAttempts OnlinePaymentAttempt[]
+  providerNotifications ProviderNotification[]
+  paymentReconciliations PaymentReconciliation[]
+  providerRefunds ProviderRefund[]
   posSaleReturns PosSaleReturn[]
   posSaleReturnLines PosSaleReturnLine[]
   posReturnReceipts PosReturnReceipt[]
@@ -349,6 +395,8 @@ model User {
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
   acceptedPaymentRefunds PaymentRefund[]
+  resolvedPaymentReconciliations PaymentReconciliation[]
+  requestedProviderRefunds ProviderRefund[]
   acceptedPosSaleReturns PosSaleReturn[]
 
   @@index([status])
@@ -392,6 +440,8 @@ model OrganizationMembership {
   acceptedPaymentBatches PaymentBatch[]
   acceptedPaymentCollections PaymentCollection[]
   acceptedPaymentRefunds PaymentRefund[]
+  resolvedPaymentReconciliations PaymentReconciliation[]
+  requestedProviderRefunds ProviderRefund[]
   acceptedPosSaleReturns PosSaleReturn[]
 
   @@unique([userId, organizationId])
@@ -886,11 +936,12 @@ model PosCheckoutRecord {
 model PaymentBatch {
   id               String               @id @default(uuid()) @db.Uuid
   organizationId   String               @map("organization_id") @db.Uuid
-  checkoutId       String               @map("checkout_id") @db.Uuid
+  checkoutId       String?              @map("checkout_id") @db.Uuid
   salesOrderId     String               @map("sales_order_id") @db.Uuid
-  salesSessionId   String               @map("sales_session_id") @db.Uuid
-  counterId        String               @map("counter_id") @db.Uuid
-  staffId          String               @map("staff_id") @db.Uuid
+  salesSessionId   String?              @map("sales_session_id") @db.Uuid
+  counterId        String?              @map("counter_id") @db.Uuid
+  staffId          String?              @map("staff_id") @db.Uuid
+  paymentAttemptId String?              @map("payment_attempt_id") @db.Uuid
   idempotencyKey   String               @map("idempotency_key") @db.VarChar(64)
   requestSignature String               @map("request_signature") @db.Text
   currencyCode     String               @map("currency_code") @db.VarChar(3)
@@ -901,12 +952,13 @@ model PaymentBatch {
   createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  checkout     PosCheckoutRecord       @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_checkout_org_fkey")
+  checkout     PosCheckoutRecord?      @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_checkout_org_fkey")
   salesOrder   SalesOrder              @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_order_org_fkey")
-  salesSession SalesSession            @relation(fields: [salesSessionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_session_org_fkey")
-  counter      SalesCounter            @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_counter_org_fkey")
-  staff        User                    @relation(fields: [staffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  membership   OrganizationMembership  @relation(fields: [staffId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_staff_org_fkey")
+  salesSession SalesSession?           @relation(fields: [salesSessionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_session_org_fkey")
+  counter      SalesCounter?           @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_counter_org_fkey")
+  staff        User?                   @relation(fields: [staffId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  membership   OrganizationMembership? @relation(fields: [staffId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_staff_org_fkey")
+  paymentAttempt OnlinePaymentAttempt? @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_batches_attempt_org_fkey")
   lines        PaymentLine[]
   receipt      SalesReceipt?
   collections  PaymentCollection[]
@@ -914,6 +966,7 @@ model PaymentBatch {
   @@unique([id, organizationId], map: "payment_batches_id_org_key")
   @@unique([checkoutId, organizationId], map: "payment_batches_checkout_org_key")
   @@unique([salesOrderId, organizationId], map: "payment_batches_order_org_key")
+  @@unique([paymentAttemptId, organizationId], map: "payment_batches_attempt_org_key")
   @@unique([organizationId, salesSessionId, idempotencyKey], map: "payment_batches_org_session_idem_key")
   @@index([organizationId, createdAt, id], map: "payment_batches_org_created_id_idx")
   @@index([organizationId, counterId, createdAt], map: "payment_batches_org_counter_created_idx")
@@ -1079,10 +1132,135 @@ model SalesOrderCommerceProfile {
   @@map("sales_order_commerce_profiles")
 }
 
+model OnlinePaymentAttempt {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  organizationId        String                        @map("organization_id") @db.Uuid
+  salesOrderId          String                        @map("sales_order_id") @db.Uuid
+  provider              OnlinePaymentProvider
+  status                OnlinePaymentAttemptStatus    @default(CREATED)
+  resolutionStatus      OnlinePaymentResolutionStatus @default(NORMAL) @map("resolution_status")
+  amountMinor           Int                           @map("amount_minor")
+  currencyCode          String                        @map("currency_code") @db.VarChar(3)
+  idempotencyKey        String                        @map("idempotency_key") @db.VarChar(64)
+  requestSignature      String                        @map("request_signature") @db.Text
+  publicToken           String                        @unique(map: "online_payment_attempts_public_token_key") @map("public_token") @db.VarChar(64)
+  providerTransactionId String                        @map("provider_transaction_id") @db.VarChar(64)
+  providerSessionId     String?                       @map("provider_session_id") @db.VarChar(160)
+  redirectUrl           String?                       @map("redirect_url") @db.VarChar(1000)
+  validationId          String?                       @map("validation_id") @db.VarChar(120)
+  bankTransactionId     String?                       @map("bank_transaction_id") @db.VarChar(160)
+  failureCode           String?                       @map("failure_code") @db.VarChar(80)
+  expiresAt             DateTime?                     @map("expires_at") @db.Timestamptz(6)
+  confirmedAt           DateTime?                     @map("confirmed_at") @db.Timestamptz(6)
+  version               Int                           @default(1)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrder     SalesOrder                @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "online_payment_attempts_order_org_fkey")
+  paymentBatch   PaymentBatch?
+  notifications  ProviderNotification[]
+  reconciliations PaymentReconciliation[]
+  refunds        ProviderRefund[]
+
+  @@unique([id, organizationId], map: "online_payment_attempts_id_org_key")
+  @@unique([organizationId, salesOrderId, idempotencyKey], map: "online_payment_attempts_org_order_idem_key")
+  @@unique([organizationId, provider, providerTransactionId], map: "online_payment_attempts_org_provider_transaction_key")
+  @@unique([organizationId, salesOrderId], map: "online_payment_attempts_one_success_per_order", where: { status: "SUCCEEDED" })
+  @@index([organizationId, salesOrderId, createdAt, id], map: "online_payment_attempts_org_order_created_idx")
+  @@index([organizationId, status, updatedAt, id], map: "online_payment_attempts_org_status_updated_idx")
+  @@map("online_payment_attempts")
+}
+
+model ProviderNotification {
+  id                    String                               @id @default(uuid()) @db.Uuid
+  organizationId        String                               @map("organization_id") @db.Uuid
+  paymentAttemptId      String                               @map("payment_attempt_id") @db.Uuid
+  provider              OnlinePaymentProvider
+  dedupeKey             String                               @map("dedupe_key") @db.VarChar(64)
+  providerTransactionId String                               @map("provider_transaction_id") @db.VarChar(64)
+  validationId          String?                              @map("validation_id") @db.VarChar(120)
+  eventType             String                               @map("event_type") @db.VarChar(40)
+  processingStatus      ProviderNotificationProcessingStatus @default(RECEIVED) @map("processing_status")
+  errorCode             String?                              @map("error_code") @db.VarChar(80)
+  receivedAt            DateTime                             @map("received_at") @db.Timestamptz(6)
+  processedAt           DateTime?                            @map("processed_at") @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempt OnlinePaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "provider_notifications_attempt_org_fkey")
+
+  @@unique([id, organizationId], map: "provider_notifications_id_org_key")
+  @@unique([organizationId, provider, dedupeKey], map: "provider_notifications_org_provider_dedupe_key")
+  @@index([organizationId, paymentAttemptId, receivedAt, id], map: "provider_notifications_org_attempt_received_idx")
+  @@map("provider_notifications")
+}
+
+model PaymentReconciliation {
+  id                    String                       @id @default(uuid()) @db.Uuid
+  organizationId        String                       @map("organization_id") @db.Uuid
+  paymentAttemptId      String                       @map("payment_attempt_id") @db.Uuid
+  expectedStatus        OnlinePaymentAttemptStatus   @map("expected_status")
+  observedStatus        String                       @map("observed_status") @db.VarChar(40)
+  expectedAmountMinor   Int                          @map("expected_amount_minor")
+  observedAmountMinor   Int?                         @map("observed_amount_minor")
+  expectedCurrencyCode  String                       @map("expected_currency_code") @db.VarChar(3)
+  observedCurrencyCode  String?                      @map("observed_currency_code") @db.VarChar(3)
+  providerReference     String?                      @map("provider_reference") @db.VarChar(160)
+  outcome               PaymentReconciliationOutcome
+  reasonCode            String?                      @map("reason_code") @db.VarChar(80)
+  resolvedByUserId      String?                      @map("resolved_by_user_id") @db.Uuid
+  resolvedAt            DateTime?                    @map("resolved_at") @db.Timestamptz(6)
+  createdAt             DateTime                     @map("created_at") @db.Timestamptz(6)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempt OnlinePaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_reconciliations_attempt_org_fkey")
+  resolvedBy User?                      @relation(fields: [resolvedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  resolvedMembership OrganizationMembership? @relation(fields: [resolvedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_reconciliations_resolver_org_fkey")
+
+  @@unique([id, organizationId], map: "payment_reconciliations_id_org_key")
+  @@index([organizationId, outcome, createdAt, id], map: "payment_reconciliations_org_outcome_created_idx")
+  @@index([organizationId, paymentAttemptId, createdAt, id], map: "payment_reconciliations_org_attempt_created_idx")
+  @@map("payment_reconciliations")
+}
+
+model ProviderRefund {
+  id                    String               @id @default(uuid()) @db.Uuid
+  organizationId        String               @map("organization_id") @db.Uuid
+  paymentAttemptId      String               @map("payment_attempt_id") @db.Uuid
+  salesOrderId          String               @map("sales_order_id") @db.Uuid
+  requestedByUserId     String               @map("requested_by_user_id") @db.Uuid
+  idempotencyKey        String               @map("idempotency_key") @db.VarChar(64)
+  requestSignature      String               @map("request_signature") @db.Text
+  amountMinor           Int                  @map("amount_minor")
+  currencyCode          String               @map("currency_code") @db.VarChar(3)
+  providerRefundTransactionId String          @map("provider_refund_transaction_id") @db.VarChar(64)
+  providerRefundReference String?             @map("provider_refund_reference") @db.VarChar(160)
+  status                ProviderRefundStatus @default(CREATED)
+  failureCode           String?              @map("failure_code") @db.VarChar(80)
+  confirmedAt           DateTime?            @map("confirmed_at") @db.Timestamptz(6)
+  createdAt             DateTime             @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  paymentAttempt OnlinePaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "provider_refunds_attempt_org_fkey")
+  salesOrder SalesOrder               @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "provider_refunds_order_org_fkey")
+  requestedBy User                    @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requestedMembership OrganizationMembership @relation(fields: [requestedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "provider_refunds_requester_org_fkey")
+  paymentRefund PaymentRefund?
+
+  @@unique([id, organizationId], map: "provider_refunds_id_org_key")
+  @@unique([organizationId, paymentAttemptId, idempotencyKey], map: "provider_refunds_org_attempt_idem_key")
+  @@unique([organizationId, providerRefundTransactionId], map: "provider_refunds_org_transaction_key")
+  @@index([organizationId, paymentAttemptId, createdAt, id], map: "provider_refunds_org_attempt_created_idx")
+  @@index([organizationId, status, updatedAt, id], map: "provider_refunds_org_status_updated_idx")
+  @@map("provider_refunds")
+}
+
 model PaymentRefund {
   id               String   @id @default(uuid()) @db.Uuid
   organizationId   String   @map("organization_id") @db.Uuid
-  checkoutId       String   @map("checkout_id") @db.Uuid
+  checkoutId       String?  @map("checkout_id") @db.Uuid
+  providerRefundId String?  @map("provider_refund_id") @db.Uuid
   salesOrderId     String   @map("sales_order_id") @db.Uuid
   acceptedByUserId String   @map("accepted_by_user_id") @db.Uuid
   idempotencyKey   String   @map("idempotency_key") @db.VarChar(64)
@@ -1092,7 +1270,8 @@ model PaymentRefund {
   createdAt        DateTime @map("created_at") @db.Timestamptz(6)
 
   organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  checkout           PosCheckoutRecord      @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_checkout_org_fkey")
+  checkout           PosCheckoutRecord?     @relation(fields: [checkoutId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_checkout_org_fkey")
+  providerRefund     ProviderRefund?        @relation(fields: [providerRefundId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_provider_refund_org_fkey")
   salesOrder         SalesOrder             @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_order_org_fkey")
   acceptedBy         User                   @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   acceptedMembership OrganizationMembership @relation(fields: [acceptedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "payment_refunds_staff_org_fkey")
@@ -1101,6 +1280,7 @@ model PaymentRefund {
 
   @@unique([id, organizationId], map: "payment_refunds_id_org_key")
   @@unique([organizationId, checkoutId, idempotencyKey], map: "payment_refunds_org_checkout_idem_key")
+  @@unique([providerRefundId, organizationId], map: "payment_refunds_provider_refund_org_key")
   @@index([organizationId, checkoutId, issuedAt, id], map: "payment_refunds_org_checkout_issued_idx")
   @@index([organizationId, acceptedByUserId, issuedAt], map: "payment_refunds_org_staff_issued_idx")
   @@map("payment_refunds")
@@ -1555,6 +1735,8 @@ model SalesOrder {
   posSaleReturns PosSaleReturn[]
   posReturnReceipts PosReturnReceipt[]
   commerceProfile SalesOrderCommerceProfile?
+  onlinePaymentAttempts OnlinePaymentAttempt[]
+  providerRefunds ProviderRefund[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, orderNumber])

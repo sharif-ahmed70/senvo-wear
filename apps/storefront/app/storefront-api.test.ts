@@ -83,4 +83,37 @@ describe("storefront API catalog hydration", () => {
       "page=2&pageSize=48",
     );
   });
+
+  it("uses opaque payment tokens and never sends authoritative amount on retry", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        data: {
+          amountMinor: 129900,
+          currencyCode: "BDT",
+          orderNumber: "WEB-1001",
+          payment: {
+            publicToken: "payment_public_token_1234567890123456",
+            redirectUrl: null,
+            resolutionStatus: "NORMAL",
+            status: "FAILED",
+          },
+        },
+        requestId: "request-payment",
+        success: true,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await storefrontApi.retryPayment(
+      "payment_public_token_1234567890123456",
+      "webpay:retry-1",
+    );
+    const requestBody = fetchMock.mock.calls[0]?.[1]?.body;
+    if (typeof requestBody !== "string") {
+      throw new Error("Expected a JSON retry request body.");
+    }
+    const body = JSON.parse(requestBody) as Record<string, unknown>;
+    expect(body).toEqual({ idempotencyKey: "webpay:retry-1" });
+    expect(body).not.toHaveProperty("amountMinor");
+    expect(body).not.toHaveProperty("organizationId");
+  });
 });

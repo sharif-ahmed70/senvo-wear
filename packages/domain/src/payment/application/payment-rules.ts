@@ -8,12 +8,12 @@ import type {
 
 const maxIntegerMinorUnit = 2_147_483_647;
 const maxPaymentLines = 8;
-const methods = [
+const methods: readonly PaymentMethod[] = [
   "CASH",
   "CARD",
   "MOBILE_BANKING",
   "BANK_TRANSFER",
-] as const satisfies readonly PaymentMethod[];
+];
 
 export type CheckoutSettlement = {
   adjustedPayableMinor: number;

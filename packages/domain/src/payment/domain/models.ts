@@ -1,5 +1,5 @@
 export type PaymentMethod =
-  "CASH" | "CARD" | "MOBILE_BANKING" | "BANK_TRANSFER";
+  "CASH" | "CARD" | "MOBILE_BANKING" | "BANK_TRANSFER" | "ONLINE_GATEWAY";
 
 export type PaymentBalanceStatus = "UNPAID" | "PARTIALLY_PAID" | "PAID";
 export type CheckoutSettlementStatus =

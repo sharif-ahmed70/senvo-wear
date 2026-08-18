@@ -12,6 +12,11 @@ export {
   type StorefrontApplication,
 } from "./storefront-handlers.js";
 export {
+  createOnlinePaymentApiHandlers,
+  type OnlinePaymentApiHandlers,
+  type OnlinePaymentApplication,
+} from "./online-payment-handlers.js";
+export {
   createCatalogApiHandlers,
   createInventoryReadApiHandlers,
   createPostInventoryMovementApiHandler,

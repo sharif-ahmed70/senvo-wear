@@ -26,6 +26,7 @@
     "@senvo/database": "workspace:*",
     "@senvo/domain": "workspace:*",
     "@senvo/logger": "workspace:*",
+    "@senvo/payment-provider": "workspace:*",
     "@senvo/storage": "workspace:*"
   },
   "devDependencies": {

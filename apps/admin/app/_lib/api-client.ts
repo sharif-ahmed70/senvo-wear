@@ -80,6 +80,8 @@ import type {
   CreateSalesCounterServiceInputContract,
   UpdateSalesCounterStatusServiceInputContract,
   OpenSalesSessionServiceInputContract,
+  OnlinePaymentAdminResultContract,
+  ProviderRefundContract,
   CloseSalesSessionServiceInputContract,
   AddPosCartItemServiceInputContract,
   UpdatePosCartItemServiceInputContract,
@@ -556,6 +558,43 @@ export class AdminApiClient {
     return this.request<SalesOrderDetailsReadContract>(
       `/sales/orders/${salesOrderId}`,
       request,
+    );
+  }
+
+  getOnlinePayment(salesOrderId: string, request?: AdminApiRequest) {
+    return this.request<OnlinePaymentAdminResultContract>(
+      `/sales-orders/${salesOrderId}/payment`,
+      request,
+    );
+  }
+
+  reconcileOnlinePayment(paymentAttemptId: string, request?: AdminApiRequest) {
+    return this.request<OnlinePaymentAdminResultContract>(
+      `/payments/attempts/${paymentAttemptId}/reconcile`,
+      { ...request, body: {}, method: "POST" },
+    );
+  }
+
+  createProviderRefund(
+    input: {
+      amountMinor: number;
+      idempotencyKey: string;
+      paymentAttemptId: string;
+      reason: string;
+    },
+    request?: AdminApiRequest,
+  ) {
+    const { paymentAttemptId, ...body } = input;
+    return this.request<ProviderRefundContract>(
+      `/payments/attempts/${paymentAttemptId}/refunds`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  refreshProviderRefund(providerRefundId: string, request?: AdminApiRequest) {
+    return this.request<ProviderRefundContract>(
+      `/payments/refunds/${providerRefundId}/refresh`,
+      { ...request, body: {}, method: "POST" },
     );
   }
 

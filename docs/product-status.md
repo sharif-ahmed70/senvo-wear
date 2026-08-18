@@ -15,17 +15,18 @@ Read this file first when continuing SENVO Wear product work.
 - Storefront Commerce MVP: public catalog, guest cart, COD checkout, inventory reservation, confirmation, and Admin online-order visibility
 - Product media gallery with canonical primary, variant imagery, accessible Storefront rendering, and Admin management
 - Curated per-collection Storefront product ordering
+- Provider-neutral online payment attempts, verified SSLCOMMERZ IPN processing, reconciliation, and provider-refund integration
 
 ## Current
 
-- Phase 1 merchandising and product-media scope complete
+- P2.1 online-payment code complete; dedicated SSLCOMMERZ sandbox credentials and external callback verification remain an operations gate
 
 ## Next
 
 - Advanced publishing schedules and media processing
 - Production cloud object storage, image transformations, and CDN optimization
 - Production login and session transport
-- Online payment and courier/order tracking
+- Courier/order tracking (online payment is implemented separately)
 - CRM, customer 360, and loyalty
 - Analytics and reports
 - Growth, social commerce, and wholesale

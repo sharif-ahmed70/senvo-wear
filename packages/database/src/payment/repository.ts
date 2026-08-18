@@ -165,8 +165,8 @@ export class PrismaPaymentRepository implements PaymentRepository {
 
 function mapBatch(record: BatchRecord): PaymentBatch {
   return {
-    checkoutId: record.checkoutId,
-    counterId: record.counterId,
+    checkoutId: requirePosContext(record.checkoutId, "checkout"),
+    counterId: requirePosContext(record.counterId, "counter"),
     createdAt: record.createdAt,
     currencyCode: "BDT",
     id: record.id,
@@ -187,10 +187,17 @@ function mapBatch(record: BatchRecord): PaymentBatch {
     payableMinor: record.payableMinor,
     requestSignature: record.requestSignature,
     salesOrderId: record.salesOrderId,
-    salesSessionId: record.salesSessionId,
-    staffId: record.staffId,
+    salesSessionId: requirePosContext(record.salesSessionId, "sales session"),
+    staffId: requirePosContext(record.staffId, "staff"),
     status: record.status,
   };
+}
+
+function requirePosContext(value: string | null, field: string): string {
+  if (value === null) {
+    throw new Error(`POS payment batch is missing its ${field} context.`);
+  }
+  return value;
 }
 
 function mapCollection(record: CollectionRecord): PaymentCollection {
