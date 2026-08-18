@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { describe, expect, it, vi } from "vitest";
 import type { StorefrontApplicationService } from "@senvo/application";
 import { createStorefrontApiHandlers } from "./storefront-handlers.js";
@@ -151,6 +152,7 @@ function fakeApplication() {
           currencyCode: "BDT",
           orderId: "33333333-3333-4333-8333-333333333333",
           orderNumber: "WEB-ABC",
+          payment: null,
           paymentPreference: "CASH_ON_DELIVERY",
           status: "RESERVED",
           totalMinor: 129900,
@@ -172,8 +174,9 @@ function fakeApplication() {
         ok: true as const,
       }),
     ),
-  } as unknown as Pick<
-    StorefrontApplicationService,
-    "checkout" | "getProduct" | "listCatalog"
-  >;
+    paymentNotification: vi.fn(),
+    paymentOptions: vi.fn(),
+    paymentStatus: vi.fn(),
+    retryPayment: vi.fn(),
+  } as unknown as StorefrontApplicationService;
 }

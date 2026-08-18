@@ -46,9 +46,30 @@ export type CheckoutResult = {
   currencyCode: "BDT";
   orderId: string;
   orderNumber: string;
-  paymentPreference: "CASH_ON_DELIVERY";
+  payment: PaymentState | null;
+  paymentPreference: PaymentPreference;
   status: "RESERVED";
   totalMinor: number;
+};
+export type PaymentPreference = "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
+export type PaymentState = {
+  publicToken: string;
+  redirectUrl: string | null;
+  resolutionStatus: "NORMAL" | "REVIEW_REQUIRED" | "REFUND_REQUIRED";
+  status:
+    | "CREATED"
+    | "SESSION_READY"
+    | "PENDING"
+    | "SUCCEEDED"
+    | "FAILED"
+    | "CANCELLED"
+    | "EXPIRED";
+};
+export type PaymentStatusResult = {
+  amountMinor: number;
+  currencyCode: "BDT";
+  orderNumber: string;
+  payment: PaymentState;
 };
 type ApiResponse<T> =
   | { data: T; requestId: string; success: true }
@@ -132,6 +153,22 @@ export const storefrontApi = {
       body: JSON.stringify(input),
       method: "POST",
     });
+  },
+  paymentOptions() {
+    return request<{ methods: PaymentPreference[] }>(
+      "/storefront/payment-options",
+    );
+  },
+  paymentStatus(publicToken: string) {
+    return request<PaymentStatusResult>(
+      `/storefront/payments/${encodeURIComponent(publicToken)}`,
+    );
+  },
+  retryPayment(publicToken: string, idempotencyKey: string) {
+    return request<PaymentStatusResult>(
+      `/storefront/payments/${encodeURIComponent(publicToken)}/retry`,
+      { body: JSON.stringify({ idempotencyKey }), method: "POST" },
+    );
   },
   product(slug: string) {
     return request<StorefrontProduct>(

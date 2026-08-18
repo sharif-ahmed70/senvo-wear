@@ -63,6 +63,8 @@ const permissionResources: readonly PermissionKey["resource"][] = [
   "SALES_ORDER",
   "SALES",
   "POS",
+  "PAYMENT",
+  "RECEIPT",
   "REPORT",
 ];
 const permissionActions: readonly PermissionKey["action"][] = [

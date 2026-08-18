@@ -15,6 +15,7 @@ import {
   reserveSalesOrder,
   updateDraftSalesOrderMetadata,
 } from "@senvo/domain";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "../index.js";
 import {
@@ -24,6 +25,7 @@ import {
 import { PrismaSalesOrderRepository } from "./repositories.js";
 import { PrismaSalesOrderReadRepository } from "./read-repository.js";
 import { PrismaSalesSourceRepository } from "./source-repository.js";
+import { PrismaOnlinePaymentRepository } from "../payment/online-payment-repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
@@ -48,11 +50,17 @@ describeWithDatabase("Prisma sales order repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.paymentRefundLine.deleteMany();
+    await prisma.paymentRefund.deleteMany();
+    await prisma.providerRefund.deleteMany();
+    await prisma.paymentReconciliation.deleteMany();
+    await prisma.providerNotification.deleteMany();
     await prisma.salesReceiptPayment.deleteMany();
     await prisma.salesReceiptLine.deleteMany();
     await prisma.salesReceipt.deleteMany();
     await prisma.paymentLine.deleteMany();
     await prisma.paymentBatch.deleteMany();
+    await prisma.onlinePaymentAttempt.deleteMany();
     await prisma.posCheckoutRecord.deleteMany();
     await prisma.posCartLine.deleteMany();
     await prisma.posCart.deleteMany();
@@ -89,6 +97,14 @@ describeWithDatabase("Prisma sales order repositories", () => {
   });
 
   afterAll(async () => {
+    await prisma.paymentRefundLine.deleteMany();
+    await prisma.paymentRefund.deleteMany();
+    await prisma.providerRefund.deleteMany();
+    await prisma.paymentReconciliation.deleteMany();
+    await prisma.providerNotification.deleteMany();
+    await prisma.paymentLine.deleteMany();
+    await prisma.paymentBatch.deleteMany();
+    await prisma.onlinePaymentAttempt.deleteMany();
     await prisma.salesOrderLine.deleteMany();
     await prisma.salesOrderCommerceProfile.deleteMany();
     await prisma.salesOrder.deleteMany();
@@ -801,6 +817,107 @@ describeWithDatabase("Prisma sales order repositories", () => {
         where: { id: reservation.id },
       }),
     ).resolves.toMatchObject({ status: "ACTIVE" });
+  });
+
+  it("deduplicates provider notifications and settles one tenant-scoped online payment once", async () => {
+    const base = await createSalesBase("ONLINE-PAYMENT");
+    const other = await createSalesBase("ONLINE-PAYMENT-OTHER");
+    await seedOnHand(base, 5);
+    const order = await createOrder(base, "SO-ONLINE-PAYMENT", 1);
+    const reserved = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "reserve-online-payment",
+      reservationNumber: "RSV-ONLINE-PAYMENT",
+      salesOrderId: order.id,
+    });
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        organizationId: base.organization.id,
+        paymentPreference: "ONLINE_PAYMENT",
+        requestSignature: "commerce-online-payment",
+        salesOrderId: order.id,
+        source: "STOREFRONT",
+      },
+    });
+    const repository = new PrismaOnlinePaymentRepository(prisma);
+    const attempt = await repository.createAttempt({
+      amountMinor: reserved.totalMinor,
+      createdAt: new Date("2026-08-18T10:00:00.000Z"),
+      currencyCode: "BDT",
+      id: randomUUID(),
+      idempotencyKey: "payment-online-1",
+      organizationId: base.organization.id,
+      providerTransactionId: "SWONLINEPAYMENT1",
+      publicToken: "online_payment_public_token_1234567890123456",
+      requestSignature: "payment-online-signature",
+      salesOrderId: order.id,
+    });
+    await expect(
+      repository.createAttempt({
+        amountMinor: reserved.totalMinor,
+        createdAt: new Date("2026-08-18T10:00:01.000Z"),
+        currencyCode: "BDT",
+        id: randomUUID(),
+        idempotencyKey: "payment-online-1",
+        organizationId: base.organization.id,
+        providerTransactionId: "SWONLINEPAYMENT2",
+        publicToken: "online_payment_public_token_abcdefghijklmnop",
+        requestSignature: "payment-online-signature",
+        salesOrderId: order.id,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      repository.findAttemptById(attempt.id, other.organization.id),
+    ).resolves.toBeNull();
+
+    const notification = {
+      dedupeKey: "notification-dedupe-1",
+      eventType: "VALID",
+      id: randomUUID(),
+      organizationId: base.organization.id,
+      paymentAttemptId: attempt.id,
+      providerTransactionId: attempt.providerTransactionId,
+      receivedAt: new Date("2026-08-18T10:01:00.000Z"),
+      validationId: "validation-1",
+    };
+    const deliveries = await Promise.all([
+      repository.recordNotification(notification),
+      repository.recordNotification({ ...notification, id: randomUUID() }),
+    ]);
+    expect(deliveries.filter((item) => item.replayed)).toHaveLength(1);
+    expect(await prisma.providerNotification.count()).toBe(1);
+
+    const settlement = {
+      bankTransactionId: "bank-online-1",
+      confirmedAt: new Date("2026-08-18T10:02:00.000Z"),
+      organizationId: base.organization.id,
+      paymentAttemptId: attempt.id,
+      paymentBatchId: randomUUID(),
+      paymentLineId: randomUUID(),
+      requestSignature: "settlement-online-signature",
+      resolutionStatus: "NORMAL" as const,
+      validationId: "validation-1",
+    };
+    await repository.settleConfirmedPayment(settlement);
+    await repository.settleConfirmedPayment({
+      ...settlement,
+      paymentBatchId: randomUUID(),
+      paymentLineId: randomUUID(),
+    });
+    expect(
+      await prisma.paymentBatch.count({
+        where: { paymentAttemptId: attempt.id },
+      }),
+    ).toBe(1);
+    await expect(
+      prisma.paymentLine.findFirstOrThrow({
+        where: { paymentBatch: { paymentAttemptId: attempt.id } },
+      }),
+    ).resolves.toMatchObject({
+      amountMinor: reserved.totalMinor,
+      method: "ONLINE_GATEWAY",
+    });
   });
 
   it("cancels draft, reserved, and confirmed orders without creating movements", async () => {

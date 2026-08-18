@@ -18,6 +18,7 @@ import {
   StorefrontApiError,
   storefrontApi,
   taka,
+  type PaymentPreference,
 } from "../_lib/storefront-api";
 export function CheckoutWorkspace() {
   const [cart, setCart] = useState<HydratedCart>({
@@ -29,6 +30,11 @@ export function CheckoutWorkspace() {
   >("loading");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentPreference[]>([
+    "CASH_ON_DELIVERY",
+  ]);
+  const [paymentPreference, setPaymentPreference] =
+    useState<PaymentPreference>("CASH_ON_DELIVERY");
   const load = useCallback(async () => {
     const selections = readCart(window.localStorage);
     if (selections.length === 0) {
@@ -52,6 +58,19 @@ export function CheckoutWorkspace() {
     const timeout = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timeout);
   }, [load]);
+  useEffect(() => {
+    let active = true;
+    void storefrontApi
+      .paymentOptions()
+      .then((result) => {
+        if (active && result.methods.length > 0)
+          setPaymentMethods(result.methods);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const total = cart.lines.reduce(
     (sum, line) => sum + line.quantity * line.unitPriceMinor,
     0,
@@ -84,7 +103,7 @@ export function CheckoutWorkspace() {
         reviewedUnitPriceMinor: line.unitPriceMinor,
       })),
       note: field("note") || undefined,
-      paymentPreference: "CASH_ON_DELIVERY",
+      paymentPreference,
     };
     const attempt = checkoutAttempt(window.sessionStorage, checkoutPayload);
     try {
@@ -95,7 +114,7 @@ export function CheckoutWorkspace() {
       window.sessionStorage.setItem("senvo-last-order", JSON.stringify(result));
       window.sessionStorage.removeItem(checkoutAttemptStorageKey);
       window.localStorage.removeItem(cartStorageKey);
-      window.location.assign("/order-success");
+      window.location.assign(result.payment?.redirectUrl ?? "/order-success");
     } catch (cause) {
       if (
         cause instanceof StorefrontApiError &&
@@ -195,7 +214,12 @@ export function CheckoutWorkspace() {
             <span>Total</span>
             <strong>{taka(total)}</strong>
           </p>
-          <small>Payment: Cash on delivery</small>
+          <small>
+            Payment:{" "}
+            {paymentPreference === "ONLINE_PAYMENT"
+              ? "Online payment"
+              : "Cash on delivery"}
+          </small>
         </div>
         <form onSubmit={(event) => void submit(event)}>
           <div className="form-grid">
@@ -232,18 +256,51 @@ export function CheckoutWorkspace() {
               <textarea name="note" rows={3} />
             </label>
           </div>
-          <div className="payment-choice">
-            <strong>Cash on delivery</strong>
-            <span>
-              Pay when your order arrives. No online charge will be made.
-            </span>
-          </div>
+          <fieldset className="payment-choice">
+            <legend>Payment</legend>
+            {paymentMethods.includes("CASH_ON_DELIVERY") ? (
+              <label>
+                <input
+                  checked={paymentPreference === "CASH_ON_DELIVERY"}
+                  name="paymentPreference"
+                  onChange={() => setPaymentPreference("CASH_ON_DELIVERY")}
+                  type="radio"
+                />
+                <span>
+                  <strong>Cash on delivery</strong>
+                  <br />
+                  Pay when your order arrives.
+                </span>
+              </label>
+            ) : null}
+            {paymentMethods.includes("ONLINE_PAYMENT") ? (
+              <label>
+                <input
+                  checked={paymentPreference === "ONLINE_PAYMENT"}
+                  name="paymentPreference"
+                  onChange={() => setPaymentPreference("ONLINE_PAYMENT")}
+                  type="radio"
+                />
+                <span>
+                  <strong>Online payment</strong>
+                  <br />
+                  Continue to the secure payment page after placing your order.
+                </span>
+              </label>
+            ) : null}
+          </fieldset>
           <button
             className="primary"
             disabled={!canSubmitCheckout(status, cart, submitting)}
             type="submit"
           >
-            {submitting ? "Placing order..." : `Place order - ${taka(total)}`}
+            {submitting
+              ? paymentPreference === "ONLINE_PAYMENT"
+                ? "Preparing secure payment..."
+                : "Placing order..."
+              : paymentPreference === "ONLINE_PAYMENT"
+                ? `Continue to payment - ${taka(total)}`
+                : `Place order - ${taka(total)}`}
           </button>
         </form>
       </section>

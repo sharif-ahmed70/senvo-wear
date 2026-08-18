@@ -187,6 +187,9 @@ importers:
       '@senvo/logger':
         specifier: workspace:*
         version: link:../logger
+      '@senvo/payment-provider':
+        specifier: workspace:*
+        version: link:../payment-provider
       '@senvo/storage':
         specifier: workspace:*
         version: link:../storage
@@ -286,6 +289,22 @@ importers:
 
   packages/logger:
     devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 4.1.9
+        version: 4.1.9(@types/node@26.2.0)(vite@8.1.0(@types/node@26.2.0)(jiti@2.7.0))
+
+  packages/payment-provider:
+    dependencies:
+      '@senvo/domain':
+        specifier: workspace:*
+        version: link:../domain
+    devDependencies:
+      '@types/node':
+        specifier: latest
+        version: 26.2.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3

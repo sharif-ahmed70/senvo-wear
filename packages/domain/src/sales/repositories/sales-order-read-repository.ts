@@ -11,7 +11,7 @@ export type SalesOrderCustomerSnapshot = {
 export type SalesOrderListReadItem = {
   channel: SalesOrderChannel;
   commerce: {
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     source: "STOREFRONT";
   } | null;
   createdAt: Date;
@@ -28,7 +28,7 @@ export type SalesOrderDetailsReadItem = {
   boothId: string | null;
   channel: SalesOrderChannel;
   commerce: {
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     source: "STOREFRONT";
   } | null;
   currencyCode: string;

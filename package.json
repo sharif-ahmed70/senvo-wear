@@ -41,6 +41,7 @@
     "test:catalog:integration": "pnpm test:integration",
     "verify:database": "node scripts/verify-database.mjs",
     "verify:generated-client-race": "node scripts/verify-generated-client-race.mjs",
+    "verify:sslcommerz-sandbox": "pnpm --filter @senvo/payment-provider exec vitest run sslcommerz.sandbox.test.ts",
     "audit": "pnpm audit --audit-level moderate"
   },
   "devDependencies": {

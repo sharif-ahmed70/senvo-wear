@@ -19,6 +19,7 @@ import {
   PrismaPosReturnRepository,
   PrismaPaymentRepository,
   PrismaPaymentRefundRepository,
+  PrismaOnlinePaymentRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
@@ -53,12 +54,18 @@ import type {
   PaymentRepository,
   PaymentRefundRepository,
   PaymentRefundReceiptRepository,
+  OnlinePaymentProviderAdapter,
+  OnlinePaymentRepository,
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
   UserRepository,
   StorefrontRepository,
 } from "@senvo/domain";
+import {
+  SslCommerzAdapter,
+  loadSslCommerzConfig,
+} from "@senvo/payment-provider";
 import { createConsoleLogger, type Logger } from "@senvo/logger";
 import {
   LocalFileObjectStorageProvider,
@@ -75,6 +82,7 @@ import { OrganizationApplicationService } from "../organization/organization-app
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
+import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -100,6 +108,8 @@ export type CreateApplicationServicesOptions = {
   paymentRepository?: PaymentRepository;
   paymentRefundRepository?: PaymentRefundRepository;
   paymentRefundReceiptRepository?: PaymentRefundReceiptRepository;
+  onlinePaymentProvider?: OnlinePaymentProviderAdapter;
+  onlinePaymentRepository?: OnlinePaymentRepository;
   receiptRepository?: ReceiptRepository;
   posReturnRepository?: PosReturnRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
@@ -126,6 +136,7 @@ export type ApplicationServices = {
   inventory: InventoryApplicationService;
   organization: OrganizationApplicationService;
   pos: PosApplicationService;
+  onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   storefront: StorefrontApplicationService;
 };
@@ -161,6 +172,7 @@ export function createApplicationServices(
   let paymentRepository = options.paymentRepository;
   let paymentRefundRepository = options.paymentRefundRepository;
   let paymentRefundReceiptRepository = options.paymentRefundReceiptRepository;
+  let onlinePaymentRepository = options.onlinePaymentRepository;
   let receiptRepository = options.receiptRepository;
   let posReturnRepository = options.posReturnRepository;
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
@@ -297,6 +309,8 @@ export function createApplicationServices(
     paymentRefundRepository = new PrismaPaymentRefundRepository(prismaClient);
   if (!paymentRefundReceiptRepository && prismaClient)
     paymentRefundReceiptRepository = new PrismaReceiptRepository(prismaClient);
+  if (!onlinePaymentRepository && prismaClient)
+    onlinePaymentRepository = new PrismaOnlinePaymentRepository(prismaClient);
   if (!posReturnRepository && prismaClient)
     posReturnRepository = new PrismaPosReturnRepository(prismaClient);
   if (!posReturnReceiptRepository && prismaClient)
@@ -309,6 +323,20 @@ export function createApplicationServices(
         products: productRepository,
         requestIdGenerator: options.requestIdGenerator,
         storage: resolveStorageProvider(options.storageProvider),
+        transactionManager,
+      })
+    : undefined;
+
+  const onlinePayments = onlinePaymentRepository
+    ? new OnlinePaymentApplicationService({
+        authenticationService: options.authenticationService,
+        authorizationService: options.authorizationService,
+        clock,
+        provider:
+          options.onlinePaymentProvider ??
+          new SslCommerzAdapter(loadSslCommerzConfig(process.env)),
+        repository: onlinePaymentRepository,
+        requestIdGenerator: options.requestIdGenerator,
         transactionManager,
       })
     : undefined;
@@ -342,6 +370,7 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
       transactionManager,
     }),
+    onlinePayments,
     organization: new OrganizationApplicationService({
       authorizationService: options.authorizationService,
       branches: branchRepository,
@@ -387,6 +416,7 @@ export function createApplicationServices(
     }),
     storefront: new StorefrontApplicationService({
       mediaService,
+      onlinePayments,
       organizationCode:
         options.storefrontOrganizationCode ??
         process.env.STOREFRONT_ORGANIZATION_CODE ??

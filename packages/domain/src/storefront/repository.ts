@@ -9,7 +9,7 @@ export type StorefrontRepository = {
   createCommerceProfile(input: {
     id: string;
     organizationId: string;
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     requestSignature: string;
     salesOrderId: string;
     source: "STOREFRONT";
@@ -21,7 +21,7 @@ export type StorefrontRepository = {
     currencyCode: string;
     orderId: string;
     orderNumber: string;
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     requestSignature: string;
     status: string;
     totalMinor: number;

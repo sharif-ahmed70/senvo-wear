@@ -2634,7 +2634,7 @@ export const salesOrderListReadContractSchema = z
     channel: salesOrderChannelSchema,
     commerce: z
       .object({
-        paymentPreference: z.literal("CASH_ON_DELIVERY"),
+        paymentPreference: z.enum(["CASH_ON_DELIVERY", "ONLINE_PAYMENT"]),
         source: z.literal("STOREFRONT"),
       })
       .strict()
@@ -2658,7 +2658,7 @@ export const salesOrderDetailsReadContractSchema = z
     channel: salesOrderChannelSchema,
     commerce: z
       .object({
-        paymentPreference: z.literal("CASH_ON_DELIVERY"),
+        paymentPreference: z.enum(["CASH_ON_DELIVERY", "ONLINE_PAYMENT"]),
         source: z.literal("STOREFRONT"),
       })
       .strict()
@@ -3879,7 +3879,7 @@ export const storefrontCheckoutInputSchema = z
     idempotencyKey: idempotencyKeySchema,
     lines: z.array(storefrontCheckoutLineSchema).min(1).max(20),
     note: z.string().trim().max(1000).optional(),
-    paymentPreference: z.literal("CASH_ON_DELIVERY"),
+    paymentPreference: z.enum(["CASH_ON_DELIVERY", "ONLINE_PAYMENT"]),
   })
   .strict();
 
@@ -3888,9 +3888,157 @@ export const storefrontCheckoutResultSchema = z
     currencyCode: z.literal("BDT"),
     orderId: idSchema,
     orderNumber: z.string(),
-    paymentPreference: z.literal("CASH_ON_DELIVERY"),
+    payment: z
+      .object({
+        publicToken: z.string().min(32).max(64),
+        redirectUrl: z.string().url().startsWith("https://").nullable(),
+        resolutionStatus: z.enum([
+          "NORMAL",
+          "REVIEW_REQUIRED",
+          "REFUND_REQUIRED",
+        ]),
+        status: z.enum([
+          "CREATED",
+          "SESSION_READY",
+          "PENDING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELLED",
+          "EXPIRED",
+        ]),
+      })
+      .strict()
+      .nullable(),
+    paymentPreference: z.enum(["CASH_ON_DELIVERY", "ONLINE_PAYMENT"]),
     status: z.literal("RESERVED"),
     totalMinor: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const storefrontPaymentOptionsResultSchema = z
+  .object({
+    methods: z.array(z.enum(["CASH_ON_DELIVERY", "ONLINE_PAYMENT"])),
+  })
+  .strict();
+export const storefrontPaymentOptionsInputSchema = z.object({}).strict();
+
+const paymentPublicTokenSchema = z.string().trim().min(32).max(64);
+
+export const storefrontPaymentStatusInputSchema = z
+  .object({ publicToken: paymentPublicTokenSchema })
+  .strict();
+
+export const storefrontPaymentRetryInputSchema = z
+  .object({
+    idempotencyKey: idempotencyKeySchema,
+    publicToken: paymentPublicTokenSchema,
+  })
+  .strict();
+
+export const onlinePaymentAttemptStatusSchema = z.enum([
+  "CREATED",
+  "SESSION_READY",
+  "PENDING",
+  "SUCCEEDED",
+  "FAILED",
+  "CANCELLED",
+  "EXPIRED",
+]);
+
+export const onlinePaymentResolutionStatusSchema = z.enum([
+  "NORMAL",
+  "REVIEW_REQUIRED",
+  "REFUND_REQUIRED",
+]);
+
+export const onlinePaymentStatusResultSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema,
+    currencyCode: z.literal("BDT"),
+    orderNumber: z.string(),
+    payment: z
+      .object({
+        publicToken: paymentPublicTokenSchema,
+        redirectUrl: z.string().url().startsWith("https://").nullable(),
+        resolutionStatus: onlinePaymentResolutionStatusSchema,
+        status: onlinePaymentAttemptStatusSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const providerNotificationInputSchema = z
+  .record(z.string().max(80), z.string().max(1000))
+  .refine((value) => Object.keys(value).length <= 64, {
+    message: "Provider notification contains too many fields.",
+  });
+
+export const providerNotificationResultSchema = z
+  .object({ accepted: z.boolean(), replayed: z.boolean() })
+  .strict();
+
+export const onlinePaymentAdminInputSchema = z
+  .object({ salesOrderId: idSchema })
+  .strict();
+
+export const onlinePaymentReconcileInputSchema = z
+  .object({ paymentAttemptId: idSchema })
+  .strict();
+
+export const providerRefundInputSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    idempotencyKey: idempotencyKeySchema,
+    paymentAttemptId: idSchema,
+    reason: z.string().trim().min(4).max(255),
+  })
+  .strict();
+
+export const providerRefundRefreshInputSchema = z
+  .object({ providerRefundId: idSchema })
+  .strict();
+
+export const providerRefundContractSchema = z
+  .object({
+    amountMinor: minorUnitAmountSchema.positive(),
+    confirmedAt: isoTimestampSchema.nullable(),
+    failureCode: z.string().nullable(),
+    id: idSchema,
+    providerRefundReference: z.string().nullable(),
+    status: z.enum(["CREATED", "PENDING", "CONFIRMED", "FAILED", "CANCELLED"]),
+  })
+  .strict();
+
+export const paymentReconciliationContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    expectedAmountMinor: minorUnitAmountSchema,
+    expectedStatus: onlinePaymentAttemptStatusSchema,
+    id: idSchema,
+    observedAmountMinor: minorUnitAmountSchema.nullable(),
+    observedStatus: z.string(),
+    outcome: z.enum(["MATCHED", "MISMATCH"]),
+    reasonCode: z.string().nullable(),
+  })
+  .strict();
+
+export const onlinePaymentAdminResultSchema = z
+  .object({
+    attempt: z
+      .object({
+        amountMinor: minorUnitAmountSchema,
+        bankTransactionId: z.string().nullable(),
+        currencyCode: z.literal("BDT"),
+        failureCode: z.string().nullable(),
+        id: idSchema,
+        provider: z.literal("SSLCOMMERZ"),
+        providerTransactionId: z.string(),
+        resolutionStatus: onlinePaymentResolutionStatusSchema,
+        status: onlinePaymentAttemptStatusSchema,
+      })
+      .strict(),
+    reconciliations: z.array(paymentReconciliationContractSchema),
+    refunds: z.array(providerRefundContractSchema),
   })
   .strict();
 
@@ -3905,6 +4053,21 @@ export type StorefrontCheckoutInputContract = z.infer<
 >;
 export type StorefrontCheckoutResultContract = z.infer<
   typeof storefrontCheckoutResultSchema
+>;
+export type StorefrontPaymentOptionsResultContract = z.infer<
+  typeof storefrontPaymentOptionsResultSchema
+>;
+export type StorefrontPaymentStatusResultContract = z.infer<
+  typeof onlinePaymentStatusResultSchema
+>;
+export type ProviderNotificationResultContract = z.infer<
+  typeof providerNotificationResultSchema
+>;
+export type OnlinePaymentAdminResultContract = z.infer<
+  typeof onlinePaymentAdminResultSchema
+>;
+export type ProviderRefundContract = z.infer<
+  typeof providerRefundContractSchema
 >;
 
 function validateBoothSalesSource(

@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  OnlinePaymentAdminResultContract,
   SalesOrderDetailsReadContract,
   SalesOrderListReadContract,
 } from "@senvo/contracts";
@@ -10,8 +11,10 @@ import {
   ArrowRight,
   Check,
   CircleX,
+  CreditCard,
   LoaderCircle,
   PackageCheck,
+  RefreshCw,
   Search,
   ShieldCheck,
 } from "lucide-react";
@@ -19,6 +22,7 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -48,6 +52,8 @@ export function SalesOrdersWorkspace({
         <SalesOrderList />
       ) : (
         <SalesOrderDetails
+          canApprovePayment={permissions.includes("PAYMENT:APPROVE")}
+          canReadPayment={permissions.includes("PAYMENT:READ")}
           canUpdate={permissions.includes("SALES_ORDER:UPDATE")}
           orderId={orderId ?? ""}
         />
@@ -253,9 +259,13 @@ function SalesResult({ pager }: { pager: ReturnType<typeof useSalesPager> }) {
 }
 
 function SalesOrderDetails({
+  canApprovePayment,
+  canReadPayment,
   canUpdate,
   orderId,
 }: {
+  canApprovePayment: boolean;
+  canReadPayment: boolean;
   canUpdate: boolean;
   orderId: string;
 }) {
@@ -311,14 +321,202 @@ function SalesOrderDetails({
     );
   }
   return (
-    <SalesOrderDetailsPanel
-      busy={busy}
-      canUpdate={canUpdate}
-      error={error}
-      onAction={(action) => void runAction(action)}
-      order={order}
-    />
+    <>
+      <SalesOrderDetailsPanel
+        busy={busy}
+        canUpdate={canUpdate}
+        error={error}
+        onAction={(action) => void runAction(action)}
+        order={order}
+      />
+      {order.commerce?.paymentPreference === "ONLINE_PAYMENT" &&
+      canReadPayment ? (
+        <OnlinePaymentPanel canApprove={canApprovePayment} orderId={order.id} />
+      ) : null}
+    </>
   );
+}
+
+function OnlinePaymentPanel({
+  canApprove,
+  orderId,
+}: {
+  canApprove: boolean;
+  orderId: string;
+}) {
+  const [payment, setPayment] =
+    useState<OnlinePaymentAdminResultContract | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const refundKey = useRef<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      setPayment((await client.getOnlinePayment(orderId)).data);
+    } catch (caught) {
+      setError(safeMessage(caught));
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
+
+  async function reconcile() {
+    if (!payment) return;
+    setBusy(true);
+    setError("");
+    try {
+      setPayment(
+        (await client.reconcileOnlinePayment(payment.attempt.id)).data,
+      );
+    } catch (caught) {
+      setError(safeMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!payment) return;
+    const amountMinor = decimalTakaToMinor(refundAmount);
+    if (amountMinor === null) {
+      setError(
+        "Enter a valid refund amount in taka with no more than two decimal places.",
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      refundKey.current ??= `admin-refund:${crypto.randomUUID()}`;
+      await client.createProviderRefund({
+        amountMinor,
+        idempotencyKey: refundKey.current,
+        paymentAttemptId: payment.attempt.id,
+        reason: refundReason,
+      });
+      refundKey.current = null;
+      setRefundAmount("");
+      setRefundReason("");
+      await load();
+    } catch (caught) {
+      setError(safeMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="sales-detail-section sales-detail-section--wide">
+      <h2>
+        <CreditCard aria-hidden="true" size={18} /> Online payment
+      </h2>
+      {error ? (
+        <div className="sales-inline-error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {!payment ? (
+        <p className="sales-subtle">Loading payment history...</p>
+      ) : (
+        <>
+          <DefinitionRows
+            rows={[
+              ["Provider", "SSLCOMMERZ"],
+              ["Status", payment.attempt.status],
+              [
+                "Amount",
+                formatMoney(
+                  payment.attempt.amountMinor,
+                  payment.attempt.currencyCode,
+                ),
+              ],
+              ["Provider reference", payment.attempt.providerTransactionId],
+              ["Resolution", payment.attempt.resolutionStatus],
+              [
+                "Last reconciliation",
+                payment.reconciliations[0]?.outcome ?? "Not checked",
+              ],
+            ]}
+          />
+          {payment.attempt.failureCode ? (
+            <p className="notice error">
+              Payment needs attention: {payment.attempt.failureCode}
+            </p>
+          ) : null}
+          {payment.refunds.length ? (
+            <div>
+              <h3>Provider refunds</h3>
+              {payment.refunds.map((item) => (
+                <p key={item.id}>
+                  {formatMoney(item.amountMinor, "BDT")} - {item.status}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {canApprove ? (
+            <div className="sales-actions">
+              <button
+                className="sales-secondary-button"
+                disabled={busy}
+                onClick={() => void reconcile()}
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" size={16} /> Check provider status
+              </button>
+            </div>
+          ) : null}
+          {canApprove && payment.attempt.status === "SUCCEEDED" ? (
+            <form
+              className="sales-filters"
+              onSubmit={(event) => void refund(event)}
+            >
+              <label>
+                Refund amount (BDT)
+                <input
+                  inputMode="decimal"
+                  onChange={(event) => setRefundAmount(event.target.value)}
+                  required
+                  value={refundAmount}
+                />
+              </label>
+              <label>
+                Reason
+                <input
+                  maxLength={255}
+                  minLength={4}
+                  onChange={(event) => setRefundReason(event.target.value)}
+                  required
+                  value={refundReason}
+                />
+              </label>
+              <button
+                className="sales-primary-button"
+                disabled={busy}
+                type="submit"
+              >
+                Send provider refund
+              </button>
+            </form>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+function decimalTakaToMinor(value: string): number | null {
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/u.exec(value.trim());
+  if (!match) return null;
+  const minor =
+    Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 }
 
 type SalesAction = "cancel" | "confirm" | "fulfill" | "reserve";

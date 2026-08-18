@@ -25,7 +25,7 @@ type SalesCursor = {
 type ListRecord = {
   channel: SalesOrderListReadItem["channel"];
   commerceProfile: {
-    paymentPreference: "CASH_ON_DELIVERY";
+    paymentPreference: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
     source: "STOREFRONT";
   } | null;
   createdAt: Date;

@@ -10,6 +10,7 @@ import type {
   CatalogApiHandlers,
   InventoryReadApiHandlers,
   OrganizationManagementApiHandlers,
+  OnlinePaymentApiHandlers,
   PosApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
@@ -38,6 +39,7 @@ import {
 const defaultMaximumBodyBytes = 1_048_576;
 
 type HttpRoute = {
+  bodyType?: "form" | "json";
   handler: ApiHandler<unknown>;
   input(
     body: unknown,
@@ -56,6 +58,7 @@ export type SenvoHttpHandlers = {
   createSalesOrder: ApiHandler<unknown>;
   inventoryRead?: InventoryReadApiHandlers;
   organizationManagement?: OrganizationManagementApiHandlers;
+  onlinePayments?: OnlinePaymentApiHandlers;
   pos?: PosApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
@@ -134,10 +137,15 @@ async function handleRequest(input: {
     const body =
       input.request.method === "GET"
         ? {}
-        : await readJsonBody(
-            input.request,
-            matchedRoute.route.maximumBodyBytes ?? input.maximumBodyBytes,
-          );
+        : matchedRoute.route.bodyType === "form"
+          ? await readFormBody(
+              input.request,
+              matchedRoute.route.maximumBodyBytes ?? input.maximumBodyBytes,
+            )
+          : await readJsonBody(
+              input.request,
+              matchedRoute.route.maximumBodyBytes ?? input.maximumBodyBytes,
+            );
     const apiResponse = await matchedRoute.route.handler.handle({
       context: requestContext,
       input: matchedRoute.route.input(body, matchedRoute.match, input.request),
@@ -388,6 +396,72 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/storefront\/checkouts$/u,
         public: true,
         successStatus: 201,
+      },
+      {
+        handler: handlers.storefront.paymentOptions,
+        input: () => ({}),
+        method: "GET",
+        path: /^\/storefront\/payment-options$/u,
+        public: true,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.storefront.paymentStatus,
+        input: (_body, match) => ({ publicToken: match.groups?.token }),
+        method: "GET",
+        path: /^\/storefront\/payments\/(?<token>[A-Za-z0-9_-]{32,64})$/u,
+        public: true,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.storefront.retryPayment,
+        input: pathBodyInput("publicToken", "token"),
+        method: "POST",
+        path: /^\/storefront\/payments\/(?<token>[A-Za-z0-9_-]{32,64})\/retry$/u,
+        public: true,
+        successStatus: 200,
+      },
+      {
+        bodyType: "form",
+        handler: handlers.storefront.paymentNotification,
+        input: bodyInput,
+        maximumBodyBytes: 65_536,
+        method: "POST",
+        path: /^\/payments\/providers\/sslcommerz\/ipn$/u,
+        public: true,
+        successStatus: 200,
+      },
+    );
+  }
+  if (handlers.onlinePayments) {
+    routes.push(
+      {
+        handler: handlers.onlinePayments.getOrderPayment,
+        input: (_body, match) => ({ salesOrderId: match.groups?.id }),
+        method: "GET",
+        path: /^\/sales-orders\/(?<id>[0-9a-f-]+)\/payment$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.onlinePayments.reconcile,
+        input: (_body, match) => ({ paymentAttemptId: match.groups?.id }),
+        method: "POST",
+        path: /^\/payments\/attempts\/(?<id>[0-9a-f-]+)\/reconcile$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.onlinePayments.refund,
+        input: pathBodyInput("paymentAttemptId"),
+        method: "POST",
+        path: /^\/payments\/attempts\/(?<id>[0-9a-f-]+)\/refunds$/iu,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.onlinePayments.refreshRefund,
+        input: (_body, match) => ({ providerRefundId: match.groups?.id }),
+        method: "POST",
+        path: /^\/payments\/refunds\/(?<id>[0-9a-f-]+)\/refresh$/iu,
+        successStatus: 200,
       },
     );
   }
@@ -746,10 +820,10 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
   return routes;
 }
 
-function pathBodyInput(field: string): HttpRoute["input"] {
+function pathBodyInput(field: string, pathGroup = "id"): HttpRoute["input"] {
   return (body, match) => ({
     ...(isObject(body) ? body : {}),
-    [field]: match.groups?.id,
+    [field]: match.groups?.[pathGroup],
   });
 }
 
@@ -940,6 +1014,29 @@ async function readJsonBody(
   request: IncomingMessage,
   maximumBodyBytes: number,
 ): Promise<unknown> {
+  const rawBody = await readBody(request, maximumBodyBytes);
+  return rawBody ? JSON.parse(rawBody) : undefined;
+}
+
+async function readFormBody(
+  request: IncomingMessage,
+  maximumBodyBytes: number,
+): Promise<Record<string, string>> {
+  const rawBody = await readBody(request, maximumBodyBytes);
+  const body: Record<string, string> = {};
+  for (const [key, value] of new URLSearchParams(rawBody)) {
+    if (Object.hasOwn(body, key)) {
+      throw new SyntaxError("Form fields must be unique.");
+    }
+    body[key] = value;
+  }
+  return body;
+}
+
+async function readBody(
+  request: IncomingMessage,
+  maximumBodyBytes: number,
+): Promise<string> {
   const chunks: Uint8Array[] = [];
   let bodyBytes = 0;
   for await (const chunk of request as AsyncIterable<Uint8Array>) {
@@ -949,8 +1046,7 @@ async function readJsonBody(
     }
     chunks.push(chunk);
   }
-  const rawBody = Buffer.concat(chunks).toString("utf8");
-  return rawBody ? JSON.parse(rawBody) : undefined;
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function writeAdapterFailure(

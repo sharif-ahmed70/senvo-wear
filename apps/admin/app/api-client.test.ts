@@ -675,4 +675,77 @@ describe("AdminApiClient", () => {
       expect(candidate).not.toHaveProperty("storageKey");
     }
   });
+
+  it("uses governed online payment routes without tenant or actor fields", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation((input) => {
+      const path =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const data = path.includes("/refunds")
+        ? {
+            amountMinor: 1000,
+            confirmedAt: null,
+            failureCode: null,
+            id: "10000000-0000-4000-8000-000000000003",
+            providerRefundReference: null,
+            status: "PENDING",
+          }
+        : {
+            attempt: {
+              amountMinor: 1000,
+              bankTransactionId: null,
+              currencyCode: "BDT",
+              failureCode: null,
+              id: "10000000-0000-4000-8000-000000000002",
+              provider: "SSLCOMMERZ",
+              providerTransactionId: "SW-ORDER-1",
+              resolutionStatus: "NORMAL",
+              status: "PENDING",
+            },
+            reconciliations: [],
+            refunds: [],
+          };
+      return Promise.resolve(
+        Response.json({ data, requestId: "request-payment", success: true }),
+      );
+    });
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const orderId = "10000000-0000-4000-8000-000000000001";
+    const attemptId = "10000000-0000-4000-8000-000000000002";
+    const refundId = "10000000-0000-4000-8000-000000000003";
+    await client.getOnlinePayment(orderId);
+    await client.reconcileOnlinePayment(attemptId);
+    await client.createProviderRefund({
+      amountMinor: 1000,
+      idempotencyKey: "admin-refund:test-1",
+      paymentAttemptId: attemptId,
+      reason: "Cancelled order",
+    });
+    await client.refreshProviderRefund(refundId);
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      `https://admin.example.test/sales-orders/${orderId}/payment`,
+      `https://admin.example.test/payments/attempts/${attemptId}/reconcile`,
+      `https://admin.example.test/payments/attempts/${attemptId}/refunds`,
+      `https://admin.example.test/payments/refunds/${refundId}/refresh`,
+    ]);
+    const bodies = fetcher.mock.calls.map(
+      (call) =>
+        JSON.parse(
+          typeof call[1]?.body === "string" ? call[1].body : "{}",
+        ) as Record<string, unknown>,
+    );
+    for (const body of bodies) {
+      expect(body).not.toHaveProperty("organizationId");
+      expect(body).not.toHaveProperty("userId");
+      expect(body).not.toHaveProperty("permissions");
+      expect(body).not.toHaveProperty("paymentAttemptId");
+      expect(body).not.toHaveProperty("providerRefundId");
+    }
+  });
 });

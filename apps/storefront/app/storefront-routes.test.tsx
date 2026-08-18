@@ -5,6 +5,7 @@ import { CatalogWorkspace, ProductCard } from "./_components/catalog-workspace";
 import { CartWorkspace } from "./_components/cart-workspace";
 import { CheckoutWorkspace } from "./_components/checkout-workspace";
 import { OrderSuccess } from "./_components/order-success";
+import { PaymentReturnWorkspace } from "./_components/payment-return-workspace";
 import type { StorefrontProduct } from "./_lib/storefront-api";
 import { mediaForVariant } from "./_components/product-workspace";
 
@@ -103,6 +104,15 @@ describe("storefront route states", () => {
     expect(html).toContain("Order received");
     expect(html).toContain("Payment will be collected during delivery.");
     expect(html).toContain("Continue shopping");
+  });
+
+  it("renders provider return as a server-status check rather than payment proof", () => {
+    const html = renderToStaticMarkup(
+      createElement(PaymentReturnWorkspace, { returnState: "success" }),
+    );
+    expect(html).toContain("Online payment");
+    expect(html).toContain("only verified provider confirmation");
+    expect(html).not.toContain("Payment confirmed");
   });
 
   it("does not expose cart prices or checkout navigation before hydration", () => {

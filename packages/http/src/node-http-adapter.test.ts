@@ -88,12 +88,38 @@ describe("Node HTTP runtime adapter", () => {
           currencyCode: "BDT" as const,
           orderId: "10000000-0000-4000-8000-000000000010",
           orderNumber: "WEB-1001",
+          payment: null,
           paymentPreference: "CASH_ON_DELIVERY" as const,
           status: "RESERVED" as const,
           totalMinor: 2500,
         },
         suppliedRequestId,
       ),
+    );
+    const paymentOptions = new RecordingApiHandler(
+      createApiSuccess(
+        { methods: ["CASH_ON_DELIVERY" as const] },
+        suppliedRequestId,
+      ),
+    );
+    const paymentStatus = new RecordingApiHandler(
+      createApiSuccess(
+        {
+          amountMinor: 2500,
+          currencyCode: "BDT" as const,
+          orderNumber: "WEB-1001",
+          payment: {
+            publicToken: "payment_public_token_1234567890123456",
+            redirectUrl: null,
+            resolutionStatus: "NORMAL" as const,
+            status: "PENDING" as const,
+          },
+        },
+        suppliedRequestId,
+      ),
+    );
+    const paymentNotification = new RecordingApiHandler(
+      createApiSuccess({ accepted: true, replayed: false }, suppliedRequestId),
     );
     const runtime = await startRuntime({
       handlers: {
@@ -103,6 +129,10 @@ describe("Node HTTP runtime adapter", () => {
           checkout,
           getProduct,
           listCatalog,
+          paymentNotification,
+          paymentOptions,
+          paymentStatus,
+          retryPayment: paymentStatus,
         } satisfies StorefrontApiHandlers,
       },
     });
@@ -127,12 +157,44 @@ describe("Node HTTP runtime adapter", () => {
         method: "POST",
       },
     );
+    const paymentStatusResponse = await fetch(
+      `${runtime.url}/storefront/payments/payment_public_token_1234567890123456`,
+      { headers },
+    );
+    const ipnResponse = await fetch(
+      `${runtime.url}/payments/providers/sslcommerz/ipn`,
+      {
+        body: new URLSearchParams({
+          status: "VALID",
+          tran_id: "SW-ORDER-1",
+          val_id: "validation-1",
+          verify_key: "status,tran_id,val_id",
+          verify_sign: "00000000000000000000000000000000",
+        }),
+        headers: new Headers({
+          "content-type": "application/x-www-form-urlencoded",
+          "x-request-id": suppliedRequestId,
+        }),
+        method: "POST",
+      },
+    );
+    const malformedIpnResponse = await fetch(
+      `${runtime.url}/payments/providers/sslcommerz/ipn`,
+      {
+        body: "status=VALID&status=FAILED",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+    );
 
     expect([
       catalogResponse.status,
       productResponse.status,
       checkoutResponse.status,
-    ]).toEqual([200, 200, 201]);
+      paymentStatusResponse.status,
+      ipnResponse.status,
+      malformedIpnResponse.status,
+    ]).toEqual([200, 200, 201, 200, 200, 400]);
     expect(listCatalog.requests[0]).toMatchObject({
       context: {
         authenticatedUser: null,
@@ -144,6 +206,15 @@ describe("Node HTTP runtime adapter", () => {
     });
     expect(getProduct.requests[0]?.input).toEqual({ slug: "everyday-tee" });
     expect(checkout.requests[0]?.input).toEqual({ lines: [] });
+    expect(paymentStatus.requests[0]?.input).toEqual({
+      publicToken: "payment_public_token_1234567890123456",
+    });
+    expect(paymentNotification.requests[0]?.input).toMatchObject({
+      status: "VALID",
+      tran_id: "SW-ORDER-1",
+      val_id: "validation-1",
+    });
+    expect(paymentNotification.requests).toHaveLength(1);
   });
 
   it("routes a sales request and converts development headers to context", async () => {

@@ -210,6 +210,24 @@ export type {
   PaymentMethod,
 } from "./payment/domain/models.js";
 export type {
+  OnlinePaymentAttempt,
+  OnlinePaymentAttemptStatus,
+  OnlinePaymentOrderFacts,
+  OnlinePaymentProjection,
+  OnlinePaymentProvider,
+  OnlinePaymentResolutionStatus,
+  PaymentReconciliation,
+  ProviderPaymentObservation,
+  ProviderRefund,
+  ProviderRefundStatus,
+  ProviderSessionRequest,
+  ProviderSessionResult,
+} from "./payment/domain/online-payment-models.js";
+export type {
+  OnlinePaymentProviderAdapter,
+  OnlinePaymentRepository,
+} from "./payment/repositories/online-payment-repository.js";
+export type {
   CreatePaymentBatchRecord,
   CreatePaymentCollectionRecord,
   PaymentRepository,

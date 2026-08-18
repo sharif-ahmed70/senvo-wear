@@ -147,7 +147,7 @@ function mapRefund(record: RefundRecord): PaymentRefund {
     acceptedByName: record.acceptedBy.name ?? record.acceptedBy.email,
     acceptedByUserId: record.acceptedByUserId,
     amountMinor: record.amountMinor,
-    checkoutId: record.checkoutId,
+    checkoutId: requirePosContext(record.checkoutId, "checkout"),
     createdAt: record.createdAt,
     id: record.id,
     idempotencyKey: record.idempotencyKey,
@@ -172,8 +172,8 @@ function mapRefund(record: RefundRecord): PaymentRefund {
 
 function mapBatch(record: CheckoutRecord["paymentBatch"] & {}): PaymentBatch {
   return {
-    checkoutId: record.checkoutId,
-    counterId: record.counterId,
+    checkoutId: requirePosContext(record.checkoutId, "checkout"),
+    counterId: requirePosContext(record.counterId, "counter"),
     createdAt: record.createdAt,
     currencyCode: "BDT",
     id: record.id,
@@ -194,10 +194,17 @@ function mapBatch(record: CheckoutRecord["paymentBatch"] & {}): PaymentBatch {
     payableMinor: record.payableMinor,
     requestSignature: record.requestSignature,
     salesOrderId: record.salesOrderId,
-    salesSessionId: record.salesSessionId,
-    staffId: record.staffId,
+    salesSessionId: requirePosContext(record.salesSessionId, "sales session"),
+    staffId: requirePosContext(record.staffId, "staff"),
     status: record.status,
   };
+}
+
+function requirePosContext(value: string | null, field: string): string {
+  if (value === null) {
+    throw new Error(`POS settlement is missing its ${field} context.`);
+  }
+  return value;
 }
 
 function mapCollection(
