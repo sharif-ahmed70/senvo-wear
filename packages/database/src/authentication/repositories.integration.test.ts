@@ -72,6 +72,7 @@ describeWithDatabase("Prisma authentication repositories", () => {
   });
 
   afterAll(async () => {
+    await prisma.authenticationSession.deleteMany();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
   });

@@ -1762,6 +1762,7 @@ async function cleanDatabase() {
   await prisma.size.deleteMany();
   await prisma.stockLocation.deleteMany();
   await prisma.branch.deleteMany();
+  await prisma.authenticationSession.deleteMany();
   await prisma.auditEntry.deleteMany();
   await prisma.userCredential.deleteMany();
   await prisma.organizationMembership.deleteMany();

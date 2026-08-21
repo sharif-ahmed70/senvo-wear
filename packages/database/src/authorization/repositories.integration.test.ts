@@ -58,6 +58,7 @@ describeWithDatabase("Prisma authorization repositories", () => {
     await prisma.posCounter.deleteMany();
     await prisma.stockLocation.deleteMany();
     await prisma.branch.deleteMany();
+    await prisma.authenticationSession.deleteMany();
     await prisma.auditEntry.deleteMany();
     await prisma.userCredential.deleteMany();
     await prisma.organizationMembership.deleteMany();

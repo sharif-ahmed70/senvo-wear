@@ -59,6 +59,7 @@ export class PrismaPaymentRepository implements PaymentRepository {
           lines: {
             create: lines.map((line, index) => ({
               ...line,
+              createdAt: record.createdAt,
               lineNumber: index + 1,
             })),
           },
