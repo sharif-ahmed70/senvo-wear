@@ -1,3 +1,4 @@
+import { createHash, createHmac } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
@@ -150,6 +151,170 @@ export class LocalFileObjectStorageProvider implements ObjectStorageProvider {
     }
     return path;
   }
+}
+
+export type S3CompatibleStorageConfig = {
+  accessKeyId: string;
+  bucket: string;
+  endpoint: string;
+  publicBaseUrl: string;
+  region: string;
+  secretAccessKey: string;
+};
+
+export function loadS3CompatibleStorageConfig(
+  environment: Record<string, string | undefined>,
+): S3CompatibleStorageConfig {
+  const config = {
+    accessKeyId: environment.MEDIA_S3_ACCESS_KEY_ID?.trim() ?? "",
+    bucket: environment.MEDIA_S3_BUCKET?.trim() ?? "",
+    endpoint: normalizedHttps(
+      environment.MEDIA_S3_ENDPOINT,
+      "MEDIA_S3_ENDPOINT",
+    ),
+    publicBaseUrl: normalizedHttps(
+      environment.MEDIA_PUBLIC_BASE_URL,
+      "MEDIA_PUBLIC_BASE_URL",
+    ),
+    region: environment.MEDIA_S3_REGION?.trim() || "auto",
+    secretAccessKey: environment.MEDIA_S3_SECRET_ACCESS_KEY?.trim() ?? "",
+  };
+  if (!config.accessKeyId || !config.secretAccessKey || !config.bucket) {
+    throw new Error(
+      "MEDIA_S3_BUCKET, MEDIA_S3_ACCESS_KEY_ID, and MEDIA_S3_SECRET_ACCESS_KEY are required.",
+    );
+  }
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u.test(config.bucket)) {
+    throw new Error("MEDIA_S3_BUCKET is invalid.");
+  }
+  return config;
+}
+
+export class S3CompatibleObjectStorageProvider implements ObjectStorageProvider {
+  constructor(
+    private readonly config: S3CompatibleStorageConfig,
+    private readonly fetcher: typeof fetch = fetch,
+    private readonly clock: () => Date = () => new Date(),
+  ) {}
+
+  async delete(key: string): Promise<void> {
+    await this.request("DELETE", key, new Uint8Array(), "");
+  }
+
+  getSignedUrl(key: string): Promise<string> {
+    return this.getUrl(key);
+  }
+
+  getUrl(key: string): Promise<string> {
+    return Promise.resolve(
+      `${this.config.publicBaseUrl}/${encodeStorageKey(key)}`,
+    );
+  }
+
+  async upload(input: UploadObjectInput): Promise<StoredObject> {
+    if (!(input.body instanceof Uint8Array)) {
+      throw new Error("Streaming uploads are not supported by this adapter.");
+    }
+    await this.request("PUT", input.key, input.body, input.contentType);
+    return {
+      key: input.key,
+      metadata: input.metadata,
+      url: await this.getUrl(input.key),
+    };
+  }
+
+  private async request(
+    method: "DELETE" | "PUT",
+    key: string,
+    body: Uint8Array,
+    contentType: string,
+  ): Promise<void> {
+    const now = this.clock();
+    const date = amzDate(now);
+    const day = date.slice(0, 8);
+    const endpoint = new URL(this.config.endpoint);
+    const canonicalUri = `/${encodeURIComponent(this.config.bucket)}/${encodeStorageKey(key)}`;
+    const payloadHash = sha256(body);
+    const canonicalHeaders = `host:${endpoint.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${date}\n`;
+    const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+    const canonicalRequest = [
+      method,
+      canonicalUri,
+      "",
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join("\n");
+    const scope = `${day}/${this.config.region}/s3/aws4_request`;
+    const stringToSign = [
+      "AWS4-HMAC-SHA256",
+      date,
+      scope,
+      sha256(canonicalRequest),
+    ].join("\n");
+    const signature = hmac(
+      signingKey(this.config.secretAccessKey, day, this.config.region),
+      stringToSign,
+    ).toString("hex");
+    const response = await this.fetcher(
+      new URL(canonicalUri, endpoint).toString(),
+      {
+        body: method === "PUT" ? Buffer.from(body) : undefined,
+        headers: {
+          authorization: `AWS4-HMAC-SHA256 Credential=${this.config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+          ...(contentType ? { "content-type": contentType } : {}),
+          "x-amz-content-sha256": payloadHash,
+          "x-amz-date": date,
+        },
+        method,
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Object storage request failed with status ${response.status}.`,
+      );
+    }
+  }
+}
+
+function signingKey(secret: string, day: string, region: string): Buffer {
+  const dateKey = hmac(`AWS4${secret}`, day);
+  const regionKey = hmac(dateKey, region);
+  const serviceKey = hmac(regionKey, "s3");
+  return hmac(serviceKey, "aws4_request");
+}
+
+function hmac(key: string | Buffer, value: string): Buffer {
+  return createHmac("sha256", key).update(value).digest();
+}
+
+function sha256(value: Uint8Array | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function amzDate(value: Date): string {
+  return value.toISOString().replace(/[:-]|\.\d{3}/gu, "");
+}
+
+function encodeStorageKey(key: string): string {
+  if (!key || key.includes("..") || key.startsWith("/")) {
+    throw new Error("Storage key is invalid.");
+  }
+  return key.split("/").map(encodeURIComponent).join("/");
+}
+
+function normalizedHttps(value: string | undefined, name: string): string {
+  const text = value?.trim().replace(/\/$/u, "") ?? "";
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new Error(`${name} must be a valid HTTPS URL.`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`${name} must use HTTPS.`);
+  }
+  return text;
 }
 
 function contentTypeForKey(key: string): ProductImageContentType {

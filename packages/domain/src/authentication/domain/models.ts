@@ -34,6 +34,18 @@ export type AuthenticationSessionBoundary = {
   sessionId: string;
 };
 
+export type AuthenticationSession = {
+  expiresAt: Date;
+  id: string;
+  issuedAt: Date;
+  organizationId: string;
+  provider: IdentityProvider;
+  revokedAt: Date | null;
+  sessionId: string;
+  tokenHash: string;
+  userId: string;
+};
+
 export type PasswordHasher = {
   hash(plainTextPassword: string): Promise<string>;
   verify(plainTextPassword: string, passwordHash: string): Promise<boolean>;

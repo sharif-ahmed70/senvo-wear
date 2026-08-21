@@ -8,6 +8,7 @@ import type {
   CatalogSizeManagementRepository,
   InventoryMovementRepository,
   InventoryReadRepository,
+  OperationalReportRepository,
   OrganizationRepository,
   PaymentRepository,
   PosCheckoutRepository,
@@ -34,6 +35,7 @@ describe("createApplicationServices", () => {
       requestIdGenerator: () => "generated_request_1",
       organizationProfileRepository: {} as never,
       organizationRepository: fakeOrganizationRepository,
+      operationalReportRepository: fakeOperationalReportRepository,
       productRepository: fakeProductRepository,
       productVariantRepository: fakeProductVariantRepository,
       posRepository: {} as never,
@@ -209,6 +211,10 @@ const fakeStorefrontRepository: StorefrontRepository = {
   loadCheckoutFacts: () => Promise.reject(unreachableError()),
   lockCheckoutAttempt: () => Promise.reject(unreachableError()),
   resolveActiveOrganizationByCode: () => Promise.resolve(null),
+};
+
+const fakeOperationalReportRepository: OperationalReportRepository = {
+  get: () => Promise.reject(unreachableError()),
 };
 
 const nullLogger = {

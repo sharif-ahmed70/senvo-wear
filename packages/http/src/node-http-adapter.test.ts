@@ -52,6 +52,88 @@ afterEach(async () => {
 });
 
 describe("Node HTTP runtime adapter", () => {
+  it("issues an HttpOnly session cookie and returns only safe session data", async () => {
+    const principal = {
+      displayName: "Shop Owner",
+      expiresAt: new Date("2026-08-21T14:00:00.000Z"),
+      organizationId,
+      organizationName: "SENVO Wear",
+      permissions: [{ action: "READ" as const, resource: "REPORT" as const }],
+      role: "OWNER" as const,
+      sessionId: "10000000-0000-4000-8000-000000000009",
+      userId,
+    };
+    const runtime = await startRuntime({
+      allowedOrigins: ["http://localhost:3001"],
+      handlers: {
+        createSalesOrder: new RecordingApiHandler(
+          createApiSuccess(null, suppliedRequestId),
+        ),
+        postInventoryMovement: new RecordingApiHandler(
+          createApiSuccess(null, suppliedRequestId),
+        ),
+      },
+      secureSessionCookie: false,
+      sessions: {
+        login: () =>
+          Promise.resolve({ ...principal, sessionToken: "a".repeat(43) }),
+        logout: () => Promise.resolve(),
+        resolve: () => Promise.resolve(principal),
+      },
+    });
+    const response = await fetch(`${runtime.url}/auth/login`, {
+      body: JSON.stringify({
+        identifier: "owner@senvo.test",
+        organizationCode: "SENVO",
+        password: "correct-password",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3001",
+      },
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(response.headers.get("set-cookie")).toContain("SameSite=Strict");
+    expect(response.headers.get("set-cookie")).not.toContain("Secure");
+    expect(response.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
+    const body = (await response.json()) as {
+      data: { permissions: string[]; sessionToken?: string };
+    };
+    expect(body.data.permissions).toEqual(["REPORT:READ"]);
+    expect(body.data.sessionToken).toBeUndefined();
+  });
+
+  it("rejects credentialed requests from an unapproved browser origin", async () => {
+    const runtime = await startRuntime({
+      allowedOrigins: ["https://admin.senvo.test"],
+      handlers: {
+        createSalesOrder: new RecordingApiHandler(
+          createApiSuccess(null, suppliedRequestId),
+        ),
+        postInventoryMovement: new RecordingApiHandler(
+          createApiSuccess(null, suppliedRequestId),
+        ),
+      },
+    });
+    const response = await fetch(`${runtime.url}/auth/login`, {
+      body: "{}",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://attacker.test",
+      },
+      method: "POST",
+    });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "AUTHORIZATION.ORIGIN" },
+      success: false,
+    });
+  });
+
   it("routes all public storefront operations without employee headers", async () => {
     const listCatalog = new RecordingApiHandler(
       createApiSuccess(

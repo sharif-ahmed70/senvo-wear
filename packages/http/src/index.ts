@@ -11,10 +11,13 @@ export {
 } from "./node-http-adapter.js";
 export {
   DevelopmentHeaderRequestContextFactory,
+  ProductionSessionRequestContextFactory,
   HttpRequestContextError,
+  cookieValue,
   headerValue,
   type HttpRequestContextFactory,
 } from "./request-context.js";
+export { ScryptPasswordHasher } from "./password-hasher.js";
 export {
   DefaultRequestIdFactory,
   type RequestIdFactory,
