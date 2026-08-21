@@ -1,24 +1,8 @@
-import { ApplicationShell, Button, Panel } from "@senvo/ui";
+import { redirect } from "next/navigation";
 
 export default function PosPage() {
-  return (
-    <ApplicationShell
-      appName="SENVO Wear POS"
-      eyebrow="Online-first showroom foundation"
-    >
-      <Panel aria-labelledby="pos-status">
-        <h2 id="pos-status">Foundation status</h2>
-        <p>
-          This touch-friendly shell is prepared for a future online-first
-          showroom POS. Cart, barcode, sale, refund, and offline transaction
-          features have not been implemented yet.
-        </p>
-        <div style={{ marginTop: "1.5rem" }}>
-          <Button variant="secondary" disabled>
-            Workflow not implemented
-          </Button>
-        </div>
-      </Panel>
-    </ApplicationShell>
-  );
+  const adminUrl =
+    process.env.NEXT_PUBLIC_SENVO_ADMIN_URL?.replace(/\/$/u, "") ??
+    "http://localhost:3001";
+  redirect(`${adminUrl}/pos/sell`);
 }

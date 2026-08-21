@@ -86,7 +86,9 @@ import type {
   AddPosCartItemServiceInputContract,
   UpdatePosCartItemServiceInputContract,
   RemovePosCartItemServiceInputContract,
+  OperationalReportContract,
 } from "@senvo/contracts";
+import type { AdminSession } from "./admin-access";
 
 export type AdminApiClientOptions = {
   baseUrl?: string;
@@ -164,6 +166,7 @@ export class AdminApiClient {
         body:
           request.body === undefined ? undefined : JSON.stringify(request.body),
         headers,
+        credentials: "include",
         method: request.method ?? "GET",
         signal: request.signal,
       });
@@ -209,6 +212,32 @@ export class AdminApiClient {
       });
     }
     return { data: payload.data, requestId: payload.requestId };
+  }
+
+  getSession() {
+    return this.request<AdminSession>("/auth/session");
+  }
+
+  login(input: {
+    identifier: string;
+    organizationCode: string;
+    password: string;
+  }) {
+    return this.request<AdminSession>("/auth/login", {
+      body: input,
+      method: "POST",
+    });
+  }
+
+  logout() {
+    return this.request<null>("/auth/logout", { method: "POST" });
+  }
+
+  getOperationalReport(input: { from: string; to: string }) {
+    const query = new URLSearchParams(input);
+    return this.request<OperationalReportContract>(
+      `/reports/operations?${query.toString()}`,
+    );
   }
 
   listCategories(request?: AdminApiRequest) {
