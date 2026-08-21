@@ -105,7 +105,7 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
           WHERE event.created_at >= bounds.starts_at
             AND event.created_at < bounds.ends_at
           GROUP BY event.method
-          ORDER BY event.method`,
+          ORDER BY event.method::text`,
       this.prisma.$queryRaw<
         {
           product_name: string;
