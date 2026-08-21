@@ -31,3 +31,15 @@ Read this file first when continuing SENVO Wear product work.
 - Analytics and reports
 - Growth, social commerce, and wholesale
 - Production hardening
+
+# Operational V1 Update (August 2026)
+
+Operational Offline-First V1 is implemented on `feat/operational-v1` with a
+deployable API runtime, production password/session transport, S3-compatible
+product media, Admin POS entry, and essential operational reporting. Existing
+catalog, inventory, sales, receipt, collection, return/refund, and Storefront
+flows are reused.
+
+Online payment code is parked and disabled by default pending external
+SSLCOMMERZ verification. Courier, CRM, loyalty, promotions, and advanced BI
+remain deferred. Profit/margin reporting requires a future governed cost basis.
