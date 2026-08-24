@@ -10,8 +10,9 @@ First, read these files completely before editing:
 2. `README.md`
 3. `docs/product-status.md`
 4. `docs/codex/SENVO_STOREFRONT_REDESIGN.md`
-5. `docs/codex/senvo-storefront-design-reference.zip` and its internal
-   `README.md`
+5. Run `bash docs/codex/unpack-design-reference.sh`, then read
+   `/tmp/senvo-storefront-design-reference/reference/README.md` and inspect its
+   complete source and asset package.
 
 Then inspect all current routes and implementation under `apps/storefront`,
 especially its API client, cart hydration, product detail, checkout,
