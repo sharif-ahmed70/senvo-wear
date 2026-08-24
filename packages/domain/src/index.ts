@@ -32,6 +32,10 @@ export {
   ValidationApplicationError,
 } from "./errors.js";
 export type {
+  OperationalReport,
+  OperationalReportRepository,
+} from "./reporting/operational-report.js";
+export type {
   ApplicationErrorCategory,
   PublicApplicationError,
 } from "./errors.js";
@@ -281,6 +285,7 @@ export type {
 } from "./authorization/domain/models.js";
 export type {
   AuthenticatedPrincipal,
+  AuthenticationSession,
   AuthenticationContext,
   AuthenticationSessionBoundary,
   CredentialStatus,
@@ -615,6 +620,7 @@ export type {
   DisableUserCredentialInput,
 } from "./authentication/application/authentication-service.js";
 export type {
+  AuthenticationSessionRepository,
   CreateUserCredentialRecord,
   UserCredentialRepository,
 } from "./authentication/repositories/authentication-repositories.js";

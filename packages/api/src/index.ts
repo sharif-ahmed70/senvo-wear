@@ -1,4 +1,8 @@
 export {
+  createReportingApiHandlers,
+  type ReportingApiHandlers,
+} from "./reporting-handlers.js";
+export {
   createProtectedApiHandler,
   createPublicApiHandler,
   type ApiHandler,

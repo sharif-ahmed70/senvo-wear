@@ -28,6 +28,7 @@ describeWithDatabase("Prisma audit repository", () => {
     await prisma.posCart.deleteMany();
     await prisma.salesSession.deleteMany();
     await prisma.salesCounter.deleteMany();
+    await prisma.authenticationSession.deleteMany();
     await prisma.auditEntry.deleteMany();
     await prisma.userCredential.deleteMany();
     await prisma.organizationMembership.deleteMany();

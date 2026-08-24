@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { ApiRequestContext } from "@senvo/api";
 import type { ApplicationContext } from "@senvo/application";
+import type { AuthenticationSessionApplicationService } from "@senvo/application";
 import { assertDevelopmentEnvironment } from "./development-authentication.js";
 
 type Permission = NonNullable<ApplicationContext["permissions"]>[number];
@@ -52,6 +53,38 @@ export class DevelopmentHeaderRequestContextFactory implements HttpRequestContex
   }
 }
 
+export class ProductionSessionRequestContextFactory implements HttpRequestContextFactory {
+  constructor(
+    private readonly sessions: Pick<
+      AuthenticationSessionApplicationService,
+      "resolve"
+    >,
+    private readonly cookieName = "senvo_session",
+  ) {}
+
+  async create(input: {
+    headers: IncomingHttpHeaders;
+    requestId: string;
+  }): Promise<ApiRequestContext> {
+    const token = cookieValue(input.headers.cookie, this.cookieName);
+    if (!token) {
+      return {
+        authenticatedUser: null,
+        organizationId: "",
+        permissions: [],
+        requestId: input.requestId,
+      };
+    }
+    const principal = await this.sessions.resolve(token);
+    return {
+      authenticatedUser: { userId: principal.userId },
+      organizationId: principal.organizationId,
+      permissions: principal.permissions,
+      requestId: input.requestId,
+    };
+  }
+}
+
 export class HttpRequestContextError extends Error {
   constructor(message: string) {
     super(message);
@@ -68,6 +101,20 @@ export function headerValue(
     return value[0] ?? null;
   }
   return value ?? null;
+}
+
+export function cookieValue(
+  cookieHeader: string | undefined,
+  name: string,
+): string | null {
+  for (const pair of cookieHeader?.split(";") ?? []) {
+    const separator = pair.indexOf("=");
+    if (separator < 0) continue;
+    if (pair.slice(0, separator).trim() === name) {
+      return decodeURIComponent(pair.slice(separator + 1).trim());
+    }
+  }
+  return null;
 }
 
 function parsePermissions(value: string | null): Permission[] {

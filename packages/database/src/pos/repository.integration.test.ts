@@ -19,6 +19,7 @@ import { PrismaPosCheckoutRepository } from "./checkout-repository.js";
 import { PrismaPosReturnRepository } from "./return-repository.js";
 import { PrismaPaymentRefundRepository } from "../payment/refund-repository.js";
 import { PrismaReceiptRepository } from "../receipt/repository.js";
+import { PrismaOperationalReportRepository } from "../reporting/operational-report-repository.js";
 import { PrismaTransactionManager } from "../transaction/prisma-transaction-manager.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -1019,6 +1020,68 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await expect(prisma.salesReceipt.count()).resolves.toBe(1);
   });
 
+  it("reports persisted sales, payments, products, stock, and staff with organization isolation", async () => {
+    const base = await seedCheckout("REPORT", 5, 2);
+    await completeCheckout(base, "checkout-report-001", {
+      payments: [
+        { amountMinor: 2_000, method: "CASH" },
+        { amountMinor: 3_000, method: "CARD", reference: "REPORT-CARD" },
+      ],
+    });
+    const reports = new PrismaOperationalReportRepository(prisma);
+
+    const report = await reports.get({
+      from: "2026-08-03",
+      organizationId: base.organization.id,
+      to: "2026-08-03",
+    });
+
+    expect(report.sales).toEqual({
+      collectedMinor: 5_000,
+      grossMinor: 5_000,
+      orderCount: 1,
+      outstandingMinor: 0,
+      refundMinor: 0,
+      returnCreditMinor: 0,
+    });
+    expect(report.payments).toEqual([
+      { amountMinor: 3_000, method: "CARD" },
+      { amountMinor: 2_000, method: "CASH" },
+    ]);
+    expect(report.products).toEqual([
+      {
+        productName: "Oxford Shirt",
+        quantity: 2,
+        salesMinor: 5_000,
+        sku: base.variant.sku,
+      },
+    ]);
+    expect(report.inventory).toEqual({
+      availableToSell: 3,
+      onHand: 3,
+      outOfStockPositions: 0,
+      reserved: 0,
+    });
+    expect(report.staff).toEqual([
+      {
+        collectedMinor: 5_000,
+        name: "Staff REPORT",
+        orderCount: 1,
+        salesMinor: 5_000,
+      },
+    ]);
+
+    const other = await seedOrganization("REPORT-OTHER");
+    const isolated = await reports.get({
+      from: "2026-08-03",
+      organizationId: other.organization.id,
+      to: "2026-08-03",
+    });
+    expect(isolated.sales.orderCount).toBe(0);
+    expect(isolated.products).toEqual([]);
+    expect(isolated.inventory.onHand).toBe(0);
+  });
+
   it("rolls back every checkout record when payment is greater than the server total", async () => {
     const base = await seedCheckout("OVERPAY", 5, 2);
     await expect(
@@ -1699,6 +1762,7 @@ async function cleanDatabase() {
   await prisma.size.deleteMany();
   await prisma.stockLocation.deleteMany();
   await prisma.branch.deleteMany();
+  await prisma.authenticationSession.deleteMany();
   await prisma.auditEntry.deleteMany();
   await prisma.userCredential.deleteMany();
   await prisma.organizationMembership.deleteMany();

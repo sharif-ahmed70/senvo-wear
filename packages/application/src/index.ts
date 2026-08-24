@@ -1,5 +1,12 @@
 export { createApplicationServices } from "./composition/create-application-services.js";
 export { StorefrontApplicationService } from "./storefront/storefront-application-service.js";
+export { ReportingApplicationService } from "./reporting/reporting-application-service.js";
+export {
+  AuthenticationSessionApplicationService,
+  type AuthenticationSessionApplicationServiceDependencies,
+  type LoginSessionResult,
+  type ProductionSessionPrincipal,
+} from "./authentication/session-application-service.js";
 export {
   OnlinePaymentApplicationService,
   type OnlinePaymentApplicationServiceDependencies,

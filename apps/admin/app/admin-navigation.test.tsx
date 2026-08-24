@@ -62,12 +62,27 @@ describe("admin navigation", () => {
       createElement(AdminNavigationList, { currentPath: "/", session }),
     );
 
-    expect(html).toContain("Dashboard");
+    expect(html).not.toContain("Dashboard");
     expect(html).toContain("Catalog");
     expect(html).not.toContain("Inventory");
     expect(html).not.toContain("Users &amp; Roles");
     expect(html).not.toContain("Store locations");
     expect(html).not.toContain("Booth History");
+  });
+
+  it("shows the operational dashboard only with report access", () => {
+    const session: AdminSession = {
+      ...adminFoundationSession,
+      permissions: ["REPORT:READ"],
+      role: "MANAGER",
+    };
+    const html = renderToStaticMarkup(
+      createElement(AdminNavigationList, { currentPath: "/", session }),
+    );
+
+    expect(html).toContain("Dashboard");
+    expect(html).not.toContain("Catalog");
+    expect(html).toContain('aria-current="page"');
   });
 
   it("renders an unauthorized state without application navigation", () => {

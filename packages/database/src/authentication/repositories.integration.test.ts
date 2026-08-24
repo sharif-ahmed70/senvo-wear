@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPrismaClient } from "../index.js";
 import { PrismaUserRepository } from "../identity/repositories.js";
 import { PrismaUserCredentialRepository } from "./repositories.js";
+import { PrismaAuthenticationSessionRepository } from "./session-repository.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
@@ -29,6 +30,7 @@ describeWithDatabase("Prisma authentication repositories", () => {
   });
 
   beforeEach(async () => {
+    await prisma.authenticationSession.deleteMany();
     await prisma.salesReceiptPayment.deleteMany();
     await prisma.salesReceiptLine.deleteMany();
     await prisma.salesReceipt.deleteMany();
@@ -70,6 +72,7 @@ describeWithDatabase("Prisma authentication repositories", () => {
   });
 
   afterAll(async () => {
+    await prisma.authenticationSession.deleteMany();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
   });
@@ -148,6 +151,45 @@ describeWithDatabase("Prisma authentication repositories", () => {
         userId: "99999999-9999-4999-8999-999999999999",
       }),
     ).rejects.toBeInstanceOf(BusinessRuleError);
+  });
+
+  it("resolves, revokes, expires, and restricts persisted sessions", async () => {
+    const organization = await prisma.organization.create({
+      data: { code: "AUTH-SESSION", name: "Authentication Session Test" },
+    });
+    const user = await createUser(repositories.users, {
+      email: "session-owner@senvo.test",
+    });
+    const sessions = new PrismaAuthenticationSessionRepository(prisma);
+    const issuedAt = new Date("2026-08-21T06:00:00.000Z");
+    const session = await sessions.create({
+      expiresAt: new Date("2026-08-21T14:00:00.000Z"),
+      id: "10000000-0000-4000-8000-000000000099",
+      issuedAt,
+      organizationId: organization.id,
+      provider: "PASSWORD",
+      revokedAt: null,
+      tokenHash: "a".repeat(64),
+      userId: user.id,
+    });
+    await expect(
+      sessions.findActiveByTokenHash("a".repeat(64), issuedAt),
+    ).resolves.toMatchObject({ id: session.id, userId: user.id });
+    await expect(
+      prisma.user.delete({ where: { id: user.id } }),
+    ).rejects.toThrow();
+    await expect(sessions.revoke(session.id, issuedAt)).resolves.toBe(true);
+    await expect(
+      sessions.findActiveByTokenHash("a".repeat(64), issuedAt),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.auditEntry.count({
+        where: {
+          organizationId: organization.id,
+          resource: "AUTHENTICATION_SESSION",
+        },
+      }),
+    ).resolves.toBe(2);
   });
 });
 

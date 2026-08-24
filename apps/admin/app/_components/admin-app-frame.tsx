@@ -1,4 +1,6 @@
-import { LockKeyhole, MapPin } from "lucide-react";
+"use client";
+
+import { LockKeyhole, LogOut, MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 import type { AdminSession } from "../_lib/admin-access";
 import { AdminNavigation } from "./admin-navigation";
@@ -6,9 +8,13 @@ import { AdminNavigation } from "./admin-navigation";
 export function AdminAppFrame({
   children,
   session,
+  onLogout,
+  sessionBusy = false,
 }: {
   children?: ReactNode;
+  onLogout?: () => void;
   session: AdminSession | null;
+  sessionBusy?: boolean;
 }) {
   if (!session) {
     return <UnauthorizedAdminState />;
@@ -46,6 +52,18 @@ export function AdminAppFrame({
             </span>
           </div>
           <div className="admin-topbar__actions">
+            {onLogout ? (
+              <button
+                aria-label="Sign out"
+                className="admin-logout"
+                disabled={sessionBusy}
+                onClick={onLogout}
+                title="Sign out"
+                type="button"
+              >
+                <LogOut aria-hidden="true" size={17} />
+              </button>
+            ) : null}
             <span className="admin-avatar" title={session.displayName}>
               {initials(session.displayName)}
             </span>

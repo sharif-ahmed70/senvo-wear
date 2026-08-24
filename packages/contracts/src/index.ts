@@ -4070,6 +4070,69 @@ export type ProviderRefundContract = z.infer<
   typeof providerRefundContractSchema
 >;
 
+const reportDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
+export const operationalReportInputSchema = z
+  .object({
+    from: reportDateSchema,
+    to: reportDateSchema,
+  })
+  .strict()
+  .refine((value) => value.from <= value.to, {
+    message: "Start date must not be after end date.",
+    path: ["to"],
+  });
+
+export type OperationalReportInputContract = z.infer<
+  typeof operationalReportInputSchema
+>;
+export const operationalReportPaymentMethodSchema = z.enum([
+  "CASH",
+  "CARD",
+  "MOBILE_BANKING",
+  "BANK_TRANSFER",
+  "ONLINE_GATEWAY",
+]);
+export type OperationalReportContract = {
+  period: { from: string; timezone: string; to: string };
+  sales: {
+    collectedMinor: number;
+    grossMinor: number;
+    orderCount: number;
+    outstandingMinor: number;
+    refundMinor: number;
+    returnCreditMinor: number;
+  };
+  payments: {
+    amountMinor: number;
+    method: z.infer<typeof operationalReportPaymentMethodSchema>;
+  }[];
+  products: {
+    productName: string;
+    quantity: number;
+    salesMinor: number;
+    sku: string;
+  }[];
+  inventory: {
+    availableToSell: number;
+    onHand: number;
+    outOfStockPositions: number;
+    reserved: number;
+  };
+  returns: {
+    count: number;
+    creditMinor: number;
+    refundCount: number;
+    refundMinor: number;
+    reasons: { count: number; reason: string }[];
+  };
+  staff: {
+    collectedMinor: number;
+    name: string;
+    orderCount: number;
+    salesMinor: number;
+  }[];
+};
+
 function validateBoothSalesSource(
   input: {
     boothId?: string | null;

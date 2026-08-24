@@ -1,8 +1,20 @@
 import type {
+  AuthenticationSession,
   CredentialStatus,
   IdentityProvider,
   UserCredential,
 } from "../domain/models.js";
+
+export type AuthenticationSessionRepository = {
+  create(
+    record: Omit<AuthenticationSession, "sessionId">,
+  ): Promise<AuthenticationSession>;
+  findActiveByTokenHash(
+    tokenHash: string,
+    now: Date,
+  ): Promise<AuthenticationSession | null>;
+  revoke(id: string, revokedAt: Date): Promise<boolean>;
+};
 
 export type CreateUserCredentialRecord = {
   identifier: string;

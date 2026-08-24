@@ -2,6 +2,48 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminApiClient, AdminApiError } from "./_lib/api-client";
 
 describe("AdminApiClient", () => {
+  it("uses credentialed session and report routes without browser tenant context", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {},
+          requestId: "req_operations",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://api.example.test",
+      fetcher,
+    });
+
+    await client.getSession();
+    await client.login({
+      identifier: "owner@senvo.test",
+      organizationCode: "SENVO",
+      password: "correct-password",
+    });
+    await client.getOperationalReport({
+      from: "2026-08-01",
+      to: "2026-08-21",
+    });
+    await client.logout();
+
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "https://api.example.test/auth/session",
+      "https://api.example.test/auth/login",
+      "https://api.example.test/reports/operations?from=2026-08-01&to=2026-08-21",
+      "https://api.example.test/auth/logout",
+    ]);
+    for (const call of fetcher.mock.calls) {
+      expect(call[1]?.credentials).toBe("include");
+    }
+    const loginBody = fetcher.mock.calls[1]?.[1]?.body;
+    expect(typeof loginBody).toBe("string");
+    expect(loginBody).not.toMatch(/organizationId|userId|permissions/u);
+    expect(fetcher.mock.calls[2]?.[1]?.body).toBeUndefined();
+  });
+
   it("uses POS barcode and cart routes without trusted fields", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
       Promise.resolve(

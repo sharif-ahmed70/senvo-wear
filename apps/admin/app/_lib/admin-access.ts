@@ -20,6 +20,7 @@ export const adminPermissionKeys = [
   "PAYMENT:CREATE",
   "PAYMENT:APPROVE",
   "RECEIPT:READ",
+  "REPORT:READ",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];
@@ -56,7 +57,12 @@ export type AdminNavigationItem = {
 };
 
 export const adminNavigationItems: readonly AdminNavigationItem[] = [
-  { href: "/", icon: "dashboard", label: "Dashboard" },
+  {
+    href: "/",
+    icon: "dashboard",
+    label: "Dashboard",
+    permission: "REPORT:READ",
+  },
   {
     href: "/catalog",
     icon: "catalog",
@@ -149,7 +155,7 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
   },
 ];
 
-// Placeholder only: a future authenticated server boundary will supply this state.
+// Test fixture only. Runtime session state comes from the trusted API boundary.
 export const adminFoundationSession: AdminSession = {
   displayName: "Admin preview",
   organizationName: "SENVO Wear",

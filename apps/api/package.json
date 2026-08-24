@@ -1,0 +1,29 @@
+{
+  "name": "@senvo/api-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json && node --watch dist/server.js",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest --passWithNoTests",
+    "test:run": "vitest run --passWithNoTests",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@senvo/api": "workspace:*",
+    "@senvo/application": "workspace:*",
+    "@senvo/database": "workspace:*",
+    "@senvo/domain": "workspace:*",
+    "@senvo/http": "workspace:*",
+    "@senvo/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+  }
+}

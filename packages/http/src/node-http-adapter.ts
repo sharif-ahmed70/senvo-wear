@@ -12,10 +12,17 @@ import type {
   OrganizationManagementApiHandlers,
   OnlinePaymentApiHandlers,
   PosApiHandlers,
+  ReportingApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
   StorefrontApiHandlers,
 } from "@senvo/api";
+import type {
+  AuthenticationSessionApplicationService,
+  LoginSessionResult,
+  ProductionSessionPrincipal,
+} from "@senvo/application";
+import { AuthenticationError } from "@senvo/domain";
 import {
   createApiFailure,
   type ApiFailure,
@@ -23,6 +30,7 @@ import {
 } from "@senvo/contracts";
 import {
   headerValue,
+  cookieValue,
   HttpRequestContextError,
   type HttpRequestContextFactory,
 } from "./request-context.js";
@@ -60,6 +68,7 @@ export type SenvoHttpHandlers = {
   organizationManagement?: OrganizationManagementApiHandlers;
   onlinePayments?: OnlinePaymentApiHandlers;
   pos?: PosApiHandlers;
+  reporting?: ReportingApiHandlers;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
@@ -67,11 +76,18 @@ export type SenvoHttpHandlers = {
 };
 
 export type NodeHttpAdapterOptions = {
+  allowedOrigins?: readonly string[];
   contextFactory: HttpRequestContextFactory;
   handlers: SenvoHttpHandlers;
   maximumBodyBytes?: number;
   requestIdFactory?: RequestIdFactory;
   securityHeaders?: HttpSecurityHeaders;
+  sessions?: Pick<
+    AuthenticationSessionApplicationService,
+    "login" | "logout" | "resolve"
+  >;
+  sessionCookieName?: string;
+  secureSessionCookie?: boolean;
 };
 
 export function createSenvoHttpServer(options: NodeHttpAdapterOptions): Server {
@@ -90,17 +106,23 @@ export function createSenvoHttpRequestListener(
   return (request, response) => {
     void handleRequest({
       contextFactory: options.contextFactory,
+      allowedOrigins: options.allowedOrigins ?? [],
       maximumBodyBytes,
       request,
       requestIdFactory,
       response,
       routes,
       securityHeaders,
+      sessions: options.sessions,
+      sessionCookieName: options.sessionCookieName ?? "senvo_session",
+      secureSessionCookie:
+        options.secureSessionCookie ?? process.env.NODE_ENV === "production",
     });
   };
 }
 
 async function handleRequest(input: {
+  allowedOrigins: readonly string[];
   contextFactory: HttpRequestContextFactory;
   maximumBodyBytes: number;
   request: IncomingMessage;
@@ -108,13 +130,49 @@ async function handleRequest(input: {
   response: ServerResponse;
   routes: readonly HttpRoute[];
   securityHeaders: HttpSecurityHeaders;
+  sessions?: Pick<
+    AuthenticationSessionApplicationService,
+    "login" | "logout" | "resolve"
+  >;
+  sessionCookieName: string;
+  secureSessionCookie: boolean;
 }): Promise<void> {
   const requestId = input.requestIdFactory.create(
     headerValue(input.request.headers, "x-request-id"),
   );
   applySecurityHeaders(input.response, input.securityHeaders);
+  if (!applyCors(input.request, input.response, input.allowedOrigins)) {
+    writeJson(input.response, {
+      response: createApiFailure({
+        code: "AUTHORIZATION.ORIGIN",
+        message: "Request origin is not allowed.",
+        requestId,
+      }),
+      status: 403,
+    });
+    return;
+  }
+  if (input.request.method === "OPTIONS") {
+    input.response.statusCode = 204;
+    input.response.end();
+    return;
+  }
 
   try {
+    if (
+      input.sessions &&
+      (await handleSessionRequest({
+        maximumBodyBytes: input.maximumBodyBytes,
+        request: input.request,
+        requestId,
+        response: input.response,
+        service: input.sessions,
+        sessionCookieName: input.sessionCookieName,
+        secureSessionCookie: input.secureSessionCookie,
+      }))
+    ) {
+      return;
+    }
     const matchedRoute = matchRoute(input.routes, input.request);
     if (!matchedRoute) {
       writeJson(
@@ -160,6 +218,180 @@ async function handleRequest(input: {
   } catch (error) {
     writeAdapterFailure(input.response, error, requestId);
   }
+}
+
+async function handleSessionRequest(input: {
+  maximumBodyBytes: number;
+  request: IncomingMessage;
+  requestId: string;
+  response: ServerResponse;
+  service: Pick<
+    AuthenticationSessionApplicationService,
+    "login" | "logout" | "resolve"
+  >;
+  sessionCookieName: string;
+  secureSessionCookie: boolean;
+}): Promise<boolean> {
+  const path = requestUrlPath(input.request);
+  if (path === "/auth/login" && input.request.method === "POST") {
+    const body = await readJsonBody(input.request, input.maximumBodyBytes);
+    if (!isLoginBody(body)) {
+      writeJson(input.response, {
+        response: createApiFailure({
+          code: "VALIDATION.LOGIN",
+          message: "Email, password, and organization are required.",
+          requestId: input.requestId,
+        }),
+        status: 400,
+      });
+      return true;
+    }
+    try {
+      const result = await input.service.login(body);
+      input.response.setHeader(
+        "set-cookie",
+        sessionCookie(
+          input.sessionCookieName,
+          result.sessionToken,
+          result.expiresAt,
+          input.secureSessionCookie,
+        ),
+      );
+      writeJson(input.response, sessionSuccess(result, input.requestId));
+    } catch (error) {
+      writeAuthenticationFailure(input.response, error, input.requestId);
+    }
+    return true;
+  }
+  if (path === "/auth/session" && input.request.method === "GET") {
+    try {
+      const principal = await resolveRequestSession(input);
+      writeJson(input.response, sessionSuccess(principal, input.requestId));
+    } catch (error) {
+      writeAuthenticationFailure(input.response, error, input.requestId);
+    }
+    return true;
+  }
+  if (path === "/auth/logout" && input.request.method === "POST") {
+    const token = cookieValue(
+      input.request.headers.cookie,
+      input.sessionCookieName,
+    );
+    if (token) await input.service.logout(token);
+    input.response.setHeader(
+      "set-cookie",
+      expiredSessionCookie(input.sessionCookieName, input.secureSessionCookie),
+    );
+    writeJson(input.response, {
+      data: null,
+      requestId: input.requestId,
+      success: true,
+    });
+    return true;
+  }
+  return false;
+}
+
+async function resolveRequestSession(input: {
+  request: IncomingMessage;
+  service: Pick<AuthenticationSessionApplicationService, "resolve">;
+  sessionCookieName: string;
+}): Promise<ProductionSessionPrincipal> {
+  const token = cookieValue(
+    input.request.headers.cookie,
+    input.sessionCookieName,
+  );
+  if (!token) throw new AuthenticationError("Authentication is required.");
+  return input.service.resolve(token);
+}
+
+function sessionSuccess(
+  principal: ProductionSessionPrincipal | LoginSessionResult,
+  requestId: string,
+) {
+  return {
+    data: {
+      displayName: principal.displayName,
+      expiresAt: principal.expiresAt.toISOString(),
+      organizationId: principal.organizationId,
+      organizationName: principal.organizationName,
+      permissions: principal.permissions.map(
+        ({ action, resource }) => `${resource}:${action}`,
+      ),
+      role: principal.role,
+      userId: principal.userId,
+    },
+    requestId,
+    success: true as const,
+  };
+}
+
+function isLoginBody(value: unknown): value is {
+  identifier: string;
+  organizationCode: string;
+  password: string;
+} {
+  if (!isObject(value)) return false;
+  const keys = Object.keys(value).sort().join(",");
+  return (
+    keys === "identifier,organizationCode,password" &&
+    typeof value.identifier === "string" &&
+    typeof value.organizationCode === "string" &&
+    typeof value.password === "string"
+  );
+}
+
+function sessionCookie(
+  name: string,
+  token: string,
+  expiresAt: Date,
+  secure: boolean,
+): string {
+  return `${name}=${encodeURIComponent(token)}; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Strict; Expires=${expiresAt.toUTCString()}`;
+}
+
+function expiredSessionCookie(name: string, secure: boolean): string {
+  return `${name}=; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Strict; Max-Age=0`;
+}
+
+function writeAuthenticationFailure(
+  response: ServerResponse,
+  error: unknown,
+  requestId: string,
+): void {
+  writeJson(response, {
+    response: createApiFailure({
+      code: "AUTHENTICATION.INVALID",
+      message:
+        error instanceof AuthenticationError
+          ? error.message
+          : "Authentication could not be completed.",
+      requestId,
+    }),
+    status: 401,
+  });
+}
+
+function applyCors(
+  request: IncomingMessage,
+  response: ServerResponse,
+  allowedOrigins: readonly string[],
+): boolean {
+  const origin = headerValue(request.headers, "origin");
+  if (!origin) return true;
+  if (!allowedOrigins.includes(origin)) return false;
+  response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("access-control-allow-credentials", "true");
+  response.setHeader(
+    "access-control-allow-headers",
+    "content-type,x-request-id",
+  );
+  response.setHeader(
+    "access-control-allow-methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  );
+  response.setHeader("vary", "Origin");
+  return true;
 }
 
 function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
@@ -817,6 +1049,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
     );
   }
+  if (handlers.reporting) {
+    routes.push({
+      handler: handlers.reporting.getOperationalReport,
+      input: queryInput,
+      method: "GET",
+      path: /^\/reports\/operations$/u,
+      successStatus: 200,
+    });
+  }
   return routes;
 }
 
@@ -1082,6 +1323,17 @@ function writeAdapterFailure(
         requestId,
       }),
       status: 400,
+    });
+    return;
+  }
+  if (error instanceof AuthenticationError) {
+    writeJson(response, {
+      response: createApiFailure({
+        code: "AUTHENTICATION.INVALID",
+        message: "Authentication is required.",
+        requestId,
+      }),
+      status: 401,
     });
     return;
   }
