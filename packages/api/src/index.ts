@@ -3,6 +3,10 @@ export {
   type ReportingApiHandlers,
 } from "./reporting-handlers.js";
 export {
+  createCommerceApiHandlers,
+  type CommerceApiHandlers,
+} from "./commerce-handlers.js";
+export {
   createProtectedApiHandler,
   createPublicApiHandler,
   type ApiHandler,

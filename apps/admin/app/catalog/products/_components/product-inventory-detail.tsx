@@ -15,7 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 
@@ -126,6 +126,9 @@ export function ProductInventoryDetail({
           {humanize(product.product.status)}
         </span>
       </header>
+      {permissions.includes("CATALOG:UPDATE") ? (
+        <ProductEditor details={product} onChange={setProduct} />
+      ) : null}
       <ProductMedia
         canUpdate={permissions.includes("CATALOG:UPDATE")}
         details={product}
@@ -160,6 +163,8 @@ export function ProductInventoryDetail({
             <thead>
               <tr>
                 <th>SKU</th>
+                <th>Cost</th>
+                <th>Selling price</th>
                 <th>Barcode</th>
               </tr>
             </thead>
@@ -167,6 +172,8 @@ export function ProductInventoryDetail({
               {product.variants.map((variant) => (
                 <tr key={variant.id}>
                   <td className="inventory-mono">{variant.sku}</td>
+                  <td>{money(variant.costPriceMinor)}</td>
+                  <td>{money(variant.sellingPriceMinor)}</td>
                   <td>
                     <span
                       className={`barcode-status barcode-status--${
@@ -253,6 +260,178 @@ export function ProductInventoryDetail({
       </section>
     </main>
   );
+}
+
+function ProductEditor({
+  details,
+  onChange,
+}: {
+  details: ProductDetailsContract;
+  onChange: (details: ProductDetailsContract) => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function saveProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await client.updateProduct({
+        brand: optional(data, "brand"),
+        categoryId: details.product.categoryId,
+        description: optional(data, "description"),
+        name: text(data, "name"),
+        productId: details.product.id,
+        status: text(
+          data,
+          "status",
+        ) as ProductDetailsContract["product"]["status"],
+      });
+      onChange({ ...details, product: result.data });
+      setMessage("Product details saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveVariant(
+    event: FormEvent<HTMLFormElement>,
+    variantId: string,
+  ) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await client.updateVariant({
+        costPriceMinor: toMinor(text(data, "costPrice")),
+        sellingPriceMinor: toMinor(text(data, "sellingPrice")),
+        status: text(data, "status") as "ACTIVE" | "ARCHIVED" | "INACTIVE",
+        variantId,
+      });
+      onChange({
+        ...details,
+        variants: details.variants.map((variant) =>
+          variant.id === variantId ? result.data : variant,
+        ),
+      });
+      setMessage("Product option saved.");
+    } catch (caught) {
+      setMessage(messageForError(caught));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="inventory-section">
+      <div className="admin-section__heading">
+        <div>
+          <h2>Product details</h2>
+        </div>
+      </div>
+      <form
+        className="catalog-form"
+        onSubmit={(event) => void saveProduct(event)}
+      >
+        <label>
+          Name
+          <input defaultValue={details.product.name} name="name" required />
+        </label>
+        <label>
+          Brand
+          <input defaultValue={details.product.brand ?? ""} name="brand" />
+        </label>
+        <label>
+          Status
+          <select defaultValue={details.product.status} name="status">
+            <option value="DRAFT">Draft</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
+        </label>
+        <label className="catalog-form__wide">
+          Description
+          <textarea
+            defaultValue={details.product.description ?? ""}
+            name="description"
+            rows={3}
+          />
+        </label>
+        <button className="catalog-primary-button" disabled={saving}>
+          Save product
+        </button>
+      </form>
+      {details.variants.map((variant) => (
+        <form
+          className="catalog-form"
+          key={variant.id}
+          onSubmit={(event) => void saveVariant(event, variant.id)}
+        >
+          <h3>{variant.sku}</h3>
+          <label>
+            Cost price (BDT)
+            <input
+              defaultValue={(variant.costPriceMinor / 100).toFixed(2)}
+              min="0"
+              name="costPrice"
+              required
+              step="0.01"
+              type="number"
+            />
+          </label>
+          <label>
+            Selling price (BDT)
+            <input
+              defaultValue={(variant.sellingPriceMinor / 100).toFixed(2)}
+              min="0"
+              name="sellingPrice"
+              required
+              step="0.01"
+              type="number"
+            />
+          </label>
+          <label>
+            Status
+            <select defaultValue={variant.status} name="status">
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
+          </label>
+          <button className="catalog-primary-button" disabled={saving}>
+            Save option
+          </button>
+        </form>
+      ))}
+      {message ? <p aria-live="polite">{message}</p> : null}
+    </section>
+  );
+}
+
+function text(data: FormData, key: string) {
+  const entry = data.get(key);
+  return typeof entry === "string" ? entry.trim() : "";
+}
+
+function optional(data: FormData, key: string) {
+  return text(data, key) || null;
+}
+
+function toMinor(value: string) {
+  return Math.round(Number(value) * 100);
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("en-BD", {
+    currency: "BDT",
+    style: "currency",
+  }).format(value / 100);
 }
 
 export function ProductMedia({

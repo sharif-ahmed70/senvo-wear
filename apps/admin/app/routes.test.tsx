@@ -21,6 +21,9 @@ import TeamPage from "./team/page";
 import RolesPage from "./roles/page";
 import { OrganizationWorkspace } from "./organization/_components/organization-workspace";
 import AdminPage from "./page";
+import CustomersPage from "./customers/page";
+import PurchasesPage from "./purchases/page";
+import VendorsPage from "./vendors/page";
 import SalesOrdersPage from "./sales-orders/page";
 import SalesManagementPage from "./sales/orders/page";
 import SalesBoothsPage from "./sales/booths/page";
@@ -54,6 +57,12 @@ import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-
 import { AdminApiError } from "./_lib/api-client";
 
 describe("admin routes", () => {
+  it("renders operational customer, vendor, and purchase workspaces", () => {
+    expect(renderToStaticMarkup(<CustomersPage />)).toContain("Customers");
+    expect(renderToStaticMarkup(<VendorsPage />)).toContain("Vendors");
+    expect(renderToStaticMarkup(<PurchasesPage />)).toContain("Purchases");
+  });
+
   it("renders ordered media controls only with catalog update access", () => {
     const details = {
       collectionIds: [],
@@ -72,6 +81,7 @@ describe("admin routes", () => {
       ],
       primaryImage: null,
       product: {
+        brand: null,
         categoryId: "10000000-0000-4000-8000-000000000003",
         createdAt: "2026-08-18T00:00:00.000Z",
         description: null,

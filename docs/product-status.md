@@ -16,6 +16,7 @@ Read this file first when continuing SENVO Wear product work.
 - Product media gallery with canonical primary, variant imagery, accessible Storefront rendering, and Admin management
 - Curated per-collection Storefront product ordering
 - Provider-neutral online payment attempts, verified SSLCOMMERZ IPN processing, reconciliation, and provider-refund integration
+- Operational commerce: customers, vendors, purchase receiving, vendor payments, governed cost/selling prices, POS customer/discount linkage, printable labels, and expanded reporting
 
 ## Current
 
@@ -41,5 +42,6 @@ catalog, inventory, sales, receipt, collection, return/refund, and Storefront
 flows are reused.
 
 Online payment code is parked and disabled by default pending external
-SSLCOMMERZ verification. Courier, CRM, loyalty, promotions, and advanced BI
-remain deferred. Profit/margin reporting requires a future governed cost basis.
+SSLCOMMERZ verification. Courier, loyalty, promotions, accounting-grade cost
+layers, and advanced BI remain deferred. Operational profit estimation uses the
+latest governed variant cost basis.

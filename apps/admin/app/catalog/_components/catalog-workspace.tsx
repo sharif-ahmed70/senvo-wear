@@ -446,6 +446,10 @@ function ProductFields({
         <input name="productCode" required />
       </label>
       <label>
+        <span>Brand</span>
+        <input name="brand" />
+      </label>
+      <label>
         <span>Category</span>
         <select name="categoryId" required>
           <option value="">Select category</option>
@@ -496,6 +500,14 @@ function ProductFields({
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        <span>Cost price (BDT)</span>
+        <input min="0" name="costPrice" step="0.01" type="number" />
+      </label>
+      <label>
+        <span>Selling price (BDT)</span>
+        <input min="0" name="sellingPrice" step="0.01" type="number" />
       </label>
     </>
   );
@@ -569,17 +581,20 @@ async function submitProduct(
   }
   const variant = {
     colorId: stringValue(formData, "colorId"),
+    costPriceMinor: moneyValue(formData, "costPrice"),
+    sellingPriceMinor: moneyValue(formData, "sellingPrice"),
     sizeId: stringValue(formData, "sizeId"),
     sku: stringValue(formData, "sku"),
   };
   if (
-    Object.values(variant).some(Boolean) &&
-    !Object.values(variant).every(Boolean)
+    [variant.sku, variant.colorId, variant.sizeId].some(Boolean) &&
+    ![variant.sku, variant.colorId, variant.sizeId].every(Boolean)
   ) {
     setFormError("SKU, color, and size are required for a variant.");
     return;
   }
   const result = await client.createProduct({
+    brand: optionalValue(formData, "brand"),
     categoryId,
     collectionId: optionalValue(formData, "collectionId") ?? undefined,
     description: optionalValue(formData, "description"),
@@ -591,6 +606,12 @@ async function submitProduct(
     await client.createVariant({ ...variant, productId: result.data.id });
   }
   onSaved(result.data);
+}
+
+function moneyValue(formData: FormData, key: string) {
+  const raw = stringValue(formData, key);
+  if (!raw) return 0;
+  return Math.round(Number(raw) * 100);
 }
 
 function CatalogTable({

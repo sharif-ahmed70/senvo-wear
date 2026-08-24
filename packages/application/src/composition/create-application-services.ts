@@ -21,6 +21,7 @@ import {
   PrismaPaymentRefundRepository,
   PrismaOnlinePaymentRepository,
   PrismaOperationalReportRepository,
+  PrismaCommerceRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
   PrismaTransactionManager,
@@ -58,6 +59,7 @@ import type {
   OnlinePaymentProviderAdapter,
   OnlinePaymentRepository,
   OperationalReportRepository,
+  CommerceRepository,
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
@@ -86,6 +88,7 @@ import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import { ReportingApplicationService } from "../reporting/reporting-application-service.js";
+import { CommerceApplicationService } from "../commerce/commerce-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -114,6 +117,7 @@ export type CreateApplicationServicesOptions = {
   onlinePaymentProvider?: OnlinePaymentProviderAdapter;
   onlinePaymentRepository?: OnlinePaymentRepository;
   operationalReportRepository?: OperationalReportRepository;
+  commerceRepository?: CommerceRepository;
   receiptRepository?: ReceiptRepository;
   posReturnRepository?: PosReturnRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
@@ -136,6 +140,7 @@ export type CreateApplicationServicesOptions = {
 
 export type ApplicationServices = {
   catalog: CatalogApplicationService;
+  commerce: CommerceApplicationService;
   disconnect(): Promise<void>;
   inventory: InventoryApplicationService;
   organization: OrganizationApplicationService;
@@ -179,6 +184,7 @@ export function createApplicationServices(
   let paymentRefundReceiptRepository = options.paymentRefundReceiptRepository;
   let onlinePaymentRepository = options.onlinePaymentRepository;
   let operationalReportRepository = options.operationalReportRepository;
+  let commerceRepository = options.commerceRepository;
   let receiptRepository = options.receiptRepository;
   let posReturnRepository = options.posReturnRepository;
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
@@ -321,6 +327,8 @@ export function createApplicationServices(
     operationalReportRepository = new PrismaOperationalReportRepository(
       prismaClient,
     );
+  if (!commerceRepository && prismaClient)
+    commerceRepository = new PrismaCommerceRepository(prismaClient);
   if (!posReturnRepository && prismaClient)
     posReturnRepository = new PrismaPosReturnRepository(prismaClient);
   if (!posReturnReceiptRepository && prismaClient)
@@ -364,6 +372,14 @@ export function createApplicationServices(
       productVariants: productVariantRepository,
       requestIdGenerator: options.requestIdGenerator,
       sizes: sizeRepository,
+      transactionManager,
+    }),
+    commerce: new CommerceApplicationService({
+      authorizationService: options.authorizationService,
+      clock,
+      repository:
+        commerceRepository ??
+        new PrismaCommerceRepository(requirePrismaClient(prismaClient)),
       transactionManager,
     }),
     disconnect: async () => {

@@ -217,6 +217,7 @@ export async function createSize(
 }
 
 export type CreateProductInput = {
+  brand?: string | null;
   categoryId: string;
   description?: string | null;
   name: string;
@@ -263,6 +264,7 @@ export async function createProduct(
   }
 
   return repositories.products.create({
+    brand: normalizeOptionalText(input.brand, "brand", 160),
     categoryId: input.categoryId,
     description: normalizeOptionalDescription(input.description),
     name: normalizeDisplayName(input.name, "product name"),
@@ -275,10 +277,12 @@ export async function createProduct(
 
 export type CreateProductVariantInput = {
   colorId: string;
+  costPriceMinor?: number;
   organizationId: string;
   productId: string;
   sizeId: string;
   sku: string;
+  sellingPriceMinor?: number;
   status?: "ACTIVE" | "INACTIVE" | "ARCHIVED";
 };
 
@@ -320,12 +324,35 @@ export async function createProductVariant(
 
   return repositories.productVariants.create({
     colorId: input.colorId,
+    costPriceMinor: normalizeMinor(input.costPriceMinor, "cost price"),
     organizationId: input.organizationId,
     productId: input.productId,
     sizeId: input.sizeId,
     sku,
+    sellingPriceMinor: normalizeMinor(input.sellingPriceMinor, "selling price"),
     status: input.status ?? "ACTIVE",
   });
+}
+
+function normalizeMinor(value: number | undefined, field: string): number {
+  const normalized = value ?? 0;
+  if (!Number.isSafeInteger(normalized) || normalized < 0)
+    throw new ValidationApplicationError(
+      `${field} must be a non-negative minor-unit amount.`,
+    );
+  return normalized;
+}
+
+function normalizeOptionalText(
+  value: string | null | undefined,
+  field: string,
+  maximum: number,
+): string | null {
+  if (value === null || value === undefined || value.trim() === "") return null;
+  const normalized = value.trim();
+  if (normalized.length > maximum)
+    throw new ValidationApplicationError(`${field} is too long.`);
+  return normalized;
 }
 
 async function requireOrganization(

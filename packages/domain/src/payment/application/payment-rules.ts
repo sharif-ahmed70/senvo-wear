@@ -178,8 +178,9 @@ export function calculatePaymentBalance(
 export function createPaymentRequestSignature(
   payments: readonly PaymentInstruction[],
   allowOutstanding: boolean,
+  context?: { customerId: string | null; discountMinor: number },
 ): string {
-  return JSON.stringify({ allowOutstanding, payments });
+  return JSON.stringify({ allowOutstanding, context, payments });
 }
 
 export function createPaymentCollectionRequestSignature(

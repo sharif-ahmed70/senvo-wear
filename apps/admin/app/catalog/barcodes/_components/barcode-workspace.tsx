@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   LoaderCircle,
   Plus,
+  Printer,
   ScanBarcode,
   Search,
 } from "lucide-react";
@@ -162,6 +163,26 @@ export function BarcodeWorkspace({
               }
             }}
           />
+          {selected && barcodes.some((item) => item.status === "ACTIVE") ? (
+            <section className="barcode-panel">
+              <div className="barcode-print-label">
+                <strong>{selected.productName}</strong>
+                <span>{selected.sku}</span>
+                <b className="barcode-code">
+                  {barcodes.find((item) => item.status === "ACTIVE")?.value}
+                </b>
+                <span>BDT {(selected.sellingPriceMinor / 100).toFixed(2)}</span>
+              </div>
+              <button
+                className="catalog-primary-button"
+                onClick={() => window.print()}
+                type="button"
+              >
+                <Printer size={16} />
+                Print label
+              </button>
+            </section>
+          ) : null}
           <LookupTest onError={setError} />
         </>
       ) : null}

@@ -30,6 +30,7 @@ describe("createApplicationServices", () => {
       categoryRepository: fakeCategoryRepository,
       collectionRepository: fakeCollectionRepository,
       colorRepository: fakeColorRepository,
+      commerceRepository: {} as never,
       logger: nullLogger,
       membershipRepository: {} as never,
       requestIdGenerator: () => "generated_request_1",
@@ -139,6 +140,7 @@ const fakeProductRepository: CatalogProductManagementRepository = {
   listCollectionProductOrder: () => Promise.resolve([]),
   listCollectionIds: () => Promise.resolve([]),
   reorderCollectionProducts: () => Promise.resolve(),
+  update: () => Promise.resolve(null),
 };
 
 const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
@@ -147,6 +149,7 @@ const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
     existsBySku: () => Promise.resolve(false),
     existsVariantCombination: () => Promise.resolve(false),
     listByProduct: () => Promise.resolve([]),
+    update: () => Promise.resolve(null),
   };
 
 const fakeSizeRepository: CatalogSizeManagementRepository = {

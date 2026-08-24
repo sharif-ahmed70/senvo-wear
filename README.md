@@ -4,7 +4,7 @@ SENVO Wear is a modular clothing ERP with operational Admin, POS, and customer S
 
 ## Current Status
 
-The repository includes organization/team access, catalog and barcodes, inventory and reservations, sales orders, POS checkout/payment/receipts/returns/refunds, and the first guest Storefront commerce vertical slice. See [docs/product-status.md](docs/product-status.md) before planning new product work.
+The repository includes organization/team access, catalog/media/barcodes, inventory and reservations, customers/vendors/purchases, sales orders, POS checkout/payment/receipts/returns/refunds, operational reporting, and the guest Storefront commerce vertical slice. See [docs/product-status.md](docs/product-status.md) before planning new product work.
 
 ## Architecture Summary
 
@@ -117,14 +117,14 @@ Production migrations must use reviewed Prisma migrations, not production `db pu
 
 ## Important Limitations
 
-- Production login and session transport is not complete; credential, identity, membership, and authorization foundations exist.
-- Product media and publishing workflows are not implemented.
-- Storefront checkout currently supports guest cash-on-delivery orders; online payment and courier integration are not implemented.
+- Production password/session transport exists in Operational V1; external deployment and identity-provider integration remain operations work.
+- Product media upload, ordering, and Storefront publishing exist; advanced processing, schedules, and CDN delivery remain deferred.
+- Storefront checkout supports guest cash-on-delivery plus provider-neutral online-payment flows; courier integration remains deferred.
 - The standalone `apps/pos` shell remains a placeholder; current guided POS workflows are served through the Admin application.
 - No real branding or logo system.
 - No production deployment configuration.
-- CRM, BI, and analytics are not implemented.
+- Customer records and operational reports exist; loyalty, customer segmentation, accounting-grade reporting, and advanced BI are not implemented.
 
 ## Next Planned Milestone
 
-After Storefront Commerce MVP acceptance, the next planned product slice is merchandising and product media.
+After Operational Commerce MVP acceptance, the next slices are deployment hardening, courier integration, and accounting/advanced reporting decisions.

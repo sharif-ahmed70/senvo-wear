@@ -9,6 +9,9 @@ export type OperationalReport = {
     outstandingMinor: number;
     refundMinor: number;
     returnCreditMinor: number;
+    customerDueMinor?: number;
+    profitEstimateMinor?: number;
+    vendorPayableMinor?: number;
   };
   payments: { amountMinor: number; method: PaymentMethod }[];
   products: {
@@ -22,6 +25,8 @@ export type OperationalReport = {
     onHand: number;
     outOfStockPositions: number;
     reserved: number;
+    inventoryValueMinor?: number;
+    lowStockPositions?: number;
   };
   returns: {
     count: number;

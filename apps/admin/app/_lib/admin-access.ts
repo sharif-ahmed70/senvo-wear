@@ -50,7 +50,10 @@ export type AdminNavigationItem = {
     | "newSale"
     | "counter"
     | "sessions"
-    | "checkouts";
+    | "checkouts"
+    | "customers"
+    | "vendors"
+    | "purchases";
   label: string;
   permission?: AdminPermissionKey;
   permissions?: readonly AdminPermissionKey[];
@@ -80,6 +83,24 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     icon: "inventory",
     label: "Inventory",
     permission: "INVENTORY:READ",
+  },
+  {
+    href: "/purchases",
+    icon: "purchases",
+    label: "Purchases",
+    permission: "INVENTORY:READ",
+  },
+  {
+    href: "/vendors",
+    icon: "vendors",
+    label: "Vendors",
+    permission: "INVENTORY:READ",
+  },
+  {
+    href: "/customers",
+    icon: "customers",
+    label: "Customers",
+    permission: "SALES:READ",
   },
   {
     href: "/sales/orders",

@@ -2,6 +2,49 @@ import { describe, expect, it, vi } from "vitest";
 import { AdminApiClient, AdminApiError } from "./_lib/api-client";
 
 describe("AdminApiClient", () => {
+  it("uses commerce routes without browser-owned organization identity", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: [],
+          requestId: "req_commerce",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://api.example.test",
+      fetcher,
+    });
+    const vendorId = "10000000-0000-4000-8000-000000000001";
+    const locationId = "10000000-0000-4000-8000-000000000002";
+    const variantId = "10000000-0000-4000-8000-000000000003";
+    await client.listCustomers();
+    await client.createCustomer({ name: "Buyer", phone: "01700000000" });
+    await client.listVendors();
+    await client.receivePurchase({
+      destinationLocationId: locationId,
+      idempotencyKey: "purchase-attempt-001",
+      lines: [
+        { productVariantId: variantId, quantity: 2, unitCostMinor: 1000 },
+      ],
+      paidMinor: 0,
+      vendorId,
+    });
+    expect(fetcher.mock.calls.map((call) => call[0])).toEqual([
+      "https://api.example.test/customers",
+      "https://api.example.test/customers",
+      "https://api.example.test/vendors",
+      "https://api.example.test/purchases",
+    ]);
+    const bodies = fetcher.mock.calls.flatMap((call) =>
+      typeof call[1]?.body === "string" ? [call[1].body] : [],
+    );
+    expect(bodies.join(" ")).not.toMatch(
+      /organizationId|userId|permissions|role/u,
+    );
+  });
+
   it("uses credentialed session and report routes without browser tenant context", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
       Promise.resolve(

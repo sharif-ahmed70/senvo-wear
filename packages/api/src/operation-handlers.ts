@@ -90,6 +90,10 @@ import {
   type VariantBarcodeContract,
   type UpdateColorStatusServiceInputContract,
   type UpdateSizeStatusServiceInputContract,
+  updateProductServiceInputSchema,
+  updateProductVariantServiceInputSchema,
+  type UpdateProductServiceInputContract,
+  type UpdateProductVariantServiceInputContract,
   type VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
@@ -318,6 +322,14 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SizeContract>>;
+  updateProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract>>;
+  updateVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>>;
 };
 
 export type CatalogApiHandlers = {
@@ -352,6 +364,8 @@ export type CatalogApiHandlers = {
   updateColorStatus: ApiHandler<ColorContract>;
   updateSizeStatus: ApiHandler<SizeContract>;
   updateProductMedia: ApiHandler<ProductMediaContract>;
+  updateProduct: ApiHandler<ProductContract>;
+  updateVariant: ApiHandler<ProductVariantContract>;
 };
 
 export function createCatalogApiHandlers(
@@ -653,6 +667,24 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.updateProductMedia(context, input),
       inputSchema: updateProductMediaServiceInputSchema,
+    }),
+    updateProduct: protectedHandler<
+      UpdateProductServiceInputContract,
+      ProductContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateProduct(context, input),
+      inputSchema: updateProductServiceInputSchema,
+    }),
+    updateVariant: protectedHandler<
+      UpdateProductVariantServiceInputContract,
+      ProductVariantContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateVariant(context, input),
+      inputSchema: updateProductVariantServiceInputSchema,
     }),
   };
 }

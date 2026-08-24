@@ -388,6 +388,18 @@ export class PosApplicationService {
           ) {
             throw new Error("POS checkout transaction capability is required.");
           }
+          const customer = input.customerId
+            ? await transaction.commerceRepository?.findCustomer(
+                trusted.organizationId,
+                input.customerId,
+              )
+            : null;
+          if (input.customerId && !transaction.commerceRepository)
+            throw new Error("Commerce transaction capability is required.");
+          if (input.customerId && !customer)
+            throw new NotFoundError("Customer was not found.");
+          if (customer && customer.status !== "ACTIVE")
+            throw new BusinessRuleError("Customer is inactive.");
           const result = await completePosCheckout(
             {
               checkouts: transaction.posCheckoutRepository,
@@ -397,6 +409,14 @@ export class PosApplicationService {
             },
             {
               ...input,
+              customer: customer
+                ? {
+                    email: customer.email,
+                    id: customer.id,
+                    name: customer.name,
+                    phone: customer.phone,
+                  }
+                : null,
               checkoutId: crypto.randomUUID(),
               completedAt: this.dependencies.clock.now(),
               organizationId: trusted.organizationId,

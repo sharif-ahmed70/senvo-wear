@@ -49,6 +49,7 @@ export type CreateSalesOrderInput = {
   boothId?: string | null;
   channel: SalesOrderChannel;
   currencyCode: string;
+  customerId?: string | null;
   customerEmail?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
@@ -313,6 +314,7 @@ function normalizeCreateOrderInput(
     boothId: normalizeOptionalId(input.boothId, "boothId") ?? null,
     channel: normalizeChannel(input.channel),
     currencyCode: normalizeCurrencyCode(input.currencyCode),
+    customerId: normalizeOptionalId(input.customerId, "customerId") ?? null,
     customerEmail: normalizeOptionalEmail(input.customerEmail),
     customerName: normalizeOptionalText(
       input.customerName,

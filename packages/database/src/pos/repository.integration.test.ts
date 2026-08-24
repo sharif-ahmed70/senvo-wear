@@ -1038,11 +1038,14 @@ describeWithDatabase("Prisma offline POS repository", () => {
 
     expect(report.sales).toEqual({
       collectedMinor: 5_000,
+      customerDueMinor: 0,
       grossMinor: 5_000,
       orderCount: 1,
       outstandingMinor: 0,
+      profitEstimateMinor: 5_000,
       refundMinor: 0,
       returnCreditMinor: 0,
+      vendorPayableMinor: 0,
     });
     expect(report.payments).toEqual([
       { amountMinor: 3_000, method: "CARD" },
@@ -1058,6 +1061,8 @@ describeWithDatabase("Prisma offline POS repository", () => {
     ]);
     expect(report.inventory).toEqual({
       availableToSell: 3,
+      inventoryValueMinor: 0,
+      lowStockPositions: 1,
       onHand: 3,
       outOfStockPositions: 0,
       reserved: 0,

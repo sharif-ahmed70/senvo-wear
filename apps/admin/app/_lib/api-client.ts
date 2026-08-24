@@ -4,6 +4,17 @@ import type {
   ApiFailure,
   ApiResponse,
   CategoryContract,
+  CustomerProfileContract,
+  CustomerSummaryContract,
+  CreateCustomerServiceInputContract,
+  UpdateCustomerServiceInputContract,
+  VendorSummaryContract,
+  CreateVendorServiceInputContract,
+  UpdateVendorServiceInputContract,
+  PurchaseOrderSummaryContract,
+  ReceivePurchaseServiceInputContract,
+  VendorPaymentContract,
+  RecordVendorPaymentServiceInputContract,
   CollectionContract,
   ColorContract,
   AssignTeamMemberRoleServiceInputContract,
@@ -30,6 +41,8 @@ import type {
   AddProductMediaServiceInputContract,
   ReorderProductMediaServiceInputContract,
   UpdateProductMediaServiceInputContract,
+  UpdateProductServiceInputContract,
+  UpdateProductVariantServiceInputContract,
   SetPrimaryProductImageServiceInputContract,
   ProductVariantContract,
   OrganizationProfileContract,
@@ -347,6 +360,26 @@ export class AdminApiClient {
     return this.request<ProductDetailsContract>(
       `/catalog/products/${productId}`,
       request,
+    );
+  }
+
+  updateProduct(
+    input: UpdateProductServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ProductContract>(
+      `/catalog/products/${input.productId}`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
+  updateVariant(
+    input: UpdateProductVariantServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<ProductVariantContract>(
+      `/catalog/variants/${input.variantId}`,
+      { ...request, body: input, method: "PATCH" },
     );
   }
 
@@ -967,6 +1000,89 @@ export class AdminApiClient {
 
   listPosCheckouts(request?: AdminApiRequest) {
     return this.request<PosCheckoutContract[]>("/pos/checkouts", request);
+  }
+
+  listCustomers(request?: AdminApiRequest) {
+    return this.request<CustomerSummaryContract[]>("/customers", request);
+  }
+
+  getCustomer(customerId: string, request?: AdminApiRequest) {
+    return this.request<CustomerProfileContract>(
+      `/customers/${customerId}`,
+      request,
+    );
+  }
+
+  createCustomer(
+    input: CreateCustomerServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CustomerSummaryContract>("/customers", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateCustomer(
+    input: UpdateCustomerServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CustomerSummaryContract>(
+      `/customers/${input.customerId}`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
+  listVendors(request?: AdminApiRequest) {
+    return this.request<VendorSummaryContract[]>("/vendors", request);
+  }
+
+  createVendor(
+    input: CreateVendorServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<VendorSummaryContract>("/vendors", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateVendor(
+    input: UpdateVendorServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<VendorSummaryContract>(`/vendors/${input.vendorId}`, {
+      ...request,
+      body: input,
+      method: "PATCH",
+    });
+  }
+
+  listPurchases(request?: AdminApiRequest) {
+    return this.request<PurchaseOrderSummaryContract[]>("/purchases", request);
+  }
+
+  receivePurchase(
+    input: ReceivePurchaseServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseOrderSummaryContract>("/purchases", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  recordVendorPayment(
+    input: RecordVendorPaymentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<VendorPaymentContract>(
+      `/vendors/${input.vendorId}/payments`,
+      { ...request, body: input, method: "POST" },
+    );
   }
 
   private salesOrderAction(

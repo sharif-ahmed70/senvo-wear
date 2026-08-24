@@ -8,6 +8,7 @@ import {
 import type {
   ApiHandler,
   CatalogApiHandlers,
+  CommerceApiHandlers,
   InventoryReadApiHandlers,
   OrganizationManagementApiHandlers,
   OnlinePaymentApiHandlers,
@@ -63,6 +64,7 @@ type HttpRoute = {
 
 export type SenvoHttpHandlers = {
   catalog?: CatalogApiHandlers;
+  commerce?: CommerceApiHandlers;
   createSalesOrder: ApiHandler<unknown>;
   inventoryRead?: InventoryReadApiHandlers;
   organizationManagement?: OrganizationManagementApiHandlers;
@@ -496,6 +498,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "productId",
       ),
       catalogRoute(
+        "PATCH",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.updateProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
         "GET",
         /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/primary-image$/iu,
         handlers.catalog.getPrimaryProductImage,
@@ -598,6 +607,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         handlers.catalog.createVariant,
         201,
         "productId",
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.updateVariant,
+        200,
+        "variantId",
       ),
     );
   }
@@ -1057,6 +1073,80 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       path: /^\/reports\/operations$/u,
       successStatus: 200,
     });
+  }
+  if (handlers.commerce) {
+    routes.push(
+      {
+        handler: handlers.commerce.listCustomers,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/customers$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.createCustomer,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/customers$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.commerce.getCustomer,
+        input: (_body, match) => ({ id: match.groups?.id }),
+        method: "GET",
+        path: /^\/customers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.updateCustomer,
+        input: pathBodyInput("customerId"),
+        method: "PATCH",
+        path: /^\/customers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.listVendors,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/vendors$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.createVendor,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/vendors$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.commerce.updateVendor,
+        input: pathBodyInput("vendorId"),
+        method: "PATCH",
+        path: /^\/vendors\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.listPurchases,
+        input: emptyInput,
+        method: "GET",
+        path: /^\/purchases$/u,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.commerce.receivePurchase,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/purchases$/u,
+        successStatus: 201,
+      },
+      {
+        handler: handlers.commerce.recordVendorPayment,
+        input: pathBodyInput("vendorId"),
+        method: "POST",
+        path: /^\/vendors\/(?<id>[0-9a-f-]+)\/payments$/iu,
+        successStatus: 201,
+      },
+    );
   }
   return routes;
 }

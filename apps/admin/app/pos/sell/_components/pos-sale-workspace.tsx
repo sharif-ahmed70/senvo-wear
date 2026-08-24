@@ -10,6 +10,7 @@ import {
 } from "react";
 import type {
   CheckoutPosCartServiceInputContract,
+  CustomerSummaryContract,
   PosCartDetailsContract,
   PosCheckoutContract,
   SalesCounterContract,
@@ -78,6 +79,7 @@ function ActivePosSale({
   permissions: readonly AdminPermissionKey[];
 }) {
   const [contexts, setContexts] = useState<SellingContext[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummaryContract[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [cart, setCart] = useState<PosCartDetailsContract | null>(null);
   const [checkout, setCheckout] = useState<PosCheckoutContract | null>(null);
@@ -127,10 +129,16 @@ function ActivePosSale({
   const loadContexts = useCallback(async () => {
     setLoading(true);
     try {
-      const [counterResult, sessionResult] = await Promise.all([
+      const [counterResult, sessionResult, customerResult] = await Promise.all([
         client.listSalesCounters(),
         client.listCurrentSalesSessions(),
+        permissions.includes("SALES:READ")
+          ? client.listCustomers()
+          : Promise.resolve({ data: [] as CustomerSummaryContract[] }),
       ]);
+      setCustomers(
+        customerResult.data.filter((customer) => customer.status === "ACTIVE"),
+      );
       const counters = new Map<string, SalesCounterContract>(
         counterResult.data
           .filter((counter) => counter.status === "ACTIVE")
@@ -159,7 +167,7 @@ function ActivePosSale({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [permissions]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadContexts(), 0);
@@ -373,6 +381,7 @@ function ActivePosSale({
               paymentOpen ? (
                 <PaymentPanel
                   canApproveDue={permissions.includes("PAYMENT:APPROVE")}
+                  customers={customers}
                   onCancel={() => !submitting && setPaymentOpen(false)}
                   onComplete={(input) => void completeSale(input)}
                   submitting={submitting}

@@ -62,6 +62,8 @@ import {
   updateCategoryStatusServiceInputSchema,
   updateColorStatusServiceInputSchema,
   updateSizeStatusServiceInputSchema,
+  updateProductServiceInputSchema,
+  updateProductVariantServiceInputSchema,
   type CategoryContract,
   type CollectionContract,
   type ColorContract,
@@ -408,6 +410,32 @@ export class CatalogApplicationService {
     });
   }
 
+  updateProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(updateProductServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+      const category = await this.categories.findById(
+        input.categoryId,
+        validated.organizationId,
+      );
+      if (!category) throw new NotFoundError("Category was not found.");
+      const product = await this.products.update({
+        brand: input.brand?.trim() || null,
+        categoryId: input.categoryId,
+        description: input.description?.trim() || null,
+        id: input.productId,
+        name: input.name.trim(),
+        organizationId: validated.organizationId,
+        status: input.status,
+      });
+      if (!product) throw new NotFoundError("Product was not found.");
+      return mapProduct(product);
+    });
+  }
+
   getProduct(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -499,6 +527,28 @@ export class CatalogApplicationService {
           { ...input, organizationId: validated.organizationId },
         ),
       );
+    });
+  }
+
+  updateVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        updateProductVariantServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "UPDATE");
+      const variant = await this.productVariants.update({
+        costPriceMinor: input.costPriceMinor,
+        id: input.variantId,
+        organizationId: validated.organizationId,
+        sellingPriceMinor: input.sellingPriceMinor,
+        status: input.status,
+      });
+      if (!variant) throw new NotFoundError("Product variant was not found.");
+      return mapVariant(variant);
     });
   }
 

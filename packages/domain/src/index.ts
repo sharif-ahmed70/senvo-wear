@@ -36,6 +36,16 @@ export type {
   OperationalReportRepository,
 } from "./reporting/operational-report.js";
 export type {
+  CommercePartyStatus,
+  CustomerProfile,
+  CustomerSummary,
+  PurchaseOrderStatus,
+  PurchaseOrderSummary,
+  VendorPaymentRecord,
+  VendorSummary,
+} from "./commerce/models.js";
+export type { CommerceRepository } from "./commerce/repository.js";
+export type {
   ApplicationErrorCategory,
   PublicApplicationError,
 } from "./errors.js";

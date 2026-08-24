@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export * from "./commerce.js";
+
 export const apiErrorCategories = [
   "VALIDATION",
   "AUTHENTICATION",
@@ -527,6 +529,7 @@ export const createSizeInputSchema = z.object({
 });
 
 export const createProductInputSchema = z.object({
+  brand: optionalTextSchema(160),
   categoryId: idSchema,
   description: descriptionSchema,
   name: displayNameSchema,
@@ -536,12 +539,20 @@ export const createProductInputSchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+const catalogPriceMinorSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(2_147_483_647);
+
 export const createProductVariantInputSchema = z.object({
   colorId: idSchema,
+  costPriceMinor: catalogPriceMinorSchema.optional(),
   organizationId: idSchema,
   productId: idSchema,
   sizeId: idSchema,
   sku: skuSchema,
+  sellingPriceMinor: catalogPriceMinorSchema.optional(),
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
@@ -592,6 +603,26 @@ export const createProductServiceInputSchema = createProductInputSchema
 
 export const getProductServiceInputSchema = z
   .object({ productId: idSchema })
+  .strict();
+
+export const updateProductServiceInputSchema = z
+  .object({
+    brand: optionalTextSchema(160),
+    categoryId: idSchema,
+    description: descriptionSchema,
+    name: displayNameSchema,
+    productId: idSchema,
+    status: z.enum(["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"]),
+  })
+  .strict();
+
+export const updateProductVariantServiceInputSchema = z
+  .object({
+    costPriceMinor: catalogPriceMinorSchema,
+    sellingPriceMinor: catalogPriceMinorSchema,
+    status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]),
+    variantId: idSchema,
+  })
   .strict();
 
 export const primaryProductImageSchema = z
@@ -1545,6 +1576,9 @@ export type CreateProductServiceInputContract = z.infer<
 export type GetProductServiceInputContract = z.infer<
   typeof getProductServiceInputSchema
 >;
+export type UpdateProductServiceInputContract = z.infer<
+  typeof updateProductServiceInputSchema
+>;
 export type SetPrimaryProductImageInputContract = z.infer<
   typeof setPrimaryProductImageServiceInputSchema
 >;
@@ -1571,6 +1605,9 @@ export type RemovePrimaryProductImageInputContract = z.infer<
 >;
 export type CreateProductVariantServiceInputContract = z.infer<
   typeof createProductVariantServiceInputSchema
+>;
+export type UpdateProductVariantServiceInputContract = z.infer<
+  typeof updateProductVariantServiceInputSchema
 >;
 export type ListProductVariantsServiceInputContract = z.infer<
   typeof listProductVariantsServiceInputSchema
@@ -1832,6 +1869,7 @@ export type SizeContract = CatalogRecordContract & {
 };
 
 export type ProductContract = CatalogRecordContract & {
+  brand: string | null;
   categoryId: string;
   description: string | null;
   name: string;
@@ -1843,10 +1881,12 @@ export type ProductContract = CatalogRecordContract & {
 
 export type ProductVariantContract = CatalogRecordContract & {
   colorId: string;
+  costPriceMinor: number;
   organizationId: string;
   productId: string;
   sizeId: string;
   sku: string;
+  sellingPriceMinor: number;
   status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
 };
 
@@ -2191,6 +2231,7 @@ export const sizeContractSchema = z
 
 export const productContractSchema = z
   .object({
+    brand: z.string().nullable(),
     categoryId: idSchema,
     createdAt: isoTimestampSchema,
     description: z.string().nullable(),
@@ -2207,12 +2248,14 @@ export const productContractSchema = z
 export const productVariantContractSchema = z
   .object({
     colorId: idSchema,
+    costPriceMinor: minorUnitAmountSchema,
     createdAt: isoTimestampSchema,
     id: idSchema,
     organizationId: idSchema,
     productId: idSchema,
     sizeId: idSchema,
     sku: z.string(),
+    sellingPriceMinor: minorUnitAmountSchema,
     status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]),
     updatedAt: isoTimestampSchema,
   })
@@ -2587,6 +2630,7 @@ export const salesOrderContractSchema = z
     confirmedAt: isoTimestampSchema.nullable(),
     createdAt: isoTimestampSchema,
     currencyCode: salesOrderCurrencyCodeSchema,
+    customerId: idSchema.nullable().optional(),
     customerEmail: z.string().nullable(),
     customerName: z.string().nullable(),
     customerPhone: z.string().nullable(),
@@ -3290,6 +3334,8 @@ export const posCheckoutContractSchema = z
 export const checkoutPosCartServiceInputSchema = z
   .object({
     cartId: idSchema,
+    customerId: idSchema.nullable().optional(),
+    discountMinor: minorUnitAmountSchema.optional(),
     idempotencyKey: z
       .string()
       .trim()
@@ -4101,6 +4147,9 @@ export type OperationalReportContract = {
     outstandingMinor: number;
     refundMinor: number;
     returnCreditMinor: number;
+    customerDueMinor?: number;
+    profitEstimateMinor?: number;
+    vendorPayableMinor?: number;
   };
   payments: {
     amountMinor: number;
@@ -4117,6 +4166,8 @@ export type OperationalReportContract = {
     onHand: number;
     outOfStockPositions: number;
     reserved: number;
+    inventoryValueMinor?: number;
+    lowStockPositions?: number;
   };
   returns: {
     count: number;
