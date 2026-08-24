@@ -17,6 +17,7 @@ export function mapSalesOrder(order: SalesOrder): SalesOrderServiceContract {
     confirmedAt: serializeNullableDate(order.confirmedAt),
     createdAt: order.createdAt.toISOString(),
     currencyCode: "BDT",
+    customerId: order.customerId ?? null,
     customerEmail: order.customerEmail,
     customerName: order.customerName,
     customerPhone: order.customerPhone,

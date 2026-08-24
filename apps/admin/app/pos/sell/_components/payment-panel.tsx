@@ -4,6 +4,7 @@ import { CreditCard, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import type {
   CheckoutPosCartServiceInputContract,
+  CustomerSummaryContract,
   PaymentMethodContract,
 } from "@senvo/contracts";
 import {
@@ -27,12 +28,14 @@ function newDraft(amount = ""): PaymentDraft {
 
 export function PaymentPanel({
   canApproveDue,
+  customers = [],
   onCancel,
   onComplete,
   submitting,
   totalMinor,
 }: {
   canApproveDue: boolean;
+  customers?: readonly CustomerSummaryContract[];
   onCancel: () => void;
   onComplete: (
     payload: Omit<
@@ -47,9 +50,13 @@ export function PaymentPanel({
     newDraft(takaInput(totalMinor)),
   ]);
   const [allowOutstanding, setAllowOutstanding] = useState(false);
+  const [customerId, setCustomerId] = useState("");
+  const [discount, setDiscount] = useState("0.00");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const discountMinor = Math.max(0, Math.round(Number(discount || "0") * 100));
+  const payableMinor = Math.max(0, totalMinor - discountMinor);
   const enteredMinor = useMemo(() => paymentTotal(drafts), [drafts]);
-  const remainingMinor = remainingPayment(totalMinor, enteredMinor);
+  const remainingMinor = remainingPayment(payableMinor, enteredMinor);
 
   function update(id: string, patch: Partial<PaymentDraft>) {
     setDrafts((current) =>
@@ -62,7 +69,11 @@ export function PaymentPanel({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const validation = validatePayments(drafts, totalMinor, allowOutstanding);
+    if (discountMinor > totalMinor) {
+      setErrors({ discount: "Discount cannot exceed the order subtotal." });
+      return;
+    }
+    const validation = validatePayments(drafts, payableMinor, allowOutstanding);
     if (!validation.ok) {
       setErrors(validation.errors);
       setTimeout(() =>
@@ -79,7 +90,12 @@ export function PaymentPanel({
       )
     )
       return;
-    onComplete({ allowOutstanding, payments: validation.payments });
+    onComplete({
+      allowOutstanding,
+      customerId: customerId || null,
+      discountMinor,
+      payments: validation.payments,
+    });
   }
 
   return (
@@ -99,10 +115,42 @@ export function PaymentPanel({
         </button>
       </header>
       <form onSubmit={submit}>
+        <div className="pos-payment-lines">
+          <label>
+            Customer
+            <select
+              disabled={submitting}
+              onChange={(event) => setCustomerId(event.target.value)}
+              value={customerId}
+            >
+              <option value="">Walk-in customer</option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name} - {customer.phone}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Discount (BDT)
+            <input
+              aria-invalid={Boolean(errors.discount)}
+              disabled={submitting}
+              min="0"
+              onChange={(event) => setDiscount(event.target.value)}
+              step="0.01"
+              type="number"
+              value={discount}
+            />
+            {errors.discount ? (
+              <small className="pos-field-error">{errors.discount}</small>
+            ) : null}
+          </label>
+        </div>
         <div className="pos-payment-summary">
           <div>
             <span>Order total</span>
-            <strong>{formatBdt(totalMinor)}</strong>
+            <strong>{formatBdt(payableMinor)}</strong>
           </div>
           <div>
             <span>Entered payment</span>
@@ -117,7 +165,7 @@ export function PaymentPanel({
           className="pos-sale-secondary"
           disabled={submitting}
           onClick={() => {
-            setDrafts([newDraft(takaInput(totalMinor))]);
+            setDrafts([newDraft(takaInput(payableMinor))]);
             setAllowOutstanding(false);
             setErrors({});
           }}

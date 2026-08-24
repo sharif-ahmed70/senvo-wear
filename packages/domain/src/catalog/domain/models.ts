@@ -72,6 +72,7 @@ export type Size = {
 };
 
 export type Product = {
+  brand: string | null;
   categoryId: string;
   createdAt: Date;
   description: string | null;
@@ -86,12 +87,14 @@ export type Product = {
 
 export type ProductVariant = {
   colorId: string;
+  costPriceMinor: number;
   createdAt: Date;
   id: string;
   organizationId: string;
   productId: string;
   sizeId: string;
   sku: string;
+  sellingPriceMinor: number;
   status: ProductVariantStatus;
   updatedAt: Date;
 };

@@ -46,6 +46,7 @@ export type SalesOrder = {
   confirmedAt: Date | null;
   createdAt: Date;
   currencyCode: string;
+  customerId?: string | null;
   customerEmail: string | null;
   customerName: string | null;
   customerPhone: string | null;

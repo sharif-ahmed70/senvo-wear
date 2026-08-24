@@ -416,6 +416,23 @@ export class PrismaProductRepository implements ProductRepository {
     });
     return records.map((record) => record.collectionId);
   }
+
+  async update(record: {
+    brand: string | null;
+    categoryId: string;
+    description: string | null;
+    id: string;
+    name: string;
+    organizationId: string;
+    status: Product["status"];
+  }): Promise<Product | null> {
+    const { id, organizationId, ...data } = record;
+    const result = await this.prisma.product.updateMany({
+      data,
+      where: { id, organizationId },
+    });
+    return result.count ? this.findById(id, organizationId) : null;
+  }
 }
 
 export class PrismaProductVariantRepository implements ProductVariantRepository {
@@ -456,6 +473,25 @@ export class PrismaProductVariantRepository implements ProductVariantRepository 
       where: { organizationId, productId },
     });
     return records.map(mapProductVariant);
+  }
+
+  async update(record: {
+    costPriceMinor: number;
+    id: string;
+    organizationId: string;
+    sellingPriceMinor: number;
+    status: ProductVariant["status"];
+  }): Promise<ProductVariant | null> {
+    const { id, organizationId, ...data } = record;
+    const result = await this.prisma.productVariant.updateMany({
+      data,
+      where: { id, organizationId },
+    });
+    if (!result.count) return null;
+    const updated = await this.prisma.productVariant.findFirst({
+      where: { id, organizationId },
+    });
+    return updated ? mapProductVariant(updated) : null;
   }
 }
 

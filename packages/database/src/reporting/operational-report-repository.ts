@@ -34,6 +34,7 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
       returnRows,
       reasonRows,
       staffRows,
+      financialRows,
     ] = await Promise.all([
       this.prisma.$queryRaw<
         {
@@ -136,6 +137,8 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
           on_hand: NumberValue;
           out_of_stock_positions: NumberValue;
           reserved: NumberValue;
+          inventory_value_minor: NumberValue;
+          low_stock_positions: NumberValue;
         }[]
       >`
           WITH on_hand AS (
@@ -192,8 +195,13 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
             COALESCE(SUM(on_hand), 0)::bigint AS on_hand,
             COALESCE(SUM(reserved), 0)::bigint AS reserved,
             COALESCE(SUM(on_hand - reserved), 0)::bigint AS available_to_sell,
-            COUNT(*) FILTER (WHERE on_hand - reserved <= 0)::bigint AS out_of_stock_positions
-          FROM positions`,
+            COUNT(*) FILTER (WHERE on_hand - reserved <= 0)::bigint AS out_of_stock_positions,
+            COUNT(*) FILTER (WHERE on_hand - reserved BETWEEN 1 AND 5)::bigint AS low_stock_positions,
+            COALESCE(SUM(on_hand * variant.cost_price_minor), 0)::bigint AS inventory_value_minor
+          FROM positions
+          INNER JOIN product_variants variant
+            ON variant.id = positions.variant_id
+           AND variant.organization_id = ${input.organizationId}::uuid`,
       this.prisma.$queryRaw<
         {
           credit_minor: NumberValue;
@@ -252,16 +260,78 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
             AND receipt.issued_at < bounds.ends_at
           GROUP BY receipt.staff_name
           ORDER BY sales_minor DESC, receipt.staff_name ASC`,
+      this.prisma.$queryRaw<
+        {
+          customer_due_minor: NumberValue;
+          profit_estimate_minor: NumberValue;
+          vendor_payable_minor: NumberValue;
+        }[]
+      >`${bounds}
+          SELECT
+            COALESCE((
+              SELECT SUM(GREATEST(
+                batch.payable_minor - batch.paid_minor
+                - COALESCE(collections.amount_minor, 0)
+                - COALESCE(credits.amount_minor, 0),
+                0
+              ))
+              FROM payment_batches batch
+              LEFT JOIN LATERAL (
+                SELECT SUM(collection.amount_minor)::bigint AS amount_minor
+                FROM payment_collections collection
+                WHERE collection.payment_batch_id = batch.id
+                  AND collection.organization_id = batch.organization_id
+              ) collections ON true
+              LEFT JOIN LATERAL (
+                SELECT SUM(sale_return.total_credit_minor)::bigint AS amount_minor
+                FROM pos_sale_returns sale_return
+                WHERE sale_return.sales_order_id = batch.sales_order_id
+                  AND sale_return.organization_id = batch.organization_id
+              ) credits ON true
+              WHERE batch.organization_id = ${input.organizationId}::uuid
+            ), 0)::bigint AS customer_due_minor,
+            COALESCE((
+              SELECT SUM(line.line_total_minor - line.quantity * variant.cost_price_minor)
+              FROM sales_receipt_lines line
+              INNER JOIN sales_receipts receipt
+                ON receipt.id = line.receipt_id
+               AND receipt.organization_id = line.organization_id
+              INNER JOIN product_variants variant
+                ON variant.organization_id = line.organization_id
+               AND variant.sku = line.sku
+              CROSS JOIN report_bounds period
+              WHERE line.organization_id = ${input.organizationId}::uuid
+                AND receipt.issued_at >= period.starts_at
+                AND receipt.issued_at < period.ends_at
+            ), 0)::bigint AS profit_estimate_minor,
+            GREATEST(
+              COALESCE((
+                SELECT SUM(purchase.total_minor)
+                FROM purchase_orders purchase
+                WHERE purchase.organization_id = ${input.organizationId}::uuid
+                  AND purchase.status = 'RECEIVED'
+              ), 0) -
+              COALESCE((
+                SELECT SUM(payment.amount_minor)
+                FROM vendor_payments payment
+                WHERE payment.organization_id = ${input.organizationId}::uuid
+              ), 0),
+              0
+            )::bigint AS vendor_payable_minor
+          FROM report_bounds`,
     ]);
     const sales = salesRows[0];
     const inventory = inventoryRows[0];
     const returns = returnRows[0];
+    const financials = financialRows[0];
     return {
       inventory: {
         availableToSell: number(inventory?.available_to_sell),
         onHand: number(inventory?.on_hand),
         outOfStockPositions: number(inventory?.out_of_stock_positions),
         reserved: number(inventory?.reserved),
+        inventoryValueMinor: number(inventory?.inventory_value_minor),
+        lowStockPositions: number(inventory?.low_stock_positions),
       },
       payments: paymentRows.map((row) => ({
         amountMinor: number(row.amount_minor),
@@ -295,6 +365,9 @@ export class PrismaOperationalReportRepository implements OperationalReportRepos
         outstandingMinor: number(sales?.outstanding_minor),
         refundMinor: number(sales?.refund_minor),
         returnCreditMinor: number(sales?.return_credit_minor),
+        customerDueMinor: number(financials?.customer_due_minor),
+        profitEstimateMinor: number(financials?.profit_estimate_minor),
+        vendorPayableMinor: number(financials?.vendor_payable_minor),
       },
       staff: staffRows.map((row) => ({
         collectedMinor: number(row.collected_minor),

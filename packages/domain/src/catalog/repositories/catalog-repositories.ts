@@ -75,6 +75,7 @@ export type CreateSizeRecord = Pick<
 
 export type CreateProductRecord = Pick<
   Product,
+  | "brand"
   | "categoryId"
   | "description"
   | "name"
@@ -86,7 +87,14 @@ export type CreateProductRecord = Pick<
 
 export type CreateProductVariantRecord = Pick<
   ProductVariant,
-  "colorId" | "organizationId" | "productId" | "sizeId" | "sku" | "status"
+  | "colorId"
+  | "costPriceMinor"
+  | "organizationId"
+  | "productId"
+  | "sellingPriceMinor"
+  | "sizeId"
+  | "sku"
+  | "status"
 >;
 
 export type CatalogListFilter = {
@@ -202,6 +210,15 @@ export type CatalogProductManagementRepository = ProductRepository & {
     organizationId: string;
     productIds: readonly string[];
   }): Promise<void>;
+  update(record: {
+    brand: string | null;
+    categoryId: string;
+    description: string | null;
+    id: string;
+    name: string;
+    organizationId: string;
+    status: Product["status"];
+  }): Promise<Product | null>;
 };
 
 export type CatalogProductVariantManagementRepository =
@@ -210,4 +227,11 @@ export type CatalogProductVariantManagementRepository =
       organizationId: string,
       productId: string,
     ): Promise<ProductVariant[]>;
+    update(record: {
+      costPriceMinor: number;
+      id: string;
+      organizationId: string;
+      sellingPriceMinor: number;
+      status: ProductVariant["status"];
+    }): Promise<ProductVariant | null>;
   };

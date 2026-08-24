@@ -67,6 +67,17 @@ enum ProductVariantStatus {
   ARCHIVED
 }
 
+enum CommercePartyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  RECEIVED
+  CANCELLED
+}
+
 enum MediaType {
   IMAGE
 }
@@ -334,6 +345,11 @@ model Organization {
   catalogMediaLinks CatalogMediaLink[]
   posCounters    PosCounter[]
   products       Product[]
+  customers      Customer[]
+  vendors        Vendor[]
+  purchaseOrders PurchaseOrder[]
+  purchaseOrderLines PurchaseOrderLine[]
+  vendorPayments VendorPayment[]
   sizes          Size[]
   stockLocations StockLocation[]
   variants       ProductVariant[]
@@ -574,6 +590,7 @@ model StockLocation {
   destinationInventoryMovements InventoryMovement[] @relation("InventoryMovementDestinationLocation")
   inventoryReservations InventoryReservation[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
+  purchaseOrders PurchaseOrder[]
   posSaleReturns PosSaleReturn[]
 
   @@unique([id, organizationId])
@@ -696,6 +713,7 @@ model Product {
   slug           String        @db.VarChar(120)
   productCode    String        @map("product_code") @db.VarChar(64)
   description    String?       @db.VarChar(2000)
+  brand          String?       @db.VarChar(160)
   status         ProductStatus @default(DRAFT)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -773,6 +791,7 @@ model ProductVariant {
   sizeId         String               @map("size_id") @db.Uuid
   sku            String               @db.VarChar(80)
   status         ProductVariantStatus @default(ACTIVE)
+  costPriceMinor Int                  @default(0) @map("cost_price_minor")
   sellingPriceMinor Int                @default(0) @map("selling_price_minor")
   createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -788,6 +807,7 @@ model ProductVariant {
   posCartLines PosCartLine[]
   posSaleReturnLines PosSaleReturnLine[]
   mediaLinks CatalogMediaLink[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([id, organizationId])
   @@unique([id, productId, organizationId], map: "product_variants_id_product_org_key")
@@ -1572,6 +1592,7 @@ model InventoryMovement {
   fulfilledSalesOrder SalesOrder?               @relation("SalesOrderFulfillmentMovement")
   lines               InventoryMovementLine[]
   posSaleReturn       PosSaleReturn?
+  purchaseOrder       PurchaseOrder?
 
   @@unique([id, organizationId])
   @@unique([organizationId, movementNumber])
@@ -1732,6 +1753,7 @@ model SalesOrder {
   payloadSignature       String            @map("payload_signature") @db.Text
   note                   String?           @db.VarChar(1000)
   version                Int               @default(1)
+  customerId             String?           @map("customer_id") @db.Uuid
   createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   reservedAt             DateTime?         @map("reserved_at") @db.Timestamptz(6)
@@ -1740,6 +1762,7 @@ model SalesOrder {
   fulfilledAt            DateTime?         @map("fulfilled_at") @db.Timestamptz(6)
 
   organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer             Customer?                  @relation(fields: [customerId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   allocationPolicy     InventoryAllocationPolicy? @relation(fields: [allocationPolicyId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   inventoryReservation InventoryReservation?      @relation("SalesOrderInventoryReservation", fields: [inventoryReservationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   fulfillmentMovement  InventoryMovement?         @relation("SalesOrderFulfillmentMovement", fields: [fulfillmentMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
@@ -1767,9 +1790,132 @@ model SalesOrder {
   @@index([organizationId, channel, createdAt, id])
   @@index([organizationId, boothId, createdAt, id])
   @@index([organizationId, customerPhone])
+  @@index([organizationId, customerId, createdAt, id])
   @@index([organizationId, allocationPolicyId])
   @@index([organizationId, inventoryReservationId])
   @@map("sales_orders")
+}
+
+model Customer {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  name           String              @db.VarChar(160)
+  phone          String              @db.VarChar(40)
+  email          String?             @db.VarChar(254)
+  address        String?             @db.VarChar(500)
+  status         CommercePartyStatus @default(ACTIVE)
+  version        Int                 @default(1)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrders   SalesOrder[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, phone])
+  @@index([organizationId, status, name, id])
+  @@map("customers")
+}
+
+model Vendor {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  name           String              @db.VarChar(160)
+  phone          String?             @db.VarChar(40)
+  location       String?             @db.VarChar(160)
+  address        String?             @db.VarChar(500)
+  status         CommercePartyStatus @default(ACTIVE)
+  version        Int                 @default(1)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  purchaseOrders PurchaseOrder[]
+  payments       VendorPayment[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, name])
+  @@index([organizationId, status, name, id])
+  @@map("vendors")
+}
+
+model PurchaseOrder {
+  id                    String              @id @default(uuid()) @db.Uuid
+  organizationId        String              @map("organization_id") @db.Uuid
+  vendorId              String              @map("vendor_id") @db.Uuid
+  destinationLocationId String              @map("destination_location_id") @db.Uuid
+  inventoryMovementId   String?             @map("inventory_movement_id") @db.Uuid
+  purchaseNumber        String              @map("purchase_number") @db.VarChar(64)
+  status                PurchaseOrderStatus @default(DRAFT)
+  totalMinor            Int                 @map("total_minor")
+  paidMinor             Int                 @default(0) @map("paid_minor")
+  note                  String?             @db.VarChar(1000)
+  idempotencyKey        String              @map("idempotency_key") @db.VarChar(128)
+  payloadSignature      String              @map("payload_signature") @db.Text
+  version               Int                 @default(1)
+  orderedAt             DateTime            @map("ordered_at") @db.Timestamptz(6)
+  receivedAt            DateTime?           @map("received_at") @db.Timestamptz(6)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vendor              Vendor             @relation(fields: [vendorId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  destinationLocation StockLocation      @relation(fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  inventoryMovement   InventoryMovement? @relation(fields: [inventoryMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  lines               PurchaseOrderLine[]
+  payments            VendorPayment[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, purchaseNumber])
+  @@unique([organizationId, idempotencyKey])
+  @@unique([inventoryMovementId, organizationId])
+  @@index([organizationId, vendorId, orderedAt, id])
+  @@index([organizationId, status, orderedAt, id])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  purchaseOrderId  String   @map("purchase_order_id") @db.Uuid
+  productVariantId String   @map("product_variant_id") @db.Uuid
+  lineNumber       Int      @map("line_number")
+  quantity         Int
+  unitCostMinor    Int      @map("unit_cost_minor")
+  lineTotalMinor   Int      @map("line_total_minor")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  purchaseOrder  PurchaseOrder  @relation(fields: [purchaseOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([purchaseOrderId, lineNumber])
+  @@unique([purchaseOrderId, productVariantId])
+  @@index([organizationId, productVariantId])
+  @@map("purchase_order_lines")
+}
+
+model VendorPayment {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  vendorId        String   @map("vendor_id") @db.Uuid
+  purchaseOrderId String?  @map("purchase_order_id") @db.Uuid
+  amountMinor     Int      @map("amount_minor")
+  method          PaymentMethod
+  reference       String?  @db.VarChar(120)
+  idempotencyKey  String   @map("idempotency_key") @db.VarChar(128)
+  paidAt          DateTime @map("paid_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vendor        Vendor         @relation(fields: [vendorId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, vendorId, paidAt, id])
+  @@index([organizationId, purchaseOrderId])
+  @@map("vendor_payments")
 }
 
 model SalesBooth {

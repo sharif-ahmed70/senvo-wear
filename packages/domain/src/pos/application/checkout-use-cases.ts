@@ -43,6 +43,13 @@ export async function checkoutCart(
     cartId: string;
     checkoutId: string;
     completedAt: Date;
+    customer?: {
+      email: string | null;
+      id: string;
+      name: string;
+      phone: string;
+    } | null;
+    discountMinor?: number;
     idempotencyKey: string;
     organizationId: string;
     paymentBatchId: string;
@@ -62,6 +69,7 @@ export async function checkoutCart(
   const paymentBatchId = assertId(input.paymentBatchId, "paymentBatchId");
   const receiptId = assertId(input.receiptId, "receiptId");
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
+  const discountMinor = input.discountMinor ?? 0;
   const payments = normalizePaymentInstructions(
     input.payments,
     input.allowOutstanding,
@@ -69,6 +77,12 @@ export async function checkoutCart(
   const paymentRequestSignature = createPaymentRequestSignature(
     payments,
     input.allowOutstanding,
+    input.customer || discountMinor
+      ? {
+          customerId: input.customer?.id ?? null,
+          discountMinor,
+        }
+      : undefined,
   );
   const preparation = await repositories.checkouts.prepare(
     cartId,
@@ -93,7 +107,7 @@ export async function checkoutCart(
   }
   validatePreparation(preparation, staffId);
   const balance = calculatePaymentBalance(
-    checkoutTotal(preparation),
+    checkoutTotal(preparation, discountMinor),
     payments,
     input.allowOutstanding,
   );
@@ -115,9 +129,14 @@ export async function checkoutCart(
         ? "EVENT_BOOTH"
         : "OFFLINE_STORE",
     currencyCode: "BDT",
+    customerEmail: input.customer?.email,
+    customerId: input.customer?.id,
+    customerName: input.customer?.name,
+    customerPhone: input.customer?.phone,
     idempotencyKey: orderKey,
     lines,
     note: `POS checkout ${checkoutId}`,
+    orderDiscountMinor: discountMinor,
     orderNumber: `POS-${suffix}`,
     organizationId,
   });
@@ -315,7 +334,10 @@ function subtotal(price: number, quantity: number): number {
   return value;
 }
 
-function checkoutTotal(preparation: PosCheckoutPreparation): number {
+function checkoutTotal(
+  preparation: PosCheckoutPreparation,
+  discountMinor: number,
+): number {
   let total = 0;
   for (const line of preparation.lines) {
     const next = total + subtotal(line.sellingPriceMinor, line.quantity);
@@ -324,5 +346,11 @@ function checkoutTotal(preparation: PosCheckoutPreparation): number {
     }
     total = next;
   }
-  return total;
+  if (
+    !Number.isInteger(discountMinor) ||
+    discountMinor < 0 ||
+    discountMinor > total
+  )
+    throw new ValidationApplicationError("Checkout discount is invalid.");
+  return total - discountMinor;
 }

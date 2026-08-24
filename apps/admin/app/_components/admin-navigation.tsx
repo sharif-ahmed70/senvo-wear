@@ -16,6 +16,9 @@ import {
   Clock3,
   ReceiptText,
   CircleDollarSign,
+  ContactRound,
+  Truck,
+  ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -41,6 +44,9 @@ const navigationIcons = {
   sessions: Clock3,
   checkouts: ReceiptText,
   newSale: CircleDollarSign,
+  customers: ContactRound,
+  vendors: Truck,
+  purchases: ClipboardList,
 } satisfies Record<AdminNavigationItem["icon"], typeof LayoutDashboard>;
 
 export function AdminNavigation({ session }: { session: AdminSession }) {

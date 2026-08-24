@@ -1,5 +1,6 @@
 import {
   createCatalogApiHandlers,
+  createCommerceApiHandlers,
   createInventoryReadApiHandlers,
   createOnlinePaymentApiHandlers,
   createOrganizationManagementApiHandlers,
@@ -102,6 +103,10 @@ const services = createApplicationServices({
 const security = { authenticationService, authorizationService };
 const handlers = {
   catalog: createCatalogApiHandlers({ catalog: services.catalog, ...security }),
+  commerce: createCommerceApiHandlers({
+    application: services.commerce,
+    ...security,
+  }),
   createSalesOrder: createSalesOrderApiHandler({
     sales: services.sales,
     ...security,

@@ -635,6 +635,14 @@ class FakeCatalog implements CatalogManagementApplication {
   updateCategoryStatus(context: ApplicationExecutionContext) {
     return this.success(context, {} as CategoryContract);
   }
+  updateProduct(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as ProductContract);
+  }
+  updateVariant(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as ProductVariantContract);
+  }
   updateColorStatus(context: ApplicationExecutionContext) {
     return this.success(context, {} as ColorContract);
   }

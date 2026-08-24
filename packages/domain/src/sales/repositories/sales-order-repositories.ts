@@ -56,6 +56,7 @@ export type CreateDraftSalesOrderRecord = {
   boothId: string | null;
   channel: SalesOrderChannel;
   currencyCode: string;
+  customerId: string | null;
   customerEmail: string | null;
   customerName: string | null;
   customerPhone: string | null;

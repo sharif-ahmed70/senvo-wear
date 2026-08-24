@@ -144,6 +144,31 @@ function Report({ report }: { report: OperationalReportContract }) {
           label="Out of stock"
           value={String(report.inventory.outOfStockPositions)}
         />
+        <Metric
+          icon={Boxes}
+          label="Stock value"
+          value={money(report.inventory.inventoryValueMinor ?? 0)}
+        />
+        <Metric
+          icon={PackageX}
+          label="Low stock"
+          value={String(report.inventory.lowStockPositions ?? 0)}
+        />
+        <Metric
+          icon={CircleDollarSign}
+          label="Estimated profit"
+          value={money(report.sales.profitEstimateMinor ?? 0)}
+        />
+        <Metric
+          icon={WalletCards}
+          label="Customer due"
+          value={money(report.sales.customerDueMinor ?? 0)}
+        />
+        <Metric
+          icon={WalletCards}
+          label="Vendor payable"
+          value={money(report.sales.vendorPayableMinor ?? 0)}
+        />
       </section>
       <section className="report-panel">
         <header>

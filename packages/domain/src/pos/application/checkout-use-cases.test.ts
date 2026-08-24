@@ -23,6 +23,7 @@ const ids = {
   session: "10000000-0000-4000-8000-000000000007",
   staff: "10000000-0000-4000-8000-000000000008",
   variant: "10000000-0000-4000-8000-000000000009",
+  customer: "10000000-0000-4000-8000-000000000014",
   payment: "10000000-0000-4000-8000-000000000012",
   receipt: "10000000-0000-4000-8000-000000000013",
 };
@@ -84,6 +85,47 @@ describe("POS checkout", () => {
       boothId,
       channel: "EVENT_BOOTH",
     });
+  });
+
+  it("links a customer and applies a server-validated order discount", async () => {
+    const checkouts = new FakeCheckoutRepository(preparation());
+    const dependencies = repositories(checkouts);
+    const result = await checkoutCart(dependencies, {
+      ...input(),
+      customer: {
+        email: "buyer@example.com",
+        id: ids.customer,
+        name: "Regular Buyer",
+        phone: "01700000000",
+      },
+      discountMinor: 500,
+      payments: [{ amountMinor: 4500, method: "CASH" }],
+    });
+    expect(result.checkout.totalMinor).toBe(4500);
+    expect(dependencies.salesOrders.created).toMatchObject({
+      customerId: ids.customer,
+      customerName: "Regular Buyer",
+      discountMinor: 500,
+    });
+    expect(dependencies.payments.created).toMatchObject({
+      payableMinor: 4500,
+      paidMinor: 4500,
+    });
+    expect(dependencies.receipts.created).toMatchObject({
+      customerName: "Regular Buyer",
+      discountMinor: 500,
+      totalMinor: 4500,
+    });
+  });
+
+  it("rejects a discount greater than the trusted cart subtotal", async () => {
+    const dependencies = repositories(
+      new FakeCheckoutRepository(preparation()),
+    );
+    await expect(
+      checkoutCart(dependencies, { ...input(), discountMinor: 5001 }),
+    ).rejects.toThrow("Checkout discount is invalid.");
+    expect(dependencies.salesOrders.created).toBeUndefined();
   });
 
   it.each([

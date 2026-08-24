@@ -78,3 +78,4 @@ export { PrismaOnlinePaymentRepository } from "./payment/online-payment-reposito
 export { PrismaReceiptRepository } from "./receipt/repository.js";
 export { PrismaStorefrontRepository } from "./storefront/repository.js";
 export { PrismaOperationalReportRepository } from "./reporting/operational-report-repository.js";
+export { PrismaCommerceRepository } from "./commerce/repository.js";
