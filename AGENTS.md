@@ -16,7 +16,8 @@ For the premium storefront redesign task, also read:
 
 - `docs/codex/SENVO_STOREFRONT_REDESIGN.md`
 - `docs/codex/FINAL_PROMPT.md`
-- `docs/codex/senvo-storefront-design-reference.zip`
+- `docs/codex/unpack-design-reference.sh` and the verified design package it
+  reconstructs from the numbered repository parts
 
 ## Storefront redesign boundary
 
