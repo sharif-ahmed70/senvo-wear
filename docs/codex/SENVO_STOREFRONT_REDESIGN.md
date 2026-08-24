@@ -6,8 +6,15 @@ Replace the basic presentation in `apps/storefront` with the approved premium
 Senvo fashion experience while preserving the monorepo's implemented backend,
 contracts, routes, media, inventory, cart, checkout, and payment behavior.
 
-Visual reference archive:
-`docs/codex/senvo-storefront-design-reference.zip`
+The visual reference is stored as numbered base64 parts so the complete binary
+design package can travel with the repository. Reconstruct and verify it with:
+
+```bash
+bash docs/codex/unpack-design-reference.sh
+```
+
+The extracted reference is then available at:
+`/tmp/senvo-storefront-design-reference/reference`
 
 Approved live reference:
 `https://senvo-fashion.hridoysakibahmed.chatgpt.site`
