@@ -525,7 +525,7 @@ model AuthenticationChallenge {
   user         User?        @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
-  @@index([organizationId, type, destination, status, createdAt])
+  @@index([organizationId, type, destination, status, createdAt], map: "auth_challenges_org_type_dest_status_created_idx")
   @@index([userId, status])
   @@index([expiresAt, status])
   @@map("authentication_challenges")

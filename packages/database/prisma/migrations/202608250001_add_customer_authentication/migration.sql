@@ -110,7 +110,7 @@ CREATE INDEX "authentication_sessions_organization_id_expires_at_idx"
 
 CREATE UNIQUE INDEX "authentication_challenges_secret_hash_key"
   ON "public"."authentication_challenges"("secret_hash");
-CREATE INDEX "authentication_challenges_organization_id_type_destination_status_created_at_idx"
+CREATE INDEX "auth_challenges_org_type_dest_status_created_idx"
   ON "public"."authentication_challenges"(
     "organization_id",
     "type",
