@@ -26,7 +26,9 @@
 - Authenticated mutations additionally require a session-bound CSRF value.
 - Browser responses never include raw session or CSRF tokens.
 - Return URLs accept only same-origin relative paths.
- - Auth responses are no-store and never expose stack traces.
+- Google account-creation consent is bound to the persisted one-time OAuth
+  challenge; the browser OAuth cookie cannot elevate that decision.
+- Auth responses are no-store and never expose stack traces.
 
 ## Abuse Controls
 

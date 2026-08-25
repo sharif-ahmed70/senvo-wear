@@ -107,7 +107,7 @@ export class CustomerAuthenticationService {
     };
   }
 
-  async startGoogle(): Promise<{
+  async startGoogle(input: { termsAccepted: boolean }): Promise<{
     challengeId: string;
     codeVerifier: string;
     state: string;
@@ -125,13 +125,19 @@ export class CustomerAuthenticationService {
     const challengeId = this.idGenerator();
     const now = this.clock();
     const request = google.authorizationRequest({ state });
-    await this.dependencies.repository.invalidateChallenges({
-      destination: "google-oauth",
-      organizationId,
-      type: "GOOGLE_OAUTH_STATE",
-    });
+    await Promise.all(
+      googleOAuthDestinations.map((destination) =>
+        this.dependencies.repository.invalidateChallenges({
+          destination,
+          organizationId,
+          type: "GOOGLE_OAUTH_STATE",
+        }),
+      ),
+    );
     await this.dependencies.repository.createChallenge({
-      destination: "google-oauth",
+      destination: input.termsAccepted
+        ? googleOAuthAccountCreationDestination
+        : googleOAuthExistingAccountDestination,
       expiresAt: new Date(now.getTime() + 10 * 60_000),
       id: challengeId,
       maxAttempts: 1,
@@ -156,7 +162,6 @@ export class CustomerAuthenticationService {
     code: string;
     codeVerifier: string;
     state: string;
-    termsAccepted: boolean;
   }): Promise<CustomerSessionResult> {
     const google = this.dependencies.google;
     if (!google) {
@@ -182,7 +187,7 @@ export class CustomerAuthenticationService {
       email,
     );
     if (!profile) {
-      if (!input.termsAccepted) {
+      if (challenge?.destination !== googleOAuthAccountCreationDestination) {
         throw new CustomerAuthenticationError(
           "VALIDATION",
           "Terms acceptance is required to create an account.",
@@ -430,12 +435,15 @@ export class CustomerAuthenticationService {
         profile = { ...profile, emailVerified: true, status: "ACTIVE" };
       }
       if (input.channel === "PHONE" && !profile.phoneVerified) {
-        await this.dependencies.repository.markPhoneVerified({
-          organizationId,
-          phone: destination,
-          userId: profile.userId,
-          verifiedAt: this.clock(),
-        });
+        const userId = profile.userId;
+        await this.mapIdentityConflict(() =>
+          this.dependencies.repository.markPhoneVerified({
+            organizationId,
+            phone: destination,
+            userId,
+            verifiedAt: this.clock(),
+          }),
+        );
         profile = {
           ...profile,
           phone: destination,
@@ -744,6 +752,13 @@ export class CustomerAuthenticationService {
 
 type DeliveryStatus = "SENT" | "UNAVAILABLE";
 
+const googleOAuthAccountCreationDestination =
+  "google-oauth:account-creation-approved";
+const googleOAuthExistingAccountDestination = "google-oauth:existing-account";
+const googleOAuthDestinations = [
+  googleOAuthAccountCreationDestination,
+  googleOAuthExistingAccountDestination,
+] as const;
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();

@@ -31,7 +31,7 @@ export function ForgotPasswordWorkspace() {
   return (
     <AuthShell eyebrow="Account recovery" title="Reset your password">
       {feedback ? (
-        <p className="auth-feedback success">
+        <p className="auth-feedback success" aria-live="polite">
           {feedback}
         </p>
       ) : (
@@ -88,7 +88,7 @@ export function ResetPasswordWorkspace() {
       {!challengeId || !token ? (
         <AuthError message="This reset link is incomplete." />
       ) : feedback ? (
-        <p className="auth-feedback success">
+        <p className="auth-feedback success" aria-live="polite">
           {feedback}
         </p>
       ) : (
@@ -138,7 +138,7 @@ export function VerifyEmailWorkspace() {
   }, [challengeId, token]);
   return (
     <AuthShell eyebrow="Email verification" title="Confirm your email">
-      <p className="auth-feedback">
+      <p className="auth-feedback" aria-live="polite">
         {state}
       </p>
       <AuthLinks primary={{ href: "/account", label: "Go to your account" }} />

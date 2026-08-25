@@ -70,14 +70,15 @@ async function handle(
 
     if (matches(request, path, "POST", "/storefront/auth/google/start")) {
       const input = parse(customerGoogleStartInputSchema, body);
-      const result = await options.application.startGoogle();
+      const result = await options.application.startGoogle({
+        termsAccepted: input.termsAccepted,
+      });
       const oauthState = Buffer.from(
         JSON.stringify({
           challengeId: result.challengeId,
           codeVerifier: result.codeVerifier,
           redirect: safeRedirect(input.redirect),
           state: result.state,
-          termsAccepted: input.termsAccepted,
         }),
       ).toString("base64url");
       response.setHeader(
@@ -98,7 +99,6 @@ async function handle(
         code,
         codeVerifier: oauth.codeVerifier,
         state,
-        termsAccepted: oauth.termsAccepted,
       });
       setSession(response, result, options.secureCookies);
       appendCookie(
@@ -338,7 +338,6 @@ function parseGoogleCookie(value: string | undefined): {
   codeVerifier: string;
   redirect: string;
   state: string;
-  termsAccepted: boolean;
 } | null {
   if (!value) return null;
   try {
@@ -348,14 +347,12 @@ function parseGoogleCookie(value: string | undefined): {
     return typeof parsed.challengeId === "string" &&
       typeof parsed.codeVerifier === "string" &&
       typeof parsed.redirect === "string" &&
-      typeof parsed.state === "string" &&
-      typeof parsed.termsAccepted === "boolean"
+      typeof parsed.state === "string"
       ? {
           challengeId: parsed.challengeId,
           codeVerifier: parsed.codeVerifier,
           redirect: safeRedirect(parsed.redirect),
           state: parsed.state,
-          termsAccepted: parsed.termsAccepted,
         }
       : null;
   } catch {

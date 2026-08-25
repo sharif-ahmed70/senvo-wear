@@ -464,19 +464,23 @@ export class PrismaCustomerAuthenticationRepository implements CustomerAuthentic
   async markPhoneVerified(
     input: Parameters<CustomerAuthenticationRepository["markPhoneVerified"]>[0],
   ): Promise<void> {
-    const result = await this.prisma.customerAccount.updateMany({
-      data: {
-        phone: input.phone,
-        phoneVerifiedAt: input.verifiedAt,
-        status: "ACTIVE",
-      },
-      where: {
-        organizationId: input.organizationId,
-        userId: input.userId,
-      },
-    });
-    if (result.count !== 1)
-      throw new BusinessRuleError("Customer was not found.");
+    try {
+      const result = await this.prisma.customerAccount.updateMany({
+        data: {
+          phone: input.phone,
+          phoneVerifiedAt: input.verifiedAt,
+          status: "ACTIVE",
+        },
+        where: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+        },
+      });
+      if (result.count !== 1)
+        throw new BusinessRuleError("Customer was not found.");
+    } catch (error) {
+      throw mapIntegrityError(error);
+    }
   }
 
   async replacePassword(

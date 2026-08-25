@@ -20,7 +20,12 @@ export function AccountWorkspace() {
   }, [loading, router, session]);
   if (loading || !session) {
     return (
-      <main className="premium-state-page">
+      <main
+        aria-busy="true"
+        aria-live="polite"
+        className="premium-state-page"
+        role="status"
+      >
         <div aria-hidden="true" className="spin" />
         <p>Loading your account...</p>
       </main>
@@ -94,12 +99,12 @@ export function AccountWorkspace() {
           </div>
         </dl>
         {error ? (
-          <p className="auth-feedback error">
+          <p className="auth-feedback error" role="alert">
             {error}
           </p>
         ) : null}
         {feedback ? (
-          <p className="auth-feedback success">
+          <p className="auth-feedback success" aria-live="polite">
             {feedback}
           </p>
         ) : null}
