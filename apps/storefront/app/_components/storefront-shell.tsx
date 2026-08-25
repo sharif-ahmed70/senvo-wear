@@ -10,6 +10,7 @@ import {
   Search,
   ShoppingBag,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 import { motion, useReducedMotion, useScroll, useSpring } from "motion/react";
@@ -38,6 +39,7 @@ import {
   taka,
   type StorefrontCatalog,
 } from "../_lib/storefront-api";
+import { useCustomerAuth } from "./customer-auth-provider";
 
 const emptyCart: HydratedCart = { lines: [], unavailable: [] };
 const mobileLinks = [
@@ -48,11 +50,13 @@ const mobileLinks = [
 ] as const;
 
 export function StorefrontShell({ children }: { children: ReactNode }) {
+  const { loading: authLoading, session } = useCustomerAuth();
   const [cart, setCart] = useState<HydratedCart>(emptyCart);
   const [cartCount, setCartCount] = useState(0);
   const [cartError, setCartError] = useState("");
   const [cartLoading, setCartLoading] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchCatalog, setSearchCatalog] = useState<StorefrontCatalog | null>(
@@ -62,6 +66,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [newsletterMessage, setNewsletterMessage] = useState("");
   const cartCloseButton = useRef<HTMLButtonElement>(null);
+  const authCloseButton = useRef<HTMLButtonElement>(null);
   const menuCloseButton = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -104,15 +109,17 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
 
   const closePanels = useCallback(() => {
     setCartOpen(false);
+    setAuthOpen(false);
     setMenuOpen(false);
     setSearchOpen(false);
     const previous = returnFocus.current;
     window.setTimeout(() => previous?.focus(), 0);
   }, []);
 
-  const openPanel = (panel: "cart" | "menu" | "search") => {
+  const openPanel = (panel: "auth" | "cart" | "menu" | "search") => {
     returnFocus.current = document.activeElement as HTMLElement | null;
     setCartOpen(panel === "cart");
+    setAuthOpen(panel === "auth");
     setMenuOpen(panel === "menu");
     setSearchOpen(panel === "search");
   };
@@ -129,7 +136,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
   }, [updateCount]);
 
   useEffect(() => {
-    const open = cartOpen || menuOpen || searchOpen;
+    const open = authOpen || cartOpen || menuOpen || searchOpen;
     document.body.classList.toggle("no-scroll", open);
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -141,20 +148,22 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
       document.body.classList.remove("no-scroll");
       window.removeEventListener("keydown", onKey);
     };
-  }, [cartOpen, closePanels, menuOpen, searchOpen]);
+  }, [authOpen, cartOpen, closePanels, menuOpen, searchOpen]);
 
   useEffect(() => {
-    const target = cartOpen
-      ? cartCloseButton.current
-      : menuOpen
-        ? menuCloseButton.current
-        : searchOpen
-          ? searchInput.current
-          : null;
+    const target = authOpen
+      ? authCloseButton.current
+      : cartOpen
+        ? cartCloseButton.current
+        : menuOpen
+          ? menuCloseButton.current
+          : searchOpen
+            ? searchInput.current
+            : null;
     if (!target) return;
     const timer = window.setTimeout(() => target.focus(), 0);
     return () => window.clearTimeout(timer);
-  }, [cartOpen, menuOpen, searchOpen]);
+  }, [authOpen, cartOpen, menuOpen, searchOpen]);
 
   useEffect(() => {
     if (!searchOpen || searchCatalog) return;
@@ -230,6 +239,39 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
           senvo<span>wear</span>
         </Link>
         <div className="header-actions">
+          {session ? (
+            <Link
+              aria-label={
+                session
+                  ? `Account for ${session.profile.firstName}`
+                  : "Sign in to your account"
+              }
+              className="header-icon"
+              href="/account"
+            >
+              <UserRound aria-hidden="true" size={20} />
+              <span className="sr-only">
+                {authLoading
+                  ? "Checking account"
+                  : session
+                    ? "Your account"
+                    : "Sign in"}
+              </span>
+            </Link>
+          ) : (
+            <button
+              aria-label="Sign in to your account"
+              className="header-icon"
+              disabled={authLoading}
+              onClick={() => openPanel("auth")}
+              type="button"
+            >
+              <UserRound aria-hidden="true" size={20} />
+              <span className="sr-only">
+                {authLoading ? "Checking account" : "Sign in"}
+              </span>
+            </button>
+          )}
           <button
             aria-label="Search products"
             className="header-icon"
@@ -330,10 +372,47 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
       <div
         aria-hidden="true"
         className={`panel-backdrop${
-          cartOpen || menuOpen || searchOpen ? " open" : ""
+          authOpen || cartOpen || menuOpen || searchOpen ? " open" : ""
         }`}
         onClick={closePanels}
       />
+
+      <aside
+        aria-hidden={!authOpen}
+        aria-label="Sign in options"
+        aria-modal="true"
+        className={`side-panel auth-drawer${authOpen ? " open" : ""}`}
+        inert={!authOpen}
+        onKeyDown={trapFocus}
+        role="dialog"
+      >
+        <div className="panel-header">
+          <span>Welcome to SENVO</span>
+          <button
+            aria-label="Close sign in options"
+            onClick={closePanels}
+            ref={authCloseButton}
+            type="button"
+          >
+            <X size={21} />
+          </button>
+        </div>
+        <div className="auth-drawer-body">
+          <p>Sign in your way and keep your saved bag exactly as it is.</p>
+          <Link href="/account/login" onClick={closePanels}>
+            Continue with email <ArrowRight size={17} />
+          </Link>
+          <Link href="/account/code?channel=phone" onClick={closePanels}>
+            Continue with phone <ArrowRight size={17} />
+          </Link>
+          <Link href="/account/code?channel=email" onClick={closePanels}>
+            Continue with email code <ArrowRight size={17} />
+          </Link>
+          <Link href="/account/register" onClick={closePanels}>
+            Create an account <ArrowRight size={17} />
+          </Link>
+        </div>
+      </aside>
 
       <aside
         aria-hidden={!menuOpen}

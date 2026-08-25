@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { StorefrontShell } from "./_components/storefront-shell";
+import { CustomerAuthProvider } from "./_components/customer-auth-provider";
 
 export const metadata: Metadata = {
   description:
@@ -28,7 +29,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <StorefrontShell>{children}</StorefrontShell>
+        <CustomerAuthProvider>
+          <StorefrontShell>{children}</StorefrontShell>
+        </CustomerAuthProvider>
       </body>
     </html>
   );

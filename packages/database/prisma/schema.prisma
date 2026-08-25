@@ -299,6 +299,8 @@ enum PermissionStatus {
 
 enum IdentityProvider {
   PASSWORD
+  EMAIL_OTP
+  PHONE_OTP
   GOOGLE
   MICROSOFT
 }
@@ -306,6 +308,32 @@ enum IdentityProvider {
 enum CredentialStatus {
   ACTIVE
   INACTIVE
+}
+
+enum CustomerAccountStatus {
+  ACTIVE
+  PENDING_VERIFICATION
+  SUSPENDED
+  DISABLED
+}
+
+enum AuthenticationChallengeType {
+  EMAIL_OTP
+  PHONE_OTP
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  GOOGLE_OAUTH_STATE
+}
+
+enum AuthenticationChallengeStatus {
+  ACTIVE
+  CONSUMED
+  INVALIDATED
+}
+
+enum AuthenticationSessionStatus {
+  ACTIVE
+  REVOKED
 }
 
 model Organization {
@@ -372,6 +400,10 @@ model Organization {
   posReturnReceipts PosReturnReceipt[]
   salesOrderLines SalesOrderLine[]
   memberships OrganizationMembership[]
+  customerAccounts CustomerAccount[]
+  authenticationChallenges AuthenticationChallenge[]
+  authenticationSessions AuthenticationSession[]
+  authenticationRateLimits AuthenticationRateLimit[]
   auditEntries AuditEntry[]
 
   @@map("organizations")
@@ -388,6 +420,9 @@ model User {
 
   memberships OrganizationMembership[]
   credentials UserCredential[]
+  customerAccounts CustomerAccount[]
+  authenticationChallenges AuthenticationChallenge[]
+  authenticationSessions AuthenticationSession[]
   auditEntries AuditEntry[]
   responsibleBooths SalesBooth[]
   openedSalesSessions SalesSession[]
@@ -420,6 +455,97 @@ model UserCredential {
   @@index([userId, status])
   @@index([status])
   @@map("user_credentials")
+}
+
+model CustomerAccount {
+  id                String                @id @default(uuid()) @db.Uuid
+  userId            String                @map("user_id") @db.Uuid
+  organizationId    String                @map("organization_id") @db.Uuid
+  firstName         String                @map("first_name") @db.VarChar(80)
+  lastName          String                @map("last_name") @db.VarChar(80)
+  phone             String?               @db.VarChar(32)
+  emailVerifiedAt   DateTime?             @map("email_verified_at") @db.Timestamptz(6)
+  phoneVerifiedAt   DateTime?             @map("phone_verified_at") @db.Timestamptz(6)
+  marketingConsent  Boolean               @default(false) @map("marketing_consent")
+  termsAcceptedAt   DateTime              @map("terms_accepted_at") @db.Timestamptz(6)
+  status            CustomerAccountStatus @default(PENDING_VERIFICATION)
+  version           Int                   @default(1)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([userId, organizationId])
+  @@unique([organizationId, phone])
+  @@index([organizationId, status])
+  @@index([userId, status])
+  @@map("customer_accounts")
+}
+
+model AuthenticationSession {
+  id             String                      @id @default(uuid()) @db.Uuid
+  userId         String                      @map("user_id") @db.Uuid
+  organizationId String                      @map("organization_id") @db.Uuid
+  tokenHash      String                      @unique @map("token_hash") @db.VarChar(64)
+  csrfTokenHash  String                      @map("csrf_token_hash") @db.VarChar(64)
+  status         AuthenticationSessionStatus @default(ACTIVE)
+  rememberMe     Boolean                     @default(false) @map("remember_me")
+  expiresAt      DateTime                    @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt     DateTime                    @map("last_used_at") @db.Timestamptz(6)
+  revokedAt      DateTime?                   @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([userId, organizationId, status])
+  @@index([organizationId, expiresAt])
+  @@map("authentication_sessions")
+}
+
+model AuthenticationChallenge {
+  id             String                        @id @default(uuid()) @db.Uuid
+  userId         String?                       @map("user_id") @db.Uuid
+  organizationId String                        @map("organization_id") @db.Uuid
+  type           AuthenticationChallengeType
+  destination    String                        @db.VarChar(320)
+  secretHash     String                        @unique @map("secret_hash") @db.VarChar(64)
+  status         AuthenticationChallengeStatus @default(ACTIVE)
+  attempts       Int                           @default(0)
+  maxAttempts    Int                           @default(5) @map("max_attempts")
+  resendCount    Int                           @default(0) @map("resend_count")
+  nextResendAt   DateTime                      @map("next_resend_at") @db.Timestamptz(6)
+  expiresAt      DateTime                      @map("expires_at") @db.Timestamptz(6)
+  consumedAt     DateTime?                     @map("consumed_at") @db.Timestamptz(6)
+  createdAt      DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([organizationId, type, destination, status, createdAt])
+  @@index([userId, status])
+  @@index([expiresAt, status])
+  @@map("authentication_challenges")
+}
+
+model AuthenticationRateLimit {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  action          String   @db.VarChar(64)
+  keyHash         String   @map("key_hash") @db.VarChar(64)
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(6)
+  attempts        Int      @default(0)
+  blockedUntil    DateTime? @map("blocked_until") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, action, keyHash])
+  @@index([organizationId, blockedUntil])
+  @@map("authentication_rate_limits")
 }
 
 model OrganizationMembership {

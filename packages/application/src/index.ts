@@ -1,4 +1,10 @@
 export { createApplicationServices } from "./composition/create-application-services.js";
+export {
+  CustomerAuthenticationError,
+  CustomerAuthenticationService,
+  type CustomerAuthenticationServiceDependencies,
+  type CustomerSessionResult,
+} from "./authentication/customer-authentication-service.js";
 export { StorefrontApplicationService } from "./storefront/storefront-application-service.js";
 export {
   OnlinePaymentApplicationService,

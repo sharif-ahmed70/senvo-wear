@@ -51,6 +51,8 @@ Copy `.env.example` values into local untracked environment files as needed. Do 
 
 Required foundation variables:
 
+- AUTH_SECRET: server-only HMAC pepper required to enable customer authentication; use at least 32 random bytes.
+- GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI: optional server-only Google OAuth configuration.
 - `DATABASE_URL`: PostgreSQL connection string for Prisma commands that need datasource validation.
 - `APP_ENV`: server-side environment label such as `development`, `staging`, or `production`.
 - `NEXT_PUBLIC_APP_ENV`: non-secret application environment label.

@@ -18,6 +18,10 @@ import {
   checkoutPosCartServiceInputSchema,
   createBranchInputSchema,
   createCredentialInputSchema,
+  customerLoginInputSchema,
+  customerOtpVerifyInputSchema,
+  customerRegisterInputSchema,
+  customerResetPasswordInputSchema,
   createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
   createColorInputSchema,
@@ -129,6 +133,70 @@ describe("catalog media contracts", () => {
         organizationId: productId,
         productId,
         storageKey: "unsafe/browser/key",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("customer authentication contracts", () => {
+  const registration = {
+    confirmPassword: "Strong!Password123",
+    email: " Customer@Example.com ",
+    firstName: "SENVO",
+    lastName: "Customer",
+    password: "Strong!Password123",
+    phone: "01712345678",
+    termsAccepted: true,
+  };
+
+  it("normalizes customer identifiers and rejects unknown registration fields", () => {
+    expect(customerRegisterInputSchema.parse(registration)).toMatchObject({
+      email: "customer@example.com",
+      phone: "+8801712345678",
+    });
+    expect(
+      customerRegisterInputSchema.safeParse({ ...registration, role: "ADMIN" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects weak or mismatched registration passwords", () => {
+    expect(
+      customerRegisterInputSchema.safeParse({
+        ...registration,
+        confirmPassword: "Different!Password123",
+      }).success,
+    ).toBe(false);
+    expect(
+      customerRegisterInputSchema.safeParse({
+        ...registration,
+        confirmPassword: "weak",
+        password: "weak",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("strictly validates login, OTP, and reset payloads", () => {
+    expect(
+      customerLoginInputSchema.safeParse({
+        email: "customer@example.com",
+        password: "secret",
+        organizationId: "forbidden",
+      }).success,
+    ).toBe(false);
+    expect(
+      customerOtpVerifyInputSchema.safeParse({
+        channel: "EMAIL",
+        code: "12345",
+        destination: "customer@example.com",
+      }).success,
+    ).toBe(false);
+    expect(
+      customerResetPasswordInputSchema.safeParse({
+        challengeId: "10000000-0000-4000-8000-000000000001",
+        confirmPassword: "Strong!Password123",
+        password: "Strong!Password123",
+        token: "short",
       }).success,
     ).toBe(false);
   });

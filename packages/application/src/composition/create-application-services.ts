@@ -26,6 +26,7 @@ import {
   PrismaStorefrontRepository,
   PrismaRolePermissionRepository,
   PrismaUserRepository,
+  PrismaCustomerAuthenticationRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -60,6 +61,11 @@ import type {
   PosReturnReceiptRepository,
   RolePermissionRepository,
   UserRepository,
+  AuthenticationMessageProvider,
+  AuthenticationSecretService,
+  CustomerAuthenticationRepository,
+  PasswordHasher,
+  GoogleOAuthProvider,
   StorefrontRepository,
 } from "@senvo/domain";
 import {
@@ -83,6 +89,7 @@ import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
+import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -128,6 +135,12 @@ export type CreateApplicationServicesOptions = {
   storageProvider?: ObjectStorageProvider;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
+  customerAuthenticationRepository?: CustomerAuthenticationRepository;
+  authenticationMessages?: AuthenticationMessageProvider;
+  authenticationSecrets?: AuthenticationSecretService;
+  passwordHasher?: PasswordHasher;
+  fallbackPasswordHash?: string;
+  googleOAuthProvider?: GoogleOAuthProvider;
 };
 
 export type ApplicationServices = {
@@ -139,6 +152,7 @@ export type ApplicationServices = {
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   storefront: StorefrontApplicationService;
+  customerAuthentication?: CustomerAuthenticationService;
 };
 
 export function createApplicationServices(
@@ -178,6 +192,8 @@ export function createApplicationServices(
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
   let sizeRepository = options.sizeRepository;
   let storefrontRepository = options.storefrontRepository;
+  let customerAuthenticationRepository =
+    options.customerAuthenticationRepository;
 
   if (
     !salesOrderRepository ||
@@ -215,6 +231,10 @@ export function createApplicationServices(
   storefrontRepository ??= new PrismaStorefrontRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!customerAuthenticationRepository && prismaClient) {
+    customerAuthenticationRepository =
+      new PrismaCustomerAuthenticationRepository(prismaClient);
+  }
 
   if (!inventoryMovementRepository) {
     inventoryMovementRepository = new PrismaInventoryMovementRepository(
@@ -341,6 +361,26 @@ export function createApplicationServices(
       })
     : undefined;
 
+  const customerAuthentication =
+    customerAuthenticationRepository &&
+    options.authenticationMessages &&
+    options.authenticationSecrets &&
+    options.passwordHasher &&
+    options.fallbackPasswordHash
+      ? new CustomerAuthenticationService({
+          fallbackPasswordHash: options.fallbackPasswordHash,
+          messages: options.authenticationMessages,
+          organizationCode:
+            options.storefrontOrganizationCode ??
+            process.env.STOREFRONT_ORGANIZATION_CODE ??
+            "",
+          passwords: options.passwordHasher,
+          repository: customerAuthenticationRepository,
+          secrets: options.authenticationSecrets,
+          google: options.googleOAuthProvider,
+        })
+      : undefined;
+
   return {
     catalog: new CatalogApplicationService({
       barcodes: barcodeRepository,
@@ -425,6 +465,7 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
       transactionManager,
     }),
+    customerAuthentication,
   };
 }
 

@@ -4,6 +4,13 @@ export {
   type DevelopmentRuntimeEnvironment,
 } from "./development-authentication.js";
 export {
+  NodeAuthenticationSecretService,
+  NodeScryptPasswordHasher,
+} from "./authentication-crypto.js";
+export { UnavailableAuthenticationMessageProvider } from "./authentication-message-provider.js";
+export { createCustomerAuthenticationRequestListener } from "./customer-authentication-http.js";
+export { loadGoogleOAuthProvider } from "./google-oauth-provider.js";
+export {
   createSenvoHttpRequestListener,
   createSenvoHttpServer,
   type NodeHttpAdapterOptions,

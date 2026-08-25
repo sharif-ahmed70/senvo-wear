@@ -50,6 +50,7 @@ export {
   PrismaRolePermissionRepository,
 } from "./authorization/repositories.js";
 export { PrismaUserCredentialRepository } from "./authentication/repositories.js";
+export { PrismaCustomerAuthenticationRepository } from "./authentication/customer-authentication-repository.js";
 export { PrismaAuditEntryRepository } from "./audit/repositories.js";
 export { PrismaTransactionManager } from "./transaction/prisma-transaction-manager.js";
 export {
