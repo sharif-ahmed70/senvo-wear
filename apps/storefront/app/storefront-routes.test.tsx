@@ -94,9 +94,19 @@ describe("storefront route states", () => {
 
   it("renders customer discovery controls and an accessible loading state", () => {
     const html = renderToStaticMarkup(createElement(CatalogWorkspace));
+    expect(html).toContain("SENVO featured collections");
+    expect(html).toContain("Made to move");
+    expect(html).toContain("Shop by category");
+    expect(html).toContain("The SENVO edit");
     expect(html).toContain("Search products");
     expect(html).toContain("Filter by category");
     expect(html).toContain("Loading products");
+  });
+
+  it("labels wishlist behavior as device-local and keeps quick view available", () => {
+    const html = renderToStaticMarkup(createElement(ProductCard, { product }));
+    expect(html).toContain("this device&#x27;s wishlist");
+    expect(html).toContain("Quick view");
   });
 
   it("keeps COD collection wording on the confirmation screen", () => {

@@ -5,6 +5,7 @@ import type {
 } from "./storefront-api";
 
 export const cartStorageKey = "senvo-storefront-cart-v1";
+export const cartChangedEvent = "senvo:storefront-cart-changed";
 export const checkoutPriceRefreshMessage =
   "Your order was refreshed with current prices. Please review the total before placing the order.";
 
@@ -16,6 +17,8 @@ export type PersistedCartLine = {
 export type HydratedCartLine = PersistedCartLine & {
   availability: "IN_STOCK";
   color: string;
+  imageAlt: string | null;
+  imageUrl: string | null;
   productName: string;
   productSlug: string;
   size: string;
@@ -60,6 +63,9 @@ export function writeCart(
     version: 1,
   };
   storage.setItem(cartStorageKey, JSON.stringify(cart));
+  if (typeof window !== "undefined" && storage === window.localStorage) {
+    window.dispatchEvent(new Event(cartChangedEvent));
+  }
 }
 
 export function addToCart(
@@ -137,9 +143,17 @@ function hydrateLine(
   product: StorefrontProduct,
   variant: StorefrontVariant,
 ): HydratedCartLine {
+  const media = product.media ?? [];
+  const image =
+    media.find((item) => item.productVariantId === variant.id) ??
+    media.find((item) => item.role === "PRIMARY") ??
+    media.find((item) => item.productVariantId === null) ??
+    product.primaryImage;
   return {
     availability: "IN_STOCK",
     color: variant.color.name,
+    imageAlt: image?.altText ?? null,
+    imageUrl: image?.url ?? null,
     productName: product.name,
     productSlug: product.slug,
     productVariantId: variant.id,

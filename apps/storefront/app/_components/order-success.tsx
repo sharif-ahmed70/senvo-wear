@@ -24,7 +24,7 @@ export function OrderSuccess() {
     return () => window.clearTimeout(timeout);
   }, []);
   return (
-    <main className="success-page">
+    <main className="success-page premium-state-page">
       {order?.paymentPreference === "ONLINE_PAYMENT" ? (
         <Clock3 />
       ) : (

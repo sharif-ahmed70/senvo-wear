@@ -144,21 +144,24 @@ export function CheckoutWorkspace() {
   }
   if (status === "loading")
     return (
-      <main className="empty" aria-live="polite">
+      <main className="premium-state-page" aria-live="polite">
+        <p className="eyebrow">Secure order review</p>
         <h1>Refreshing your order</h1>
         <p>Checking current products, prices, and availability...</p>
       </main>
     );
   if (status === "empty")
     return (
-      <main className="empty">
+      <main className="premium-state-page">
+        <p className="eyebrow">Secure order review</p>
         <h1>There is nothing to check out</h1>
         <Link href="/">Return to shop</Link>
       </main>
     );
   if (status === "error")
     return (
-      <main className="empty" aria-live="polite">
+      <main className="premium-state-page" aria-live="polite">
+        <p className="eyebrow">Secure order review</p>
         <h1>We could not refresh your order.</h1>
         <p>
           {error ||
@@ -172,7 +175,8 @@ export function CheckoutWorkspace() {
     );
   if (status === "unavailable")
     return (
-      <main className="empty" aria-live="polite">
+      <main className="premium-state-page" aria-live="polite">
+        <p className="eyebrow">Secure order review</p>
         <h1>Your bag needs attention</h1>
         <p>
           {error ||
@@ -185,10 +189,16 @@ export function CheckoutWorkspace() {
       </main>
     );
   return (
-    <main className="checkout-page">
+    <main className="checkout-page premium-checkout-page">
       <section>
-        <p className="eyebrow">Secure order review</p>
-        <h1>Delivery details</h1>
+        <header className="commerce-page-heading compact-heading">
+          <p className="eyebrow">Secure order review</p>
+          <h1>Delivery details</h1>
+          <p>
+            Complete your order with current availability and server-verified
+            totals.
+          </p>
+        </header>
         <p className="notice">{checkoutPriceRefreshMessage}</p>
         {error ? <p className="notice error">{error}</p> : null}
         <div className="summary checkout-summary">
