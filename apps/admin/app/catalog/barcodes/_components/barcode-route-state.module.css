@@ -1,0 +1,74 @@
+.state {
+  align-items: center;
+  background: linear-gradient(145deg, #fffefa, #faf6f0);
+  border: 1px solid #e4ddd4;
+  border-radius: 12px;
+  color: #6d655f;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  min-height: 420px;
+  padding: 36px;
+  text-align: center;
+}
+
+.state h1,
+.state h2 {
+  color: #241d19;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+  margin: 4px 0 0;
+}
+
+.state p {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 440px;
+}
+
+.icon {
+  align-items: center;
+  background: #f3e9df;
+  border-radius: 50%;
+  color: #74101f;
+  display: inline-flex;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+
+.retry {
+  align-items: center;
+  background: linear-gradient(180deg, #851126, #68101d);
+  border: 1px solid #65101d;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+  gap: 7px;
+  justify-content: center;
+  margin-top: 8px;
+  min-height: 40px;
+  padding: 0 15px;
+}
+
+.retry:focus-visible {
+  outline: 3px solid rgba(122, 16, 30, 0.22);
+  outline-offset: 2px;
+}
+
+.spinner {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
