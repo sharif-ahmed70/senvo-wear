@@ -65,6 +65,7 @@ For database verification, copy `.env.test.example` into an untracked local file
 
 ```sh
 pnpm dev
+pnpm dev:api
 pnpm dev:storefront
 pnpm dev:admin
 pnpm dev:pos
@@ -72,9 +73,32 @@ pnpm dev:pos
 
 Application ports:
 
+- Development API: `http://localhost:4000`
 - Storefront: `http://localhost:3000`
 - Admin: `http://localhost:3001`
 - POS: `http://localhost:3002`
+
+For a real local Storefront preview, start a local PostgreSQL database with the
+reviewed migrations and published catalog/stock data. Then use separate terminals:
+
+```powershell
+# Terminal 1: local PostgreSQL (or pnpm db:test:start when Docker is installed)
+# Terminal 2
+$env:APP_ENV="development"
+$env:DATABASE_URL="postgresql://<local-user>:<local-password>@127.0.0.1:5432/senvo_wear_dev"
+$env:STOREFRONT_ORGANIZATION_CODE="SENVO"
+$env:SSLCOMMERZ_ENABLED="false"
+corepack pnpm dev:api
+
+# Terminal 3
+$env:NEXT_PUBLIC_SENVO_API_URL="http://localhost:4000"
+corepack pnpm dev:storefront
+```
+
+The development API rejects non-loopback databases and production/staging-looking
+database names. It does not seed catalog data. Use only an explicitly local database;
+the public catalog requires an active organization, published catalog records, and
+posted stock at an active sellable location.
 
 ## Quality Commands
 

@@ -75,6 +75,12 @@ export type {
   ListStockLocationsServiceInputContract,
   PostInventoryMovementServiceInputContract,
 } from "./inventory/inventory-application-service.js";
+export {
+  WorkforceAuthenticationService,
+  WorkforceAuthenticationError,
+  type WorkforceLoginResult,
+  type WorkforceAuthenticationServiceDeps,
+} from "./workforce/workforce-authentication-service.js";
 export { SalesApplicationService } from "./sales/sales-application-service.js";
 export { PosApplicationService } from "./pos/pos-application-service.js";
 export type { PosApplicationServiceDependencies } from "./pos/pos-application-service.js";

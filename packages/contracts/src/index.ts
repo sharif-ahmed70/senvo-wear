@@ -559,6 +559,17 @@ export const customerVerificationInputSchema = z
 export const customerVerificationRequestInputSchema = z.object({}).strict();
 
 export const customerLogoutInputSchema = z.object({}).strict();
+
+export const workforceLoginInputSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    password: z.string().min(8).max(128),
+    rememberMe: z.boolean().optional().default(false),
+  })
+  .strict();
+
+export const workforceLogoutInputSchema = z.object({}).strict();
+
 export const customerGoogleStartInputSchema = z
   .object({
     redirect: z.string().trim().max(512).optional(),
@@ -1877,6 +1888,12 @@ export type CustomerVerificationInputContract = z.infer<
 >;
 export type DisableCredentialInputContract = z.infer<
   typeof disableCredentialInputSchema
+>;
+export type WorkforceLoginInputContract = z.infer<
+  typeof workforceLoginInputSchema
+>;
+export type WorkforceLogoutInputContract = z.infer<
+  typeof workforceLogoutInputSchema
 >;
 export type RecordAuditEntryInputContract = z.infer<
   typeof recordAuditEntryInputSchema

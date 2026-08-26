@@ -704,6 +704,15 @@ export {
   normalizeAuditResource,
 } from "./audit/domain/value-objects.js";
 export type {
+  WorkforceAuthenticationSession,
+  WorkforcePrincipal,
+  WorkforceSessionRecord,
+} from "./workforce/domain/models.js";
+export type {
+  WorkforceAuthenticationRepository,
+  WorkforceSessionWithPrincipal,
+} from "./workforce/repositories/workforce-authentication-repository.js";
+export type {
   AuditEntryRepository,
   CreateAuditEntryRecord,
 } from "./audit/repositories/audit-repositories.js";

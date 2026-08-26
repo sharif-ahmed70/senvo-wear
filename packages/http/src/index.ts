@@ -9,7 +9,13 @@ export {
 } from "./authentication-crypto.js";
 export { UnavailableAuthenticationMessageProvider } from "./authentication-message-provider.js";
 export { createCustomerAuthenticationRequestListener } from "./customer-authentication-http.js";
+export { createWorkforceAuthenticationRequestListener } from "./workforce-authentication-http.js";
 export { loadGoogleOAuthProvider } from "./google-oauth-provider.js";
+export { createDevelopmentCorsRequestListener } from "./development-cors.js";
+export {
+  loadDevelopmentServerConfig,
+  type DevelopmentServerConfig,
+} from "./development-server-config.js";
 export {
   createSenvoHttpRequestListener,
   createSenvoHttpServer,

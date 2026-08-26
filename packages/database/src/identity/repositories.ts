@@ -121,6 +121,24 @@ export class PrismaOrganizationMembershipRepository
     return this.findById(record.id, record.organizationId);
   }
 
+  async listByUser(userId: string): Promise<OrganizationMembership[]> {
+    const records = await this.prisma.organizationMembership.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+    });
+    return records.map(mapMembership);
+  }
+
+  async findFirstActiveByUser(
+    userId: string,
+  ): Promise<OrganizationMembership | null> {
+    const record = await this.prisma.organizationMembership.findFirst({
+      where: { userId, status: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+    });
+    return record ? mapMembership(record) : null;
+  }
+
   async assignRole(record: {
     expectedVersion: number;
     id: string;
