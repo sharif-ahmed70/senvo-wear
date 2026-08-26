@@ -465,6 +465,9 @@ function MovementPreview({ movement }: { movement: InventoryMovementHistoryContr
         <span>Movement ID</span>
         <code title={movement.id}>{movement.id}</code>
       </div>
+      <Link className={styles.primaryButton} href={movementDetailHref(movement)}>
+        View full movement <ArrowRight size={15} />
+      </Link>
       <p className={styles.integrationNote}>
         Reference, notes, reversal metadata and full movement lines are intentionally not invented here. The current read contract does not expose them; a future detail endpoint can hydrate this same panel without redesigning it.
       </p>
@@ -543,6 +546,21 @@ function iconForType(type: MovementType) {
   if (type === "TRANSFER") return <ArrowRightLeft size={20} />;
   if (type === "ISSUE" || type === "ADJUSTMENT_OUT") return <PackageMinus size={20} />;
   return <SlidersHorizontal size={20} />;
+}
+
+function movementDetailHref(movement: InventoryMovementHistoryContract) {
+  const params = new URLSearchParams({
+    occurredAt: movement.occurredAt,
+    productName: movement.variant.productName,
+    quantity: String(movement.quantity),
+    sku: movement.variant.sku,
+    status: movement.status,
+    type: movement.type,
+    variant: `${movement.variant.color} / ${movement.variant.size}`,
+  });
+  if (movement.sourceLocation?.name) params.set("source", movement.sourceLocation.name);
+  if (movement.destinationLocation?.name) params.set("destination", movement.destinationLocation.name);
+  return `/inventory/movements/${encodeURIComponent(movement.id)}?${params.toString()}`;
 }
 
 function rowKey(movement: InventoryMovementHistoryContract, index: number) {
