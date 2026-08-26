@@ -1,10 +1,16 @@
-import type { WorkforceAuthenticationRepository, WorkforceAuthenticationSession, WorkforceSessionWithPrincipal } from "@senvo/domain";
+import type {
+  WorkforceAuthenticationRepository,
+  WorkforceAuthenticationSession,
+  WorkforceSessionWithPrincipal,
+} from "@senvo/domain";
 import type { PrismaClient } from "../../generated/prisma/client.js";
 
 export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthenticationRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async createSession(input: WorkforceAuthenticationSession): Promise<WorkforceAuthenticationSession> {
+  async createSession(
+    input: WorkforceAuthenticationSession,
+  ): Promise<WorkforceAuthenticationSession> {
     const created = await this.prisma.workforceAuthenticationSession.create({
       data: {
         csrfTokenHash: input.csrfTokenHash,
@@ -21,14 +27,21 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
     return mapSession(created);
   }
 
-  async findSessionByTokenHash(tokenHash: string): Promise<WorkforceSessionWithPrincipal | null> {
+  async findSessionByTokenHash(
+    tokenHash: string,
+  ): Promise<WorkforceSessionWithPrincipal | null> {
     const record = await this.prisma.workforceAuthenticationSession.findUnique({
       include: { organization: true, user: true },
       where: { tokenHash },
     });
     if (!record) return null;
     const membership = await this.prisma.organizationMembership.findUnique({
-      where: { userId_organizationId: { organizationId: record.organizationId, userId: record.userId } },
+      where: {
+        userId_organizationId: {
+          organizationId: record.organizationId,
+          userId: record.userId,
+        },
+      },
     });
     if (!membership) return null;
     return {
@@ -42,7 +55,10 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
         userId: membership.userId,
         version: membership.version,
       },
-      organization: { id: record.organization.id, name: record.organization.name },
+      organization: {
+        id: record.organization.id,
+        name: record.organization.name,
+      },
       session: mapSession(record),
       user: {
         createdAt: record.user.createdAt,
@@ -56,7 +72,10 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
     };
   }
 
-  async revokeSession(input: { revokedAt: Date; tokenHash: string }): Promise<boolean> {
+  async revokeSession(input: {
+    revokedAt: Date;
+    tokenHash: string;
+  }): Promise<boolean> {
     const result = await this.prisma.workforceAuthenticationSession.updateMany({
       data: { revokedAt: input.revokedAt, status: "REVOKED" },
       where: { status: "ACTIVE", tokenHash: input.tokenHash },
@@ -64,10 +83,18 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
     return result.count === 1;
   }
 
-  async revokeAllForUser(input: { organizationId: string; revokedAt: Date; userId: string }): Promise<number> {
+  async revokeAllForUser(input: {
+    organizationId: string;
+    revokedAt: Date;
+    userId: string;
+  }): Promise<number> {
     const result = await this.prisma.workforceAuthenticationSession.updateMany({
       data: { revokedAt: input.revokedAt, status: "REVOKED" },
-      where: { organizationId: input.organizationId, status: "ACTIVE", userId: input.userId },
+      where: {
+        organizationId: input.organizationId,
+        status: "ACTIVE",
+        userId: input.userId,
+      },
     });
     return result.count;
   }

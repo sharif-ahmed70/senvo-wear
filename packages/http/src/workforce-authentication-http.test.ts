@@ -201,12 +201,10 @@ describe("workforce authentication HTTP boundary", () => {
 
   it("passes non-/admin/auth routes to delegate", async () => {
     const application = workforceApplication();
-    const delegate = vi.fn(
-      (_request: unknown, response: unknown) => {
-        (response as { statusCode: number; end: () => void }).statusCode = 200;
-        (response as { end: () => void }).end();
-      },
-    );
+    const delegate = vi.fn((_request: unknown, response: unknown) => {
+      (response as { statusCode: number; end: () => void }).statusCode = 200;
+      (response as { end: () => void }).end();
+    });
     const url = await startWithDelegate(application, delegate);
     const response = await fetch(url + "/storefront/catalog", {
       headers: { origin: publicOrigin },
