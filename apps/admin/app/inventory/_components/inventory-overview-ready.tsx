@@ -18,11 +18,17 @@ export function InventoryOverviewReady({
     const button = target.closest("button");
     if (!button) return;
     const label = button.textContent?.replace(/\s+/gu, " ").trim() ?? "";
-    if (!label.startsWith("Receive Stock")) return;
+
+    const route = label.startsWith("Receive Stock")
+      ? "/inventory/receive"
+      : label.startsWith("Transfer Stock")
+        ? "/inventory/transfer"
+        : null;
+    if (!route) return;
 
     event.preventDefault();
     event.stopPropagation();
-    router.push("/inventory/receive");
+    router.push(route);
   }
 
   return (
