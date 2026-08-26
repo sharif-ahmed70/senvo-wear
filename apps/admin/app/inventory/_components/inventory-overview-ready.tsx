@@ -23,7 +23,9 @@ export function InventoryOverviewReady({
       ? "/inventory/receive"
       : label.startsWith("Transfer Stock")
         ? "/inventory/transfer"
-        : null;
+        : label.startsWith("Stock Adjustment")
+          ? "/inventory/adjustment"
+          : null;
     if (!route) return;
 
     event.preventDefault();
