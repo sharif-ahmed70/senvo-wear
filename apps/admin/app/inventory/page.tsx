@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { adminFoundationSession } from "../_lib/admin-access";
-import { InventoryOverview } from "./_components/inventory-overview";
+import { InventoryOverviewReady } from "./_components/inventory-overview-ready";
 
 export const metadata: Metadata = {
   title: "Inventory | SENVO Wear Admin",
@@ -9,5 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default function InventoryPage() {
-  return <InventoryOverview permissions={adminFoundationSession.permissions} />;
+  return (
+    <InventoryOverviewReady permissions={adminFoundationSession.permissions} />
+  );
 }
