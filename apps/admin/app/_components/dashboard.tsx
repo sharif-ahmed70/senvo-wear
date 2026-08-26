@@ -147,13 +147,23 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
         </article>
 
         <article className={`${styles.panel} ${styles.attentionPanel}`}>
-          <PanelHeader title="Needs your attention" href="/sales/orders" action="View all" />
+          <PanelHeader
+            title="Needs your attention"
+            href="/sales/orders"
+            action="View all"
+          />
           <div className={styles.attentionList}>
             {model.attention.map((item) => {
               const Icon = attentionIcons[item.kind];
               return (
-                <Link className={styles.attentionRow} href={item.href} key={item.label}>
-                  <span className={`${styles.attentionIcon} ${styles[`attention_${item.kind}`]}`}>
+                <Link
+                  className={styles.attentionRow}
+                  href={item.href}
+                  key={item.label}
+                >
+                  <span
+                    className={`${styles.attentionIcon} ${styles[`attention_${item.kind}`]}`}
+                  >
                     <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
                   </span>
                   <strong>{item.count}</strong>
@@ -161,7 +171,11 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                     <b>{item.label}</b>
                     <small>{item.detail}</small>
                   </span>
-                  <ArrowUpRight aria-hidden="true" size={15} strokeWidth={1.8} />
+                  <ArrowUpRight
+                    aria-hidden="true"
+                    size={15}
+                    strokeWidth={1.8}
+                  />
                 </Link>
               );
             })}
@@ -175,7 +189,9 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
               const Icon = channelIcons[channel.kind];
               return (
                 <div className={styles.channelRow} key={channel.label}>
-                  <span className={`${styles.channelIcon} ${styles[`channel_${channel.kind}`]}`}>
+                  <span
+                    className={`${styles.channelIcon} ${styles[`channel_${channel.kind}`]}`}
+                  >
                     <Icon aria-hidden="true" size={16} strokeWidth={1.8} />
                   </span>
                   <span className={styles.channelName}>{channel.label}</span>
@@ -198,7 +214,11 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
 
       <section className={styles.secondaryGrid}>
         <article className={`${styles.panel} ${styles.ordersPanel}`}>
-          <PanelHeader title="Recent orders" href="/sales/orders" action="View all orders" />
+          <PanelHeader
+            title="Recent orders"
+            href="/sales/orders"
+            action="View all orders"
+          />
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -225,7 +245,9 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                     </td>
                     <td>{order.total}</td>
                     <td>
-                      <span className={`${styles.statusPill} ${styles[`status_${order.status.toLowerCase()}`]}`}>
+                      <span
+                        className={`${styles.statusPill} ${styles[`status_${order.status.toLowerCase()}`]}`}
+                      >
                         {order.status}
                       </span>
                     </td>
@@ -257,7 +279,11 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
         </article>
 
         <article className={`${styles.panel} ${styles.inventoryPanel}`}>
-          <PanelHeader title="Inventory snapshot" href="/inventory" action="View inventory" />
+          <PanelHeader
+            title="Inventory snapshot"
+            href="/inventory"
+            action="View inventory"
+          />
           <div className={styles.inventoryBody}>
             <div className={styles.inventoryDonut} aria-hidden="true">
               <span>
@@ -268,7 +294,9 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
             <div className={styles.inventoryLegend}>
               {model.inventory.slices.map((slice) => (
                 <div className={styles.legendRow} key={slice.label}>
-                  <span className={`${styles.legendDot} ${styles[`legend_${slice.tone}`]}`} />
+                  <span
+                    className={`${styles.legendDot} ${styles[`legend_${slice.tone}`]}`}
+                  />
                   <span>{slice.label}</span>
                   <strong>{slice.count}</strong>
                 </div>
@@ -283,9 +311,14 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
         </article>
       </section>
 
-      <section className={styles.brandStatement} aria-label="SENVO operating principle">
+      <section
+        className={styles.brandStatement}
+        aria-label="SENVO operating principle"
+      >
         <div>
-          <span className={styles.quoteMark} aria-hidden="true">“</span>
+          <span className={styles.quoteMark} aria-hidden="true">
+            “
+          </span>
           <div>
             <strong>Great businesses are built on great systems.</strong>
             <p>Stay focused. Your store. Your team. Your customers.</p>
@@ -309,11 +342,7 @@ function PanelHeader({
   return (
     <header className={styles.panelHeader}>
       <h2>{title}</h2>
-      {href ? (
-        <Link href={href}>{action}</Link>
-      ) : (
-        <span>{action}</span>
-      )}
+      {href ? <Link href={href}>{action}</Link> : <span>{action}</span>}
     </header>
   );
 }
@@ -327,13 +356,13 @@ function SalesChart({ labels, values }: { labels: string[]; values: number[] }) 
   const min = Math.min(...values, 0);
   const span = Math.max(max - min, 1);
   const step = (width - padX * 2) / Math.max(values.length - 1, 1);
-  const points = values
-    .map((value, index) => {
-      const x = padX + index * step;
-      const y = height - padY - ((value - min) / span) * (height - padY * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const coordinates = values.map((value, index) => {
+    const x = padX + index * step;
+    const y =
+      height - padY - ((value - min) / span) * (height - padY * 2);
+    return { x, y };
+  });
+  const points = coordinates.map(({ x, y }) => `${x},${y}`).join(" ");
 
   return (
     <div className={styles.chartWrap}>
@@ -344,7 +373,13 @@ function SalesChart({ labels, values }: { labels: string[]; values: number[] }) 
         viewBox={`0 0 ${width} ${height}`}
       >
         <defs>
-          <linearGradient id="senvo-sales-fill" x1="0" x2="0" y1="0" y2="1">
+          <linearGradient
+            id="senvo-sales-fill"
+            x1="0"
+            x2="0"
+            y1="0"
+            y2="1"
+          >
             <stop offset="0%" stopColor="#7a101e" stopOpacity="0.22" />
             <stop offset="100%" stopColor="#7a101e" stopOpacity="0" />
           </linearGradient>
@@ -364,10 +399,15 @@ function SalesChart({ labels, values }: { labels: string[]; values: number[] }) 
           points={`${padX},${height - padY} ${points} ${width - padX},${height - padY}`}
         />
         <polyline className={styles.chartLine} fill="none" points={points} />
-        {values.map((value, index) => {
-          const [x, y] = points.split(" ")[index].split(",");
-          return <circle className={styles.chartPoint} cx={x} cy={y} key={`${value}-${index}`} r="4" />;
-        })}
+        {coordinates.map(({ x, y }, index) => (
+          <circle
+            className={styles.chartPoint}
+            cx={x}
+            cy={y}
+            key={`${x}-${y}-${index}`}
+            r="4"
+          />
+        ))}
       </svg>
       <div className={styles.chartLabels}>
         {labels.map((label) => (
