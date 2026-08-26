@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { adminFoundationSession } from "../../../_lib/admin-access";
 import { MovementDetailWorkspace } from "./_components/movement-detail-workspace";
 
@@ -14,9 +15,11 @@ export default async function InventoryMovementDetailPage({
 }) {
   const { movementId } = await params;
   return (
-    <MovementDetailWorkspace
-      movementId={movementId}
-      permissions={adminFoundationSession.permissions}
-    />
+    <Suspense fallback={null}>
+      <MovementDetailWorkspace
+        movementId={movementId}
+        permissions={adminFoundationSession.permissions}
+      />
+    </Suspense>
   );
 }
