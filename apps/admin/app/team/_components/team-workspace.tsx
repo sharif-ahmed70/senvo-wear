@@ -83,6 +83,7 @@ export function TeamWorkspace({
 
   const activeCount = members.filter((member) => member.status === "ACTIVE").length;
   const inactiveCount = members.filter((member) => member.status === "INACTIVE").length;
+  const initialLoadFailed = Boolean(error && members.length === 0);
 
   async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -228,13 +229,15 @@ export function TeamWorkspace({
         </div>
       </header>
 
-      <section className={styles.summary} aria-label="Team summary">
-        <div><span>Total members</span><strong>{members.length}</strong></div>
-        <div><span>Active</span><strong>{activeCount}</strong></div>
-        <div><span>Inactive</span><strong>{inactiveCount}</strong></div>
-      </section>
+      {!initialLoadFailed ? (
+        <section className={styles.summary} aria-label="Team summary">
+          <div><span>Total members</span><strong>{members.length}</strong></div>
+          <div><span>Active</span><strong>{activeCount}</strong></div>
+          <div><span>Inactive</span><strong>{inactiveCount}</strong></div>
+        </section>
+      ) : null}
 
-      {error ? (
+      {error && !initialLoadFailed ? (
         <div className={styles.error} role="alert">
           <CircleAlert aria-hidden="true" size={18} /> <span>{error}</span>
         </div>
@@ -327,7 +330,7 @@ export function TeamWorkspace({
           </div>
         </div>
 
-        {error && members.length === 0 ? (
+        {initialLoadFailed ? (
           <State icon={CircleAlert} title="Team could not be loaded" text="Refresh to try loading team members again." />
         ) : members.length === 0 ? (
           <State icon={UsersRound} title="No team members yet" text="Add the first workforce member when access is needed." />
