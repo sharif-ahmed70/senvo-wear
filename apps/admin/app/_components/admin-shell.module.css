@@ -1,0 +1,216 @@
+.frame {
+  background: #f7f1ea;
+}
+
+.sidebar {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(144, 118, 73, 0.12), transparent 28%),
+    linear-gradient(180deg, #111719 0%, #101517 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  color: #f7f2ec;
+  padding: 22px 16px 18px;
+}
+
+.brand {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 8px;
+  min-height: 58px;
+  padding: 0 10px 18px;
+}
+
+.brandMark {
+  background: transparent;
+  border: 1px solid rgba(212, 177, 117, 0.42);
+  border-radius: 999px;
+  color: #d6b778;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  height: 38px;
+  width: 38px;
+}
+
+.brandCopy strong {
+  color: #fffaf3;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brandCopy span {
+  color: #9faaa8;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sidebar :global(.admin-nav) {
+  gap: 2px;
+}
+
+.sidebar :global(.admin-nav__label) {
+  color: #75817f;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  margin: 16px 11px 7px;
+}
+
+.sidebar :global(.admin-nav__link) {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #c8cfcc;
+  font-size: 0.78rem;
+  font-weight: 560;
+  min-height: 39px;
+  padding: 0 10px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.sidebar :global(.admin-nav__link:hover) {
+  background: rgba(255, 255, 255, 0.045);
+  color: #fff;
+}
+
+.sidebar :global(.admin-nav__link[aria-current="page"]) {
+  background: linear-gradient(90deg, #7b1020 0%, #65111d 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #fffaf5;
+  box-shadow: 0 8px 24px rgba(69, 4, 14, 0.24);
+}
+
+.sidebarFooter {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 16px 8px 0;
+}
+
+.premiumCard {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+  border: 1px solid rgba(210, 178, 117, 0.2);
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+}
+
+.premiumCard strong {
+  color: #e1c38d;
+  font-size: 0.72rem;
+}
+
+.premiumCard span {
+  color: #8f9997;
+  font-size: 0.62rem;
+}
+
+.main {
+  background:
+    radial-gradient(circle at 82% 0%, rgba(130, 16, 32, 0.035), transparent 28%),
+    #f8f3ed;
+}
+
+.topbar {
+  background: rgba(248, 243, 237, 0.93);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid #e8ded4;
+  height: 72px;
+  padding: 0 34px;
+}
+
+.context {
+  background: #fffdf9;
+  border: 1px solid #e5dbd1;
+  border-radius: 9px;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.context strong {
+  color: #352925;
+  font-size: 0.76rem;
+}
+
+.context span {
+  color: #887b76;
+  font-size: 0.62rem;
+}
+
+.actions {
+  gap: 9px;
+}
+
+.actionPrimary,
+.actionSecondary {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 750;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+}
+
+.actionPrimary {
+  background: #78101f;
+  border: 1px solid #78101f;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(105, 10, 26, 0.14);
+}
+
+.actionSecondary {
+  background: #f0e8de;
+  border: 1px solid #ded1c3;
+  color: #4e3e38;
+}
+
+.account {
+  align-items: center;
+  border-left: 1px solid #e4d9ce;
+  display: flex;
+  gap: 9px;
+  margin-left: 4px;
+  padding-left: 13px;
+}
+
+.avatar {
+  background: #eadbc8;
+  border: 1px solid #dcc8ae;
+  color: #6a1722;
+}
+
+.accountCopy {
+  display: grid;
+  gap: 1px;
+}
+
+.accountCopy strong {
+  color: #382c28;
+  font-size: 0.72rem;
+}
+
+.accountCopy span {
+  color: #8b7f79;
+  font-size: 0.62rem;
+  text-transform: capitalize;
+}
+
+.content {
+  max-width: 1480px;
+  padding: 30px 34px 48px;
+}
+
+@media (max-width: 1080px) {
+  .actionSecondary { display: none; }
+  .accountCopy { display: none; }
+}
+
+@media (max-width: 860px) {
+  .topbar { padding: 0 18px; }
+  .actionPrimary { display: none; }
+  .content { padding: 24px 20px 40px; }
+}

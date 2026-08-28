@@ -4,6 +4,7 @@ export const adminPermissionKeys = [
   "CATALOG:UPDATE",
   "INVENTORY:READ",
   "INVENTORY:CREATE",
+  "INVENTORY:UPDATE",
   "SALES_ORDER:READ",
   "SALES_ORDER:UPDATE",
   "SALES:READ",

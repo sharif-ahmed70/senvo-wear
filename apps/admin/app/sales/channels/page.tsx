@@ -1,11 +1,11 @@
+import type { Metadata } from "next";
 import { adminFoundationSession } from "../../_lib/admin-access";
-import { SalesSourceWorkspace } from "../_components/sales-source-workspace";
+import { SalesSourcesOverview } from "./_components/sales-sources-overview";
+
+export const metadata: Metadata = {
+  title: "Sales Sources | SENVO Admin",
+};
 
 export default function SalesChannelsPage() {
-  return (
-    <SalesSourceWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="channels"
-    />
-  );
+  return <SalesSourcesOverview permissions={adminFoundationSession.permissions} />;
 }
