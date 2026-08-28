@@ -2,16 +2,15 @@ import { randomUUID } from "node:crypto";
 import type {
   AuthenticationSecretService,
   PasswordHasher,
-  UserCredential,
 } from "@senvo/domain";
-import type { OrganizationMembership, User } from "@senvo/domain";
+import type { OrganizationMembership } from "@senvo/domain";
 import type { WorkforceAuthenticationRepository } from "@senvo/domain";
 import type {
   UserCredentialRepository,
   UserRepository,
   OrganizationMembershipRepository,
 } from "@senvo/domain";
-import { defaultRolePermissions, roleAllowsPermission } from "@senvo/domain";
+import { defaultRolePermissions } from "@senvo/domain";
 
 export type WorkforceLoginResult = {
   csrfToken: string;
@@ -54,6 +53,7 @@ export type WorkforceAuthenticationServiceDeps = {
       id: string,
     ): Promise<{ id: string; name: string } | null>;
     findOrganizationIdByCode?(code: string): Promise<string | null>;
+    listOrganizationIdsForUser?(userId: string): Promise<string[]>;
   };
   passwords: PasswordHasher;
   secrets: AuthenticationSecretService;
@@ -158,7 +158,7 @@ export class WorkforceAuthenticationService {
       tokenHash: this.deps.secrets.hashSecret(sessionToken),
       updatedAt: now,
       userId: user.id,
-    } as any);
+    });
 
     const permissions = defaultRolePermissions
       .filter((g) => g.role === membership.role)
@@ -248,11 +248,14 @@ export class WorkforceAuthenticationService {
   ): Promise<void> {
     const principal = await this.authenticateSession(sessionToken);
     const expected = principal.csrfTokenHash;
-    const actualHash = this.deps.secrets.hashSecret(csrfToken);
-    // Use secrets verify if available; fallback to hash compare
-    const ok = (this.deps.secrets as any).verifySecret
-      ? (this.deps.secrets as any).verifySecret(csrfToken, expected)
-      : actualHash === expected;
+    const secretsWithOptionalVerify = this.deps
+      .secrets as AuthenticationSecretService & {
+      verifySecret?: AuthenticationSecretService["verifySecret"];
+    };
+    const ok =
+      typeof secretsWithOptionalVerify.verifySecret === "function"
+        ? secretsWithOptionalVerify.verifySecret(csrfToken, expected)
+        : this.deps.secrets.hashSecret(csrfToken) === expected;
     if (!ok)
       throw new WorkforceAuthenticationError(
         "UNAUTHORIZED",
@@ -272,18 +275,27 @@ export class WorkforceAuthenticationService {
   private async resolveActiveMembership(
     userId: string,
   ): Promise<OrganizationMembership | null> {
-    const repo: any = this.deps.memberships;
-    if (typeof repo.findFirstActiveByUser === "function") {
-      const first = await repo.findFirstActiveByUser(userId);
+    const memberships = this.deps
+      .memberships as OrganizationMembershipRepository & {
+      findFirstActiveByUser?: (
+        userId: string,
+      ) => Promise<OrganizationMembership | null>;
+      listByUser?: (userId: string) => Promise<OrganizationMembership[]>;
+    };
+    if (typeof memberships.findFirstActiveByUser === "function") {
+      const first = await memberships.findFirstActiveByUser(userId);
       if (first) return first;
     }
-    if (typeof repo.listByUser === "function") {
-      const list: OrganizationMembership[] = await repo.listByUser(userId);
+    if (typeof memberships.listByUser === "function") {
+      const list = await memberships.listByUser(userId);
       return list.find((m) => m.status === "ACTIVE") ?? null;
     }
-    const resolver: any = this.deps.organizationResolver;
+    const resolver = this.deps
+      .organizationResolver as WorkforceAuthenticationServiceDeps["organizationResolver"] & {
+      listOrganizationIdsForUser?: (userId: string) => Promise<string[]>;
+    };
     if (typeof resolver.listOrganizationIdsForUser === "function") {
-      const ids: string[] = await resolver.listOrganizationIdsForUser(userId);
+      const ids = await resolver.listOrganizationIdsForUser(userId);
       for (const orgId of ids) {
         const m = await this.deps.memberships.findByUserAndOrganization(
           userId,

@@ -238,7 +238,7 @@ function workforceApplication(
 async function start(application: WorkforceAuthenticationService) {
   return startWithDelegate(application, (_request, response) => {
     (response as { statusCode: number }).statusCode = 404;
-    (response as unknown as { end: () => void }).end();
+    (response as { end: () => void }).end();
   });
 }
 

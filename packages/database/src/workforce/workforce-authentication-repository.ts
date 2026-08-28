@@ -1,9 +1,14 @@
-import type {
-  WorkforceAuthenticationRepository,
-  WorkforceAuthenticationSession,
-  WorkforceSessionWithPrincipal,
+import {
+  BusinessRuleError,
+  type WorkforceAuthenticationRepository,
+  type WorkforceAuthenticationSession,
+  type WorkforceSessionWithPrincipal,
 } from "@senvo/domain";
-import type { PrismaClient } from "../../generated/prisma/client.js";
+import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
+
+type WorkforceSessionRecord = Prisma.WorkforceAuthenticationSessionGetPayload<{
+  include: { organization: true; user: true };
+}>;
 
 export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthenticationRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -19,7 +24,7 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
         lastUsedAt: input.lastUsedAt,
         organizationId: input.organizationId,
         rememberMe: input.rememberMe,
-        status: input.status as any,
+        status: toPersistedStatus(input.status),
         tokenHash: input.tokenHash,
         userId: input.userId,
       },
@@ -49,8 +54,8 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
         createdAt: membership.createdAt,
         id: membership.id,
         organizationId: membership.organizationId,
-        role: membership.role as any,
-        status: membership.status as any,
+        role: membership.role,
+        status: membership.status,
         updatedAt: membership.updatedAt,
         userId: membership.userId,
         version: membership.version,
@@ -65,7 +70,7 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
         email: record.user.email,
         id: record.user.id,
         name: record.user.name,
-        status: record.user.status as any,
+        status: record.user.status,
         updatedAt: record.user.updatedAt,
         version: record.user.version,
       },
@@ -100,7 +105,29 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
   }
 }
 
-function mapSession(record: any): WorkforceAuthenticationSession {
+function toPersistedStatus(
+  status: WorkforceAuthenticationSession["status"],
+): "ACTIVE" | "REVOKED" {
+  if (status === "ACTIVE" || status === "REVOKED") return status;
+  throw new BusinessRuleError(
+    "Workforce authentication sessions cannot be created with an EXPIRED status.",
+  );
+}
+
+function mapSession(record: {
+  createdAt: Date;
+  csrfTokenHash: string;
+  expiresAt: Date;
+  id: string;
+  lastUsedAt: Date;
+  organizationId: string;
+  rememberMe: boolean;
+  revokedAt: Date | null;
+  status: WorkforceSessionRecord["status"];
+  tokenHash: string;
+  updatedAt: Date;
+  userId: string;
+}): WorkforceAuthenticationSession {
   return {
     createdAt: record.createdAt,
     csrfTokenHash: record.csrfTokenHash,
