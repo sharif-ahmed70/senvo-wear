@@ -1,11 +1,8 @@
 import { adminFoundationSession } from "../_lib/admin-access";
-import { OrganizationWorkspace } from "./_components/organization-workspace";
+import { OrganizationProfileWorkspace } from "./_components/organization-profile-workspace";
 
 export default function OrganizationPage() {
   return (
-    <OrganizationWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="profile"
-    />
+    <OrganizationProfileWorkspace permissions={adminFoundationSession.permissions} />
   );
 }
