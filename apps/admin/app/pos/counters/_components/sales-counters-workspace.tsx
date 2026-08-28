@@ -123,7 +123,8 @@ export function SalesCountersWorkspace({
   async function createCounter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const sourceId = formText(form, "sourceId");
     setSaving(true);
     setError(null);
@@ -137,7 +138,7 @@ export function SalesCountersWorkspace({
       });
       setSuccess("Sales counter created.");
       setShowCreate(false);
-      event.currentTarget.reset();
+      formElement.reset();
       setCreateType("STORE");
       await load("refresh");
     } catch (reason) {
@@ -292,7 +293,7 @@ export function SalesCountersWorkspace({
             </label>
             <label>
               {createType === "STORE" ? "Store" : "Event booth"}
-              <select disabled={loadingSources || sources.length === 0} name="sourceId" required defaultValue="">
+              <select key={createType} disabled={loadingSources || sources.length === 0} name="sourceId" required defaultValue="">
                 <option value="" disabled>
                   {loadingSources
                     ? "Loading available locations"
