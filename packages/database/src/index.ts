@@ -50,6 +50,7 @@ export {
   PrismaRolePermissionRepository,
 } from "./authorization/repositories.js";
 export { PrismaUserCredentialRepository } from "./authentication/repositories.js";
+export { PrismaCustomerAuthenticationRepository } from "./authentication/customer-authentication-repository.js";
 export { PrismaAuditEntryRepository } from "./audit/repositories.js";
 export { PrismaTransactionManager } from "./transaction/prisma-transaction-manager.js";
 export {
@@ -76,3 +77,4 @@ export { PrismaPaymentRefundRepository } from "./payment/refund-repository.js";
 export { PrismaOnlinePaymentRepository } from "./payment/online-payment-repository.js";
 export { PrismaReceiptRepository } from "./receipt/repository.js";
 export { PrismaStorefrontRepository } from "./storefront/repository.js";
+export { PrismaWorkforceAuthenticationRepository } from "./workforce/workforce-authentication-repository.js";

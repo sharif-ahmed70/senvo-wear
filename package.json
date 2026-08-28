@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "turbo dev --parallel",
     "dev:storefront": "pnpm --filter @senvo/storefront dev",
+    "dev:api": "pnpm --filter @senvo/http... build && node packages/http/dist/development-server.js",
     "dev:admin": "pnpm --filter @senvo/admin dev",
     "dev:pos": "pnpm --filter @senvo/pos dev",
     "build": "turbo build",

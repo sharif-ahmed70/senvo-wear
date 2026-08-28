@@ -1,133 +1,340 @@
 "use client";
-import { Search, ShoppingBag } from "lucide-react";
-import { useEffect, useState } from "react";
-import { addToCart, readCart, writeCart } from "../_lib/cart";
+
+import {
+  ArrowLeft,
+  ArrowRight,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   storefrontApi,
-  taka,
   type StorefrontCatalog,
   type StorefrontProduct,
 } from "../_lib/storefront-api";
+import { HeroCarousel } from "./hero-carousel";
+import { Reveal } from "./motion-primitives";
+import { ProductCard as PremiumProductCard } from "./product-card";
+import { ProductQuickView } from "./product-quick-view";
+
+const campaignImages = [
+  "/senvo-hero.png",
+  "/senvo-hero-urban.png",
+  "/senvo-hero-summer.png",
+] as const;
+
 export function CatalogWorkspace() {
   const [catalog, setCatalog] = useState<StorefrontCatalog | null>(null);
-  const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [facets, setFacets] = useState<
+    Pick<StorefrontCatalog, "categories" | "collections">
+  >({ categories: [], collections: [] });
   const [category, setCategory] = useState("");
+  const [collection, setCollection] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [quickView, setQuickView] = useState<StorefrontProduct | null>(null);
+  const [toast, setToast] = useState("");
+  const categoryRail = useRef<HTMLDivElement>(null);
+  const requestSequence = useRef(0);
+
   useEffect(() => {
-    let active = true;
-    void storefrontApi
-      .catalog({ category: category || undefined, search: search || undefined })
-      .then((data) => {
-        if (active) {
-          setCatalog(data);
-          setError("");
+    const timer = window.setTimeout(() => setAppliedSearch(search.trim()), 280);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const load = useCallback(
+    async (page = 1, append = false) => {
+      const requestId = ++requestSequence.current;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError("");
+      try {
+        const next = await storefrontApi.catalog({
+          category: category || undefined,
+          collection: collection || undefined,
+          page: String(page),
+          pageSize: "12",
+          search: appliedSearch || undefined,
+        });
+        if (requestId !== requestSequence.current) return;
+        setFacets((current) => ({
+          categories:
+            next.categories.length > 0 ? next.categories : current.categories,
+          collections:
+            next.collections.length > 0
+              ? next.collections
+              : current.collections,
+        }));
+        setCatalog((current) =>
+          append && current
+            ? { ...next, products: [...current.products, ...next.products] }
+            : next,
+        );
+      } catch {
+        if (requestId !== requestSequence.current) return;
+        setError("We could not load the collection. Please try again.");
+      } finally {
+        if (requestId === requestSequence.current) {
+          setLoading(false);
+          setLoadingMore(false);
         }
-      })
-      .catch(() => {
-        if (active) setError("We could not load the shop. Please try again.");
-      });
-    return () => {
-      active = false;
-    };
-  }, [category, search]);
+      }
+    },
+    [appliedSearch, category, collection],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const selectCategory = (code: string) => {
+    setCategory(code);
+    document
+      .getElementById("collection")
+      ?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
-    <main>
-      <section className="shop-intro">
-        <p className="eyebrow">SENVO Wear online</p>
-        <h1>Made to move through your day.</h1>
-        <p>Easy essentials, clear prices, and delivery across Bangladesh.</p>
-      </section>
-      <section className="catalog-tools" aria-label="Catalog filters">
-        <label>
-          <Search size={18} />
-          <input
-            aria-label="Search products"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search the collection"
-            value={search}
-          />
-        </label>
-        <select
-          aria-label="Filter by category"
-          onChange={(event) => setCategory(event.target.value)}
-          value={category}
-        >
-          <option value="">All categories</option>
-          {catalog?.categories.map((item) => (
-            <option key={item.id} value={item.code}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </section>
-      {error ? <p className="notice error">{error}</p> : null}
-      {!catalog && !error ? (
-        <div className="product-grid" aria-label="Loading products">
-          {[1, 2, 3].map((item) => (
-            <div className="skeleton" key={item} />
-          ))}
+    <main className="storefront-home">
+      <HeroCarousel />
+
+      <section
+        aria-labelledby="categories-heading"
+        className="editorial-section category-section"
+        id="categories"
+      >
+        <Reveal className="section-heading">
+          <div>
+            <p className="eyebrow">Find your form</p>
+            <h2 id="categories-heading">Shop by category</h2>
+          </div>
+          <div className="rail-buttons">
+            <button
+              aria-label="Previous categories"
+              onClick={() =>
+                categoryRail.current?.scrollBy({
+                  behavior: "smooth",
+                  left: -360,
+                })
+              }
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <button
+              aria-label="Next categories"
+              onClick={() =>
+                categoryRail.current?.scrollBy({
+                  behavior: "smooth",
+                  left: 360,
+                })
+              }
+            >
+              <ArrowRight size={17} />
+            </button>
+          </div>
+        </Reveal>
+        <div className="category-rail" ref={categoryRail}>
+          {facets.categories.length > 0
+            ? facets.categories.map((item, index) => (
+                <button
+                  aria-pressed={category === item.code}
+                  className={`category-tile${
+                    category === item.code ? " selected" : ""
+                  }`}
+                  key={item.id}
+                  onClick={() => selectCategory(item.code)}
+                  type="button"
+                >
+                  <span
+                    className="category-campaign"
+                    style={{
+                      backgroundImage: `url(${campaignImages[index % campaignImages.length]})`,
+                    }}
+                  />
+                  <span className="category-number">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <strong>{item.name}</strong>
+                  <small>Explore the edit</small>
+                </button>
+              ))
+            : [1, 2, 3, 4].map((item) => (
+                <div className="category-tile skeleton-tile" key={item} />
+              ))}
         </div>
-      ) : null}
-      {catalog?.products.length === 0 ? (
-        <div className="empty">
-          <ShoppingBag />
-          <h2>No pieces found</h2>
-          <p>Try a different search or category.</p>
+      </section>
+
+      <section
+        aria-labelledby="collection-heading"
+        className="editorial-section collection-section"
+        id="collection"
+      >
+        <Reveal className="section-heading collection-heading">
+          <div>
+            <p className="eyebrow">Curated for now</p>
+            <h2 id="collection-heading">The SENVO edit</h2>
+          </div>
+          <div className="collection-pills" aria-label="Filter by collection">
+            <button
+              aria-pressed={!collection}
+              className={!collection ? "active" : ""}
+              onClick={() => setCollection("")}
+            >
+              All pieces
+            </button>
+            {facets.collections.map((item) => (
+              <button
+                aria-pressed={collection === item.code}
+                className={collection === item.code ? "active" : ""}
+                key={item.id}
+                onClick={() => setCollection(item.code)}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </Reveal>
+
+        <div className="catalog-filter-bar" aria-label="Catalog filters">
+          <label>
+            <Search size={18} />
+            <input
+              aria-label="Search products"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search the collection"
+              value={search}
+            />
+          </label>
+          <label>
+            <SlidersHorizontal size={17} />
+            <span className="sr-only">Filter by category</span>
+            <select
+              aria-label="Filter by category"
+              onChange={(event) => setCategory(event.target.value)}
+              value={category}
+            >
+              <option value="">All categories</option>
+              {facets.categories.map((item) => (
+                <option key={item.id} value={item.code}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(category || collection || search) && (
+            <button
+              className="clear-filters"
+              onClick={() => {
+                setCategory("");
+                setCollection("");
+                setSearch("");
+              }}
+              type="button"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
-      ) : null}
-      <div className="product-grid">
-        {catalog?.products.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
+
+        {error ? (
+          <div className="catalog-state error" role="alert">
+            <h3>The collection paused for a moment.</h3>
+            <p>{error}</p>
+            <button onClick={() => void load()} type="button">
+              <RefreshCw size={17} /> Try again
+            </button>
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="premium-product-grid" aria-label="Loading products">
+            {[1, 2, 3, 4, 5, 6].map((item) => (
+              <div className="product-card-skeleton" key={item}>
+                <i />
+                <span />
+                <span />
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {!loading && !error && catalog?.products.length === 0 ? (
+          <div className="catalog-state">
+            <h3>No pieces found.</h3>
+            <p>Try a different search, category or collection.</p>
+            <button
+              onClick={() => {
+                setCategory("");
+                setCollection("");
+                setSearch("");
+              }}
+              type="button"
+            >
+              View all pieces
+            </button>
+          </div>
+        ) : null}
+        {!loading && catalog?.products.length ? (
+          <div className="premium-product-grid">
+            {catalog.products.map((product) => (
+              <PremiumProductCard
+                key={product.id}
+                onAdded={(item) => setToast(`${item.name} added to your bag.`)}
+                onQuickView={setQuickView}
+                product={product}
+              />
+            ))}
+          </div>
+        ) : null}
+        {catalog?.hasMore ? (
+          <button
+            className="load-more"
+            disabled={loadingMore}
+            onClick={() => void load(catalog.page + 1, true)}
+            type="button"
+          >
+            {loadingMore ? "Loading more..." : "Load more pieces"}
+          </button>
+        ) : null}
+      </section>
+
+      <section className="campaign-editorial" id="journal">
+        <div className="campaign-editorial-image" />
+        <Reveal className="campaign-editorial-copy">
+          <p className="eyebrow light">SENVO journal / Vol. 01</p>
+          <h2>Style that speaks softly.</h2>
+          <p>
+            Designed in Dhaka, inspired by the pace, warmth and effortless
+            confidence of the city.
+          </p>
+          <a href="#collection">
+            Discover the edit <ArrowRight size={17} />
+          </a>
+        </Reveal>
+      </section>
+
+      <ProductQuickView
+        onAdded={(item) => setToast(`${item.name} added to your bag.`)}
+        onClose={() => setQuickView(null)}
+        product={quickView}
+      />
+      <div
+        aria-live="polite"
+        className={`storefront-toast${toast ? " show" : ""}`}
+      >
+        {toast}
       </div>
     </main>
   );
 }
-export function ProductCard({ product }: { product: StorefrontProduct }) {
-  const first =
-    product.variants.find((variant) => variant.availability === "IN_STOCK") ??
-    product.variants[0];
-  const add = () => {
-    if (first)
-      writeCart(
-        window.localStorage,
-        addToCart(readCart(window.localStorage), first),
-      );
-  };
-  return (
-    <article className="product-card">
-      <a
-        className="product-visual"
-        href={`/products/${product.slug}`}
-        aria-label={`View ${product.name}`}
-      >
-        {product.primaryImage ? (
-          <img
-            alt={product.primaryImage.altText}
-            height={480}
-            loading="lazy"
-            src={product.primaryImage.url}
-            width={480}
-          />
-        ) : (
-          <span>{product.category.name}</span>
-        )}
-      </a>
-      <div className="product-copy">
-        <div>
-          <a href={`/products/${product.slug}`}>
-            <h2>{product.name}</h2>
-          </a>
-          <p>{first ? taka(first.sellingPriceMinor) : "Unavailable"}</p>
-        </div>
-        <button
-          disabled={!first || first.availability !== "IN_STOCK"}
-          onClick={add}
-          type="button"
-        >
-          <ShoppingBag size={17} /> Add
-        </button>
-      </div>
-    </article>
-  );
-}
+
+export const ProductCard = PremiumProductCard;

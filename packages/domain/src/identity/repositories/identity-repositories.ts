@@ -37,4 +37,8 @@ export type OrganizationMembershipRepository = {
     userId: string,
     organizationId: string,
   ): Promise<OrganizationMembership | null>;
+  listByUser?(userId: string): Promise<OrganizationMembership[]>;
+  findFirstActiveByUser?(
+    userId: string,
+  ): Promise<OrganizationMembership | null>;
 };

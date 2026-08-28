@@ -63,14 +63,16 @@ export function CartWorkspace() {
   );
   if (status === "loading")
     return (
-      <main className="empty" aria-live="polite">
+      <main className="premium-state-page" aria-live="polite">
+        <p className="eyebrow">Your SENVO bag</p>
         <h1>Refreshing your bag</h1>
         <p>Checking current prices and availability...</p>
       </main>
     );
   if (status === "error")
     return (
-      <main className="empty" aria-live="polite">
+      <main className="premium-state-page" aria-live="polite">
+        <p className="eyebrow">Your SENVO bag</p>
         <h1>We could not refresh your bag.</h1>
         <p>
           Retry to check current prices and availability before checkout. Your
@@ -84,7 +86,8 @@ export function CartWorkspace() {
     );
   if (cart.lines.length === 0 && cart.unavailable.length === 0)
     return (
-      <main className="empty">
+      <main className="premium-state-page">
+        <p className="eyebrow">Your SENVO bag</p>
         <h1>Your bag is empty</h1>
         <p>Find something made for your day.</p>
         <Link className="primary link-button" href="/">
@@ -94,18 +97,29 @@ export function CartWorkspace() {
     );
   const canCheckout = canContinueToCheckout(status, cart);
   return (
-    <main className="cart-page">
-      <h1>Your bag</h1>
+    <main className="premium-cart-page">
+      <header className="commerce-page-heading">
+        <p className="eyebrow">Selected for you</p>
+        <h1>Your bag</h1>
+        <p>Every piece is refreshed against current price and availability.</p>
+      </header>
       <p className={`notice${cart.unavailable.length ? " error" : ""}`}>
         {cart.unavailable.length
           ? "Some items are no longer available. Remove them before checkout."
           : "Your bag shows current product details, prices, and availability."}
       </p>
-      <div className="cart-layout">
-        <section>
+      <div className="premium-cart-layout">
+        <section className="premium-cart-lines" aria-label="Bag items">
           {cart.lines.map((line) => (
             <article className="cart-line" key={line.productVariantId}>
-              <div className="cart-thumb" />
+              <Link
+                className="cart-thumb"
+                href={`/products/${line.productSlug}`}
+              >
+                {line.imageUrl ? (
+                  <img alt={line.imageAlt ?? ""} src={line.imageUrl} />
+                ) : null}
+              </Link>
               <div>
                 <Link href={`/products/${line.productSlug}`}>
                   <h2>{line.productName}</h2>
@@ -207,7 +221,7 @@ export function CartWorkspace() {
             </article>
           ))}
         </section>
-        <aside className="summary">
+        <aside className="summary premium-summary">
           <h2>Order summary</h2>
           <p>
             <span>Products</span>
@@ -234,7 +248,10 @@ export function CartWorkspace() {
           <button onClick={clear} type="button">
             Clear bag
           </button>
-          <small>Cash on delivery. You will not be charged online.</small>
+          <small>
+            Available payment methods and the final server total are confirmed
+            at checkout.
+          </small>
         </aside>
       </div>
     </main>

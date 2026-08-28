@@ -112,6 +112,33 @@ describe("guest storefront cart", () => {
     });
   });
 
+  it("hydrates variant imagery from the current catalog without persisting it", () => {
+    const mediaProduct: StorefrontProduct = {
+      ...product,
+      media: [
+        {
+          altText: "Everyday Tee in black",
+          assetId: "asset-1",
+          byteSize: 128,
+          contentType: "image/webp",
+          linkId: "link-1",
+          productVariantId: variant.id,
+          role: "GALLERY",
+          sortOrder: 1,
+          url: "https://cdn.senvo.test/tee-black.webp",
+        },
+      ],
+    };
+    const hydrated = hydrateCart(
+      [{ productVariantId: variant.id, quantity: 1 }],
+      { ...catalog(), products: [mediaProduct] },
+    );
+    expect(hydrated.lines[0]).toMatchObject({
+      imageAlt: "Everyday Tee in black",
+      imageUrl: "https://cdn.senvo.test/tee-black.webp",
+    });
+  });
+
   it("preserves missing selections as unavailable instead of deleting them", () => {
     const selection = { productVariantId: variant.id, quantity: 1 };
     const hydrated = hydrateCart([selection], {

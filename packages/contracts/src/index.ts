@@ -356,6 +356,8 @@ export const permissionActionSchema = z.enum([
 export const permissionStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 export const identityProviderSchema = z.enum([
   "PASSWORD",
+  "EMAIL_OTP",
+  "PHONE_OTP",
   "GOOGLE",
   "MICROSOFT",
 ]);
@@ -441,6 +443,137 @@ export const disableCredentialInputSchema = z
   .object({
     credentialId: idSchema,
     expectedVersion: expectedVersionSchema,
+  })
+  .strict();
+
+const customerEmailSchema = z.string().trim().toLowerCase().email().max(254);
+const customerPhoneSchema = z
+  .string()
+  .trim()
+  .transform((value) =>
+    value.startsWith("01")
+      ? "+880" + value.slice(1)
+      : value.startsWith("880")
+        ? "+" + value
+        : value,
+  )
+  .pipe(
+    z
+      .string()
+      .regex(/^\+8801[3-9][0-9]{8}$/u, "Use a valid Bangladesh phone number."),
+  );
+const customerPasswordSchema = z
+  .string()
+  .min(12)
+  .max(128)
+  .regex(/[a-z]/u, "Password must include a lowercase letter.")
+  .regex(/[A-Z]/u, "Password must include an uppercase letter.")
+  .regex(/[0-9]/u, "Password must include a number.")
+  .regex(/[^A-Za-z0-9]/u, "Password must include a symbol.");
+
+export const customerRegisterInputSchema = z
+  .object({
+    confirmPassword: z.string().min(1).max(128),
+    email: customerEmailSchema,
+    firstName: z.string().trim().min(1).max(80),
+    lastName: z.string().trim().min(1).max(80),
+    marketingConsent: z.boolean().optional().default(false),
+    password: customerPasswordSchema,
+    phone: customerPhoneSchema.nullable().optional(),
+    rememberMe: z.boolean().optional().default(false),
+    termsAccepted: z.literal(true),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.password !== input.confirmPassword) {
+      context.addIssue({
+        code: "custom",
+        message: "Passwords do not match.",
+        path: ["confirmPassword"],
+      });
+    }
+  });
+
+export const customerLoginInputSchema = z
+  .object({
+    email: customerEmailSchema,
+    password: z.string().min(1).max(128),
+    rememberMe: z.boolean().optional().default(false),
+  })
+  .strict();
+
+export const customerOtpRequestInputSchema = z
+  .object({
+    channel: z.enum(["EMAIL", "PHONE"]),
+    destination: z.string().trim().min(3).max(320),
+  })
+  .strict();
+
+export const customerOtpVerifyInputSchema = z
+  .object({
+    channel: z.enum(["EMAIL", "PHONE"]),
+    code: z.string().regex(/^[0-9]{6}$/u),
+    destination: z.string().trim().min(3).max(320),
+    onboarding: z
+      .object({
+        email: customerEmailSchema,
+        firstName: z.string().trim().min(1).max(80),
+        lastName: z.string().trim().min(1).max(80),
+        termsAccepted: z.literal(true),
+      })
+      .strict()
+      .optional(),
+    rememberMe: z.boolean().optional().default(false),
+  })
+  .strict();
+
+export const customerForgotPasswordInputSchema = z
+  .object({ email: customerEmailSchema })
+  .strict();
+
+export const customerResetPasswordInputSchema = z
+  .object({
+    challengeId: idSchema,
+    confirmPassword: z.string().min(1).max(128),
+    password: customerPasswordSchema,
+    token: z.string().min(32).max(256),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.password !== input.confirmPassword) {
+      context.addIssue({
+        code: "custom",
+        message: "Passwords do not match.",
+        path: ["confirmPassword"],
+      });
+    }
+  });
+
+export const customerVerificationInputSchema = z
+  .object({
+    challengeId: idSchema,
+    token: z.string().min(32).max(256),
+  })
+  .strict();
+
+export const customerVerificationRequestInputSchema = z.object({}).strict();
+
+export const customerLogoutInputSchema = z.object({}).strict();
+
+export const workforceLoginInputSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+    password: z.string().min(8).max(128),
+    rememberMe: z.boolean().optional().default(false),
+  })
+  .strict();
+
+export const workforceLogoutInputSchema = z.object({}).strict();
+
+export const customerGoogleStartInputSchema = z
+  .object({
+    redirect: z.string().trim().max(512).optional(),
+    termsAccepted: z.boolean(),
   })
   .strict();
 
@@ -1732,8 +1865,35 @@ export type AssignRolePermissionInputContract = z.infer<
 export type CreateCredentialInputContract = z.infer<
   typeof createCredentialInputSchema
 >;
+export type CustomerRegisterInputContract = z.infer<
+  typeof customerRegisterInputSchema
+>;
+export type CustomerLoginInputContract = z.infer<
+  typeof customerLoginInputSchema
+>;
+export type CustomerOtpRequestInputContract = z.infer<
+  typeof customerOtpRequestInputSchema
+>;
+export type CustomerOtpVerifyInputContract = z.infer<
+  typeof customerOtpVerifyInputSchema
+>;
+export type CustomerForgotPasswordInputContract = z.infer<
+  typeof customerForgotPasswordInputSchema
+>;
+export type CustomerResetPasswordInputContract = z.infer<
+  typeof customerResetPasswordInputSchema
+>;
+export type CustomerVerificationInputContract = z.infer<
+  typeof customerVerificationInputSchema
+>;
 export type DisableCredentialInputContract = z.infer<
   typeof disableCredentialInputSchema
+>;
+export type WorkforceLoginInputContract = z.infer<
+  typeof workforceLoginInputSchema
+>;
+export type WorkforceLogoutInputContract = z.infer<
+  typeof workforceLogoutInputSchema
 >;
 export type RecordAuditEntryInputContract = z.infer<
   typeof recordAuditEntryInputSchema

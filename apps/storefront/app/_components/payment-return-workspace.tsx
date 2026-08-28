@@ -83,7 +83,7 @@ export function PaymentReturnWorkspace({
   const retryAllowed =
     status === "FAILED" || status === "CANCELLED" || status === "EXPIRED";
   return (
-    <main className="success-page" aria-live="polite">
+    <main className="success-page premium-state-page" aria-live="polite">
       {loading ? (
         <LoaderCircle className="spin" />
       ) : status === "SUCCEEDED" ? (

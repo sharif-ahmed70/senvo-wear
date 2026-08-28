@@ -288,6 +288,23 @@ export type {
   PasswordHasher,
   UserCredential,
 } from "./authentication/domain/models.js";
+export type {
+  AuthenticationChallenge,
+  AuthenticationChallengeType,
+  AuthenticationMessage,
+  AuthenticationMessageProvider,
+  AuthenticationSecretService,
+  AuthenticationSession,
+  CustomerAccountStatus,
+  CustomerAuthenticationProfile,
+  GoogleIdentity,
+  GoogleOAuthProvider,
+} from "./authentication/domain/models.js";
+export type {
+  CustomerAuthenticationRepository,
+  CustomerAuthenticationStatus,
+  PasswordCustomerRecord,
+} from "./authentication/repositories/customer-authentication-repository.js";
 export {
   assertCategoryParentIsNotSelf,
   assertNonNegativeSortOrder,
@@ -686,6 +703,15 @@ export {
   normalizeAuditMetadata,
   normalizeAuditResource,
 } from "./audit/domain/value-objects.js";
+export type {
+  WorkforceAuthenticationSession,
+  WorkforcePrincipal,
+  WorkforceSessionRecord,
+} from "./workforce/domain/models.js";
+export type {
+  WorkforceAuthenticationRepository,
+  WorkforceSessionWithPrincipal,
+} from "./workforce/repositories/workforce-authentication-repository.js";
 export type {
   AuditEntryRepository,
   CreateAuditEntryRecord,

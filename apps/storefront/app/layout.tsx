@@ -1,10 +1,26 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
+import { StorefrontShell } from "./_components/storefront-shell";
+import { CustomerAuthProvider } from "./_components/customer-auth-provider";
 
 export const metadata: Metadata = {
-  title: "SENVO Wear",
-  description: "Everyday clothing, ready for delivery across Bangladesh.",
+  description:
+    "Modern clothing and accessories, designed in Dhaka for everyday confidence.",
+  icons: { icon: "/favicon.svg" },
+  openGraph: {
+    description: "Made to move with your life.",
+    images: [
+      {
+        alt: "SENVO Wear campaign",
+        height: 630,
+        url: "/og.png",
+        width: 1200,
+      },
+    ],
+    title: "SENVO Wear",
+    type: "website",
+  },
+  title: { default: "SENVO Wear", template: "%s / SENVO Wear" },
 };
 
 export default function RootLayout({
@@ -13,19 +29,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <header className="site-header">
-          <Link className="brand" href="/">
-            SENVO <span>WEAR</span>
-          </Link>
-          <nav aria-label="Store">
-            <Link href="/">Shop</Link>
-            <Link href="/cart">Bag</Link>
-          </nav>
-        </header>
-        {children}
-        <footer>
-          Designed for everyday Bangladesh. Cash on delivery available.
-        </footer>
+        <CustomerAuthProvider>
+          <StorefrontShell>{children}</StorefrontShell>
+        </CustomerAuthProvider>
       </body>
     </html>
   );

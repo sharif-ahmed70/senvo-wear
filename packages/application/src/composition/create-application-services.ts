@@ -26,6 +26,9 @@ import {
   PrismaStorefrontRepository,
   PrismaRolePermissionRepository,
   PrismaUserRepository,
+  PrismaUserCredentialRepository,
+  PrismaCustomerAuthenticationRepository,
+  PrismaWorkforceAuthenticationRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -60,7 +63,14 @@ import type {
   PosReturnReceiptRepository,
   RolePermissionRepository,
   UserRepository,
+  AuthenticationMessageProvider,
+  AuthenticationSecretService,
+  CustomerAuthenticationRepository,
+  PasswordHasher,
+  GoogleOAuthProvider,
   StorefrontRepository,
+  UserCredentialRepository,
+  WorkforceAuthenticationRepository,
 } from "@senvo/domain";
 import {
   SslCommerzAdapter,
@@ -83,6 +93,8 @@ import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
+import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
+import { WorkforceAuthenticationService } from "../workforce/workforce-authentication-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -128,6 +140,14 @@ export type CreateApplicationServicesOptions = {
   storageProvider?: ObjectStorageProvider;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
+  customerAuthenticationRepository?: CustomerAuthenticationRepository;
+  workforceAuthenticationRepository?: WorkforceAuthenticationRepository;
+  userCredentialRepository?: UserCredentialRepository;
+  authenticationMessages?: AuthenticationMessageProvider;
+  authenticationSecrets?: AuthenticationSecretService;
+  passwordHasher?: PasswordHasher;
+  fallbackPasswordHash?: string;
+  googleOAuthProvider?: GoogleOAuthProvider;
 };
 
 export type ApplicationServices = {
@@ -139,6 +159,8 @@ export type ApplicationServices = {
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   storefront: StorefrontApplicationService;
+  customerAuthentication?: CustomerAuthenticationService;
+  workforceAuthentication?: WorkforceAuthenticationService;
 };
 
 export function createApplicationServices(
@@ -178,6 +200,11 @@ export function createApplicationServices(
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
   let sizeRepository = options.sizeRepository;
   let storefrontRepository = options.storefrontRepository;
+  let customerAuthenticationRepository =
+    options.customerAuthenticationRepository;
+  let workforceAuthenticationRepository =
+    options.workforceAuthenticationRepository;
+  let userCredentialRepository = options.userCredentialRepository;
 
   if (
     !salesOrderRepository ||
@@ -215,6 +242,10 @@ export function createApplicationServices(
   storefrontRepository ??= new PrismaStorefrontRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!customerAuthenticationRepository && prismaClient) {
+    customerAuthenticationRepository =
+      new PrismaCustomerAuthenticationRepository(prismaClient);
+  }
 
   if (!inventoryMovementRepository) {
     inventoryMovementRepository = new PrismaInventoryMovementRepository(
@@ -316,6 +347,13 @@ export function createApplicationServices(
   if (!posReturnReceiptRepository && prismaClient)
     posReturnReceiptRepository = new PrismaReceiptRepository(prismaClient);
 
+  if (!workforceAuthenticationRepository && prismaClient)
+    workforceAuthenticationRepository =
+      new PrismaWorkforceAuthenticationRepository(prismaClient);
+
+  if (!userCredentialRepository && prismaClient)
+    userCredentialRepository = new PrismaUserCredentialRepository(prismaClient);
+
   const mediaService = mediaRepository
     ? new CatalogMediaApplicationService({
         authorizationService: options.authorizationService,
@@ -340,6 +378,52 @@ export function createApplicationServices(
         transactionManager,
       })
     : undefined;
+
+  const customerAuthentication =
+    customerAuthenticationRepository &&
+    options.authenticationMessages &&
+    options.authenticationSecrets &&
+    options.passwordHasher &&
+    options.fallbackPasswordHash
+      ? new CustomerAuthenticationService({
+          fallbackPasswordHash: options.fallbackPasswordHash,
+          messages: options.authenticationMessages,
+          organizationCode:
+            options.storefrontOrganizationCode ??
+            process.env.STOREFRONT_ORGANIZATION_CODE ??
+            "",
+          passwords: options.passwordHasher,
+          repository: customerAuthenticationRepository,
+          secrets: options.authenticationSecrets,
+          google: options.googleOAuthProvider,
+        })
+      : undefined;
+
+  const workforceAuthentication =
+    workforceAuthenticationRepository &&
+    userCredentialRepository &&
+    membershipRepository &&
+    organizationRepository &&
+    userRepository &&
+    options.authenticationSecrets &&
+    options.passwordHasher
+      ? new WorkforceAuthenticationService({
+          credentials: userCredentialRepository,
+          memberships: membershipRepository,
+          organizationResolver: {
+            findOrganizationById: async (id: string) => {
+              const organization = await organizationRepository.findById(id);
+              return organization
+                ? { id: organization.id, name: organization.name }
+                : null;
+            },
+          },
+          passwords: options.passwordHasher,
+          secrets: options.authenticationSecrets,
+          users: userRepository,
+          workforceSessions: workforceAuthenticationRepository,
+        })
+      : undefined;
 
   return {
     catalog: new CatalogApplicationService({
@@ -425,6 +509,8 @@ export function createApplicationServices(
       requestIdGenerator: options.requestIdGenerator,
       transactionManager,
     }),
+    customerAuthentication,
+    workforceAuthentication,
   };
 }
 
