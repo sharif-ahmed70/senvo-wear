@@ -1,11 +1,8 @@
 import { adminFoundationSession } from "../_lib/admin-access";
-import { OrganizationWorkspace } from "../organization/_components/organization-workspace";
+import { RolesPermissionsWorkspace } from "./_components/roles-permissions-workspace";
 
 export default function RolesPage() {
   return (
-    <OrganizationWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="roles"
-    />
+    <RolesPermissionsWorkspace permissions={adminFoundationSession.permissions} />
   );
 }
