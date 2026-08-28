@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AdminAppFrame } from "./_components/admin-app-frame";
-import { adminFoundationSession } from "./_lib/admin-access";
+import { WorkforceLoginWorkspace } from "./_components/workforce-login-workspace";
+import { getWorkforceAuthState } from "./_lib/workforce-auth-server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,15 +9,21 @@ export const metadata: Metadata = {
   description: "SENVO Wear operations administration.",
 };
 
-export default function RootLayout({
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const auth = await getWorkforceAuthState();
+
   return (
     <html lang="en">
       <body>
-        <AdminAppFrame session={adminFoundationSession}>
-          {children}
-        </AdminAppFrame>
+        {auth.session ? (
+          <AdminAppFrame session={auth.session}>{children}</AdminAppFrame>
+        ) : (
+          <WorkforceLoginWorkspace reason={auth.reason} />
+        )}
       </body>
     </html>
   );
