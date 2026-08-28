@@ -1,11 +1,8 @@
 import { adminFoundationSession } from "../../_lib/admin-access";
-import { PosManagementWorkspace } from "../_components/pos-management-workspace";
+import { CheckoutHistoryWorkspace } from "./_components/checkout-history-workspace";
 
 export default function PosCheckoutsPage() {
   return (
-    <PosManagementWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="checkouts"
-    />
+    <CheckoutHistoryWorkspace permissions={adminFoundationSession.permissions} />
   );
 }
