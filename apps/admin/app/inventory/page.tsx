@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../_lib/admin-access";
+import { getAdminSession } from "../_lib/workforce-auth-server";
 import { InventoryOverviewReady } from "./_components/inventory-overview-ready";
 
 export const metadata: Metadata = {
@@ -8,8 +8,7 @@ export const metadata: Metadata = {
     "Review real stock availability, reservations, locations and inventory movement activity.",
 };
 
-export default function InventoryPage() {
-  return (
-    <InventoryOverviewReady permissions={adminFoundationSession.permissions} />
-  );
+export default async function InventoryPage() {
+  const session = await getAdminSession();
+  return <InventoryOverviewReady permissions={session?.permissions ?? []} />;
 }

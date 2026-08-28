@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { TransferStockWorkflow } from "./_components/transfer-stock-workflow";
 
 export const metadata: Metadata = {
@@ -8,8 +8,7 @@ export const metadata: Metadata = {
     "Move available SENVO inventory between active stock locations through the inventory movement ledger.",
 };
 
-export default function TransferStockPage() {
-  return (
-    <TransferStockWorkflow permissions={adminFoundationSession.permissions} />
-  );
+export default async function TransferStockPage() {
+  const session = await getAdminSession();
+  return <TransferStockWorkflow permissions={session?.permissions ?? []} />;
 }

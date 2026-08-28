@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { ReceiveStockWorkflow } from "./_components/receive-stock-workflow";
 
 export const metadata: Metadata = {
@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   description: "Receive incoming SENVO stock into the inventory movement ledger.",
 };
 
-export default function ReceiveStockPage() {
-  return <ReceiveStockWorkflow permissions={adminFoundationSession.permissions} />;
+export default async function ReceiveStockPage() {
+  const session = await getAdminSession();
+  return <ReceiveStockWorkflow permissions={session?.permissions ?? []} />;
 }

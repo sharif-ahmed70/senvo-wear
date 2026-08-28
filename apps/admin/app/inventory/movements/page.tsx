@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { MovementHistoryWorkspace } from "./_components/movement-history-workspace";
 
 export const metadata: Metadata = {
@@ -7,10 +7,7 @@ export const metadata: Metadata = {
   description: "Review real inventory ledger movement activity across SENVO stock locations.",
 };
 
-export default function InventoryMovementsPage() {
-  return (
-    <MovementHistoryWorkspace
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function InventoryMovementsPage() {
+  const session = await getAdminSession();
+  return <MovementHistoryWorkspace permissions={session?.permissions ?? []} />;
 }

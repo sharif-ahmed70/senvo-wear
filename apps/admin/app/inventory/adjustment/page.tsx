@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { StockAdjustmentWorkflow } from "./_components/stock-adjustment-workflow";
 
 export const metadata: Metadata = {
@@ -8,10 +8,7 @@ export const metadata: Metadata = {
     "Record verified inventory corrections through SENVO's append-only movement ledger.",
 };
 
-export default function StockAdjustmentPage() {
-  return (
-    <StockAdjustmentWorkflow
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function StockAdjustmentPage() {
+  const session = await getAdminSession();
+  return <StockAdjustmentWorkflow permissions={session?.permissions ?? []} />;
 }

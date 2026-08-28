@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { StockLocationsWorkspace } from "./_components/stock-locations-workspace";
 
 export const metadata: Metadata = {
@@ -7,8 +7,7 @@ export const metadata: Metadata = {
   description: "Review active, sellable and operational inventory stock locations.",
 };
 
-export default function InventoryLocationsPage() {
-  return (
-    <StockLocationsWorkspace permissions={adminFoundationSession.permissions} />
-  );
+export default async function InventoryLocationsPage() {
+  const session = await getAdminSession();
+  return <StockLocationsWorkspace permissions={session?.permissions ?? []} />;
 }
