@@ -1,11 +1,6 @@
 import { adminFoundationSession } from "../_lib/admin-access";
-import { OrganizationWorkspace } from "../organization/_components/organization-workspace";
+import { TeamWorkspace } from "./_components/team-workspace";
 
 export default function TeamPage() {
-  return (
-    <OrganizationWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="team"
-    />
-  );
+  return <TeamWorkspace permissions={adminFoundationSession.permissions} />;
 }
