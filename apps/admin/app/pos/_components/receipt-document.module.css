@@ -194,8 +194,8 @@
   border-bottom: 0;
 }
 
-.table th:nth-last-child(-n + 3),
-.table td:nth-last-child(-n + 3) {
+.table th:not(:first-child),
+.table td:not(:first-child) {
   text-align: right;
 }
 
