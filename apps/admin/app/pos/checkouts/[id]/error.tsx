@@ -16,7 +16,7 @@ export default function CheckoutDetailError({
         <CircleAlert aria-hidden="true" size={26} />
         <strong>Checkout details could not be opened</strong>
         <p>{error.message || "Try loading the checkout again."}</p>
-        <button type="button" onClick={reset}>
+        <button className={styles.receiptButton} type="button" onClick={reset}>
           Try again
         </button>
       </section>
