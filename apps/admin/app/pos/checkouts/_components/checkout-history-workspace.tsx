@@ -90,7 +90,11 @@ function CheckoutHistoryContent({
       const result = await client.listPosCheckouts();
       setCheckouts(result.data);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Checkout history could not be loaded.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Checkout history could not be loaded.",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -106,14 +110,25 @@ function CheckoutHistoryContent({
     const normalized = query.trim().toLowerCase();
     return [...checkouts]
       .filter((checkout) => {
+        const searchable = [
+          checkout.orderNumber,
+          checkout.counterName,
+          checkout.staffName,
+        ].filter(
+          (value): value is string =>
+            typeof value === "string" && value.length > 0,
+        );
         if (
           normalized &&
-          ![checkout.orderNumber, checkout.counterName, checkout.staffName]
-            .filter(Boolean)
-            .some((value) => value.toLowerCase().includes(normalized))
+          !searchable.some((value) =>
+            value.toLowerCase().includes(normalized),
+          )
         )
           return false;
-        if (paymentStatus !== "ALL" && checkout.paymentStatus !== paymentStatus)
+        if (
+          paymentStatus !== "ALL" &&
+          checkout.paymentStatus !== paymentStatus
+        )
           return false;
         const due = checkout.outstandingMinor ?? 0;
         if (dueFilter === "DUE" && due <= 0) return false;
@@ -122,7 +137,8 @@ function CheckoutHistoryContent({
       })
       .sort(
         (left, right) =>
-          new Date(right.completedAt).getTime() - new Date(left.completedAt).getTime(),
+          new Date(right.completedAt).getTime() -
+          new Date(left.completedAt).getTime(),
       );
   }, [checkouts, dueFilter, paymentStatus, query]);
 
@@ -159,7 +175,9 @@ function CheckoutHistoryContent({
     );
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `senvo-checkout-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `senvo-checkout-history-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -170,7 +188,10 @@ function CheckoutHistoryContent({
         <div>
           <span className={styles.eyebrow}>Sales · POS</span>
           <h1>Checkout History</h1>
-          <p>Review completed in-person sales, payment state, receipts and amounts still due.</p>
+          <p>
+            Review completed in-person sales, payment state, receipts and
+            amounts still due.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -216,7 +237,9 @@ function CheckoutHistoryContent({
           <select
             onChange={(event) =>
               setPaymentStatus(
-                event.target.value as "ALL" | PosCheckoutContract["paymentStatus"],
+                event.target.value as
+                  | "ALL"
+                  | PosCheckoutContract["paymentStatus"],
               )
             }
             value={paymentStatus}
@@ -232,7 +255,9 @@ function CheckoutHistoryContent({
           <span>Balance</span>
           <select
             onChange={(event) =>
-              setDueFilter(event.target.value as "ALL" | "DUE" | "CLEAR")
+              setDueFilter(
+                event.target.value as "ALL" | "DUE" | "CLEAR",
+              )
             }
             value={dueFilter}
           >
@@ -324,7 +349,9 @@ function CheckoutHistoryContent({
                       </td>
                       <td
                         data-label="Due"
-                        className={`${styles.money} ${due > 0 ? styles.due : ""}`}
+                        className={`${styles.money} ${
+                          due > 0 ? styles.due : ""
+                        }`}
                       >
                         {checkout.outstandingMinor === null
                           ? "Not recorded"
@@ -332,7 +359,9 @@ function CheckoutHistoryContent({
                       </td>
                       <td data-label="Payment">
                         <span
-                          className={`${styles.status} ${statusClass(checkout.paymentStatus)}`}
+                          className={`${styles.status} ${statusClass(
+                            checkout.paymentStatus,
+                          )}`}
                         >
                           {paymentLabel(checkout.paymentStatus)}
                         </span>
