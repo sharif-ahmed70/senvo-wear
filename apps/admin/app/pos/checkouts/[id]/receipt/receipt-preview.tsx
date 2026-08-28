@@ -14,9 +14,11 @@ const client = new AdminApiClient({
 export function ReceiptPreview({
   checkoutId,
   permissions,
+  printOnLoad = false,
 }: {
   checkoutId: string;
   permissions: readonly AdminPermissionKey[];
+  printOnLoad?: boolean;
 }) {
   const canRead =
     permissions.includes("RECEIPT:READ") &&
@@ -36,6 +38,10 @@ export function ReceiptPreview({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [canRead, checkoutId]);
+
+  useEffect(() => {
+    if (receipt && printOnLoad) window.print();
+  }, [printOnLoad, receipt]);
 
   if (!canRead) {
     return <ReceiptState title="Receipt access unavailable" />;
