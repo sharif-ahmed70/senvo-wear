@@ -1,11 +1,8 @@
 import { adminFoundationSession } from "../../_lib/admin-access";
-import { PosManagementWorkspace } from "../_components/pos-management-workspace";
+import { SalesSessionsWorkspace } from "./_components/sales-sessions-workspace";
 
 export default function SalesSessionsPage() {
   return (
-    <PosManagementWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="sessions"
-    />
+    <SalesSessionsWorkspace permissions={adminFoundationSession.permissions} />
   );
 }
