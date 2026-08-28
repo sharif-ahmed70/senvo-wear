@@ -1,8 +1,7 @@
-import { adminFoundationSession } from "../_lib/admin-access";
+import { getAdminSession } from "../_lib/workforce-auth-server";
 import { RolesPermissionsWorkspace } from "./_components/roles-permissions-workspace";
 
-export default function RolesPage() {
-  return (
-    <RolesPermissionsWorkspace permissions={adminFoundationSession.permissions} />
-  );
+export default async function RolesPage() {
+  const session = await getAdminSession();
+  return <RolesPermissionsWorkspace permissions={session?.permissions ?? []} />;
 }

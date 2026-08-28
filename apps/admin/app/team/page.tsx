@@ -1,6 +1,7 @@
-import { adminFoundationSession } from "../_lib/admin-access";
+import { getAdminSession } from "../_lib/workforce-auth-server";
 import { TeamWorkspace } from "./_components/team-workspace";
 
-export default function TeamPage() {
-  return <TeamWorkspace permissions={adminFoundationSession.permissions} />;
+export default async function TeamPage() {
+  const session = await getAdminSession();
+  return <TeamWorkspace permissions={session?.permissions ?? []} />;
 }

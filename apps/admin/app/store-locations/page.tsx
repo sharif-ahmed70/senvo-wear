@@ -1,8 +1,7 @@
-import { adminFoundationSession } from "../_lib/admin-access";
+import { getAdminSession } from "../_lib/workforce-auth-server";
 import { StoreLocationsWorkspace } from "./_components/store-locations-workspace";
 
-export default function StoreLocationsPage() {
-  return (
-    <StoreLocationsWorkspace permissions={adminFoundationSession.permissions} />
-  );
+export default async function StoreLocationsPage() {
+  const session = await getAdminSession();
+  return <StoreLocationsWorkspace permissions={session?.permissions ?? []} />;
 }
