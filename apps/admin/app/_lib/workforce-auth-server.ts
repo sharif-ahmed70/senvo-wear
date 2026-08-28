@@ -10,7 +10,11 @@ export const adminSessionCookieName = "senvo_admin_session";
 export const adminCsrfCookieName = "senvo_admin_csrf";
 
 export type AdminAuthState = {
-  reason: "access-denied" | "service-unavailable" | "session-expired" | "signed-out";
+  reason:
+    | "access-denied"
+    | "service-unavailable"
+    | "session-expired"
+    | "signed-out";
   session: AdminSession | null;
 };
 
@@ -21,14 +25,6 @@ type WorkforceSessionPayload = {
   role?: unknown;
   userId?: unknown;
 };
-
-type ApiEnvelope<T> =
-  | { data: T; requestId: string; success: true }
-  | {
-      error?: { code?: unknown; message?: unknown };
-      requestId?: string;
-      success: false;
-    };
 
 const permissionKeys = new Set<string>(adminPermissionKeys);
 
@@ -84,7 +80,8 @@ export async function getAdminSession(): Promise<AdminSession | null> {
 export function resolveAdminApiUpstreamUrl(): string {
   const configured = process.env.SENVO_ADMIN_API_UPSTREAM_URL?.trim();
   const value =
-    configured || (process.env.NODE_ENV === "production" ? "" : "http://localhost:4000");
+    configured ||
+    (process.env.NODE_ENV === "production" ? "" : "http://localhost:4000");
   if (!value) {
     throw new Error("SENVO_ADMIN_API_UPSTREAM_URL is required in production.");
   }
@@ -131,7 +128,11 @@ function normalizePermissions(value: unknown): AdminPermissionKey[] {
   const normalized: AdminPermissionKey[] = [];
   for (const permission of value) {
     const key = permissionKey(permission);
-    if (key && permissionKeys.has(key) && !normalized.includes(key as AdminPermissionKey)) {
+    if (
+      key &&
+      permissionKeys.has(key) &&
+      !normalized.includes(key as AdminPermissionKey)
+    ) {
       normalized.push(key as AdminPermissionKey);
     }
   }
@@ -149,7 +150,12 @@ function permissionKey(value: unknown): string | null {
 }
 
 function isAdminRole(value: unknown): value is AdminSession["role"] {
-  return value === "OWNER" || value === "ADMIN" || value === "MANAGER" || value === "STAFF";
+  return (
+    value === "OWNER" ||
+    value === "ADMIN" ||
+    value === "MANAGER" ||
+    value === "STAFF"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
