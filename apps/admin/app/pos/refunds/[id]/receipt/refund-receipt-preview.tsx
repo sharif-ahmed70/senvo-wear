@@ -5,6 +5,7 @@ import { CircleAlert, LoaderCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import styles from "../../../_components/receipt-document.module.css";
 import { formatBdt } from "../../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -34,9 +35,10 @@ export function RefundReceiptPreview({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!canRead) return;
-    const timer = setTimeout(
+    const timer = window.setTimeout(
       () =>
         void client
           .getPosRefundReceipt(refundId)
@@ -50,14 +52,17 @@ export function RefundReceiptPreview({
           ),
       0,
     );
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [canRead, refundId]);
+
   useEffect(() => {
     if (receipt && printOnLoad) window.print();
   }, [printOnLoad, receipt]);
+
   if (!canRead) return <State title="Receipt access unavailable" />;
   if (error) return <State title={error} />;
   if (!receipt) return <State loading title="Loading refund receipt" />;
+
   const address = [
     receipt.organizationAddressLine1,
     receipt.organizationAddressLine2,
@@ -67,37 +72,43 @@ export function RefundReceiptPreview({
   ]
     .filter(Boolean)
     .join(", ");
+  const contact = [receipt.organizationPhone, receipt.organizationEmail]
+    .filter(Boolean)
+    .join(" | ");
+
   return (
-    <main className="receipt-page">
-      <div className="receipt-actions">
-        <button onClick={() => window.print()} type="button">
-          <Printer size={17} /> Print
+    <main className={styles.page}>
+      <div className={styles.toolbar}>
+        <button
+          className={styles.toolbarButton}
+          onClick={() => window.print()}
+          type="button"
+        >
+          <Printer aria-hidden="true" size={17} /> Print receipt
         </button>
       </div>
-      <article className="receipt-document">
-        <header className="receipt-header">
-          <div>
+
+      <article className={styles.document}>
+        <header className={styles.documentHeader}>
+          <div className={styles.brand}>
             <h1>{receipt.organizationName}</h1>
             {address ? <p>{address}</p> : null}
-            <p>
-              {[receipt.organizationPhone, receipt.organizationEmail]
-                .filter(Boolean)
-                .join(" | ")}
-            </p>
+            {contact ? <p>{contact}</p> : null}
           </div>
-          <div className="receipt-number">
+          <div className={styles.identity}>
             <span>Refund receipt</span>
             <strong>{receipt.receiptNumber}</strong>
           </div>
         </header>
-        <dl className="receipt-meta">
+
+        <dl className={styles.meta}>
           <div>
             <dt>Order</dt>
             <dd>{receipt.orderNumber}</dd>
           </div>
           <div>
             <dt>Issued</dt>
-            <dd>{new Date(receipt.issuedAt).toLocaleString("en-BD")}</dd>
+            <dd>{formatDate(receipt.issuedAt)}</dd>
           </div>
           <div>
             <dt>Recorded by</dt>
@@ -110,57 +121,61 @@ export function RefundReceiptPreview({
             </div>
           ) : null}
         </dl>
-        <section className="receipt-payments">
-          <h2>Money returned</h2>
-          {receipt.lines.map((line) => (
-            <div key={line.lineNumber}>
-              <span>
-                {line.method === "CASH"
-                  ? "Cash refund issued"
-                  : "External refund recorded as issued"}
-                {` | ${methodLabels[line.method] ?? line.method}`}
-                {line.reference ? ` | Reference: ${line.reference}` : ""}
-              </span>
-              <strong>{formatBdt(line.amountMinor)}</strong>
-            </div>
-          ))}
+
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>
+            <h2>Money returned</h2>
+          </div>
+          <div className={styles.paymentList}>
+            {receipt.lines.map((line) => (
+              <div className={styles.paymentRow} key={line.lineNumber}>
+                <span>
+                  {line.method === "CASH"
+                    ? "Cash returned to customer"
+                    : "External refund recorded"}
+                  {` | ${methodLabels[line.method] ?? line.method}`}
+                  {line.reference ? ` | ${line.reference}` : ""}
+                </span>
+                <strong>{formatBdt(line.amountMinor)}</strong>
+              </div>
+            ))}
+          </div>
         </section>
-        <div className="receipt-summary">
-          <dl>
-            <div>
-              <dt>Original sale</dt>
-              <dd>{formatBdt(receipt.originalPayableMinor)}</dd>
-            </div>
-            <div>
-              <dt>Adjusted sale</dt>
-              <dd>{formatBdt(receipt.adjustedPayableMinor)}</dd>
-            </div>
-            <div>
-              <dt>Gross received</dt>
-              <dd>{formatBdt(receipt.grossReceivedMinor)}</dd>
-            </div>
-            <div>
-              <dt>Total refunded</dt>
-              <dd>{formatBdt(receipt.cumulativeRefundedMinor)}</dd>
-            </div>
-            <div>
-              <dt>Net received</dt>
-              <dd>{formatBdt(receipt.netReceivedMinor)}</dd>
-            </div>
-            <div>
-              <dt>Amount still due</dt>
-              <dd>{formatBdt(receipt.outstandingMinor)}</dd>
-            </div>
-            <div>
-              <dt>Refund still due</dt>
-              <dd>{formatBdt(receipt.refundableMinor)}</dd>
-            </div>
-            <div className="receipt-total">
-              <dt>This refund</dt>
-              <dd>{formatBdt(receipt.amountMinor)}</dd>
-            </div>
-          </dl>
-        </div>
+
+        <dl className={styles.summary}>
+          <div>
+            <dt>Original sale</dt>
+            <dd>{formatBdt(receipt.originalPayableMinor)}</dd>
+          </div>
+          <div>
+            <dt>Adjusted sale</dt>
+            <dd>{formatBdt(receipt.adjustedPayableMinor)}</dd>
+          </div>
+          <div>
+            <dt>Gross received</dt>
+            <dd>{formatBdt(receipt.grossReceivedMinor)}</dd>
+          </div>
+          <div>
+            <dt>Total refunded</dt>
+            <dd>{formatBdt(receipt.cumulativeRefundedMinor)}</dd>
+          </div>
+          <div>
+            <dt>Net received</dt>
+            <dd>{formatBdt(receipt.netReceivedMinor)}</dd>
+          </div>
+          <div className={receipt.outstandingMinor > 0 ? styles.due : undefined}>
+            <dt>Amount still due</dt>
+            <dd>{formatBdt(receipt.outstandingMinor)}</dd>
+          </div>
+          <div className={receipt.refundableMinor > 0 ? styles.refund : undefined}>
+            <dt>Refund still due</dt>
+            <dd>{formatBdt(receipt.refundableMinor)}</dd>
+          </div>
+          <div className={styles.summaryTotal}>
+            <dt>This refund</dt>
+            <dd>{formatBdt(receipt.amountMinor)}</dd>
+          </div>
+        </dl>
       </article>
     </main>
   );
@@ -169,11 +184,18 @@ export function RefundReceiptPreview({
 function State({ loading, title }: { loading?: boolean; title: string }) {
   const Icon = loading ? LoaderCircle : CircleAlert;
   return (
-    <main className="receipt-page">
-      <div className="receipt-state">
-        <Icon className={loading ? "spin" : undefined} />
+    <main className={styles.statePage}>
+      <div className={styles.state}>
+        <Icon className={loading ? styles.spin : undefined} aria-hidden="true" />
         <strong>{title}</strong>
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-BD", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
