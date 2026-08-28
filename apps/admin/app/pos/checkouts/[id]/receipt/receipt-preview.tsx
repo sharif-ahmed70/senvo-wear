@@ -5,6 +5,7 @@ import { CircleAlert, LoaderCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import styles from "../../../_components/receipt-document.module.css";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -26,21 +27,21 @@ export function ReceiptPreview({
 
   useEffect(() => {
     if (!canRead) return;
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       void client
         .getPosReceipt(checkoutId)
         .then((result) => setReceipt(result.data))
         .catch((reason: unknown) => setError(messageFor(reason)))
         .finally(() => setLoading(false));
     }, 0);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [canRead, checkoutId]);
 
   if (!canRead) {
     return <ReceiptState title="Receipt access unavailable" />;
   }
   if (loading) {
-    return <ReceiptState loading title="Loading receipt" />;
+    return <ReceiptState loading title="Loading sales receipt" />;
   }
   if (error || !receipt) {
     return <ReceiptState title={error ?? "Receipt was not found."} />;
@@ -55,32 +56,36 @@ export function ReceiptPreview({
   ]
     .filter(Boolean)
     .join(", ");
+  const contact = [receipt.organizationPhone, receipt.organizationEmail]
+    .filter(Boolean)
+    .join(" | ");
 
   return (
-    <main className="receipt-page">
-      <div className="receipt-actions">
-        <button type="button" onClick={() => window.print()}>
-          <Printer size={17} /> Print
+    <main className={styles.page}>
+      <div className={styles.toolbar}>
+        <button
+          className={styles.toolbarButton}
+          type="button"
+          onClick={() => window.print()}
+        >
+          <Printer aria-hidden="true" size={17} /> Print receipt
         </button>
       </div>
-      <article className="receipt-document">
-        <header className="receipt-header">
-          <div>
+
+      <article className={styles.document}>
+        <header className={styles.documentHeader}>
+          <div className={styles.brand}>
             <h1>{receipt.organizationName}</h1>
             {address ? <p>{address}</p> : null}
-            <p>
-              {[receipt.organizationPhone, receipt.organizationEmail]
-                .filter(Boolean)
-                .join(" | ")}
-            </p>
+            {contact ? <p>{contact}</p> : null}
           </div>
-          <div className="receipt-number">
+          <div className={styles.identity}>
             <span>Sales receipt</span>
             <strong>{receipt.receiptNumber}</strong>
           </div>
         </header>
 
-        <dl className="receipt-meta">
+        <dl className={styles.meta}>
           <div>
             <dt>Order</dt>
             <dd>{receipt.orderNumber}</dd>
@@ -104,86 +109,96 @@ export function ReceiptPreview({
             <dd>{receipt.staffName}</dd>
           </div>
           <div>
-            <dt>Payment</dt>
-            <dd>{label(receipt.paymentStatus)}</dd>
+            <dt>Payment status</dt>
+            <dd className={styles.status}>{label(receipt.paymentStatus)}</dd>
           </div>
         </dl>
 
-        <div className="receipt-table-wrap">
-          <table className="receipt-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.lines.map((line) => (
-                <tr key={line.lineNumber}>
-                  <td>
-                    <strong>{line.productName}</strong>
-                    <span>
-                      {[line.sku, line.color, line.size]
-                        .filter(Boolean)
-                        .join(" | ")}
-                    </span>
-                  </td>
-                  <td>{line.quantity}</td>
-                  <td>{money(line.unitPriceMinor)}</td>
-                  <td>{money(line.lineTotalMinor)}</td>
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>
+            <h2>Items</h2>
+            <p>{receipt.lines.length} line{receipt.lines.length === 1 ? "" : "s"}</p>
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {receipt.lines.map((line) => (
+                  <tr key={line.lineNumber}>
+                    <td>
+                      <span className={styles.itemName}>{line.productName}</span>
+                      <span className={styles.itemMeta}>
+                        {[line.sku, line.color, line.size]
+                          .filter(Boolean)
+                          .join(" | ")}
+                      </span>
+                    </td>
+                    <td>{line.quantity}</td>
+                    <td>{money(line.unitPriceMinor)}</td>
+                    <td>{money(line.lineTotalMinor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-        <div className="receipt-summary">
-          <dl>
-            <div>
-              <dt>Subtotal</dt>
-              <dd>{money(receipt.subtotalMinor)}</dd>
-            </div>
-            <div>
-              <dt>Discount</dt>
-              <dd>{money(receipt.discountMinor)}</dd>
-            </div>
-            <div>
-              <dt>Delivery</dt>
-              <dd>{money(receipt.deliveryMinor)}</dd>
-            </div>
-            <div className="receipt-total">
-              <dt>Total</dt>
-              <dd>{money(receipt.totalMinor)}</dd>
-            </div>
-            <div>
-              <dt>Paid</dt>
-              <dd>{money(receipt.paidMinor)}</dd>
-            </div>
-            <div>
-              <dt>Outstanding</dt>
-              <dd>{money(receipt.outstandingMinor)}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <section className="receipt-payments">
-          <h2>Payments</h2>
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>
+            <h2>Payments</h2>
+          </div>
           {receipt.payments.length ? (
-            receipt.payments.map((payment) => (
-              <div key={payment.lineNumber}>
-                <span>
-                  {label(payment.method)}
-                  {payment.reference ? ` | ${payment.reference}` : ""}
-                </span>
-                <strong>{money(payment.amountMinor)}</strong>
-              </div>
-            ))
+            <div className={styles.paymentList}>
+              {receipt.payments.map((payment) => (
+                <div className={styles.paymentRow} key={payment.lineNumber}>
+                  <span>
+                    {label(payment.method)}
+                    {payment.reference ? ` | ${payment.reference}` : ""}
+                  </span>
+                  <strong>{money(payment.amountMinor)}</strong>
+                </div>
+              ))}
+            </div>
           ) : (
-            <p>No payment recorded. This sale has an outstanding balance.</p>
+            <p className={styles.emptyText}>
+              No payment was recorded when this sale was completed.
+            </p>
           )}
         </section>
+
+        <dl className={styles.summary}>
+          <div>
+            <dt>Subtotal</dt>
+            <dd>{money(receipt.subtotalMinor)}</dd>
+          </div>
+          <div>
+            <dt>Discount</dt>
+            <dd>{money(receipt.discountMinor)}</dd>
+          </div>
+          <div>
+            <dt>Delivery</dt>
+            <dd>{money(receipt.deliveryMinor)}</dd>
+          </div>
+          <div className={styles.summaryTotal}>
+            <dt>Total</dt>
+            <dd>{money(receipt.totalMinor)}</dd>
+          </div>
+          <div>
+            <dt>Paid</dt>
+            <dd>{money(receipt.paidMinor)}</dd>
+          </div>
+          <div className={receipt.outstandingMinor > 0 ? styles.due : undefined}>
+            <dt>Outstanding</dt>
+            <dd>{money(receipt.outstandingMinor)}</dd>
+          </div>
+        </dl>
       </article>
     </main>
   );
@@ -198,14 +213,15 @@ function ReceiptState({
 }) {
   const Icon = loading ? LoaderCircle : CircleAlert;
   return (
-    <main className="receipt-page">
-      <div className="receipt-state">
-        <Icon className={loading ? "spin" : ""} />
+    <main className={styles.statePage}>
+      <div className={styles.state}>
+        <Icon className={loading ? styles.spin : undefined} aria-hidden="true" />
         <strong>{title}</strong>
       </div>
     </main>
   );
 }
+
 function money(value: number) {
   return new Intl.NumberFormat("en-BD", {
     style: "currency",
@@ -213,18 +229,21 @@ function money(value: number) {
     maximumFractionDigits: 2,
   }).format(value / 100);
 }
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-BD", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
 }
+
 function label(value: string) {
   return value
     .toLowerCase()
     .replaceAll("_", " ")
     .replace(/^./u, (first) => first.toUpperCase());
 }
+
 function messageFor(reason: unknown) {
   return reason instanceof AdminApiError
     ? `${reason.message} Request ${reason.requestId}.`
