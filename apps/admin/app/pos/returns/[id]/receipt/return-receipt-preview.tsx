@@ -5,6 +5,7 @@ import { CircleAlert, LoaderCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import styles from "../../../_components/receipt-document.module.css";
 import { formatBdt } from "../../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -26,9 +27,10 @@ export function ReturnReceiptPreview({
     permissions.includes("SALES:READ");
   const [receipt, setReceipt] = useState<PosReturnReceiptContract | null>(null);
   const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!canRead) return;
-    const timer = setTimeout(
+    const timer = window.setTimeout(
       () =>
         void client
           .getPosReturnReceipt(returnId)
@@ -42,14 +44,17 @@ export function ReturnReceiptPreview({
           ),
       0,
     );
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
   }, [canRead, returnId]);
+
   useEffect(() => {
     if (receipt && printOnLoad) window.print();
   }, [printOnLoad, receipt]);
+
   if (!canRead) return <State title="Receipt access unavailable" />;
   if (error) return <State title={error} />;
   if (!receipt) return <State loading title="Loading return receipt" />;
+
   const address = [
     receipt.organizationAddressLine1,
     receipt.organizationAddressLine2,
@@ -59,37 +64,43 @@ export function ReturnReceiptPreview({
   ]
     .filter(Boolean)
     .join(", ");
+  const contact = [receipt.organizationPhone, receipt.organizationEmail]
+    .filter(Boolean)
+    .join(" | ");
+
   return (
-    <main className="receipt-page">
-      <div className="receipt-actions">
-        <button type="button" onClick={() => window.print()}>
-          <Printer size={17} /> Print
+    <main className={styles.page}>
+      <div className={styles.toolbar}>
+        <button
+          className={styles.toolbarButton}
+          type="button"
+          onClick={() => window.print()}
+        >
+          <Printer aria-hidden="true" size={17} /> Print receipt
         </button>
       </div>
-      <article className="receipt-document">
-        <header className="receipt-header">
-          <div>
+
+      <article className={styles.document}>
+        <header className={styles.documentHeader}>
+          <div className={styles.brand}>
             <h1>{receipt.organizationName}</h1>
             {address ? <p>{address}</p> : null}
-            <p>
-              {[receipt.organizationPhone, receipt.organizationEmail]
-                .filter(Boolean)
-                .join(" | ")}
-            </p>
+            {contact ? <p>{contact}</p> : null}
           </div>
-          <div className="receipt-number">
+          <div className={styles.identity}>
             <span>Return receipt</span>
             <strong>{receipt.receiptNumber}</strong>
           </div>
         </header>
-        <dl className="receipt-meta">
+
+        <dl className={styles.meta}>
           <div>
             <dt>Order</dt>
             <dd>{receipt.orderNumber}</dd>
           </div>
           <div>
             <dt>Returned</dt>
-            <dd>{new Date(receipt.returnedAt).toLocaleString("en-BD")}</dd>
+            <dd>{formatDate(receipt.returnedAt)}</dd>
           </div>
           <div>
             <dt>Received by</dt>
@@ -110,72 +121,85 @@ export function ReturnReceiptPreview({
             </div>
           ) : null}
         </dl>
-        <section className="receipt-lines">
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Credit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.lines.map((line) => (
-                <tr key={line.lineNumber}>
-                  <td>
-                    <strong>{line.productNameSnapshot}</strong>
-                    <span>
-                      {line.skuSnapshot} ·{" "}
-                      {[line.colorSnapshot, line.sizeSnapshot]
-                        .filter(Boolean)
-                        .join(" / ")}
-                    </span>
-                  </td>
-                  <td>{line.quantity}</td>
-                  <td>{formatBdt(line.lineCreditMinor)}</td>
+
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>
+            <h2>Returned items</h2>
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Credit</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {receipt.lines.map((line) => (
+                  <tr key={line.lineNumber}>
+                    <td>
+                      <span className={styles.itemName}>
+                        {line.productNameSnapshot}
+                      </span>
+                      <span className={styles.itemMeta}>
+                        {[
+                          line.skuSnapshot,
+                          line.colorSnapshot,
+                          line.sizeSnapshot,
+                        ]
+                          .filter(Boolean)
+                          .join(" | ")}
+                      </span>
+                    </td>
+                    <td>{line.quantity}</td>
+                    <td>{formatBdt(line.lineCreditMinor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
+
         {receipt.reasonNote ? (
-          <section className="receipt-payments">
-            <h2>Return note</h2>
-            <p>{receipt.reasonNote}</p>
+          <section className={styles.section}>
+            <div className={styles.sectionTitle}>
+              <h2>Return note</h2>
+            </div>
+            <p className={styles.note}>{receipt.reasonNote}</p>
           </section>
         ) : null}
-        <div className="receipt-summary">
-          <dl>
-            <div>
-              <dt>Original total</dt>
-              <dd>{formatBdt(receipt.originalTotalMinor)}</dd>
-            </div>
-            <div>
-              <dt>This return credit</dt>
-              <dd>{formatBdt(receipt.totalCreditMinor)}</dd>
-            </div>
-            <div>
-              <dt>Total return credit</dt>
-              <dd>{formatBdt(receipt.cumulativeReturnCreditMinor)}</dd>
-            </div>
-            <div>
-              <dt>Adjusted sale</dt>
-              <dd>{formatBdt(receipt.adjustedPayableMinor)}</dd>
-            </div>
-            <div>
-              <dt>Amount received</dt>
-              <dd>{formatBdt(receipt.cumulativeReceivedMinor)}</dd>
-            </div>
-            <div>
-              <dt>Amount due</dt>
-              <dd>{formatBdt(receipt.outstandingMinor)}</dd>
-            </div>
-            <div className="receipt-total">
-              <dt>Refund due</dt>
-              <dd>{formatBdt(receipt.refundableMinor)}</dd>
-            </div>
-          </dl>
-        </div>
+
+        <dl className={styles.summary}>
+          <div>
+            <dt>Original total</dt>
+            <dd>{formatBdt(receipt.originalTotalMinor)}</dd>
+          </div>
+          <div className={styles.summaryTotal}>
+            <dt>This return credit</dt>
+            <dd>{formatBdt(receipt.totalCreditMinor)}</dd>
+          </div>
+          <div>
+            <dt>Total return credit</dt>
+            <dd>{formatBdt(receipt.cumulativeReturnCreditMinor)}</dd>
+          </div>
+          <div>
+            <dt>Adjusted sale</dt>
+            <dd>{formatBdt(receipt.adjustedPayableMinor)}</dd>
+          </div>
+          <div>
+            <dt>Amount received</dt>
+            <dd>{formatBdt(receipt.cumulativeReceivedMinor)}</dd>
+          </div>
+          <div className={receipt.outstandingMinor > 0 ? styles.due : undefined}>
+            <dt>Amount due</dt>
+            <dd>{formatBdt(receipt.outstandingMinor)}</dd>
+          </div>
+          <div className={receipt.refundableMinor > 0 ? styles.refund : undefined}>
+            <dt>Refund due</dt>
+            <dd>{formatBdt(receipt.refundableMinor)}</dd>
+          </div>
+        </dl>
       </article>
     </main>
   );
@@ -184,14 +208,22 @@ export function ReturnReceiptPreview({
 function State({ loading, title }: { loading?: boolean; title: string }) {
   const Icon = loading ? LoaderCircle : CircleAlert;
   return (
-    <main className="receipt-page">
-      <div className="receipt-state">
-        <Icon className={loading ? "spin" : undefined} />
+    <main className={styles.statePage}>
+      <div className={styles.state}>
+        <Icon className={loading ? styles.spin : undefined} aria-hidden="true" />
         <strong>{title}</strong>
       </div>
     </main>
   );
 }
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-BD", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 function label(value: string) {
   return value
     .toLowerCase()
