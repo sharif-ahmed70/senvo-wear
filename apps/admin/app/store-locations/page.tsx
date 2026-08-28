@@ -1,11 +1,8 @@
 import { adminFoundationSession } from "../_lib/admin-access";
-import { OrganizationWorkspace } from "../organization/_components/organization-workspace";
+import { StoreLocationsWorkspace } from "./_components/store-locations-workspace";
 
 export default function StoreLocationsPage() {
   return (
-    <OrganizationWorkspace
-      permissions={adminFoundationSession.permissions}
-      view="stores"
-    />
+    <StoreLocationsWorkspace permissions={adminFoundationSession.permissions} />
   );
 }
