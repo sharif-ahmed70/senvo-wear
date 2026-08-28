@@ -1,10 +1,7 @@
-import { adminFoundationSession } from "../../../_lib/admin-access";
+import { getAdminSession } from "../../../_lib/workforce-auth-server";
 import { BarcodeGenerationWorkflow } from "./_components/barcode-generation-workflow";
 
-export default function GenerateBarcodesPage() {
-  return (
-    <BarcodeGenerationWorkflow
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function GenerateBarcodesPage() {
+  const session = await getAdminSession();
+  return <BarcodeGenerationWorkflow permissions={session?.permissions ?? []} />;
 }

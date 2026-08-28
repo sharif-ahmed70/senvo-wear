@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { BarcodeWorkspaceComplete } from "./_components/barcode-workspace-complete";
 
 export const metadata: Metadata = {
@@ -8,8 +8,7 @@ export const metadata: Metadata = {
     "Manage real SENVO product-variant barcodes, scanner lookup and barcode readiness.",
 };
 
-export default function BarcodesPage() {
-  return (
-    <BarcodeWorkspaceComplete permissions={adminFoundationSession.permissions} />
-  );
+export default async function BarcodesPage() {
+  const session = await getAdminSession();
+  return <BarcodeWorkspaceComplete permissions={session?.permissions ?? []} />;
 }

@@ -1,11 +1,7 @@
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { CatalogWorkspace } from "../_components/catalog-workspace";
 
-export default function SizesPage() {
-  return (
-    <CatalogWorkspace
-      kind="sizes"
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function SizesPage() {
+  const session = await getAdminSession();
+  return <CatalogWorkspace kind="sizes" permissions={session?.permissions ?? []} />;
 }

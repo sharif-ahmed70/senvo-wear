@@ -1,11 +1,7 @@
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { CatalogWorkspace } from "../_components/catalog-workspace";
 
-export default function CategoriesPage() {
-  return (
-    <CatalogWorkspace
-      kind="categories"
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function CategoriesPage() {
+  const session = await getAdminSession();
+  return <CatalogWorkspace kind="categories" permissions={session?.permissions ?? []} />;
 }

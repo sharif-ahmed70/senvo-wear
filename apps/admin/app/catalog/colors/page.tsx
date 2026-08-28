@@ -1,11 +1,7 @@
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { CatalogWorkspace } from "../_components/catalog-workspace";
 
-export default function ColorsPage() {
-  return (
-    <CatalogWorkspace
-      kind="colors"
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+export default async function ColorsPage() {
+  const session = await getAdminSession();
+  return <CatalogWorkspace kind="colors" permissions={session?.permissions ?? []} />;
 }

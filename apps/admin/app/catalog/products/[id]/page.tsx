@@ -1,4 +1,4 @@
-import { adminFoundationSession } from "../../../_lib/admin-access";
+import { getAdminSession } from "../../../_lib/workforce-auth-server";
 import { ProductInventoryDetail } from "../_components/product-inventory-detail";
 
 export default async function ProductDetailPage({
@@ -7,9 +7,10 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await getAdminSession();
   return (
     <ProductInventoryDetail
-      permissions={adminFoundationSession.permissions}
+      permissions={session?.permissions ?? []}
       productId={id}
     />
   );
