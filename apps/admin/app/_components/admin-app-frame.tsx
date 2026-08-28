@@ -1,7 +1,8 @@
 import { LockKeyhole, MapPin, PackagePlus, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { AdminSession } from "../_lib/admin-access";
+import type { AdminPermissionKey, AdminSession } from "../_lib/admin-access";
+import { AdminLogoutButton } from "./admin-logout-button";
 import { AdminNavigation } from "./admin-navigation";
 import styles from "./admin-shell.module.css";
 
@@ -15,6 +16,18 @@ export function AdminAppFrame({
   if (!session) {
     return <UnauthorizedAdminState />;
   }
+
+  const canStartSale = hasEveryPermission(session, [
+    "POS:READ",
+    "POS:CREATE",
+    "POS:UPDATE",
+    "SALES:CREATE",
+    "PAYMENT:CREATE",
+  ]);
+  const canReceiveStock = hasEveryPermission(session, [
+    "INVENTORY:READ",
+    "INVENTORY:CREATE",
+  ]);
 
   return (
     <div className={`${styles.frame} admin-frame`}>
@@ -48,14 +61,18 @@ export function AdminAppFrame({
           </div>
 
           <div className={`${styles.actions} admin-topbar__actions`}>
-            <Link className={styles.actionPrimary} href="/pos/sell">
-              <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.8} />
-              New sale
-            </Link>
-            <Link className={styles.actionSecondary} href="/inventory">
-              <PackagePlus aria-hidden="true" size={16} strokeWidth={1.8} />
-              Receive stock
-            </Link>
+            {canStartSale ? (
+              <Link className={styles.actionPrimary} href="/pos/sell">
+                <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.8} />
+                New sale
+              </Link>
+            ) : null}
+            {canReceiveStock ? (
+              <Link className={styles.actionSecondary} href="/inventory/receive">
+                <PackagePlus aria-hidden="true" size={16} strokeWidth={1.8} />
+                Receive stock
+              </Link>
+            ) : null}
             <div className={styles.account}>
               <span className={`${styles.avatar} admin-avatar`} title={session.displayName}>
                 {initials(session.displayName)}
@@ -65,6 +82,7 @@ export function AdminAppFrame({
                 <span>{session.role.toLowerCase()}</span>
               </span>
             </div>
+            <AdminLogoutButton className={styles.actionSecondary} />
           </div>
         </header>
         <div className={`${styles.content} admin-content`}>{children}</div>
@@ -88,6 +106,14 @@ export function UnauthorizedAdminState() {
       </section>
     </main>
   );
+}
+
+function hasEveryPermission(
+  session: AdminSession,
+  required: readonly AdminPermissionKey[],
+): boolean {
+  const permissions = new Set(session.permissions);
+  return required.every((permission) => permissions.has(permission));
 }
 
 function initials(name: string): string {
