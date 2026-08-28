@@ -83,15 +83,20 @@ export function MovementDetailWorkspace({
   const canRead = permissions.includes("INVENTORY:READ");
   const searchParams = useSearchParams();
   const snapshot = useMemo(() => snapshotFrom(searchParams), [searchParams]);
-  const [movement, setMovement] = useState<InventoryMovementContract | null>(null);
+  const [movement, setMovement] = useState<InventoryMovementContract | null>(
+    null,
+  );
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
-  const [variants, setVariants] = useState<Map<string, VariantIdentity>>(new Map());
+  const [variants, setVariants] = useState<Map<string, VariantIdentity>>(
+    new Map(),
+  );
   const [loading, setLoading] = useState(true);
   const [integrationPending, setIntegrationPending] = useState(false);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(async () => {
+    void reloadKey;
     if (!canRead) return;
     setLoading(true);
     setError("");
@@ -107,7 +112,9 @@ export function MovementDetailWorkspace({
       setLocations(locationResult.data.items);
 
       const uniqueVariantIds = [
-        ...new Set(movementResult.data.lines.map((line) => line.productVariantId)),
+        ...new Set(
+          movementResult.data.lines.map((line) => line.productVariantId),
+        ),
       ];
       const identities = await Promise.all(
         uniqueVariantIds.map(async (variantId) => {
@@ -122,7 +129,8 @@ export function MovementDetailWorkspace({
       setVariants(
         new Map(
           identities.filter(
-            (entry): entry is readonly [string, VariantIdentity] => entry[1] !== null,
+            (entry): entry is readonly [string, VariantIdentity] =>
+              entry[1] !== null,
           ),
         ),
       );
@@ -169,7 +177,10 @@ export function MovementDetailWorkspace({
     return (
       <StatePanel
         action={
-          <button onClick={() => setReloadKey((current) => current + 1)} type="button">
+          <button
+            onClick={() => setReloadKey((current) => current + 1)}
+            type="button"
+          >
             Retry
           </button>
         }
@@ -180,8 +191,8 @@ export function MovementDetailWorkspace({
     );
   }
 
-  const type = (movement?.type as MovementType | undefined) ?? snapshot.type;
-  const status = (movement?.status as MovementStatus | undefined) ?? snapshot.status;
+  const type = movement?.type ?? snapshot.type;
+  const status = movement?.status ?? snapshot.status;
   const occurredAt = movement?.occurredAt ?? snapshot.occurredAt;
   const source = movement
     ? locationName(locations, movement.sourceLocationId)
@@ -215,7 +226,11 @@ export function MovementDetailWorkspace({
             <ArrowLeft size={16} /> Back to movements
           </Link>
           {movement ? (
-            <button className={styles.exportButton} onClick={() => exportLines(movement, variants)} type="button">
+            <button
+              className={styles.exportButton}
+              onClick={() => exportLines(movement, variants)}
+              type="button"
+            >
               <Download size={15} /> Export lines
             </button>
           ) : null}
@@ -228,10 +243,13 @@ export function MovementDetailWorkspace({
           <div>
             <strong>Frontend is ready; one thin read binding remains</strong>
             <p>
-              Expose the existing organization-scoped movement-by-ID capability as
-              <code>GET /inventory/movements/:movementId</code> returning the existing
-              <code>InventoryMovementContract</code>. This page already uses the current
-              variant-availability and stock-location APIs to hydrate readable labels.
+              Expose the existing organization-scoped movement-by-ID capability
+              as
+              <code>GET /inventory/movements/:movementId</code> returning the
+              existing
+              <code>InventoryMovementContract</code>. This page already uses the
+              current variant-availability and stock-location APIs to hydrate
+              readable labels.
             </p>
           </div>
         </div>
@@ -266,7 +284,9 @@ export function MovementDetailWorkspace({
               <h2>Movement Lines</h2>
             </div>
             {totalQuantity !== null ? (
-              <span>{totalQuantity} total unit{totalQuantity === 1 ? "" : "s"}</span>
+              <span>
+                {totalQuantity} total unit{totalQuantity === 1 ? "" : "s"}
+              </span>
             ) : null}
           </div>
 
@@ -284,7 +304,11 @@ export function MovementDetailWorkspace({
         </section>
 
         <aside className={styles.sideColumn}>
-          {movement ? <RecordMetadata movement={movement} /> : <SnapshotContext movementId={movementId} />}
+          {movement ? (
+            <RecordMetadata movement={movement} />
+          ) : (
+            <SnapshotContext movementId={movementId} />
+          )}
           {movement?.note ? (
             <section className={styles.sideCard}>
               <div className={styles.sideHeading}>
@@ -303,7 +327,10 @@ export function MovementDetailWorkspace({
           <ShieldCheck size={19} />
           <div>
             <strong>Posted movement</strong>
-            <p>Posted inventory history is read-only. Corrections should use a compensating/reversal workflow, never edit this record in place.</p>
+            <p>
+              Posted inventory history is read-only. Corrections should use a
+              compensating/reversal workflow, never edit this record in place.
+            </p>
           </div>
         </div>
       ) : null}
@@ -338,15 +365,25 @@ function MovementLines({
                 <td>{line.lineNumber}</td>
                 <td>
                   <div className={styles.productCell}>
-                    <span className={styles.productGlyph}>{initials(identity?.productName ?? "SW")}</span>
+                    <span className={styles.productGlyph}>
+                      {initials(identity?.productName ?? "SW")}
+                    </span>
                     <div>
                       <strong>{identity?.productName ?? "Variant"}</strong>
-                      <small>{identity ? `${identity.color} / ${identity.size}` : line.productVariantId}</small>
+                      <small>
+                        {identity
+                          ? `${identity.color} / ${identity.size}`
+                          : line.productVariantId}
+                      </small>
                     </div>
                   </div>
                 </td>
-                <td><code>{identity?.sku ?? "Identity loading unavailable"}</code></td>
-                <td className={`${styles.numberCell} ${styles.quantity}`}>{line.quantity}</td>
+                <td>
+                  <code>{identity?.sku ?? "Identity loading unavailable"}</code>
+                </td>
+                <td className={`${styles.numberCell} ${styles.quantity}`}>
+                  {line.quantity}
+                </td>
                 <td>{line.note || <span className={styles.muted}>—</span>}</td>
               </tr>
             );
@@ -360,7 +397,9 @@ function MovementLines({
 function SnapshotLine({ snapshot }: { snapshot: HistorySnapshot }) {
   return (
     <div className={styles.snapshotLine}>
-      <span className={styles.productGlyph}>{initials(snapshot.productName ?? "SW")}</span>
+      <span className={styles.productGlyph}>
+        {initials(snapshot.productName ?? "SW")}
+      </span>
       <div>
         <strong>{snapshot.productName ?? "Movement line"}</strong>
         <small>{snapshot.variant ?? "Variant details unavailable"}</small>
@@ -375,16 +414,30 @@ function SnapshotLine({ snapshot }: { snapshot: HistorySnapshot }) {
 function RecordMetadata({ movement }: { movement: InventoryMovementContract }) {
   const entries: Array<[string, ReactNode]> = [
     ["Movement ID", <code key="id">{movement.id}</code>],
-    ["Reference", movement.referenceType && movement.referenceId ? `${movement.referenceType} · ${movement.referenceId}` : "—"],
+    [
+      "Reference",
+      movement.referenceType && movement.referenceId
+        ? `${movement.referenceType} · ${movement.referenceId}`
+        : "—",
+    ],
     ["Idempotency key", <code key="key">{movement.idempotencyKey}</code>],
     ["Created", formatDateTime(movement.createdAt)],
-    ["Posted", movement.postedAt ? formatDateTime(movement.postedAt) : "Not posted"],
+    [
+      "Posted",
+      movement.postedAt ? formatDateTime(movement.postedAt) : "Not posted",
+    ],
   ];
   if (movement.isReversal && movement.reversesMovementId) {
-    entries.push(["Reverses", <code key="reverses">{movement.reversesMovementId}</code>]);
+    entries.push([
+      "Reverses",
+      <code key="reverses">{movement.reversesMovementId}</code>,
+    ]);
   }
   if (movement.isReversed && movement.reversedByMovementId) {
-    entries.push(["Reversed by", <code key="reversedBy">{movement.reversedByMovementId}</code>]);
+    entries.push([
+      "Reversed by",
+      <code key="reversedBy">{movement.reversedByMovementId}</code>,
+    ]);
   }
   if (movement.reversalReason) {
     entries.push(["Reversal reason", movement.reversalReason]);
@@ -417,15 +470,24 @@ function SnapshotContext({ movementId }: { movementId: string }) {
       <dl className={styles.metadataList}>
         <div>
           <dt>Movement ID</dt>
-          <dd><code>{movementId}</code></dd>
+          <dd>
+            <code>{movementId}</code>
+          </dd>
         </div>
       </dl>
-      <p className={styles.helperText}>Reference, notes, timestamps and reversal metadata are intentionally not duplicated or invented from the list read model.</p>
+      <p className={styles.helperText}>
+        Reference, notes, timestamps and reversal metadata are intentionally not
+        duplicated or invented from the list read model.
+      </p>
     </section>
   );
 }
 
-function MovementTimeline({ movement }: { movement: InventoryMovementContract }) {
+function MovementTimeline({
+  movement,
+}: {
+  movement: InventoryMovementContract;
+}) {
   return (
     <section className={styles.sideCard}>
       <div className={styles.sideHeading}>
@@ -463,9 +525,14 @@ function TimelineItem({
   time: string;
 }) {
   return (
-    <div className={`${styles.timelineItem} ${active ? styles.timelineActive : ""}`}>
+    <div
+      className={`${styles.timelineItem} ${active ? styles.timelineActive : ""}`}
+    >
       <span>{icon}</span>
-      <div><strong>{label}</strong><small>{time}</small></div>
+      <div>
+        <strong>{label}</strong>
+        <small>{time}</small>
+      </div>
     </div>
   );
 }
@@ -473,27 +540,52 @@ function TimelineItem({
 function LocationNode({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.locationNode}>
-      <span><MapPin size={16} /></span>
-      <div><small>{label}</small><strong>{value}</strong></div>
+      <span>
+        <MapPin size={16} />
+      </span>
+      <div>
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </div>
     </div>
   );
 }
 
 function TypeBadge({ type }: { type: MovementType }) {
-  return <span className={`${styles.badge} ${styles[`type_${type}`]}`}>{humanize(type)}</span>;
+  return (
+    <span className={`${styles.badge} ${styles[`type_${type}`]}`}>
+      {humanize(type)}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: MovementStatus }) {
   return (
-    <span className={`${styles.statusBadge} ${status === "POSTED" ? styles.posted : styles.draft}`}>
+    <span
+      className={`${styles.statusBadge} ${status === "POSTED" ? styles.posted : styles.draft}`}
+    >
       {status === "POSTED" ? <CheckCircle2 size={12} /> : null}
       {humanize(status)}
     </span>
   );
 }
 
-function InlineState({ icon, text, title }: { icon: ReactNode; text: string; title: string }) {
-  return <div className={styles.inlineState}>{icon}<strong>{title}</strong><p>{text}</p></div>;
+function InlineState({
+  icon,
+  text,
+  title,
+}: {
+  icon: ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <div className={styles.inlineState}>
+      {icon}
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
 }
 
 function StatePanel({
@@ -541,7 +633,10 @@ function locationName(
   id: string | null,
 ): string | null {
   if (!id) return null;
-  return locations.find((location) => location.id === id)?.name ?? `Location ${shortId(id)}`;
+  return (
+    locations.find((location) => location.id === id)?.name ??
+    `Location ${shortId(id)}`
+  );
 }
 
 function snapshotFrom(params: URLSearchParams): HistorySnapshot {
@@ -559,7 +654,15 @@ function snapshotFrom(params: URLSearchParams): HistorySnapshot {
 }
 
 function typeOrNull(value: string | null): MovementType | null {
-  return value && ["OPENING", "RECEIPT", "ISSUE", "TRANSFER", "ADJUSTMENT_IN", "ADJUSTMENT_OUT"].includes(value)
+  return value &&
+    [
+      "OPENING",
+      "RECEIPT",
+      "ISSUE",
+      "TRANSFER",
+      "ADJUSTMENT_IN",
+      "ADJUSTMENT_OUT",
+    ].includes(value)
     ? (value as MovementType)
     : null;
 }
@@ -590,7 +693,9 @@ function exportLines(
       return [
         String(line.lineNumber),
         identity?.productName ?? "",
-        identity ? `${identity.color} / ${identity.size}` : line.productVariantId,
+        identity
+          ? `${identity.color} / ${identity.size}`
+          : line.productVariantId,
         identity?.sku ?? "",
         String(line.quantity),
         line.note ?? "",
@@ -610,9 +715,11 @@ function exportLines(
 }
 
 function iconForType(type: MovementType | null) {
-  if (type === "RECEIPT" || type === "OPENING") return <PackagePlus size={21} />;
+  if (type === "RECEIPT" || type === "OPENING")
+    return <PackagePlus size={21} />;
   if (type === "TRANSFER") return <ArrowRightLeft size={21} />;
-  if (type === "ISSUE" || type === "ADJUSTMENT_OUT") return <PackageMinus size={21} />;
+  if (type === "ISSUE" || type === "ADJUSTMENT_OUT")
+    return <PackageMinus size={21} />;
   if (type === "ADJUSTMENT_IN") return <SlidersHorizontal size={21} />;
   return <CalendarClock size={21} />;
 }
@@ -622,16 +729,21 @@ function shortId(id: string) {
 }
 
 function initials(value: string) {
-  return value
-    .split(/\s+/u)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "SW";
+  return (
+    value
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "SW"
+  );
 }
 
 function humanize(value: string) {
-  return value.toLowerCase().replace(/_/gu, " ").replace(/\b\w/gu, (letter) => letter.toUpperCase());
+  return value
+    .toLowerCase()
+    .replace(/_/gu, " ")
+    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
 function formatDateTime(value: string | null | undefined) {

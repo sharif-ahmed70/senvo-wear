@@ -91,7 +91,8 @@ export function TransferStockWorkflow({
   const [sourceLocationId, setSourceLocationId] = useState("");
   const [destinationLocationId, setDestinationLocationId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [productDetails, setProductDetails] = useState<ProductDetailsContract | null>(null);
+  const [productDetails, setProductDetails] =
+    useState<ProductDetailsContract | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [scanValue, setScanValue] = useState("");
   const [lines, setLines] = useState<TransferLine[]>([]);
@@ -104,8 +105,10 @@ export function TransferStockWorkflow({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [integrationPending, setIntegrationPending] = useState(false);
-  const [draftMovement, setDraftMovement] = useState<InventoryMovementContract | null>(null);
-  const [postedMovement, setPostedMovement] = useState<InventoryMovementContract | null>(null);
+  const [draftMovement, setDraftMovement] =
+    useState<InventoryMovementContract | null>(null);
+  const [postedMovement, setPostedMovement] =
+    useState<InventoryMovementContract | null>(null);
   const [transferId, setTransferId] = useState(() => crypto.randomUUID());
 
   const loadFoundation = useCallback(async () => {
@@ -121,7 +124,11 @@ export function TransferStockWorkflow({
       setSourceLocationId((current) => current || activeLocations[0]?.id || "");
       setDestinationLocationId((current) => {
         if (current) return current;
-        return activeLocations.find((location) => location.id !== activeLocations[0]?.id)?.id ?? "";
+        return (
+          activeLocations.find(
+            (location) => location.id !== activeLocations[0]?.id,
+          )?.id ?? ""
+        );
       });
 
       if (canReadCatalog) {
@@ -130,7 +137,9 @@ export function TransferStockWorkflow({
           client.listColors(),
           client.listSizes(),
         ]);
-        setProducts(productResult.data.filter((product) => product.status !== "ARCHIVED"));
+        setProducts(
+          productResult.data.filter((product) => product.status !== "ARCHIVED"),
+        );
         setColors(colorResult.data);
         setSizes(sizeResult.data);
       }
@@ -167,7 +176,9 @@ export function TransferStockWorkflow({
     () => new Map(sizes.map((size) => [size.id, size.name])),
     [sizes],
   );
-  const sourceLocation = locations.find((location) => location.id === sourceLocationId);
+  const sourceLocation = locations.find(
+    (location) => location.id === sourceLocationId,
+  );
   const destinationLocation = locations.find(
     (location) => location.id === destinationLocationId,
   );
@@ -212,7 +223,9 @@ export function TransferStockWorkflow({
     if (destinationLocationId === value) setDestinationLocationId("");
     if (lines.length) {
       setLines([]);
-      setNotice("Transfer items were cleared because the source location changed.");
+      setNotice(
+        "Transfer items were cleared because the source location changed.",
+      );
     }
     setDraftMovement(null);
     setPostedMovement(null);
@@ -241,7 +254,8 @@ export function TransferStockWorkflow({
     return (
       result.data.items.find(
         (item) =>
-          item.variant.id === variantId && item.location.id === sourceLocationId,
+          item.variant.id === variantId &&
+          item.location.id === sourceLocationId,
       ) ?? null
     );
   }
@@ -268,7 +282,9 @@ export function TransferStockWorkflow({
         return;
       }
       setLines((current) => {
-        const existing = current.find((line) => line.variantId === input.variantId);
+        const existing = current.find(
+          (line) => line.variantId === input.variantId,
+        );
         if (existing) {
           return current.map((line) =>
             line.variantId === input.variantId
@@ -276,7 +292,10 @@ export function TransferStockWorkflow({
                   ...line,
                   availableToSell: availability.availableToSell,
                   onHand: availability.onHand,
-                  quantity: Math.min(line.quantity + 1, availability.availableToSell),
+                  quantity: Math.min(
+                    line.quantity + 1,
+                    availability.availableToSell,
+                  ),
                   reserved: availability.reserved,
                 }
               : line,
@@ -350,7 +369,9 @@ export function TransferStockWorkflow({
   }
 
   function removeLine(variantId: string) {
-    setLines((current) => current.filter((line) => line.variantId !== variantId));
+    setLines((current) =>
+      current.filter((line) => line.variantId !== variantId),
+    );
     setDraftMovement(null);
   }
 
@@ -359,7 +380,9 @@ export function TransferStockWorkflow({
       lines.map(async (line) => {
         const availability = await sourceAvailability(line.variantId, line.sku);
         if (!availability) {
-          throw new Error(`${line.sku} is no longer available at the source location.`);
+          throw new Error(
+            `${line.sku} is no longer available at the source location.`,
+          );
         }
         if (line.quantity > availability.availableToSell) {
           throw new Error(
@@ -434,10 +457,13 @@ export function TransferStockWorkflow({
       }
 
       const posted = (
-        await client.request<InventoryMovementContract>("/inventory/movements", {
-          body: { movementId: draft.id },
-          method: "POST",
-        })
+        await client.request<InventoryMovementContract>(
+          "/inventory/movements",
+          {
+            body: { movementId: draft.id },
+            method: "POST",
+          },
+        )
       ).data;
       setPostedMovement(posted);
       setStep(4);
@@ -513,7 +539,11 @@ export function TransferStockWorkflow({
         <Feedback message={error} onClose={() => setError("")} tone="error" />
       ) : null}
       {notice ? (
-        <Feedback message={notice} onClose={() => setNotice("")} tone="success" />
+        <Feedback
+          message={notice}
+          onClose={() => setNotice("")}
+          tone="success"
+        />
       ) : null}
       {integrationPending ? (
         <div className={styles.integrationGate} role="status">
@@ -523,8 +553,8 @@ export function TransferStockWorkflow({
             <p>
               Wire <code>POST /inventory/movement-drafts</code> to the existing
               domain <code>createInventoryMovement</code> use case. The payload
-              already uses <code>type: TRANSFER</code> with source and destination
-              location IDs. Do not mutate stock balances directly.
+              already uses <code>type: TRANSFER</code> with source and
+              destination location IDs. Do not mutate stock balances directly.
             </p>
           </div>
         </div>
@@ -553,7 +583,7 @@ export function TransferStockWorkflow({
           onBack={() => setStep(1)}
           onContinue={() => setStep(3)}
           onRemoveLine={removeLine}
-          onScan={scan}
+          onScan={(event) => void scan(event)}
           onUpdateQuantity={updateQuantity}
           productDetails={productDetails}
           productQuery={productQuery}
@@ -630,7 +660,9 @@ function RouteStep({
   sourceLocationId: string;
 }) {
   const source = locations.find((location) => location.id === sourceLocationId);
-  const destination = locations.find((location) => location.id === destinationLocationId);
+  const destination = locations.find(
+    (location) => location.id === destinationLocationId,
+  );
   return (
     <section className={styles.workflowCard}>
       <div className={styles.sectionIntro}>
@@ -645,8 +677,13 @@ function RouteStep({
       <div className={styles.itemEntryGrid}>
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><MapPin size={19} /></span>
-            <div><strong>From</strong><small>Current physical location</small></div>
+            <span className={styles.entryIcon}>
+              <MapPin size={19} />
+            </span>
+            <div>
+              <strong>From</strong>
+              <small>Current physical location</small>
+            </div>
           </div>
           <label className={styles.selectShell}>
             <span>Source location</span>
@@ -667,8 +704,13 @@ function RouteStep({
 
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Truck size={19} /></span>
-            <div><strong>To</strong><small>Receiving SENVO location</small></div>
+            <span className={styles.entryIcon}>
+              <Truck size={19} />
+            </span>
+            <div>
+              <strong>To</strong>
+              <small>Receiving SENVO location</small>
+            </div>
           </div>
           <label className={styles.selectShell}>
             <span>Destination</span>
@@ -693,12 +735,16 @@ function RouteStep({
       {source && destination ? (
         <div className={styles.selectionSummary}>
           <Truck size={16} />
-          <span><strong>{source.name}</strong> → <strong>{destination.name}</strong></span>
+          <span>
+            <strong>{source.name}</strong> → <strong>{destination.name}</strong>
+          </span>
         </div>
       ) : null}
 
       <div className={styles.footerActions}>
-        <Link className={styles.textLink} href="/inventory">Cancel</Link>
+        <Link className={styles.textLink} href="/inventory">
+          Cancel
+        </Link>
         <button
           className={styles.primaryButton}
           disabled={
@@ -777,8 +823,13 @@ function ItemsStep({
       <div className={styles.itemEntryGrid}>
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Barcode size={19} /></span>
-            <div><strong>Scan barcode</strong><small>Fastest on the shop floor</small></div>
+            <span className={styles.entryIcon}>
+              <Barcode size={19} />
+            </span>
+            <div>
+              <strong>Scan barcode</strong>
+              <small>Fastest on the shop floor</small>
+            </div>
           </div>
           <form className={styles.scanForm} onSubmit={onScan}>
             <label>
@@ -796,7 +847,11 @@ function ItemsStep({
               disabled={!scanValue.trim() || scanning || !canReadCatalog}
               type="submit"
             >
-              {scanning ? <LoaderCircle className={styles.spin} size={16} /> : <Plus size={16} />}
+              {scanning ? (
+                <LoaderCircle className={styles.spin} size={16} />
+              ) : (
+                <Plus size={16} />
+              )}
               Add
             </button>
           </form>
@@ -804,8 +859,13 @@ function ItemsStep({
 
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Search size={19} /></span>
-            <div><strong>Choose manually</strong><small>Product → variant</small></div>
+            <span className={styles.entryIcon}>
+              <Search size={19} />
+            </span>
+            <div>
+              <strong>Choose manually</strong>
+              <small>Product → variant</small>
+            </div>
           </div>
           {!canReadCatalog ? (
             <p className={styles.catalogGate}>
@@ -836,7 +896,9 @@ function ItemsStep({
                 </select>
                 <ChevronDown size={15} />
               </label>
-              {loadingProduct ? <InlineLoading text="Loading variants…" /> : null}
+              {loadingProduct ? (
+                <InlineLoading text="Loading variants…" />
+              ) : null}
               {productDetails ? (
                 <div className={styles.variantPicker}>
                   {productDetails.variants
@@ -850,7 +912,8 @@ function ItemsStep({
                       >
                         <span>
                           <strong>
-                            {colorNames.get(variant.colorId) ?? "Color"} / {sizeNames.get(variant.sizeId) ?? "Size"}
+                            {colorNames.get(variant.colorId) ?? "Color"} /{" "}
+                            {sizeNames.get(variant.sizeId) ?? "Size"}
                           </strong>
                           <small>{variant.sku}</small>
                         </span>
@@ -890,15 +953,20 @@ function ItemsStep({
                 <span className={styles.lineGlyph}>↔</span>
                 <div className={styles.lineIdentity}>
                   <strong>{line.productName}</strong>
-                  <span>{line.color} / {line.size}</span>
+                  <span>
+                    {line.color} / {line.size}
+                  </span>
                   <small>
-                    {line.sku} · On hand {line.onHand} · Reserved {line.reserved} · {line.availableToSell} transferable
+                    {line.sku} · On hand {line.onHand} · Reserved{" "}
+                    {line.reserved} · {line.availableToSell} transferable
                   </small>
                 </div>
                 <div className={styles.qtyControl}>
                   <button
                     aria-label={`Decrease ${line.sku}`}
-                    onClick={() => onUpdateQuantity(line.variantId, line.quantity - 1)}
+                    onClick={() =>
+                      onUpdateQuantity(line.variantId, line.quantity - 1)
+                    }
                     type="button"
                   >
                     <Minus size={14} />
@@ -908,7 +976,10 @@ function ItemsStep({
                     max={line.availableToSell}
                     min={1}
                     onChange={(event) =>
-                      onUpdateQuantity(line.variantId, Number(event.target.value))
+                      onUpdateQuantity(
+                        line.variantId,
+                        Number(event.target.value),
+                      )
                     }
                     type="number"
                     value={line.quantity}
@@ -916,7 +987,9 @@ function ItemsStep({
                   <button
                     aria-label={`Increase ${line.sku}`}
                     disabled={line.quantity >= line.availableToSell}
-                    onClick={() => onUpdateQuantity(line.variantId, line.quantity + 1)}
+                    onClick={() =>
+                      onUpdateQuantity(line.variantId, line.quantity + 1)
+                    }
                     type="button"
                   >
                     <Plus size={14} />
@@ -1007,7 +1080,9 @@ function ReviewStep({
           <div key={line.variantId}>
             <span>
               <strong>{line.productName}</strong>
-              <small>{line.color} / {line.size} · {line.sku}</small>
+              <small>
+                {line.color} / {line.size} · {line.sku}
+              </small>
             </span>
             <span>
               <b>{line.quantity}</b>
@@ -1018,7 +1093,9 @@ function ReviewStep({
       </div>
 
       <label className={styles.noteField}>
-        <span>Transfer note <small>Optional</small></span>
+        <span>
+          Transfer note <small>Optional</small>
+        </span>
         <textarea
           maxLength={1000}
           onChange={(event) => setNote(event.target.value)}
@@ -1079,22 +1156,34 @@ function SuccessStep({
 }) {
   return (
     <section className={styles.successCard}>
-      <span className={styles.successIcon}><CheckCircle2 size={28} /></span>
+      <span className={styles.successIcon}>
+        <CheckCircle2 size={28} />
+      </span>
       <p className={styles.eyebrow}>Transfer posted</p>
       <h2>{totalUnits} unit(s) moved successfully</h2>
       <p>
-        <strong>{sourceName}</strong> → <strong>{destinationName}</strong>. SENVO
-        recorded movement <code>{movement.movementNumber}</code> in the inventory
-        ledger.
+        <strong>{sourceName}</strong> → <strong>{destinationName}</strong>.
+        SENVO recorded movement <code>{movement.movementNumber}</code> in the
+        inventory ledger.
       </p>
       <div className={styles.successMeta}>
-        <span>Movement</span><strong>{movement.movementNumber}</strong>
-        <span>Status</span><strong>{movement.status}</strong>
+        <span>Movement</span>
+        <strong>{movement.movementNumber}</strong>
+        <span>Status</span>
+        <strong>{movement.status}</strong>
       </div>
       <div className={styles.successActions}>
-        <Link className={styles.secondaryButton} href="/inventory">Back to inventory</Link>
-        <Link className={styles.secondaryButton} href="/inventory/movements">View movement history</Link>
-        <button className={styles.primaryButton} onClick={onReset} type="button">
+        <Link className={styles.secondaryButton} href="/inventory">
+          Back to inventory
+        </Link>
+        <Link className={styles.secondaryButton} href="/inventory/movements">
+          View movement history
+        </Link>
+        <button
+          className={styles.primaryButton}
+          onClick={onReset}
+          type="button"
+        >
           Transfer more stock
         </button>
       </div>
@@ -1125,7 +1214,9 @@ function StepRail({ step }: { step: Step }) {
               </span>
               <strong>{label}</strong>
             </div>
-            {index < labels.length - 1 ? <span className={styles.stepLine} /> : null}
+            {index < labels.length - 1 ? (
+              <span className={styles.stepLine} />
+            ) : null}
           </li>
         );
       })}
@@ -1170,10 +1261,16 @@ function Feedback({
       role={tone === "error" ? "alert" : "status"}
     >
       <span>
-        {tone === "error" ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
+        {tone === "error" ? (
+          <AlertTriangle size={17} />
+        ) : (
+          <CheckCircle2 size={17} />
+        )}
         {message}
       </span>
-      <button aria-label="Dismiss message" onClick={onClose} type="button">×</button>
+      <button aria-label="Dismiss message" onClick={onClose} type="button">
+        ×
+      </button>
     </div>
   );
 }
@@ -1223,10 +1320,7 @@ function fromBarcode(result: BarcodeLookupContract) {
 
 function clampQty(value: number, available: number) {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(
-    Math.max(1, Math.trunc(value)),
-    Math.min(MAX_QTY, available),
-  );
+  return Math.min(Math.max(1, Math.trunc(value)), Math.min(MAX_QTY, available));
 }
 
 function movementNumber(id: string) {

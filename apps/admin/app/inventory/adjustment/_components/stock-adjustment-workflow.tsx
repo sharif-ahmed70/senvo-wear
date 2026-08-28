@@ -96,7 +96,8 @@ export function StockAdjustmentWorkflow({
   const [sizes, setSizes] = useState<SizeContract[]>([]);
   const [locationId, setLocationId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [productDetails, setProductDetails] = useState<ProductDetailsContract | null>(null);
+  const [productDetails, setProductDetails] =
+    useState<ProductDetailsContract | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [scanValue, setScanValue] = useState("");
   const [lines, setLines] = useState<AdjustmentLine[]>([]);
@@ -111,8 +112,10 @@ export function StockAdjustmentWorkflow({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [integrationPending, setIntegrationPending] = useState(false);
-  const [draftMovement, setDraftMovement] = useState<InventoryMovementContract | null>(null);
-  const [postedMovement, setPostedMovement] = useState<InventoryMovementContract | null>(null);
+  const [draftMovement, setDraftMovement] =
+    useState<InventoryMovementContract | null>(null);
+  const [postedMovement, setPostedMovement] =
+    useState<InventoryMovementContract | null>(null);
   const [adjustmentId, setAdjustmentId] = useState(() => crypto.randomUUID());
 
   const loadFoundation = useCallback(async () => {
@@ -133,7 +136,9 @@ export function StockAdjustmentWorkflow({
           client.listColors(),
           client.listSizes(),
         ]);
-        setProducts(productResult.data.filter((product) => product.status !== "ARCHIVED"));
+        setProducts(
+          productResult.data.filter((product) => product.status !== "ARCHIVED"),
+        );
         setColors(colorResult.data);
         setSizes(sizeResult.data);
       }
@@ -170,7 +175,9 @@ export function StockAdjustmentWorkflow({
     () => new Map(sizes.map((size) => [size.id, size.name])),
     [sizes],
   );
-  const selectedLocation = locations.find((location) => location.id === locationId);
+  const selectedLocation = locations.find(
+    (location) => location.id === locationId,
+  );
   const filteredProducts = useMemo(() => {
     const query = productQuery.trim().toLowerCase();
     if (!query) return products.slice(0, 12);
@@ -215,7 +222,9 @@ export function StockAdjustmentWorkflow({
     setOutAcknowledged(false);
     setDraftMovement(null);
     setPostedMovement(null);
-    setNotice("Selected items were cleared because the adjustment direction changed.");
+    setNotice(
+      "Selected items were cleared because the adjustment direction changed.",
+    );
   }
 
   function changeLocation(nextLocationId: string) {
@@ -224,7 +233,9 @@ export function StockAdjustmentWorkflow({
     setLines([]);
     setDraftMovement(null);
     setPostedMovement(null);
-    setNotice("Selected items were cleared because the stock location changed.");
+    setNotice(
+      "Selected items were cleared because the stock location changed.",
+    );
   }
 
   async function currentAvailability(
@@ -239,7 +250,8 @@ export function StockAdjustmentWorkflow({
     });
     return (
       result.data.items.find(
-        (item) => item.variant.id === variantId && item.location.id === locationId,
+        (item) =>
+          item.variant.id === variantId && item.location.id === locationId,
       ) ?? null
     );
   }
@@ -258,7 +270,10 @@ export function StockAdjustmentWorkflow({
     setAddingVariantId(input.variantId);
     setError("");
     try {
-      const availability = await currentAvailability(input.variantId, input.sku);
+      const availability = await currentAvailability(
+        input.variantId,
+        input.sku,
+      );
       const onHand = availability?.onHand ?? 0;
       const reserved = availability?.reserved ?? 0;
       const availableToSell = availability?.availableToSell ?? 0;
@@ -271,7 +286,9 @@ export function StockAdjustmentWorkflow({
       }
 
       setLines((current) => {
-        const existing = current.find((line) => line.variantId === input.variantId);
+        const existing = current.find(
+          (line) => line.variantId === input.variantId,
+        );
         const maximum = direction === "OUT" ? availableToSell : MAX_QTY;
         if (existing) {
           return current.map((line) =>
@@ -333,7 +350,9 @@ export function StockAdjustmentWorkflow({
       setScanValue("");
     } catch (caught) {
       if (caught instanceof AdminApiError && caught.status === 404) {
-        setError(`Barcode ${value} was not found. Check the label or choose the product manually.`);
+        setError(
+          `Barcode ${value} was not found. Check the label or choose the product manually.`,
+        );
       } else {
         setError(messageFor(caught));
       }
@@ -354,7 +373,9 @@ export function StockAdjustmentWorkflow({
   }
 
   function removeLine(variantId: string) {
-    setLines((current) => current.filter((line) => line.variantId !== variantId));
+    setLines((current) =>
+      current.filter((line) => line.variantId !== variantId),
+    );
     setDraftMovement(null);
   }
 
@@ -362,9 +383,14 @@ export function StockAdjustmentWorkflow({
     if (direction !== "OUT") return lines;
     const refreshed = await Promise.all(
       lines.map(async (line) => {
-        const availability = await currentAvailability(line.variantId, line.sku);
+        const availability = await currentAvailability(
+          line.variantId,
+          line.sku,
+        );
         if (!availability) {
-          throw new Error(`${line.sku} no longer has stock at the selected location.`);
+          throw new Error(
+            `${line.sku} no longer has stock at the selected location.`,
+          );
         }
         if (line.quantity > availability.availableToSell) {
           throw new Error(
@@ -391,7 +417,9 @@ export function StockAdjustmentWorkflow({
       return;
     }
     if (direction === "OUT" && !outAcknowledged) {
-      setError("Confirm that the physical stock difference was checked before adjusting stock out.");
+      setError(
+        "Confirm that the physical stock difference was checked before adjusting stock out.",
+      );
       return;
     }
 
@@ -448,10 +476,13 @@ export function StockAdjustmentWorkflow({
       }
 
       const posted = (
-        await client.request<InventoryMovementContract>("/inventory/movements", {
-          body: { movementId: draft.id },
-          method: "POST",
-        })
+        await client.request<InventoryMovementContract>(
+          "/inventory/movements",
+          {
+            body: { movementId: draft.id },
+            method: "POST",
+          },
+        )
       ).data;
       setPostedMovement(posted);
       setStep(4);
@@ -530,7 +561,11 @@ export function StockAdjustmentWorkflow({
         <Feedback message={error} onClose={() => setError("")} tone="error" />
       ) : null}
       {notice ? (
-        <Feedback message={notice} onClose={() => setNotice("")} tone="success" />
+        <Feedback
+          message={notice}
+          onClose={() => setNotice("")}
+          tone="success"
+        />
       ) : null}
       {integrationPending ? (
         <div className={styles.integrationGate} role="status">
@@ -571,7 +606,7 @@ export function StockAdjustmentWorkflow({
           onBack={() => setStep(1)}
           onContinue={() => setStep(3)}
           onRemoveLine={removeLine}
-          onScan={scan}
+          onScan={(event) => void scan(event)}
           onUpdateQuantity={updateQuantity}
           productDetails={productDetails}
           productQuery={productQuery}
@@ -668,7 +703,9 @@ function SetupStep({
           onClick={() => onDirectionChange("IN")}
           type="button"
         >
-          <span className={styles.locationIcon}><PackagePlus size={19} /></span>
+          <span className={styles.locationIcon}>
+            <PackagePlus size={19} />
+          </span>
           <span>
             <strong>Adjustment In</strong>
             <small>Physical stock is higher than SENVO currently shows.</small>
@@ -681,10 +718,15 @@ function SetupStep({
           onClick={() => onDirectionChange("OUT")}
           type="button"
         >
-          <span className={styles.locationIcon}><PackageMinus size={19} /></span>
+          <span className={styles.locationIcon}>
+            <PackageMinus size={19} />
+          </span>
           <span>
             <strong>Adjustment Out</strong>
-            <small>Physical stock is lower because of damage, loss or count correction.</small>
+            <small>
+              Physical stock is lower because of damage, loss or count
+              correction.
+            </small>
           </span>
           {direction === "OUT" ? <Check size={17} /> : null}
         </button>
@@ -703,10 +745,14 @@ function SetupStep({
             onClick={() => onLocationChange(location.id)}
             type="button"
           >
-            <span className={styles.locationIcon}><MapPin size={19} /></span>
+            <span className={styles.locationIcon}>
+              <MapPin size={19} />
+            </span>
             <span>
               <strong>{location.name}</strong>
-              <small>{location.branch.name} · {humanize(location.type)}</small>
+              <small>
+                {location.branch.name} · {humanize(location.type)}
+              </small>
             </span>
             {locationId === location.id ? <Check size={17} /> : null}
           </button>
@@ -714,7 +760,9 @@ function SetupStep({
       </div>
 
       <div className={styles.footerActions}>
-        <Link className={styles.textLink} href="/inventory">Cancel</Link>
+        <Link className={styles.textLink} href="/inventory">
+          Cancel
+        </Link>
         <button
           className={styles.primaryButton}
           disabled={!locationId}
@@ -792,8 +840,13 @@ function ItemsStep({
       <div className={styles.itemEntryGrid}>
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Barcode size={19} /></span>
-            <div><strong>Scan barcode</strong><small>Fastest for labelled stock</small></div>
+            <span className={styles.entryIcon}>
+              <Barcode size={19} />
+            </span>
+            <div>
+              <strong>Scan barcode</strong>
+              <small>Fastest for labelled stock</small>
+            </div>
           </div>
           <form className={styles.scanForm} onSubmit={onScan}>
             <label>
@@ -811,7 +864,11 @@ function ItemsStep({
               disabled={!scanValue.trim() || scanning || !canReadCatalog}
               type="submit"
             >
-              {scanning ? <LoaderCircle className={styles.spin} size={16} /> : <Plus size={16} />}
+              {scanning ? (
+                <LoaderCircle className={styles.spin} size={16} />
+              ) : (
+                <Plus size={16} />
+              )}
               Add
             </button>
           </form>
@@ -819,8 +876,13 @@ function ItemsStep({
 
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Search size={19} /></span>
-            <div><strong>Choose manually</strong><small>Product → variant</small></div>
+            <span className={styles.entryIcon}>
+              <Search size={19} />
+            </span>
+            <div>
+              <strong>Choose manually</strong>
+              <small>Product → variant</small>
+            </div>
           </div>
           {!canReadCatalog ? (
             <p className={styles.catalogGate}>
@@ -851,7 +913,9 @@ function ItemsStep({
                 </select>
                 <ChevronDown size={15} />
               </label>
-              {loadingProduct ? <InlineLoading text="Loading variants…" /> : null}
+              {loadingProduct ? (
+                <InlineLoading text="Loading variants…" />
+              ) : null}
               {productDetails ? (
                 <div className={styles.variantPicker}>
                   {productDetails.variants
@@ -865,7 +929,8 @@ function ItemsStep({
                       >
                         <span>
                           <strong>
-                            {colorNames.get(variant.colorId) ?? "Color"} / {sizeNames.get(variant.sizeId) ?? "Size"}
+                            {colorNames.get(variant.colorId) ?? "Color"} /{" "}
+                            {sizeNames.get(variant.sizeId) ?? "Size"}
                           </strong>
                           <small>{variant.sku}</small>
                         </span>
@@ -885,7 +950,11 @@ function ItemsStep({
 
       {lines.length === 0 ? (
         <div className={styles.linesEmpty}>
-          {direction === "IN" ? <PackagePlus size={22} /> : <PackageMinus size={22} />}
+          {direction === "IN" ? (
+            <PackagePlus size={22} />
+          ) : (
+            <PackageMinus size={22} />
+          )}
           <strong>No adjustment items yet</strong>
           <span>Scan a barcode or choose a product variant.</span>
         </div>
@@ -896,46 +965,66 @@ function ItemsStep({
               <p className={styles.eyebrow}>Adjustment lines</p>
               <h3>{lines.length} variant(s)</h3>
             </div>
-            <span>{lines.reduce((sum, line) => sum + line.quantity, 0)} unit(s)</span>
+            <span>
+              {lines.reduce((sum, line) => sum + line.quantity, 0)} unit(s)
+            </span>
           </div>
           <div className={styles.lineList}>
             {lines.map((line) => (
               <div className={styles.lineItem} key={line.variantId}>
-                <span className={styles.lineGlyph}>{line.productName.slice(0, 1).toUpperCase()}</span>
+                <span className={styles.lineGlyph}>
+                  {line.productName.slice(0, 1).toUpperCase()}
+                </span>
                 <span className={styles.lineIdentity}>
-                  <strong>{line.productName} · {line.color} / {line.size}</strong>
+                  <strong>
+                    {line.productName} · {line.color} / {line.size}
+                  </strong>
                   <span>{line.sku}</span>
                   <small>
-                    On hand {line.onHand} · Reserved {line.reserved} · Available {line.availableToSell}
+                    On hand {line.onHand} · Reserved {line.reserved} · Available{" "}
+                    {line.availableToSell}
                   </small>
                 </span>
                 <span className={styles.qtyControl}>
                   <button
                     aria-label={`Decrease ${line.sku}`}
-                    onClick={() => onUpdateQuantity(line.variantId, line.quantity - 1)}
+                    onClick={() =>
+                      onUpdateQuantity(line.variantId, line.quantity - 1)
+                    }
                     type="button"
-                  ><Minus size={14} /></button>
+                  >
+                    <Minus size={14} />
+                  </button>
                   <input
                     aria-label={`Adjustment quantity for ${line.sku}`}
                     min={1}
                     onChange={(event) =>
-                      onUpdateQuantity(line.variantId, Number(event.target.value))
+                      onUpdateQuantity(
+                        line.variantId,
+                        Number(event.target.value),
+                      )
                     }
                     type="number"
                     value={line.quantity}
                   />
                   <button
                     aria-label={`Increase ${line.sku}`}
-                    onClick={() => onUpdateQuantity(line.variantId, line.quantity + 1)}
+                    onClick={() =>
+                      onUpdateQuantity(line.variantId, line.quantity + 1)
+                    }
                     type="button"
-                  ><Plus size={14} /></button>
+                  >
+                    <Plus size={14} />
+                  </button>
                 </span>
                 <button
                   aria-label={`Remove ${line.sku}`}
                   className={styles.removeButton}
                   onClick={() => onRemoveLine(line.variantId)}
                   type="button"
-                ><Trash2 size={15} /></button>
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
             ))}
           </div>
@@ -948,15 +1037,18 @@ function ItemsStep({
           <div>
             <strong>Reserved units are intentionally protected</strong>
             <p>
-              If the physical shortage affects units already reserved for orders,
-              resolve those reservations first instead of silently reducing them.
+              If the physical shortage affects units already reserved for
+              orders, resolve those reservations first instead of silently
+              reducing them.
             </p>
           </div>
         </div>
       ) : null}
 
       <div className={styles.footerActions}>
-        <button className={styles.textButton} onClick={onBack} type="button">Back</button>
+        <button className={styles.textButton} onClick={onBack} type="button">
+          Back
+        </button>
         <button
           className={styles.primaryButton}
           disabled={!lines.length}
@@ -1001,47 +1093,80 @@ function ReviewStep({
   setReason: (value: string) => void;
   totalUnits: number;
 }) {
-  const ready = reason.trim().length >= 3 && (direction === "IN" || outAcknowledged);
+  const ready =
+    reason.trim().length >= 3 && (direction === "IN" || outAcknowledged);
   return (
     <section className={styles.workflowCard}>
       <div className={styles.sectionIntro}>
         <p className={styles.eyebrow}>Step 3</p>
         <h2>Review before posting</h2>
         <p>
-          This will create an immutable {direction === "IN" ? "Adjustment In" : "Adjustment Out"} movement for {locationName}.
+          This will create an immutable{" "}
+          {direction === "IN" ? "Adjustment In" : "Adjustment Out"} movement for{" "}
+          {locationName}.
         </p>
       </div>
 
       <div className={styles.reviewGrid}>
-        <div className={styles.reviewCard}><span>Location</span><strong>{locationName}</strong><small>Inventory ledger location</small></div>
-        <div className={styles.reviewCard}><span>Direction</span><strong>{direction === "IN" ? "Stock in" : "Stock out"}</strong><small>{direction === "IN" ? "Increase on-hand" : "Decrease on-hand"}</small></div>
-        <div className={styles.reviewCard}><span>Total units</span><strong>{totalUnits}</strong><small>{lines.length} variant(s)</small></div>
+        <div className={styles.reviewCard}>
+          <span>Location</span>
+          <strong>{locationName}</strong>
+          <small>Inventory ledger location</small>
+        </div>
+        <div className={styles.reviewCard}>
+          <span>Direction</span>
+          <strong>{direction === "IN" ? "Stock in" : "Stock out"}</strong>
+          <small>
+            {direction === "IN" ? "Increase on-hand" : "Decrease on-hand"}
+          </small>
+        </div>
+        <div className={styles.reviewCard}>
+          <span>Total units</span>
+          <strong>{totalUnits}</strong>
+          <small>{lines.length} variant(s)</small>
+        </div>
       </div>
 
       <div className={styles.reviewLines}>
         {lines.map((line) => (
           <div key={line.variantId}>
             <span>
-              <strong>{line.productName} · {line.color} / {line.size}</strong>
-              <small>{line.sku} · Current on-hand {line.onHand} · Reserved {line.reserved}</small>
+              <strong>
+                {line.productName} · {line.color} / {line.size}
+              </strong>
+              <small>
+                {line.sku} · Current on-hand {line.onHand} · Reserved{" "}
+                {line.reserved}
+              </small>
             </span>
-            <b>{direction === "IN" ? "+" : "−"}{line.quantity}</b>
+            <b>
+              {direction === "IN" ? "+" : "−"}
+              {line.quantity}
+            </b>
           </div>
         ))}
       </div>
 
       <label className={styles.noteField}>
-        <span>Reason <small>Required</small></span>
+        <span>
+          Reason <small>Required</small>
+        </span>
         <textarea
           maxLength={240}
           onChange={(event) => setReason(event.target.value)}
-          placeholder={direction === "IN" ? "Example: cycle count found 3 units not recorded" : "Example: damaged during handling / physical count shortage"}
+          placeholder={
+            direction === "IN"
+              ? "Example: cycle count found 3 units not recorded"
+              : "Example: damaged during handling / physical count shortage"
+          }
           rows={3}
           value={reason}
         />
       </label>
       <label className={styles.noteField}>
-        <span>Additional details <small>Optional</small></span>
+        <span>
+          Additional details <small>Optional</small>
+        </span>
         <textarea
           maxLength={650}
           onChange={(event) => setNotes(event.target.value)}
@@ -1072,21 +1197,32 @@ function ReviewStep({
         <div className={styles.draftNotice}>
           <CheckCircle2 size={17} />
           <span>
-            Draft {draftMovement.movementNumber} already exists. A retry will post
-            this same draft instead of creating a duplicate correction.
+            Draft {draftMovement.movementNumber} already exists. A retry will
+            post this same draft instead of creating a duplicate correction.
           </span>
         </div>
       ) : null}
 
       <div className={styles.footerActions}>
-        <button className={styles.textButton} disabled={saving} onClick={onBack} type="button">Back</button>
+        <button
+          className={styles.textButton}
+          disabled={saving}
+          onClick={onBack}
+          type="button"
+        >
+          Back
+        </button>
         <button
           className={styles.primaryButton}
           disabled={!ready || saving}
           onClick={onConfirm}
           type="button"
         >
-          {saving ? <LoaderCircle className={styles.spin} size={16} /> : <ClipboardCheck size={16} />}
+          {saving ? (
+            <LoaderCircle className={styles.spin} size={16} />
+          ) : (
+            <ClipboardCheck size={16} />
+          )}
           Post adjustment
         </button>
       </div>
@@ -1109,21 +1245,38 @@ function SuccessStep({
 }) {
   return (
     <section className={styles.successCard}>
-      <span className={styles.successIcon}><CheckCircle2 size={30} /></span>
+      <span className={styles.successIcon}>
+        <CheckCircle2 size={30} />
+      </span>
       <p className={styles.eyebrow}>Step 4 · Complete</p>
       <h2>Stock adjustment posted</h2>
       <p>
-        {totalUnits} unit(s) were {direction === "IN" ? "added to" : "removed from"} {locationName}. SENVO preserved the correction as movement history.
+        {totalUnits} unit(s) were{" "}
+        {direction === "IN" ? "added to" : "removed from"} {locationName}. SENVO
+        preserved the correction as movement history.
       </p>
       <div className={styles.successMeta}>
-        <span>Movement</span><strong>{movement.movementNumber}</strong>
-        <span>Status</span><strong>{movement.status}</strong>
-        <span>Type</span><strong>{humanize(movement.type)}</strong>
+        <span>Movement</span>
+        <strong>{movement.movementNumber}</strong>
+        <span>Status</span>
+        <strong>{movement.status}</strong>
+        <span>Type</span>
+        <strong>{humanize(movement.type)}</strong>
       </div>
       <div className={styles.successActions}>
-        <Link className={styles.secondaryButton} href="/inventory">Back to Inventory</Link>
-        <Link className={styles.secondaryButton} href="/inventory/movements">Movement History</Link>
-        <button className={styles.primaryButton} onClick={onReset} type="button">New adjustment</button>
+        <Link className={styles.secondaryButton} href="/inventory">
+          Back to Inventory
+        </Link>
+        <Link className={styles.secondaryButton} href="/inventory/movements">
+          Movement History
+        </Link>
+        <button
+          className={styles.primaryButton}
+          onClick={onReset}
+          type="button"
+        >
+          New adjustment
+        </button>
       </div>
     </section>
   );
@@ -1139,8 +1292,12 @@ function StepRail({ step }: { step: Step }) {
         const active = number === step;
         return (
           <div className={styles.stepGroup} key={label}>
-            <span className={`${styles.step} ${active ? styles.stepActive : ""} ${complete ? styles.stepComplete : ""}`}>
-              <span className={styles.stepNumber}>{complete ? <Check size={13} /> : number}</span>
+            <span
+              className={`${styles.step} ${active ? styles.stepActive : ""} ${complete ? styles.stepComplete : ""}`}
+            >
+              <span className={styles.stepNumber}>
+                {complete ? <Check size={13} /> : number}
+              </span>
               {label}
             </span>
             {number < 4 ? <span className={styles.stepLine} /> : null}
@@ -1161,16 +1318,29 @@ function Feedback({
   tone: "error" | "success";
 }) {
   return (
-    <div className={`${styles.feedback} ${tone === "error" ? styles.feedbackError : styles.feedbackSuccess}`} role={tone === "error" ? "alert" : "status"}>
-      {tone === "error" ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
+    <div
+      className={`${styles.feedback} ${tone === "error" ? styles.feedbackError : styles.feedbackSuccess}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      {tone === "error" ? (
+        <AlertTriangle size={17} />
+      ) : (
+        <CheckCircle2 size={17} />
+      )}
       <span>{message}</span>
-      <button aria-label="Dismiss message" onClick={onClose} type="button">×</button>
+      <button aria-label="Dismiss message" onClick={onClose} type="button">
+        ×
+      </button>
     </div>
   );
 }
 
 function InlineLoading({ text }: { text: string }) {
-  return <div className={styles.inlineLoading}><LoaderCircle className={styles.spin} size={15} /> {text}</div>;
+  return (
+    <div className={styles.inlineLoading}>
+      <LoaderCircle className={styles.spin} size={15} /> {text}
+    </div>
+  );
 }
 
 function Principle({
@@ -1185,7 +1355,10 @@ function Principle({
   return (
     <article>
       <span>{icon}</span>
-      <div><strong>{title}</strong><small>{text}</small></div>
+      <div>
+        <strong>{title}</strong>
+        <small>{text}</small>
+      </div>
     </article>
   );
 }
@@ -1233,7 +1406,10 @@ function movementNumber(id: string) {
 }
 
 function humanize(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/gu, (letter) => letter.toUpperCase());
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
 function messageFor(error: unknown) {

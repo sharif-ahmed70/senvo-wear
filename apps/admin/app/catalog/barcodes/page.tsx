@@ -10,6 +10,8 @@ export const metadata: Metadata = {
 
 export default function BarcodesPage() {
   return (
-    <BarcodeWorkspaceComplete permissions={adminFoundationSession.permissions} />
+    <BarcodeWorkspaceComplete
+      permissions={adminFoundationSession.permissions}
+    />
   );
 }

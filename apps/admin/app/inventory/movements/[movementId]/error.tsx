@@ -15,8 +15,12 @@ export default function MovementDetailError({ reset }: { reset: () => void }) {
         }}
       >
         <h1 style={{ marginTop: 0 }}>Movement details could not render</h1>
-        <p>The route hit an unexpected UI error. No inventory data was changed.</p>
-        <button onClick={reset} type="button">Try again</button>
+        <p>
+          The route hit an unexpected UI error. No inventory data was changed.
+        </p>
+        <button onClick={reset} type="button">
+          Try again
+        </button>
       </section>
     </main>
   );

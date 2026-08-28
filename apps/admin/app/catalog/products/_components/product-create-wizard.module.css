@@ -760,7 +760,9 @@
 }
 
 @keyframes product-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1050px) {

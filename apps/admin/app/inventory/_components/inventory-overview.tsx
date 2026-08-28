@@ -9,7 +9,6 @@ import type {
 import {
   AlertCircle,
   ArrowRight,
-  Barcode,
   Boxes,
   CheckCircle2,
   ClipboardList,
@@ -76,25 +75,32 @@ export function InventoryOverview({
     PageState<InventoryAvailabilityReadContract>
   >({ hasMore: false, items: [], nextCursor: null });
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
-  const [movements, setMovements] = useState<InventoryMovementHistoryContract[]>([]);
+  const [movements, setMovements] = useState<
+    InventoryMovementHistoryContract[]
+  >([]);
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanResult, setScanResult] = useState<BarcodeLookupContract | null>(null);
-  const [actionNotice, setActionNotice] = useState<null | "adjust" | "receive" | "transfer">(null);
+  const [scanResult, setScanResult] = useState<BarcodeLookupContract | null>(
+    null,
+  );
+  const [actionNotice, setActionNotice] = useState<
+    null | "adjust" | "receive" | "transfer"
+  >(null);
 
   const load = useCallback(async () => {
     if (!canRead) return;
     setState("loading");
     setError("");
     try {
-      const [availabilityResult, locationResult, movementResult] = await Promise.all([
-        client.listInventoryAvailability({
-          locationId: filters.locationId || undefined,
-          pageSize: PAGE_SIZE,
-          search: filters.search || undefined,
-        }),
-        client.listStockLocations({ pageSize: PAGE_SIZE }),
-        client.listInventoryMovements({ pageSize: 8 }),
-      ]);
+      const [availabilityResult, locationResult, movementResult] =
+        await Promise.all([
+          client.listInventoryAvailability({
+            locationId: filters.locationId || undefined,
+            pageSize: PAGE_SIZE,
+            search: filters.search || undefined,
+          }),
+          client.listStockLocations({ pageSize: PAGE_SIZE }),
+          client.listInventoryMovements({ pageSize: 8 }),
+        ]);
       setAvailability(availabilityResult.data);
       setLocations(locationResult.data.items);
       setMovements(movementResult.data.items);
@@ -155,7 +161,9 @@ export function InventoryOverview({
     setScanResult(result);
     setDraftSearch(result.sku);
     setFilters((current) => ({ ...current, search: result.sku }));
-    setNotice(`Showing inventory for ${result.productName} · ${result.color} / ${result.size}.`);
+    setNotice(
+      `Showing inventory for ${result.productName} · ${result.color} / ${result.size}.`,
+    );
     setScanOpen(false);
   }
 
@@ -197,7 +205,11 @@ export function InventoryOverview({
         <Feedback message={error} onClose={() => setError("")} tone="error" />
       ) : null}
       {notice ? (
-        <Feedback message={notice} onClose={() => setNotice("")} tone="success" />
+        <Feedback
+          message={notice}
+          onClose={() => setNotice("")}
+          tone="success"
+        />
       ) : null}
 
       <section className={styles.metrics} aria-label="Loaded inventory summary">
@@ -231,7 +243,11 @@ export function InventoryOverview({
         <Metric
           icon={<MapPin size={18} />}
           label="Loaded locations"
-          meta={locations.length === PAGE_SIZE ? "First 100 locations" : "Stock locations"}
+          meta={
+            locations.length === PAGE_SIZE
+              ? "First 100 locations"
+              : "Stock locations"
+          }
           value={number(locations.length)}
         />
       </section>
@@ -244,14 +260,19 @@ export function InventoryOverview({
               <h2>Current loaded positions</h2>
             </div>
             <span className={styles.scopeBadge}>
-              {availability.hasMore ? `First ${PAGE_SIZE} rows` : `${metrics.positions} rows`}
+              {availability.hasMore
+                ? `First ${PAGE_SIZE} rows`
+                : `${metrics.positions} rows`}
             </span>
           </div>
           <div className={styles.healthBody}>
             <HealthBar
               label="Sellable now"
               total={metrics.positions}
-              value={availability.items.filter((item) => item.availableToSell > 0).length}
+              value={
+                availability.items.filter((item) => item.availableToSell > 0)
+                  .length
+              }
               tone="success"
             />
             <HealthBar
@@ -289,9 +310,14 @@ export function InventoryOverview({
             {state === "loading" ? (
               <InlineLoading text="Loading movement history…" />
             ) : movements.length ? (
-              movements.slice(0, 6).map((movement, index) => (
-                <MovementItem key={`${movement.id}:${movement.variant.id}:${index}`} movement={movement} />
-              ))
+              movements
+                .slice(0, 6)
+                .map((movement, index) => (
+                  <MovementItem
+                    key={`${movement.id}:${movement.variant.id}:${index}`}
+                    movement={movement}
+                  />
+                ))
             ) : (
               <div className={styles.emptyCompact}>
                 <Truck size={20} />
@@ -334,7 +360,9 @@ export function InventoryOverview({
               title="Scan to Find Stock"
             />
             <Link className={styles.quickLink} href="/inventory/locations">
-              <span className={styles.quickIcon}><MapPin size={17} /></span>
+              <span className={styles.quickIcon}>
+                <MapPin size={17} />
+              </span>
               <span>
                 <strong>Stock Locations</strong>
                 <small>Review warehouse, showroom and hold locations.</small>
@@ -367,7 +395,10 @@ export function InventoryOverview({
             onClick={() => void load()}
             type="button"
           >
-            <RefreshCw className={state === "loading" ? styles.spin : ""} size={16} />
+            <RefreshCw
+              className={state === "loading" ? styles.spin : ""}
+              size={16}
+            />
           </button>
         </div>
 
@@ -400,8 +431,12 @@ export function InventoryOverview({
             <SlidersHorizontal size={15} />
             Apply filters
           </button>
-          {(filters.locationId || filters.search) ? (
-            <button className={styles.textButton} onClick={clearFilters} type="button">
+          {filters.locationId || filters.search ? (
+            <button
+              className={styles.textButton}
+              onClick={clearFilters}
+              type="button"
+            >
               Clear
             </button>
           ) : null}
@@ -417,7 +452,13 @@ export function InventoryOverview({
             <AlertCircle size={24} />
             <strong>Inventory data is unavailable</strong>
             <span>{error}</span>
-            <button className={styles.secondaryButton} onClick={() => void load()} type="button">Retry</button>
+            <button
+              className={styles.secondaryButton}
+              onClick={() => void load()}
+              type="button"
+            >
+              Retry
+            </button>
           </div>
         ) : availability.items.length === 0 ? (
           <div className={styles.largeState}>
@@ -495,10 +536,14 @@ function AvailabilityTable({
                       {item.variant.productName.slice(0, 1).toUpperCase()}
                     </span>
                     <span>
-                      <Link href={`/catalog/products/${item.variant.productId}`}>
+                      <Link
+                        href={`/catalog/products/${item.variant.productId}`}
+                      >
                         {item.variant.productName}
                       </Link>
-                      <small>{item.variant.color} / {item.variant.size}</small>
+                      <small>
+                        {item.variant.color} / {item.variant.size}
+                      </small>
                     </span>
                   </div>
                 </td>
@@ -510,7 +555,9 @@ function AvailabilityTable({
                   {number(item.availableToSell)}
                 </td>
                 <td>
-                  <span className={`${styles.statusPill} ${styles[`status_${status.tone}`]}`}>
+                  <span
+                    className={`${styles.statusPill} ${styles[`status_${status.tone}`]}`}
+                  >
                     {status.label}
                   </span>
                 </td>
@@ -523,7 +570,11 @@ function AvailabilityTable({
   );
 }
 
-function MovementItem({ movement }: { movement: InventoryMovementHistoryContract }) {
+function MovementItem({
+  movement,
+}: {
+  movement: InventoryMovementHistoryContract;
+}) {
   const direction = movement.destinationLocation?.name
     ? `to ${movement.destinationLocation.name}`
     : movement.sourceLocation?.name
@@ -536,9 +587,13 @@ function MovementItem({ movement }: { movement: InventoryMovementHistoryContract
       </span>
       <span>
         <strong>{humanize(movement.type)}</strong>
-        <small>{movement.variant.sku} · {movement.quantity} units · {direction}</small>
+        <small>
+          {movement.variant.sku} · {movement.quantity} units · {direction}
+        </small>
       </span>
-      <time dateTime={movement.occurredAt}>{formatRelative(movement.occurredAt)}</time>
+      <time dateTime={movement.occurredAt}>
+        {formatRelative(movement.occurredAt)}
+      </time>
     </div>
   );
 }
@@ -558,7 +613,9 @@ function Metric({
 }) {
   return (
     <article className={styles.metricCard}>
-      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>{icon}</span>
+      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>
+        {icon}
+      </span>
       <span>
         <small>{label}</small>
         <strong>{value}</strong>
@@ -584,10 +641,15 @@ function HealthBar({
     <div className={styles.healthRow}>
       <div>
         <span>{label}</span>
-        <strong>{value} <small>({percentage}%)</small></strong>
+        <strong>
+          {value} <small>({percentage}%)</small>
+        </strong>
       </div>
       <span className={styles.healthTrack}>
-        <span className={styles[`healthFill_${tone}`]} style={{ width: `${percentage}%` }} />
+        <span
+          className={styles[`healthFill_${tone}`]}
+          style={{ width: `${percentage}%` }}
+        />
       </span>
     </div>
   );
@@ -652,7 +714,11 @@ function InventoryScanDialog({
   }
 
   return (
-    <div className={styles.dialogBackdrop} onMouseDown={onClose} role="presentation">
+    <div
+      className={styles.dialogBackdrop}
+      onMouseDown={onClose}
+      role="presentation"
+    >
       <section
         aria-labelledby="inventory-scan-title"
         aria-modal="true"
@@ -666,27 +732,66 @@ function InventoryScanDialog({
             <h2 id="inventory-scan-title">Find stock by barcode</h2>
             <p>Scan with a keyboard-style scanner or type the label value.</p>
           </div>
-          <button aria-label="Close" className={styles.iconButton} onClick={onClose} type="button"><X size={17} /></button>
+          <button
+            aria-label="Close"
+            className={styles.iconButton}
+            onClick={onClose}
+            type="button"
+          >
+            <X size={17} />
+          </button>
         </header>
-        <form className={styles.scanForm} onSubmit={(event) => void submit(event)}>
+        <form
+          className={styles.scanForm}
+          onSubmit={(event) => void submit(event)}
+        >
           <label>
             <ScanBarcode size={18} />
-            <input autoFocus autoComplete="off" name="barcode" placeholder="Scan barcode…" required />
+            <input
+              autoFocus
+              autoComplete="off"
+              name="barcode"
+              placeholder="Scan barcode…"
+              required
+            />
           </label>
-          <button className={styles.primaryButton} disabled={loading} type="submit">
-            {loading ? <LoaderCircle className={styles.spin} size={16} /> : <Search size={16} />}
+          <button
+            className={styles.primaryButton}
+            disabled={loading}
+            type="submit"
+          >
+            {loading ? (
+              <LoaderCircle className={styles.spin} size={16} />
+            ) : (
+              <Search size={16} />
+            )}
             Look up
           </button>
         </form>
-        {localError ? <p className={styles.dialogError}><AlertCircle size={15} />{localError}</p> : null}
+        {localError ? (
+          <p className={styles.dialogError}>
+            <AlertCircle size={15} />
+            {localError}
+          </p>
+        ) : null}
         {result ? (
           <div className={styles.scanResult}>
-            <span className={styles.scanSuccess}><CheckCircle2 size={18} /></span>
+            <span className={styles.scanSuccess}>
+              <CheckCircle2 size={18} />
+            </span>
             <span>
               <strong>{result.productName}</strong>
-              <small>{result.color} / {result.size} · {result.sku}</small>
+              <small>
+                {result.color} / {result.size} · {result.sku}
+              </small>
             </span>
-            <button className={styles.secondaryButton} onClick={() => onApply(result)} type="button">Show inventory</button>
+            <button
+              className={styles.secondaryButton}
+              onClick={() => onApply(result)}
+              type="button"
+            >
+              Show inventory
+            </button>
           </div>
         ) : null}
       </section>
@@ -718,20 +823,40 @@ function ActionGateDialog({
     },
   }[action];
   return (
-    <div className={styles.dialogBackdrop} onMouseDown={onClose} role="presentation">
-      <section className={styles.dialog} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
+    <div
+      className={styles.dialogBackdrop}
+      onMouseDown={onClose}
+      role="presentation"
+    >
+      <section
+        className={styles.dialog}
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <header>
           <div>
             <p className={styles.eyebrow}>Safe stock operation</p>
             <h2>{copy.title}</h2>
             <p>{copy.text}</p>
           </div>
-          <button aria-label="Close" className={styles.iconButton} onClick={onClose} type="button"><X size={17} /></button>
+          <button
+            aria-label="Close"
+            className={styles.iconButton}
+            onClick={onClose}
+            type="button"
+          >
+            <X size={17} />
+          </button>
         </header>
         <div className={styles.integrationGate}>
           <ShieldCheck size={20} />
           <div>
-            <strong>{canUpdate ? "Frontend is ready for the movement-create binding" : "Your role is read-only"}</strong>
+            <strong>
+              {canUpdate
+                ? "Frontend is ready for the movement-create binding"
+                : "Your role is read-only"}
+            </strong>
             <p>
               {canUpdate
                 ? "The current Admin HTTP surface can read inventory and post an existing draft movement, but it does not yet expose creation of a new movement. SENVO will not fake a successful stock change."
@@ -740,8 +865,16 @@ function ActionGateDialog({
           </div>
         </div>
         <div className={styles.dialogActions}>
-          <Link className={styles.secondaryButton} href="/inventory/movements">View movement history</Link>
-          <button className={styles.primaryButton} onClick={onClose} type="button">Got it</button>
+          <Link className={styles.secondaryButton} href="/inventory/movements">
+            View movement history
+          </Link>
+          <button
+            className={styles.primaryButton}
+            onClick={onClose}
+            type="button"
+          >
+            Got it
+          </button>
         </div>
       </section>
     </div>
@@ -758,16 +891,30 @@ function Feedback({
   tone: "error" | "success";
 }) {
   return (
-    <div className={`${styles.feedback} ${styles[`feedback_${tone}`]}`} role={tone === "error" ? "alert" : "status"}>
-      {tone === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+    <div
+      className={`${styles.feedback} ${styles[`feedback_${tone}`]}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      {tone === "success" ? (
+        <CheckCircle2 size={16} />
+      ) : (
+        <AlertCircle size={16} />
+      )}
       <span>{message}</span>
-      <button aria-label="Dismiss" onClick={onClose} type="button"><X size={15} /></button>
+      <button aria-label="Dismiss" onClick={onClose} type="button">
+        <X size={15} />
+      </button>
     </div>
   );
 }
 
 function InlineLoading({ text }: { text: string }) {
-  return <div className={styles.inlineLoading}><LoaderCircle className={styles.spin} size={18} />{text}</div>;
+  return (
+    <div className={styles.inlineLoading}>
+      <LoaderCircle className={styles.spin} size={18} />
+      {text}
+    </div>
+  );
 }
 
 function StatePanel({
@@ -789,8 +936,10 @@ function StatePanel({
 }
 
 function availabilityStatus(item: InventoryAvailabilityReadContract) {
-  if (item.onHand === 0) return { label: "Out of stock", tone: "danger" as const };
-  if (item.availableToSell === 0) return { label: "Fully reserved", tone: "attention" as const };
+  if (item.onHand === 0)
+    return { label: "Out of stock", tone: "danger" as const };
+  if (item.availableToSell === 0)
+    return { label: "Fully reserved", tone: "attention" as const };
   return { label: "Available", tone: "success" as const };
 }
 

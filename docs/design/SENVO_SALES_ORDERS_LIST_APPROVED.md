@@ -44,7 +44,7 @@ One fact has one primary location. Order number, customer, status, source, payme
 
 ## Payment wording
 
-The list intentionally describes the payment *preference* available in the list contract. It does not invent provider success/failure state.
+The list intentionally describes the payment _preference_ available in the list contract. It does not invent provider success/failure state.
 
 - `CASH_ON_DELIVERY` → Cash on delivery / collection pending
 - `ONLINE_PAYMENT` → Online payment / open full order for provider status

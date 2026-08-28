@@ -15,7 +15,11 @@ export default function CheckoutHistoryError({
         <AlertCircle aria-hidden="true" size={28} />
         <strong>Checkout History could not open</strong>
         <p>Retry this screen. Completed sales remain unchanged.</p>
-        <button className={styles.secondaryButton} onClick={reset} type="button">
+        <button
+          className={styles.secondaryButton}
+          onClick={reset}
+          type="button"
+        >
           <RefreshCw aria-hidden="true" size={16} />
           Try again
         </button>

@@ -4,7 +4,11 @@
 
 .sidebar {
   background:
-    radial-gradient(circle at 20% 0%, rgba(144, 118, 73, 0.12), transparent 28%),
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(144, 118, 73, 0.12),
+      transparent 28%
+    ),
     linear-gradient(180deg, #111719 0%, #101517 100%);
   border-right: 1px solid rgba(255, 255, 255, 0.055);
   color: #f7f2ec;
@@ -88,7 +92,11 @@
 }
 
 .premiumCard {
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.015)
+  );
   border: 1px solid rgba(210, 178, 117, 0.2);
   border-radius: 10px;
   display: grid;
@@ -108,7 +116,11 @@
 
 .main {
   background:
-    radial-gradient(circle at 82% 0%, rgba(130, 16, 32, 0.035), transparent 28%),
+    radial-gradient(
+      circle at 82% 0%,
+      rgba(130, 16, 32, 0.035),
+      transparent 28%
+    ),
     #f8f3ed;
 }
 
@@ -205,12 +217,22 @@
 }
 
 @media (max-width: 1080px) {
-  .actionSecondary { display: none; }
-  .accountCopy { display: none; }
+  .actionSecondary {
+    display: none;
+  }
+  .accountCopy {
+    display: none;
+  }
 }
 
 @media (max-width: 860px) {
-  .topbar { padding: 0 18px; }
-  .actionPrimary { display: none; }
-  .content { padding: 24px 20px 40px; }
+  .topbar {
+    padding: 0 18px;
+  }
+  .actionPrimary {
+    display: none;
+  }
+  .content {
+    padding: 24px 20px 40px;
+  }
 }

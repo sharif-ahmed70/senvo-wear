@@ -10,8 +10,6 @@ export const metadata: Metadata = {
 
 export default function StockAdjustmentPage() {
   return (
-    <StockAdjustmentWorkflow
-      permissions={adminFoundationSession.permissions}
-    />
+    <StockAdjustmentWorkflow permissions={adminFoundationSession.permissions} />
   );
 }

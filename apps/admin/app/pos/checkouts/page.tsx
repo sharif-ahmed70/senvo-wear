@@ -3,6 +3,8 @@ import { CheckoutHistoryWorkspace } from "./_components/checkout-history-workspa
 
 export default function PosCheckoutsPage() {
   return (
-    <CheckoutHistoryWorkspace permissions={adminFoundationSession.permissions} />
+    <CheckoutHistoryWorkspace
+      permissions={adminFoundationSession.permissions}
+    />
   );
 }

@@ -1,10 +1,6 @@
 "use client";
 
-export default function StockAdjustmentError({
-  reset,
-}: {
-  reset: () => void;
-}) {
+export default function StockAdjustmentError({ reset }: { reset: () => void }) {
   return (
     <section role="alert" style={{ padding: "32px" }}>
       <p style={{ margin: 0, color: "#9d3029", fontWeight: 800 }}>

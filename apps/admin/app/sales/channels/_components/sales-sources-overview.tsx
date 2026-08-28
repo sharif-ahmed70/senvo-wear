@@ -15,7 +15,13 @@ import {
   TentTree,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import styles from "./sales-sources-overview.module.css";
@@ -60,7 +66,9 @@ export function SalesSourcesOverview({
   permissions: readonly AdminPermissionKey[];
 }) {
   const canRead = permissions.includes("SALES:READ");
-  const [summary, setSummary] = useState<SalesSourceSummaryContract | null>(null);
+  const [summary, setSummary] = useState<SalesSourceSummaryContract | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -140,7 +148,11 @@ export function SalesSourcesOverview({
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.secondaryButton} onClick={() => void load()} type="button">
+          <button
+            className={styles.secondaryButton}
+            onClick={() => void load()}
+            type="button"
+          >
             <RefreshCw size={16} /> Refresh
           </button>
           <Link className={styles.primaryButton} href="/sales/orders">
@@ -177,7 +189,9 @@ export function SalesSourcesOverview({
           <div>
             <p className={styles.eyebrow}>Source comparison</p>
             <h2>Where orders originate</h2>
-            <p>Order share is derived from the same summary rows shown below.</p>
+            <p>
+              Order share is derived from the same summary rows shown below.
+            </p>
           </div>
           <span>{summary.channels.length} supported source types</span>
         </div>
@@ -186,7 +200,10 @@ export function SalesSourcesOverview({
           <div className={styles.emptyState}>
             <BarChart3 size={24} />
             <strong>No source-attributed sales yet</strong>
-            <p>Sales will appear here when orders are attributed to a supported source.</p>
+            <p>
+              Sales will appear here when orders are attributed to a supported
+              source.
+            </p>
           </div>
         ) : (
           <div className={styles.tableWrap}>
@@ -202,14 +219,21 @@ export function SalesSourcesOverview({
               </thead>
               <tbody>
                 {summary.channels.map((channel) => {
-                  const key = channel.salesChannel as ChannelKey;
-                  const detail = presentation[key] ?? fallbackPresentation(channel.salesChannel);
-                  const share = totals.orders > 0 ? (channel.orderCount / totals.orders) * 100 : 0;
+                  const key = channel.salesChannel;
+                  const detail =
+                    presentation[key] ??
+                    fallbackPresentation(channel.salesChannel);
+                  const share =
+                    totals.orders > 0
+                      ? (channel.orderCount / totals.orders) * 100
+                      : 0;
                   return (
                     <tr key={channel.salesChannel}>
                       <td>
                         <div className={styles.sourceIdentity}>
-                          <span className={styles.sourceIcon}>{detail.icon}</span>
+                          <span className={styles.sourceIcon}>
+                            {detail.icon}
+                          </span>
                           <span>
                             <strong>{detail.label}</strong>
                             <small>{detail.description}</small>
@@ -217,11 +241,20 @@ export function SalesSourcesOverview({
                         </div>
                       </td>
                       <td>{detail.operationalNote}</td>
-                      <td className={styles.numeric}>{number(channel.orderCount)}</td>
+                      <td className={styles.numeric}>
+                        {number(channel.orderCount)}
+                      </td>
                       <td>
                         <div className={styles.shareCell}>
-                          <span className={styles.shareTrack} aria-hidden="true">
-                            <span style={{ width: `${Math.max(0, Math.min(100, share))}%` }} />
+                          <span
+                            className={styles.shareTrack}
+                            aria-hidden="true"
+                          >
+                            <span
+                              style={{
+                                width: `${Math.max(0, Math.min(100, share))}%`,
+                              }}
+                            />
                           </span>
                           <strong>{percent(share)}</strong>
                         </div>
@@ -243,28 +276,40 @@ export function SalesSourcesOverview({
             <div>
               <strong>Historical source labels are preserved</strong>
               <p>
-                {number(summary.legacyOrderCount)} earlier order(s) keep their original
-                source labels instead of being rewritten into the current channel model.
+                {number(summary.legacyOrderCount)} earlier order(s) keep their
+                original source labels instead of being rewritten into the
+                current channel model.
               </p>
             </div>
           </div>
         ) : null}
       </section>
 
-      <section className={styles.nextActions} aria-label="Related sales workflows">
+      <section
+        className={styles.nextActions}
+        aria-label="Related sales workflows"
+      >
         <Link href="/sales/orders">
-          <span><ShoppingBag size={18} /></span>
+          <span>
+            <ShoppingBag size={18} />
+          </span>
           <div>
             <strong>Sales Orders</strong>
-            <small>Inspect and process the orders behind these source totals.</small>
+            <small>
+              Inspect and process the orders behind these source totals.
+            </small>
           </div>
           <ArrowRight size={16} />
         </Link>
         <Link href="/sales/booths">
-          <span><TentTree size={18} /></span>
+          <span>
+            <TentTree size={18} />
+          </span>
           <div>
             <strong>Booth History</strong>
-            <small>Manage the temporary event locations used by Event Booth sales.</small>
+            <small>
+              Manage the temporary event locations used by Event Booth sales.
+            </small>
           </div>
           <ArrowRight size={16} />
         </Link>
@@ -354,7 +399,8 @@ function humanize(value: string) {
 function messageFor(error: unknown) {
   if (error instanceof AdminApiError) {
     if (error.category === "AUTHENTICATION") return "Sign in is required.";
-    if (error.category === "AUTHORIZATION") return "Sales access is restricted.";
+    if (error.category === "AUTHORIZATION")
+      return "Sales access is restricted.";
     return error.message;
   }
   if (error instanceof Error) return error.message;

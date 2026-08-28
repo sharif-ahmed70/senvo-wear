@@ -84,7 +84,9 @@ export function BarcodeWorkspaceComplete({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
+    null,
+  );
   const [changingStatus, setChangingStatus] = useState(false);
 
   const loadProducts = useCallback(async () => {
@@ -99,7 +101,7 @@ export function BarcodeWorkspaceComplete({
       setSelectedProductId((current) =>
         current && availableProducts.some((item) => item.id === current)
           ? current
-          : availableProducts[0]?.id ?? "",
+          : (availableProducts[0]?.id ?? ""),
       );
     } catch (caught) {
       setError(messageFor(caught));
@@ -175,8 +177,7 @@ export function BarcodeWorkspaceComplete({
   const assignedCount = rows.filter((row) => row.activeBarcode).length;
   const missingCount = rows.length - assignedCount;
   const selectedMissingCount = rows.filter(
-    (row) =>
-      selectedVariantIds.includes(row.variant.id) && !row.activeBarcode,
+    (row) => selectedVariantIds.includes(row.variant.id) && !row.activeBarcode,
   ).length;
 
   if (!canRead) {
@@ -298,7 +299,9 @@ export function BarcodeWorkspaceComplete({
         <div>
           <p className={styles.eyebrow}>Catalog operations</p>
           <h1>Barcode Management</h1>
-          <p>Assign, verify and prepare scan codes for real product variants.</p>
+          <p>
+            Assign, verify and prepare scan codes for real product variants.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -362,9 +365,7 @@ export function BarcodeWorkspaceComplete({
         <MetricCard
           icon={<AlertTriangle size={18} />}
           label="Needs Barcodes"
-          meta={
-            missingCount ? "Action recommended" : "All variants identified"
-          }
+          meta={missingCount ? "Action recommended" : "All variants identified"}
           value={loadingProduct ? "—" : String(missingCount)}
           tone={missingCount ? "attention" : "success"}
         />
@@ -568,9 +569,7 @@ export function BarcodeWorkspaceComplete({
                             ) : previousBarcode ? (
                               <span className={edge.previousBarcode}>
                                 <span>—</span>
-                                <small>
-                                  Previous: {previousBarcode.value}
-                                </small>
+                                <small>Previous: {previousBarcode.value}</small>
                               </span>
                             ) : (
                               <span className={styles.mutedDash}>—</span>
@@ -700,9 +699,7 @@ function MetricCard({
 }) {
   return (
     <article className={styles.metricCard}>
-      <span
-        className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}
-      >
+      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>
         {icon}
       </span>
       <div>
@@ -764,11 +761,7 @@ function Feedback({
         <Check aria-hidden="true" size={16} />
       )}
       <span>{children}</span>
-      <button
-        aria-label="Dismiss message"
-        onClick={onClose}
-        type="button"
-      >
+      <button aria-label="Dismiss message" onClick={onClose} type="button">
         <X size={15} />
       </button>
     </div>
@@ -799,7 +792,11 @@ function BarcodeStatusDialog({
         <span
           className={`${edge.confirmIcon} ${deactivate ? edge.confirmIconDanger : edge.confirmIconRestore}`}
         >
-          {deactivate ? <ShieldAlert size={22} /> : <ArchiveRestore size={22} />}
+          {deactivate ? (
+            <ShieldAlert size={22} />
+          ) : (
+            <ArchiveRestore size={22} />
+          )}
         </span>
         <p className={styles.eyebrow}>
           {deactivate ? "Barcode identity change" : "Restore barcode identity"}
@@ -890,7 +887,11 @@ function ScanDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={onClose}>
+    <div
+      className={styles.dialogBackdrop}
+      role="presentation"
+      onMouseDown={onClose}
+    >
       <section
         aria-labelledby="scan-title"
         aria-modal="true"
@@ -903,8 +904,8 @@ function ScanDialog({ onClose }: { onClose: () => void }) {
             <p className={styles.eyebrow}>Scanner lookup</p>
             <h2 id="scan-title">Scan or enter a barcode</h2>
             <p>
-              A keyboard-style USB/Bluetooth scanner can type directly into
-              this field and submit with Enter.
+              A keyboard-style USB/Bluetooth scanner can type directly into this
+              field and submit with Enter.
             </p>
           </div>
           <button
@@ -917,7 +918,10 @@ function ScanDialog({ onClose }: { onClose: () => void }) {
           </button>
         </header>
 
-        <form className={styles.scanForm} onSubmit={(event) => void submit(event)}>
+        <form
+          className={styles.scanForm}
+          onSubmit={(event) => void submit(event)}
+        >
           <label>
             <ScanBarcode aria-hidden="true" size={18} />
             <span className="sr-only">Barcode value</span>
@@ -947,8 +951,8 @@ function ScanDialog({ onClose }: { onClose: () => void }) {
           <div className={edge.scanIdle}>
             <ScanBarcode size={18} />
             <span>
-              SENVO looks up the active barcode only. Inactive historical
-              values are intentionally not treated as sellable scan identity.
+              SENVO looks up the active barcode only. Inactive historical values
+              are intentionally not treated as sellable scan identity.
             </span>
           </div>
         ) : null}

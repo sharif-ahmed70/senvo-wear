@@ -4,7 +4,8 @@ import { StockLocationsWorkspace } from "./_components/stock-locations-workspace
 
 export const metadata: Metadata = {
   title: "Stock Locations | SENVO Wear Admin",
-  description: "Review active, sellable and operational inventory stock locations.",
+  description:
+    "Review active, sellable and operational inventory stock locations.",
 };
 
 export default function InventoryLocationsPage() {

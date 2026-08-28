@@ -72,19 +72,32 @@ export function SalesOrdersListWorkspace({
     "POS:UPDATE",
     "SALES:CREATE",
     "PAYMENT:CREATE",
-  ].every((permission) => permissions.includes(permission as AdminPermissionKey));
+  ].every((permission) =>
+    permissions.includes(permission as AdminPermissionKey),
+  );
 
   const [draftSearch, setDraftSearch] = useState("");
   const [draftChannel, setDraftChannel] = useState<"" | SalesChannel>("");
-  const [filters, setFilters] = useState<Filters>({ channel: "", search: "", status: "" });
-  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
+  const [filters, setFilters] = useState<Filters>({
+    channel: "",
+    search: "",
+    status: "",
+  });
+  const [cursors, setCursors] = useState<Array<string | undefined>>([
+    undefined,
+  ]);
   const [cursorIndex, setCursorIndex] = useState(0);
-  const [page, setPage] = useState<ApiPage>({ hasMore: false, items: [], nextCursor: null });
+  const [page, setPage] = useState<ApiPage>({
+    hasMore: false,
+    items: [],
+    nextCursor: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(async () => {
+    void reloadKey;
     if (!canRead) return;
     setLoading(true);
     setError("");
@@ -111,7 +124,10 @@ export function SalesOrdersListWorkspace({
   }, [load]);
 
   const activeFilterCount = useMemo(
-    () => Number(Boolean(filters.search)) + Number(Boolean(filters.channel)) + Number(Boolean(filters.status)),
+    () =>
+      Number(Boolean(filters.search)) +
+      Number(Boolean(filters.channel)) +
+      Number(Boolean(filters.status)),
     [filters],
   );
 
@@ -172,7 +188,10 @@ export function SalesOrdersListWorkspace({
         <div>
           <p className={styles.eyebrow}>Order operations</p>
           <h1>Sales Orders</h1>
-          <p>Find an order, understand its current state, and open the full record when action is required.</p>
+          <p>
+            Find an order, understand its current state, and open the full
+            record when action is required.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -182,7 +201,8 @@ export function SalesOrdersListWorkspace({
             onClick={() => setReloadKey((current) => current + 1)}
             type="button"
           >
-            <RefreshCw className={loading ? styles.spin : ""} size={16} /> Refresh
+            <RefreshCw className={loading ? styles.spin : ""} size={16} />{" "}
+            Refresh
           </button>
           {canStartPos ? (
             <Link className={styles.primaryButton} href="/pos/sell">
@@ -193,7 +213,11 @@ export function SalesOrdersListWorkspace({
       </header>
 
       <nav aria-label="Order status" className={styles.statusTabs}>
-        <StatusTab active={filters.status === ""} label="All" onClick={() => selectStatus("")} />
+        <StatusTab
+          active={filters.status === ""}
+          label="All"
+          onClick={() => selectStatus("")}
+        />
         {statuses.map((status) => (
           <StatusTab
             active={filters.status === status}
@@ -216,7 +240,11 @@ export function SalesOrdersListWorkspace({
               value={draftSearch}
             />
             {draftSearch ? (
-              <button aria-label="Clear search" onClick={() => setDraftSearch("")} type="button">
+              <button
+                aria-label="Clear search"
+                onClick={() => setDraftSearch("")}
+                type="button"
+              >
                 <X size={14} />
               </button>
             ) : null}
@@ -225,12 +253,16 @@ export function SalesOrdersListWorkspace({
           <label className={styles.selectField}>
             <span className={styles.srOnly}>Sales source</span>
             <select
-              onChange={(event) => setDraftChannel(event.target.value as "" | SalesChannel)}
+              onChange={(event) =>
+                setDraftChannel(event.target.value as "" | SalesChannel)
+              }
               value={draftChannel}
             >
               <option value="">All sales sources</option>
               {channels.map((channel) => (
-                <option key={channel} value={channel}>{channelLabel(channel)}</option>
+                <option key={channel} value={channel}>
+                  {channelLabel(channel)}
+                </option>
               ))}
             </select>
             <ChevronDown aria-hidden="true" size={14} />
@@ -240,7 +272,11 @@ export function SalesOrdersListWorkspace({
             <SlidersHorizontal size={15} /> Apply
           </button>
           {activeFilterCount ? (
-            <button className={styles.clearButton} onClick={clearFilters} type="button">
+            <button
+              className={styles.clearButton}
+              onClick={clearFilters}
+              type="button"
+            >
               Clear {activeFilterCount}
             </button>
           ) : null}
@@ -249,9 +285,15 @@ export function SalesOrdersListWorkspace({
         <div className={styles.sectionHeading}>
           <div>
             <p className={styles.eyebrow}>Newest first</p>
-            <h2>{filters.status ? `${humanize(filters.status)} orders` : "All orders"}</h2>
+            <h2>
+              {filters.status
+                ? `${humanize(filters.status)} orders`
+                : "All orders"}
+            </h2>
           </div>
-          <span>{page.items.length} loaded · page {cursorIndex + 1}</span>
+          <span>
+            {page.items.length} loaded · page {cursorIndex + 1}
+          </span>
         </div>
 
         {loading ? (
@@ -262,7 +304,14 @@ export function SalesOrdersListWorkspace({
           />
         ) : error ? (
           <InlineState
-            action={<button onClick={() => setReloadKey((current) => current + 1)} type="button">Try again</button>}
+            action={
+              <button
+                onClick={() => setReloadKey((current) => current + 1)}
+                type="button"
+              >
+                Try again
+              </button>
+            }
             icon={<RefreshCw size={22} />}
             title="Sales orders are unavailable"
             text={error}
@@ -280,11 +329,21 @@ export function SalesOrdersListWorkspace({
         <footer className={styles.pagination}>
           <span>Cursor pagination · {PAGE_SIZE} orders per API page</span>
           <div>
-            <button aria-label="Previous page" disabled={cursorIndex === 0 || loading} onClick={previousPage} type="button">
+            <button
+              aria-label="Previous page"
+              disabled={cursorIndex === 0 || loading}
+              onClick={previousPage}
+              type="button"
+            >
               <ArrowLeft size={16} />
             </button>
             <span>{cursorIndex + 1}</span>
-            <button aria-label="Next page" disabled={!page.hasMore || !page.nextCursor || loading} onClick={nextPage} type="button">
+            <button
+              aria-label="Next page"
+              disabled={!page.hasMore || !page.nextCursor || loading}
+              onClick={nextPage}
+              type="button"
+            >
               <ArrowRight size={16} />
             </button>
           </div>
@@ -308,14 +367,19 @@ function OrdersTable({ items }: { items: SalesOrderListReadContract[] }) {
             <th className={styles.numberCell}>Total</th>
             <th>Created</th>
             <th>Delivery area</th>
-            <th><span className={styles.srOnly}>Open</span></th>
+            <th>
+              <span className={styles.srOnly}>Open</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {items.map((order) => (
             <tr key={order.id}>
               <td>
-                <Link className={styles.orderNumber} href={`/sales/orders/${order.id}`}>
+                <Link
+                  className={styles.orderNumber}
+                  href={`/sales/orders/${order.id}`}
+                >
                   {order.orderNumber}
                 </Link>
               </td>
@@ -325,13 +389,23 @@ function OrdersTable({ items }: { items: SalesOrderListReadContract[] }) {
                   <small>{order.customer.phone ?? "No phone provided"}</small>
                 </div>
               </td>
-              <td><SourceBadge channel={order.channel as SalesChannel} /></td>
-              <td><PaymentLabel order={order} /></td>
-              <td><StatusBadge value={order.status as OrderStatus} /></td>
+              <td>
+                <SourceBadge channel={order.channel} />
+              </td>
+              <td>
+                <PaymentLabel order={order} />
+              </td>
+              <td>
+                <StatusBadge value={order.status} />
+              </td>
               <td className={`${styles.numberCell} ${styles.totalCell}`}>
                 {formatMoney(order.totalMinor, order.currencyCode)}
               </td>
-              <td><time dateTime={order.createdAt}>{formatDateTime(order.createdAt)}</time></td>
+              <td>
+                <time dateTime={order.createdAt}>
+                  {formatDateTime(order.createdAt)}
+                </time>
+              </td>
               <td>{deliveryArea(order)}</td>
               <td>
                 <Link
@@ -376,7 +450,11 @@ function StatusTab({
 
 function StatusBadge({ value }: { value: OrderStatus }) {
   const tone = statusTone(value);
-  return <span className={`${styles.badge} ${styles[`badge_${tone}`]}`}>{humanize(value)}</span>;
+  return (
+    <span className={`${styles.badge} ${styles[`badge_${tone}`]}`}>
+      {humanize(value)}
+    </span>
+  );
 }
 
 function SourceBadge({ channel }: { channel: SalesChannel }) {
@@ -386,10 +464,20 @@ function SourceBadge({ channel }: { channel: SalesChannel }) {
 function PaymentLabel({ order }: { order: SalesOrderListReadContract }) {
   const preference = order.commerce?.paymentPreference;
   if (preference === "CASH_ON_DELIVERY") {
-    return <span className={styles.paymentCell}><strong>Cash on delivery</strong><small>Collection pending</small></span>;
+    return (
+      <span className={styles.paymentCell}>
+        <strong>Cash on delivery</strong>
+        <small>Collection pending</small>
+      </span>
+    );
   }
   if (preference === "ONLINE_PAYMENT") {
-    return <span className={styles.paymentCell}><strong>Online payment</strong><small>Open order for provider status</small></span>;
+    return (
+      <span className={styles.paymentCell}>
+        <strong>Online payment</strong>
+        <small>Open order for provider status</small>
+      </span>
+    );
   }
   return <span className={styles.muted}>Not available</span>;
 }
@@ -415,7 +503,15 @@ function InlineState({
   );
 }
 
-function StatePanel({ icon, text, title }: { icon: ReactNode; text: string; title: string }) {
+function StatePanel({
+  icon,
+  text,
+  title,
+}: {
+  icon: ReactNode;
+  text: string;
+  title: string;
+}) {
   return (
     <main className={styles.page}>
       <section className={styles.statePanel}>
@@ -448,11 +544,17 @@ function channelLabel(channel: SalesChannel) {
 }
 
 function deliveryArea(order: SalesOrderListReadContract) {
-  return [order.delivery.district, order.delivery.city].filter(Boolean).join(", ") || "Not provided";
+  return (
+    [order.delivery.district, order.delivery.city].filter(Boolean).join(", ") ||
+    "Not provided"
+  );
 }
 
 function humanize(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase());
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase());
 }
 
 function formatMoney(amountMinor: number, currencyCode: string) {
@@ -477,7 +579,8 @@ function formatDateTime(value: string) {
 function messageFor(error: unknown) {
   if (error instanceof AdminApiError) {
     if (error.category === "AUTHENTICATION") return "Sign in is required.";
-    if (error.category === "AUTHORIZATION") return "Your role cannot read sales orders.";
+    if (error.category === "AUTHORIZATION")
+      return "Your role cannot read sales orders.";
     return `${error.message} Request ID: ${error.requestId}`;
   }
   if (error instanceof Error) return error.message;

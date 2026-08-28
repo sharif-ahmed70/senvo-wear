@@ -40,8 +40,7 @@ export function CheckoutHistoryWorkspace({
   const allowed = permissions.includes("POS:READ");
   const canCollect = permissions.includes("PAYMENT:CREATE");
   const canReadPayment = permissions.includes("PAYMENT:READ");
-  const canReadReceipt =
-    permissions.includes("RECEIPT:READ") && canReadPayment;
+  const canReadReceipt = permissions.includes("RECEIPT:READ") && canReadPayment;
 
   if (!allowed) {
     return (
@@ -84,7 +83,8 @@ function CheckoutHistoryContent({
   const [dueFilter, setDueFilter] = useState<"ALL" | "DUE" | "CLEAR">("ALL");
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
-    mode === "initial" ? setLoading(true) : setRefreshing(true);
+    if (mode === "initial") setLoading(true);
+    else setRefreshing(true);
     setError("");
     try {
       const result = await client.listPosCheckouts();
@@ -120,15 +120,10 @@ function CheckoutHistoryContent({
         );
         if (
           normalized &&
-          !searchable.some((value) =>
-            value.toLowerCase().includes(normalized),
-          )
+          !searchable.some((value) => value.toLowerCase().includes(normalized))
         )
           return false;
-        if (
-          paymentStatus !== "ALL" &&
-          checkout.paymentStatus !== paymentStatus
-        )
+        if (paymentStatus !== "ALL" && checkout.paymentStatus !== paymentStatus)
           return false;
         const due = checkout.outstandingMinor ?? 0;
         if (dueFilter === "DUE" && due <= 0) return false;
@@ -167,9 +162,7 @@ function CheckoutHistoryContent({
         new Date(checkout.completedAt).toISOString(),
       ]),
     ];
-    const csv = rows
-      .map((row) => row.map(csvCell).join(","))
-      .join("\n");
+    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
     const url = URL.createObjectURL(
       new Blob([csv], { type: "text/csv;charset=utf-8" }),
     );
@@ -238,8 +231,7 @@ function CheckoutHistoryContent({
             onChange={(event) =>
               setPaymentStatus(
                 event.target.value as
-                  | "ALL"
-                  | PosCheckoutContract["paymentStatus"],
+                  "ALL" | PosCheckoutContract["paymentStatus"],
               )
             }
             value={paymentStatus}
@@ -255,9 +247,7 @@ function CheckoutHistoryContent({
           <span>Balance</span>
           <select
             onChange={(event) =>
-              setDueFilter(
-                event.target.value as "ALL" | "DUE" | "CLEAR",
-              )
+              setDueFilter(event.target.value as "ALL" | "DUE" | "CLEAR")
             }
             value={dueFilter}
           >
@@ -394,7 +384,9 @@ function CheckoutHistoryContent({
                               View details
                             </Link>
                           ) : (
-                            <span className={styles.restricted}>Restricted</span>
+                            <span className={styles.restricted}>
+                              Restricted
+                            </span>
                           )}
                         </div>
                       </td>
@@ -491,7 +483,7 @@ function formatDate(value: string | Date) {
   }).format(new Date(value));
 }
 
-function csvCell(value: unknown) {
-  const text = String(value ?? "").replaceAll('"', '""');
+function csvCell(value: string) {
+  const text = value == null ? "" : String(value).replaceAll('"', '""');
   return `"${text}"`;
 }

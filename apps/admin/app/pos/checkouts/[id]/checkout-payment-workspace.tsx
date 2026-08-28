@@ -466,7 +466,9 @@ export function CheckoutPaymentWorkspace({
                               View
                             </Link>
                           ) : (
-                            <span className={styles.restricted}>Restricted</span>
+                            <span className={styles.restricted}>
+                              Restricted
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -612,7 +614,9 @@ export function CheckoutPaymentWorkspace({
                         type="button"
                         onClick={() =>
                           setLines((current) =>
-                            current.filter((_, itemIndex) => itemIndex !== index),
+                            current.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
                           )
                         }
                       >
@@ -703,7 +707,9 @@ function CollectionState({
 }) {
   const Icon = success ? CheckCircle2 : CircleAlert;
   return (
-    <section className={`${styles.collectionState} ${success ? styles.collectionStateSuccess : ""}`}>
+    <section
+      className={`${styles.collectionState} ${success ? styles.collectionStateSuccess : ""}`}
+    >
       <Icon aria-hidden="true" size={24} />
       <div>
         <strong>{title}</strong>

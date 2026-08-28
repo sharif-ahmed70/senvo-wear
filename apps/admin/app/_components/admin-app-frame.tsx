@@ -20,7 +20,10 @@ export function AdminAppFrame({
     <div className={`${styles.frame} admin-frame`}>
       <aside className={`${styles.sidebar} admin-sidebar`}>
         <div className={`${styles.brand} admin-brand`}>
-          <span className={`${styles.brandMark} admin-brand__mark`} aria-hidden="true">
+          <span
+            className={`${styles.brandMark} admin-brand__mark`}
+            aria-hidden="true"
+          >
             S
           </span>
           <span className={`${styles.brandCopy} admin-brand__copy`}>
@@ -57,7 +60,10 @@ export function AdminAppFrame({
               Receive stock
             </Link>
             <div className={styles.account}>
-              <span className={`${styles.avatar} admin-avatar`} title={session.displayName}>
+              <span
+                className={`${styles.avatar} admin-avatar`}
+                title={session.displayName}
+              >
                 {initials(session.displayName)}
               </span>
               <span className={styles.accountCopy}>

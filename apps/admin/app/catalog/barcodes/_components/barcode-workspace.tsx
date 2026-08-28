@@ -67,7 +67,9 @@ export function BarcodeWorkspace({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanResult, setScanResult] = useState<BarcodeLookupContract | null>(null);
+  const [scanResult, setScanResult] = useState<BarcodeLookupContract | null>(
+    null,
+  );
 
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
@@ -148,8 +150,7 @@ export function BarcodeWorkspace({
   const assignedCount = rows.filter((row) => row.activeBarcode).length;
   const missingCount = rows.length - assignedCount;
   const selectedMissingCount = rows.filter(
-    (row) =>
-      selectedVariantIds.includes(row.variant.id) && !row.activeBarcode,
+    (row) => selectedVariantIds.includes(row.variant.id) && !row.activeBarcode,
   ).length;
 
   if (!canRead) {
@@ -168,7 +169,10 @@ export function BarcodeWorkspace({
     setNotice("");
     try {
       const nextStatus = barcode.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-      await client.updateBarcodeStatus({ barcodeId: barcode.id, status: nextStatus });
+      await client.updateBarcodeStatus({
+        barcodeId: barcode.id,
+        status: nextStatus,
+      });
       setNotice(
         `${barcode.value} is now ${nextStatus === "ACTIVE" ? "active" : "inactive"}.`,
       );
@@ -180,7 +184,14 @@ export function BarcodeWorkspace({
 
   function exportCurrentProduct() {
     if (!details) return;
-    const header = ["Product", "Product Code", "SKU", "Barcode", "Barcode Type", "Status"];
+    const header = [
+      "Product",
+      "Product Code",
+      "SKU",
+      "Barcode",
+      "Barcode Type",
+      "Status",
+    ];
     const lines = rows.map((row) => [
       details.product.name,
       details.product.productCode,
@@ -209,7 +220,9 @@ export function BarcodeWorkspace({
         <div>
           <p className={styles.eyebrow}>Catalog operations</p>
           <h1>Barcode Management</h1>
-          <p>Assign, verify and prepare scan codes for real product variants.</p>
+          <p>
+            Assign, verify and prepare scan codes for real product variants.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -239,10 +252,17 @@ export function BarcodeWorkspace({
       </header>
 
       {error ? (
-        <div className={`${styles.feedback} ${styles.feedbackError}`} role="alert">
+        <div
+          className={`${styles.feedback} ${styles.feedbackError}`}
+          role="alert"
+        >
           <AlertTriangle aria-hidden="true" size={16} />
           <span>{error}</span>
-          <button onClick={() => setError("")} type="button" aria-label="Dismiss error">
+          <button
+            onClick={() => setError("")}
+            type="button"
+            aria-label="Dismiss error"
+          >
             <X size={15} />
           </button>
         </div>
@@ -251,7 +271,11 @@ export function BarcodeWorkspace({
         <div className={styles.feedback} role="status">
           <Check aria-hidden="true" size={16} />
           <span>{notice}</span>
-          <button onClick={() => setNotice("")} type="button" aria-label="Dismiss message">
+          <button
+            onClick={() => setNotice("")}
+            type="button"
+            aria-label="Dismiss message"
+          >
             <X size={15} />
           </button>
         </div>
@@ -273,7 +297,11 @@ export function BarcodeWorkspace({
         <MetricCard
           icon={<Barcode size={18} />}
           label="Barcoded Variants"
-          meta={rows.length ? `${Math.round((assignedCount / rows.length) * 100)}% ready` : "No variants"}
+          meta={
+            rows.length
+              ? `${Math.round((assignedCount / rows.length) * 100)}% ready`
+              : "No variants"
+          }
           value={loadingProduct ? "—" : String(assignedCount)}
           tone="success"
         />
@@ -300,7 +328,10 @@ export function BarcodeWorkspace({
               onClick={() => void loadProducts()}
               type="button"
             >
-              <RefreshCw className={loadingProducts ? styles.spin : ""} size={15} />
+              <RefreshCw
+                className={loadingProducts ? styles.spin : ""}
+                size={15}
+              />
             </button>
           </div>
           <label className={styles.searchBox}>
@@ -354,7 +385,9 @@ export function BarcodeWorkspace({
             <div className={styles.variantActions}>
               <select
                 aria-label="Filter barcode status"
-                onChange={(event) => setFilter(event.target.value as BarcodeFilter)}
+                onChange={(event) =>
+                  setFilter(event.target.value as BarcodeFilter)
+                }
                 value={filter}
               >
                 <option value="all">All variants</option>
@@ -389,7 +422,9 @@ export function BarcodeWorkspace({
               <Barcode size={24} />
               <strong>No variants yet</strong>
               <span>Create product variants before assigning barcodes.</span>
-              <Link href={`/catalog/products/${details.product.id}`}>Open product</Link>
+              <Link href={`/catalog/products/${details.product.id}`}>
+                Open product
+              </Link>
             </div>
           ) : (
             <>
@@ -401,10 +436,13 @@ export function BarcodeWorkspace({
                         <input
                           aria-label="Select all visible variants needing barcode"
                           checked={
-                            filteredRows.filter((row) => !row.activeBarcode).length > 0 &&
+                            filteredRows.filter((row) => !row.activeBarcode)
+                              .length > 0 &&
                             filteredRows
                               .filter((row) => !row.activeBarcode)
-                              .every((row) => selectedVariantIds.includes(row.variant.id))
+                              .every((row) =>
+                                selectedVariantIds.includes(row.variant.id),
+                              )
                           }
                           onChange={(event) => {
                             const ids = filteredRows
@@ -423,7 +461,9 @@ export function BarcodeWorkspace({
                       <th>Barcode</th>
                       <th>Status</th>
                       <th>Updated</th>
-                      <th><span className="sr-only">Actions</span></th>
+                      <th>
+                        <span className="sr-only">Actions</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -432,13 +472,17 @@ export function BarcodeWorkspace({
                         <td className={styles.checkboxCell}>
                           <input
                             aria-label={`Select ${row.variant.sku}`}
-                            checked={selectedVariantIds.includes(row.variant.id)}
+                            checked={selectedVariantIds.includes(
+                              row.variant.id,
+                            )}
                             disabled={Boolean(row.activeBarcode)}
                             onChange={(event) =>
                               setSelectedVariantIds((current) =>
                                 event.target.checked
                                   ? [...current, row.variant.id]
-                                  : current.filter((id) => id !== row.variant.id),
+                                  : current.filter(
+                                      (id) => id !== row.variant.id,
+                                    ),
                               )
                             }
                             type="checkbox"
@@ -446,7 +490,10 @@ export function BarcodeWorkspace({
                         </td>
                         <td>
                           <div className={styles.variantIdentity}>
-                            <span className={styles.variantGlyph} aria-hidden="true">
+                            <span
+                              className={styles.variantGlyph}
+                              aria-hidden="true"
+                            >
                               {row.variant.sku.slice(-2).toUpperCase()}
                             </span>
                             <span>
@@ -457,7 +504,9 @@ export function BarcodeWorkspace({
                         </td>
                         <td>
                           {row.activeBarcode ? (
-                            <span className={styles.barcodeValue}>{row.activeBarcode.value}</span>
+                            <span className={styles.barcodeValue}>
+                              {row.activeBarcode.value}
+                            </span>
                           ) : (
                             <span className={styles.mutedDash}>—</span>
                           )}
@@ -469,13 +518,20 @@ export function BarcodeWorkspace({
                             {row.activeBarcode ? "Assigned" : "No barcode"}
                           </span>
                         </td>
-                        <td>{formatRelative(row.activeBarcode?.updatedAt ?? row.variant.updatedAt)}</td>
+                        <td>
+                          {formatRelative(
+                            row.activeBarcode?.updatedAt ??
+                              row.variant.updatedAt,
+                          )}
+                        </td>
                         <td>
                           {row.activeBarcode && canUpdate ? (
                             <button
                               aria-label={`Deactivate ${row.activeBarcode.value}`}
                               className={styles.rowAction}
-                              onClick={() => void changeStatus(row.activeBarcode!)}
+                              onClick={() =>
+                                void changeStatus(row.activeBarcode!)
+                              }
                               title="Deactivate barcode"
                               type="button"
                             >
@@ -513,10 +569,25 @@ export function BarcodeWorkspace({
         </section>
       </section>
 
-      <section className={styles.workflowStrip} aria-label="Barcode workflow guidance">
-        <WorkflowItem icon={<Barcode size={17} />} title="One active barcode per variant" text="Backend uniqueness rules prevent duplicate active identity." />
-        <WorkflowItem icon={<ScanBarcode size={17} />} title="Fast scanner lookup" text="A scan resolves the real product variant through the API." />
-        <WorkflowItem icon={<Boxes size={17} />} title="Inventory ready" text="The same identity can be used when receiving and selling stock." />
+      <section
+        className={styles.workflowStrip}
+        aria-label="Barcode workflow guidance"
+      >
+        <WorkflowItem
+          icon={<Barcode size={17} />}
+          title="One active barcode per variant"
+          text="Backend uniqueness rules prevent duplicate active identity."
+        />
+        <WorkflowItem
+          icon={<ScanBarcode size={17} />}
+          title="Fast scanner lookup"
+          text="A scan resolves the real product variant through the API."
+        />
+        <WorkflowItem
+          icon={<Boxes size={17} />}
+          title="Inventory ready"
+          text="The same identity can be used when receiving and selling stock."
+        />
       </section>
 
       {scanOpen ? (
@@ -549,11 +620,23 @@ function MetricCard({
 }) {
   return (
     <article className={styles.metricCard}>
-      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>{icon}</span>
+      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>
+        {icon}
+      </span>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
-        <small className={tone === "attention" ? styles.attentionText : tone === "success" ? styles.successText : ""}>{meta}</small>
+        <small
+          className={
+            tone === "attention"
+              ? styles.attentionText
+              : tone === "success"
+                ? styles.successText
+                : ""
+          }
+        >
+          {meta}
+        </small>
       </div>
     </article>
   );
@@ -607,7 +690,11 @@ function ScanDialog({
     }
   }
   return (
-    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={onClose}>
+    <div
+      className={styles.dialogBackdrop}
+      role="presentation"
+      onMouseDown={onClose}
+    >
       <section
         aria-labelledby="scan-title"
         aria-modal="true"
@@ -619,34 +706,64 @@ function ScanDialog({
           <div>
             <p className={styles.eyebrow}>Scanner lookup</p>
             <h2 id="scan-title">Scan or enter a barcode</h2>
-            <p>Use a connected keyboard-style scanner or type the value manually.</p>
+            <p>
+              Use a connected keyboard-style scanner or type the value manually.
+            </p>
           </div>
-          <button aria-label="Close scan dialog" className={styles.iconButton} onClick={onClose} type="button">
+          <button
+            aria-label="Close scan dialog"
+            className={styles.iconButton}
+            onClick={onClose}
+            type="button"
+          >
             <X size={17} />
           </button>
         </header>
-        <form className={styles.scanForm} onSubmit={(event) => void submit(event)}>
+        <form
+          className={styles.scanForm}
+          onSubmit={(event) => void submit(event)}
+        >
           <label>
             <ScanBarcode aria-hidden="true" size={18} />
             <span className="sr-only">Barcode value</span>
-            <input autoFocus autoComplete="off" name="barcode" placeholder="Scan barcode…" required />
+            <input
+              autoFocus
+              autoComplete="off"
+              name="barcode"
+              placeholder="Scan barcode…"
+              required
+            />
           </label>
-          <button className={styles.primaryButton} disabled={loading} type="submit">
-            {loading ? <LoaderCircle className={styles.spin} size={16} /> : <Search size={16} />}
+          <button
+            className={styles.primaryButton}
+            disabled={loading}
+            type="submit"
+          >
+            {loading ? (
+              <LoaderCircle className={styles.spin} size={16} />
+            ) : (
+              <Search size={16} />
+            )}
             Look up
           </button>
         </form>
         {result ? (
           <div className={styles.scanResult}>
-            <span className={styles.scanSuccessIcon}><Check size={18} /></span>
+            <span className={styles.scanSuccessIcon}>
+              <Check size={18} />
+            </span>
             <div>
               <strong>{result.productName}</strong>
               <p>{result.sku}</p>
-              <span>{result.color} · {result.size}</span>
+              <span>
+                {result.color} · {result.size}
+              </span>
             </div>
           </div>
         ) : (
-          <div className={styles.scanHint}>Scanner input submits automatically when Enter is sent.</div>
+          <div className={styles.scanHint}>
+            Scanner input submits automatically when Enter is sent.
+          </div>
         )}
       </section>
     </div>

@@ -91,10 +91,7 @@ export function PaymentPanel({
   }
 
   function addPayment() {
-    setDrafts((current) => [
-      ...current,
-      newDraft(takaInput(remainingMinor)),
-    ]);
+    setDrafts((current) => [...current, newDraft(takaInput(remainingMinor))]);
     setErrors({});
   }
 
@@ -148,13 +145,20 @@ export function PaymentPanel({
             <span>Payment entered</span>
             <strong>{formatBdt(enteredMinor)}</strong>
           </div>
-          <div className={remainingMinor > 0 ? "pos-payment-summary__due" : undefined}>
+          <div
+            className={
+              remainingMinor > 0 ? "pos-payment-summary__due" : undefined
+            }
+          >
             <span>Remaining</span>
             <strong>{formatBdt(remainingMinor)}</strong>
           </div>
         </section>
 
-        <section className="pos-payment-choice" aria-labelledby="payment-choice-title">
+        <section
+          className="pos-payment-choice"
+          aria-labelledby="payment-choice-title"
+        >
           <div className="pos-payment-section-heading">
             <div>
               <span>Quick payment</span>
@@ -178,7 +182,10 @@ export function PaymentPanel({
           </div>
         </section>
 
-        <section className="pos-payment-entry" aria-labelledby="payment-entry-title">
+        <section
+          className="pos-payment-entry"
+          aria-labelledby="payment-entry-title"
+        >
           <div className="pos-payment-section-heading">
             <div>
               <span>Payment breakdown</span>

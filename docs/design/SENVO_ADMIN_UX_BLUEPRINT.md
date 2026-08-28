@@ -120,6 +120,7 @@ Purpose: define what SENVO sells.
 ### Add/Edit Product flow
 
 Step 1: Basic product
+
 - Name
 - Category
 - Collection
@@ -127,12 +128,14 @@ Step 1: Basic product
 - Product state
 
 Step 2: Variants
+
 - Color
 - Size
 - SKU
 - variant state
 
 Step 3: Media
+
 - Existing real backend media workflow.
 
 Step 4: Review & Save
@@ -171,6 +174,7 @@ Do not imply import/bulk generation if the backend does not support it.
 Step 1: Select existing product and variants.
 
 Show:
+
 - Product
 - Variant
 - SKU

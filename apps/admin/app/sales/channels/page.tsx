@@ -7,5 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default function SalesChannelsPage() {
-  return <SalesSourcesOverview permissions={adminFoundationSession.permissions} />;
+  return (
+    <SalesSourcesOverview permissions={adminFoundationSession.permissions} />
+  );
 }

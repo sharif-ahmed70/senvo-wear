@@ -241,7 +241,9 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                     </td>
                     <td>{order.customer}</td>
                     <td>
-                      <span className={styles.channelPill}>{order.channel}</span>
+                      <span className={styles.channelPill}>
+                        {order.channel}
+                      </span>
                     </td>
                     <td>{order.total}</td>
                     <td>
@@ -260,7 +262,11 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
         </article>
 
         <article className={`${styles.panel} ${styles.productsPanel}`}>
-          <PanelHeader title="Top selling products" href="/catalog" action="View all" />
+          <PanelHeader
+            title="Top selling products"
+            href="/catalog"
+            action="View all"
+          />
           <div className={styles.productList}>
             {model.products.map((product, index) => (
               <div className={styles.productRow} key={product.label}>
@@ -347,7 +353,13 @@ function PanelHeader({
   );
 }
 
-function SalesChart({ labels, values }: { labels: string[]; values: number[] }) {
+function SalesChart({
+  labels,
+  values,
+}: {
+  labels: string[];
+  values: number[];
+}) {
   const width = 560;
   const height = 220;
   const padX = 24;
@@ -358,8 +370,7 @@ function SalesChart({ labels, values }: { labels: string[]; values: number[] }) 
   const step = (width - padX * 2) / Math.max(values.length - 1, 1);
   const coordinates = values.map((value, index) => {
     const x = padX + index * step;
-    const y =
-      height - padY - ((value - min) / span) * (height - padY * 2);
+    const y = height - padY - ((value - min) / span) * (height - padY * 2);
     return { x, y };
   });
   const points = coordinates.map(({ x, y }) => `${x},${y}`).join(" ");
@@ -373,13 +384,7 @@ function SalesChart({ labels, values }: { labels: string[]; values: number[] }) 
         viewBox={`0 0 ${width} ${height}`}
       >
         <defs>
-          <linearGradient
-            id="senvo-sales-fill"
-            x1="0"
-            x2="0"
-            y1="0"
-            y2="1"
-          >
+          <linearGradient id="senvo-sales-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#7a101e" stopOpacity="0.22" />
             <stop offset="100%" stopColor="#7a101e" stopOpacity="0" />
           </linearGradient>

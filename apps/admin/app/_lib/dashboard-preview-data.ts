@@ -35,13 +35,36 @@ export const dashboardPreviewData = {
     },
   ],
   chart: {
-    labels: ["19 Aug", "20 Aug", "21 Aug", "22 Aug", "23 Aug", "24 Aug", "25 Aug"],
+    labels: [
+      "19 Aug",
+      "20 Aug",
+      "21 Aug",
+      "22 Aug",
+      "23 Aug",
+      "24 Aug",
+      "25 Aug",
+    ],
     values: [92000, 144000, 191000, 189000, 238000, 190000, 265800],
   },
   channels: [
-    { amount: "৳ 178,500", change: "19.3%", kind: "store", label: "Store sales" },
-    { amount: "৳ 72,300", change: "16.8%", kind: "online", label: "Online store" },
-    { amount: "৳ 15,000", change: "8.2%", kind: "booth", label: "Event booths" },
+    {
+      amount: "৳ 178,500",
+      change: "19.3%",
+      kind: "store",
+      label: "Store sales",
+    },
+    {
+      amount: "৳ 72,300",
+      change: "16.8%",
+      kind: "online",
+      label: "Online store",
+    },
+    {
+      amount: "৳ 15,000",
+      change: "8.2%",
+      kind: "booth",
+      label: "Event booths",
+    },
   ],
   dateLabel: "25 August 2026",
   greetingName: "Asif",
@@ -56,12 +79,25 @@ export const dashboardPreviewData = {
     total: "248",
   },
   metrics: [
-    { label: "Today’s sales", value: "৳ 265,800", meta: "↗ 18.6% vs yesterday" },
+    {
+      label: "Today’s sales",
+      value: "৳ 265,800",
+      meta: "↗ 18.6% vs yesterday",
+    },
     { label: "Today’s orders", value: "24", meta: "↗ 9.1% vs yesterday" },
     { label: "Items sold", value: "132", meta: "↗ 12.4% vs yesterday" },
-    { label: "Average order value", value: "৳ 2,215", meta: "↗ 7.3% vs yesterday" },
+    {
+      label: "Average order value",
+      value: "৳ 2,215",
+      meta: "↗ 7.3% vs yesterday",
+    },
     { label: "Open sessions", value: "3", meta: "2 active counters" },
-    { label: "Low stock variants", value: "8", meta: "Needs attention", tone: "attention" },
+    {
+      label: "Low stock variants",
+      value: "8",
+      meta: "Needs attention",
+      tone: "attention",
+    },
   ],
   orders: [
     {
@@ -111,11 +147,31 @@ export const dashboardPreviewData = {
     },
   ],
   products: [
-    { label: "Premium Oxford Shirt", meta: "Men", revenue: "৳ 56,000", sold: "28 sold" },
-    { label: "Denim Jacket", meta: "Unisex", revenue: "৳ 42,000", sold: "21 sold" },
-    { label: "Essential Hoodie", meta: "Unisex", revenue: "৳ 27,000", sold: "18 sold" },
+    {
+      label: "Premium Oxford Shirt",
+      meta: "Men",
+      revenue: "৳ 56,000",
+      sold: "28 sold",
+    },
+    {
+      label: "Denim Jacket",
+      meta: "Unisex",
+      revenue: "৳ 42,000",
+      sold: "21 sold",
+    },
+    {
+      label: "Essential Hoodie",
+      meta: "Unisex",
+      revenue: "৳ 27,000",
+      sold: "18 sold",
+    },
     { label: "Cargo Pants", meta: "Men", revenue: "৳ 22,500", sold: "15 sold" },
-    { label: "Polo T-Shirt", meta: "Men", revenue: "৳ 18,000", sold: "12 sold" },
+    {
+      label: "Polo T-Shirt",
+      meta: "Men",
+      revenue: "৳ 18,000",
+      sold: "12 sold",
+    },
   ],
   revenueTotal: "৳ 265,800",
 } satisfies DashboardModel;

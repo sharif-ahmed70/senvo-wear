@@ -4,7 +4,8 @@ import { MovementHistoryWorkspace } from "./_components/movement-history-workspa
 
 export const metadata: Metadata = {
   title: "Movement History | SENVO Wear Admin",
-  description: "Review real inventory ledger movement activity across SENVO stock locations.",
+  description:
+    "Review real inventory ledger movement activity across SENVO stock locations.",
 };
 
 export default function InventoryMovementsPage() {

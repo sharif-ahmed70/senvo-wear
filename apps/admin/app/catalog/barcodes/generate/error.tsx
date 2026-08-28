@@ -3,7 +3,11 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import styles from "../_components/barcode-route-state.module.css";
 
-export default function GenerateBarcodesError({ reset }: { reset: () => void }) {
+export default function GenerateBarcodesError({
+  reset,
+}: {
+  reset: () => void;
+}) {
   return (
     <section className={styles.state} role="alert">
       <span className={`${styles.icon} ${styles.iconError}`}>

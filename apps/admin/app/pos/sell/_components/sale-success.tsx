@@ -60,7 +60,10 @@ export function SaleSuccess({
           </div>
         </header>
 
-        <section className="pos-success-facts" aria-label="Completed sale details">
+        <section
+          className="pos-success-facts"
+          aria-label="Completed sale details"
+        >
           <article>
             <ShoppingBag aria-hidden="true" size={18} />
             <div>
@@ -68,7 +71,11 @@ export function SaleSuccess({
               <strong>{formatBdt(paidMinor)}</strong>
             </div>
           </article>
-          <article className={outstandingMinor > 0 ? "pos-success-fact--due" : undefined}>
+          <article
+            className={
+              outstandingMinor > 0 ? "pos-success-fact--due" : undefined
+            }
+          >
             <Clock3 aria-hidden="true" size={18} />
             <div>
               <span>Remaining due</span>
@@ -129,7 +136,9 @@ export function SaleSuccess({
             {preparationError.requestId ? (
               <small>Support reference: {preparationError.requestId}</small>
             ) : null}
-            <span>Use Start new sale again to retry only the next-sale preparation.</span>
+            <span>
+              Use Start new sale again to retry only the next-sale preparation.
+            </span>
           </div>
         ) : null}
       </section>

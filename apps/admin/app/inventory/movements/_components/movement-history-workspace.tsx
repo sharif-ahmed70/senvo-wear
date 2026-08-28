@@ -76,11 +76,21 @@ export function MovementHistoryWorkspace({
   const [locationId, setLocationId] = useState("");
   const [type, setType] = useState<"" | MovementType>("");
   const [status, setStatus] = useState<"" | MovementStatus>("");
-  const [filters, setFilters] = useState<Filters>({ locationId: "", status: "", type: "" });
+  const [filters, setFilters] = useState<Filters>({
+    locationId: "",
+    status: "",
+    type: "",
+  });
   const [search, setSearch] = useState("");
-  const [cursors, setCursors] = useState<Array<string | undefined>>([undefined]);
+  const [cursors, setCursors] = useState<Array<string | undefined>>([
+    undefined,
+  ]);
   const [cursorIndex, setCursorIndex] = useState(0);
-  const [page, setPage] = useState<ApiPage>({ hasMore: false, items: [], nextCursor: null });
+  const [page, setPage] = useState<ApiPage>({
+    hasMore: false,
+    items: [],
+    nextCursor: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -97,6 +107,7 @@ export function MovementHistoryWorkspace({
   }, [canRead]);
 
   const loadMovements = useCallback(async () => {
+    void reloadKey;
     if (!canRead) return;
     setLoading(true);
     setError("");
@@ -110,7 +121,12 @@ export function MovementHistoryWorkspace({
       });
       setPage(result.data);
       setSelectedKey((current) => {
-        if (current && result.data.items.some((item, index) => rowKey(item, index) === current)) {
+        if (
+          current &&
+          result.data.items.some(
+            (item, index) => rowKey(item, index) === current,
+          )
+        ) {
           return current;
         }
         const first = result.data.items[0];
@@ -155,22 +171,36 @@ export function MovementHistoryWorkspace({
   }, [page.items, search]);
 
   const selected = useMemo(() => {
-    const indexed = page.items.map((item, index) => ({ item, key: rowKey(item, index) }));
-    return indexed.find((entry) => entry.key === selectedKey)?.item ?? visibleItems[0] ?? null;
+    const indexed = page.items.map((item, index) => ({
+      item,
+      key: rowKey(item, index),
+    }));
+    return (
+      indexed.find((entry) => entry.key === selectedKey)?.item ??
+      visibleItems[0] ??
+      null
+    );
   }, [page.items, selectedKey, visibleItems]);
 
   const pageMetrics = useMemo(() => {
     let receipts = 0;
     let transfers = 0;
     let adjustments = 0;
-    let reversals = 0;
+    const reversals = 0;
     for (const item of page.items) {
       if (item.type === "RECEIPT") receipts += 1;
       if (item.type === "TRANSFER") transfers += 1;
-      if (item.type === "ADJUSTMENT_IN" || item.type === "ADJUSTMENT_OUT") adjustments += 1;
+      if (item.type === "ADJUSTMENT_IN" || item.type === "ADJUSTMENT_OUT")
+        adjustments += 1;
       // The read contract does not expose isReversal, so reversal count is intentionally unavailable.
     }
-    return { adjustments, loaded: page.items.length, receipts, reversals, transfers };
+    return {
+      adjustments,
+      loaded: page.items.length,
+      receipts,
+      reversals,
+      transfers,
+    };
   }, [page.items]);
 
   if (!canRead) {
@@ -216,7 +246,18 @@ export function MovementHistoryWorkspace({
 
   function exportCsv() {
     if (visibleItems.length === 0) return;
-    const header = ["movement_id", "occurred_at", "type", "status", "product", "sku", "variant", "source", "destination", "quantity"];
+    const header = [
+      "movement_id",
+      "occurred_at",
+      "type",
+      "status",
+      "product",
+      "sku",
+      "variant",
+      "source",
+      "destination",
+      "quantity",
+    ];
     const rows = visibleItems.map((item) => [
       item.id,
       item.occurredAt,
@@ -253,7 +294,10 @@ export function MovementHistoryWorkspace({
             <span>Movement History</span>
           </div>
           <h1>Movement History</h1>
-          <p>Track receipts, transfers, adjustments and other inventory ledger movements across SENVO locations.</p>
+          <p>
+            Track receipts, transfers, adjustments and other inventory ledger
+            movements across SENVO locations.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <Link className={styles.secondaryButton} href="/catalog/barcodes">
@@ -265,11 +309,37 @@ export function MovementHistoryWorkspace({
         </div>
       </header>
 
-      <section className={styles.metricGrid} aria-label="Current page movement summary">
-        <Metric icon={<ClipboardList size={20} />} label="Loaded movements" value={pageMetrics.loaded} note={`Page ${cursorIndex + 1}`} />
-        <Metric icon={<PackagePlus size={20} />} label="Receipts on page" value={pageMetrics.receipts} note="Current API page" tone="green" />
-        <Metric icon={<ArrowRightLeft size={20} />} label="Transfers on page" value={pageMetrics.transfers} note="Current API page" tone="blue" />
-        <Metric icon={<SlidersHorizontal size={20} />} label="Adjustments on page" value={pageMetrics.adjustments} note="Current API page" tone="amber" />
+      <section
+        className={styles.metricGrid}
+        aria-label="Current page movement summary"
+      >
+        <Metric
+          icon={<ClipboardList size={20} />}
+          label="Loaded movements"
+          value={pageMetrics.loaded}
+          note={`Page ${cursorIndex + 1}`}
+        />
+        <Metric
+          icon={<PackagePlus size={20} />}
+          label="Receipts on page"
+          value={pageMetrics.receipts}
+          note="Current API page"
+          tone="green"
+        />
+        <Metric
+          icon={<ArrowRightLeft size={20} />}
+          label="Transfers on page"
+          value={pageMetrics.transfers}
+          note="Current API page"
+          tone="blue"
+        />
+        <Metric
+          icon={<SlidersHorizontal size={20} />}
+          label="Adjustments on page"
+          value={pageMetrics.adjustments}
+          note="Current API page"
+          tone="amber"
+        />
       </section>
 
       <form className={styles.filterBar} onSubmit={applyFilters}>
@@ -281,37 +351,71 @@ export function MovementHistoryWorkspace({
             value={search}
           />
           {search ? (
-            <button aria-label="Clear search" onClick={() => setSearch("")} type="button">
+            <button
+              aria-label="Clear search"
+              onClick={() => setSearch("")}
+              type="button"
+            >
               <X size={14} />
             </button>
           ) : null}
         </label>
         <SelectField label="Location">
-          <select onChange={(event) => setLocationId(event.target.value)} value={locationId}>
+          <select
+            onChange={(event) => setLocationId(event.target.value)}
+            value={locationId}
+          >
             <option value="">All locations</option>
             {locations.map((location) => (
-              <option key={location.id} value={location.id}>{location.name}</option>
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
             ))}
           </select>
         </SelectField>
         <SelectField label="Type">
-          <select onChange={(event) => setType(event.target.value as "" | MovementType)} value={type}>
+          <select
+            onChange={(event) =>
+              setType(event.target.value as "" | MovementType)
+            }
+            value={type}
+          >
             <option value="">All types</option>
             {movementTypes.map((movementType) => (
-              <option key={movementType} value={movementType}>{humanize(movementType)}</option>
+              <option key={movementType} value={movementType}>
+                {humanize(movementType)}
+              </option>
             ))}
           </select>
         </SelectField>
         <SelectField label="Status">
-          <select onChange={(event) => setStatus(event.target.value as "" | MovementStatus)} value={status}>
+          <select
+            onChange={(event) =>
+              setStatus(event.target.value as "" | MovementStatus)
+            }
+            value={status}
+          >
             <option value="">All statuses</option>
             <option value="POSTED">Posted</option>
             <option value="DRAFT">Draft</option>
           </select>
         </SelectField>
-        <button className={styles.filterButton} type="submit">Apply</button>
-        <button className={styles.clearButton} onClick={clearFilters} type="button">Reset</button>
-        <button className={styles.exportButton} disabled={visibleItems.length === 0} onClick={exportCsv} type="button">
+        <button className={styles.filterButton} type="submit">
+          Apply
+        </button>
+        <button
+          className={styles.clearButton}
+          onClick={clearFilters}
+          type="button"
+        >
+          Reset
+        </button>
+        <button
+          className={styles.exportButton}
+          disabled={visibleItems.length === 0}
+          onClick={exportCsv}
+          type="button"
+        >
           <Download size={15} /> Export page
         </button>
       </form>
@@ -323,20 +427,37 @@ export function MovementHistoryWorkspace({
               <p className={styles.eyebrow}>Ledger activity</p>
               <h2>Recent Movements</h2>
             </div>
-            <span>{visibleItems.length} visible · {page.items.length} loaded</span>
+            <span>
+              {visibleItems.length} visible · {page.items.length} loaded
+            </span>
           </div>
 
           {loading ? (
-            <InlineState icon={<LoaderCircle className={styles.spin} size={22} />} title="Loading movement history" text="Reading the inventory movement ledger…" />
+            <InlineState
+              icon={<LoaderCircle className={styles.spin} size={22} />}
+              title="Loading movement history"
+              text="Reading the inventory movement ledger…"
+            />
           ) : error ? (
             <InlineState
-              action={<button onClick={() => setReloadKey((current) => current + 1)} type="button">Retry</button>}
+              action={
+                <button
+                  onClick={() => setReloadKey((current) => current + 1)}
+                  type="button"
+                >
+                  Retry
+                </button>
+              }
               icon={<RotateCcw size={21} />}
               title="Movement history is unavailable"
               text={error}
             />
           ) : visibleItems.length === 0 ? (
-            <InlineState icon={<Boxes size={22} />} title="No movements match this view" text="Try another filter or clear the page search." />
+            <InlineState
+              icon={<Boxes size={22} />}
+              title="No movements match this view"
+              text="Try another filter or clear the page search."
+            />
           ) : (
             <div className={styles.tableScroll}>
               <table className={styles.table}>
@@ -348,7 +469,9 @@ export function MovementHistoryWorkspace({
                     <th>Route</th>
                     <th>Qty</th>
                     <th>Status</th>
-                    <th><span className={styles.srOnly}>Open</span></th>
+                    <th>
+                      <span className={styles.srOnly}>Open</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -357,22 +480,38 @@ export function MovementHistoryWorkspace({
                     const key = rowKey(movement, originalIndex);
                     const isSelected = selectedKey === key;
                     return (
-                      <tr className={isSelected ? styles.rowSelected : undefined} key={key}>
+                      <tr
+                        className={isSelected ? styles.rowSelected : undefined}
+                        key={key}
+                      >
                         <td>{formatDateTime(movement.occurredAt)}</td>
-                        <td><TypeBadge type={movement.type as MovementType} /></td>
+                        <td>
+                          <TypeBadge type={movement.type} />
+                        </td>
                         <td>
                           <div className={styles.productCell}>
-                            <span className={styles.productGlyph}>{initials(movement.variant.productName)}</span>
+                            <span className={styles.productGlyph}>
+                              {initials(movement.variant.productName)}
+                            </span>
                             <span>
                               <strong>{movement.variant.productName}</strong>
-                              <small>{movement.variant.color} / {movement.variant.size}</small>
+                              <small>
+                                {movement.variant.color} /{" "}
+                                {movement.variant.size}
+                              </small>
                               <code>{movement.variant.sku}</code>
                             </span>
                           </div>
                         </td>
-                        <td><MovementRoute movement={movement} /></td>
-                        <td><Quantity movement={movement} /></td>
-                        <td><StatusBadge status={movement.status as MovementStatus} /></td>
+                        <td>
+                          <MovementRoute movement={movement} />
+                        </td>
+                        <td>
+                          <Quantity movement={movement} />
+                        </td>
+                        <td>
+                          <StatusBadge status={movement.status} />
+                        </td>
                         <td>
                           <button
                             aria-label={`Inspect ${movement.variant.sku} movement`}
@@ -395,10 +534,20 @@ export function MovementHistoryWorkspace({
           <div className={styles.pagination}>
             <span>Page {cursorIndex + 1} · cursor pagination</span>
             <div>
-              <button aria-label="Previous page" disabled={cursorIndex === 0 || loading} onClick={previousPage} type="button">
+              <button
+                aria-label="Previous page"
+                disabled={cursorIndex === 0 || loading}
+                onClick={previousPage}
+                type="button"
+              >
                 <ArrowLeft size={16} />
               </button>
-              <button aria-label="Next page" disabled={!page.hasMore || !page.nextCursor || loading} onClick={nextPage} type="button">
+              <button
+                aria-label="Next page"
+                disabled={!page.hasMore || !page.nextCursor || loading}
+                onClick={nextPage}
+                type="button"
+              >
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -412,10 +561,30 @@ export function MovementHistoryWorkspace({
               <p className={styles.eyebrow}>Operational shortcuts</p>
               <h2>Quick Actions</h2>
             </div>
-            <QuickAction href="/inventory/receive" icon={<PackagePlus size={18} />} title="Receive Stock" text="Add physically received units" />
-            <QuickAction href="/inventory/transfer" icon={<ArrowRightLeft size={18} />} title="Transfer Stock" text="Move available stock between locations" />
-            <QuickAction href="/inventory/adjustment" icon={<SlidersHorizontal size={18} />} title="Stock Adjustment" text="Correct a verified stock difference" />
-            <QuickAction href="/inventory" icon={<Boxes size={18} />} title="View Inventory" text="Check On Hand, Reserved and Available" />
+            <QuickAction
+              href="/inventory/receive"
+              icon={<PackagePlus size={18} />}
+              title="Receive Stock"
+              text="Add physically received units"
+            />
+            <QuickAction
+              href="/inventory/transfer"
+              icon={<ArrowRightLeft size={18} />}
+              title="Transfer Stock"
+              text="Move available stock between locations"
+            />
+            <QuickAction
+              href="/inventory/adjustment"
+              icon={<SlidersHorizontal size={18} />}
+              title="Stock Adjustment"
+              text="Correct a verified stock difference"
+            />
+            <QuickAction
+              href="/inventory"
+              icon={<Boxes size={18} />}
+              title="View Inventory"
+              text="Check On Hand, Reserved and Available"
+            />
           </section>
         </aside>
       </div>
@@ -423,11 +592,19 @@ export function MovementHistoryWorkspace({
   );
 }
 
-function MovementPreview({ movement }: { movement: InventoryMovementHistoryContract | null }) {
+function MovementPreview({
+  movement,
+}: {
+  movement: InventoryMovementHistoryContract | null;
+}) {
   if (!movement) {
     return (
       <section className={styles.previewCard}>
-        <InlineState icon={<Eye size={22} />} title="Select a movement" text="Choose a row to inspect the data currently exposed by the inventory read API." />
+        <InlineState
+          icon={<Eye size={22} />}
+          title="Select a movement"
+          text="Choose a row to inspect the data currently exposed by the inventory read API."
+        />
       </section>
     );
   }
@@ -438,25 +615,35 @@ function MovementPreview({ movement }: { movement: InventoryMovementHistoryContr
           <p className={styles.eyebrow}>Selected line</p>
           <h2>Movement Detail</h2>
         </div>
-        <StatusBadge status={movement.status as MovementStatus} />
+        <StatusBadge status={movement.status} />
       </div>
       <div className={styles.previewHero}>
-        <span className={styles.previewIcon}>{iconForType(movement.type as MovementType)}</span>
+        <span className={styles.previewIcon}>{iconForType(movement.type)}</span>
         <div>
-          <TypeBadge type={movement.type as MovementType} />
+          <TypeBadge type={movement.type} />
           <strong>{shortId(movement.id)}</strong>
           <small>{formatDateTime(movement.occurredAt)}</small>
         </div>
       </div>
       <div className={styles.routePanel}>
-        <PreviewLocation label="From location" location={movement.sourceLocation?.name ?? "External / none"} />
-        <PreviewLocation label="To location" location={movement.destinationLocation?.name ?? "External / none"} />
+        <PreviewLocation
+          label="From location"
+          location={movement.sourceLocation?.name ?? "External / none"}
+        />
+        <PreviewLocation
+          label="To location"
+          location={movement.destinationLocation?.name ?? "External / none"}
+        />
       </div>
       <div className={styles.previewItem}>
-        <span className={styles.productGlyph}>{initials(movement.variant.productName)}</span>
+        <span className={styles.productGlyph}>
+          {initials(movement.variant.productName)}
+        </span>
         <div>
           <strong>{movement.variant.productName}</strong>
-          <span>{movement.variant.color} / {movement.variant.size}</span>
+          <span>
+            {movement.variant.color} / {movement.variant.size}
+          </span>
           <code>{movement.variant.sku}</code>
         </div>
         <Quantity movement={movement} />
@@ -465,86 +652,224 @@ function MovementPreview({ movement }: { movement: InventoryMovementHistoryContr
         <span>Movement ID</span>
         <code title={movement.id}>{movement.id}</code>
       </div>
-      <Link className={styles.primaryButton} href={movementDetailHref(movement)}>
+      <Link
+        className={styles.primaryButton}
+        href={movementDetailHref(movement)}
+      >
         View full movement <ArrowRight size={15} />
       </Link>
       <p className={styles.integrationNote}>
-        Reference, notes, reversal metadata and full movement lines are intentionally not invented here. The current read contract does not expose them; a future detail endpoint can hydrate this same panel without redesigning it.
+        Reference, notes, reversal metadata and full movement lines are
+        intentionally not invented here. The current read contract does not
+        expose them; a future detail endpoint can hydrate this same panel
+        without redesigning it.
       </p>
     </section>
   );
 }
 
-function Metric({ icon, label, note, tone = "neutral", value }: { icon: ReactNode; label: string; note: string; tone?: "neutral" | "green" | "blue" | "amber"; value: number }) {
+function Metric({
+  icon,
+  label,
+  note,
+  tone = "neutral",
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  note: string;
+  tone?: "neutral" | "green" | "blue" | "amber";
+  value: number;
+}) {
   return (
     <article className={styles.metricCard}>
-      <span className={`${styles.metricIcon} ${styles[`metric_${tone}`]}`}>{icon}</span>
-      <div><span>{label}</span><strong>{value}</strong><small>{note}</small></div>
+      <span className={`${styles.metricIcon} ${styles[`metric_${tone}`]}`}>
+        {icon}
+      </span>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{note}</small>
+      </div>
     </article>
   );
 }
 
-function SelectField({ children, label }: { children: ReactNode; label: string }) {
-  return <label className={styles.selectField}><span className={styles.srOnly}>{label}</span>{children}<ChevronDown size={14} /></label>;
+function SelectField({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <label className={styles.selectField}>
+      <span className={styles.srOnly}>{label}</span>
+      {children}
+      <ChevronDown size={14} />
+    </label>
+  );
 }
 
 function TypeBadge({ type }: { type: MovementType }) {
-  return <span className={`${styles.badge} ${styles[`type_${type}`]}`}>{humanize(type)}</span>;
+  return (
+    <span className={`${styles.badge} ${styles[`type_${type}`]}`}>
+      {humanize(type)}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: MovementStatus }) {
-  return <span className={`${styles.statusBadge} ${status === "POSTED" ? styles.posted : styles.draft}`}>{status === "POSTED" ? <CheckCircle2 size={12} /> : null}{humanize(status)}</span>;
+  return (
+    <span
+      className={`${styles.statusBadge} ${status === "POSTED" ? styles.posted : styles.draft}`}
+    >
+      {status === "POSTED" ? <CheckCircle2 size={12} /> : null}
+      {humanize(status)}
+    </span>
+  );
 }
 
-function MovementRoute({ movement }: { movement: InventoryMovementHistoryContract }) {
+function MovementRoute({
+  movement,
+}: {
+  movement: InventoryMovementHistoryContract;
+}) {
   if (movement.type === "TRANSFER") {
     return (
       <span className={styles.routeText}>
         <span>{movement.sourceLocation?.name ?? "Unknown source"}</span>
         <ArrowRight size={13} />
-        <span>{movement.destinationLocation?.name ?? "Unknown destination"}</span>
+        <span>
+          {movement.destinationLocation?.name ?? "Unknown destination"}
+        </span>
       </span>
     );
   }
   return (
     <span className={styles.routeText}>
       <MapPin size={13} />
-      <span>{movement.destinationLocation?.name ?? movement.sourceLocation?.name ?? "External"}</span>
+      <span>
+        {movement.destinationLocation?.name ??
+          movement.sourceLocation?.name ??
+          "External"}
+      </span>
     </span>
   );
 }
 
-function Quantity({ movement }: { movement: InventoryMovementHistoryContract }) {
-  const type = movement.type as MovementType;
-  const incoming = type === "OPENING" || type === "RECEIPT" || type === "ADJUSTMENT_IN";
+function Quantity({
+  movement,
+}: {
+  movement: InventoryMovementHistoryContract;
+}) {
+  const type = movement.type;
+  const incoming =
+    type === "OPENING" || type === "RECEIPT" || type === "ADJUSTMENT_IN";
   const outgoing = type === "ISSUE" || type === "ADJUSTMENT_OUT";
   return (
-    <span className={`${styles.quantity} ${incoming ? styles.quantityIn : outgoing ? styles.quantityOut : styles.quantityMove}`}>
-      {incoming ? "+" : outgoing ? "−" : "↔"}{movement.quantity}
+    <span
+      className={`${styles.quantity} ${incoming ? styles.quantityIn : outgoing ? styles.quantityOut : styles.quantityMove}`}
+    >
+      {incoming ? "+" : outgoing ? "−" : "↔"}
+      {movement.quantity}
     </span>
   );
 }
 
-function PreviewLocation({ label, location }: { label: string; location: string }) {
-  return <div><span><MapPin size={15} /></span><div><small>{label}</small><strong>{location}</strong></div></div>;
+function PreviewLocation({
+  label,
+  location,
+}: {
+  label: string;
+  location: string;
+}) {
+  return (
+    <div>
+      <span>
+        <MapPin size={15} />
+      </span>
+      <div>
+        <small>{label}</small>
+        <strong>{location}</strong>
+      </div>
+    </div>
+  );
 }
 
-function QuickAction({ href, icon, text, title }: { href: string; icon: ReactNode; text: string; title: string }) {
-  return <Link className={styles.quickAction} href={href}><span>{icon}</span><div><strong>{title}</strong><small>{text}</small></div><ArrowRight size={15} /></Link>;
+function QuickAction({
+  href,
+  icon,
+  text,
+  title,
+}: {
+  href: string;
+  icon: ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <Link className={styles.quickAction} href={href}>
+      <span>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <small>{text}</small>
+      </div>
+      <ArrowRight size={15} />
+    </Link>
+  );
 }
 
-function InlineState({ action, icon, text, title }: { action?: ReactNode; icon: ReactNode; text: string; title: string }) {
-  return <div className={styles.inlineState}>{icon}<strong>{title}</strong><p>{text}</p>{action ? <div>{action}</div> : null}</div>;
+function InlineState({
+  action,
+  icon,
+  text,
+  title,
+}: {
+  action?: ReactNode;
+  icon: ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <div className={styles.inlineState}>
+      {icon}
+      <strong>{title}</strong>
+      <p>{text}</p>
+      {action ? <div>{action}</div> : null}
+    </div>
+  );
 }
 
-function StatePanel({ icon, text, title }: { icon: ReactNode; text: string; title: string }) {
-  return <main className={styles.page}><section className={styles.statePanel}><span>{icon}</span><div><h1>{title}</h1><p>{text}</p><Link href="/">Back to dashboard</Link></div></section></main>;
+function StatePanel({
+  icon,
+  text,
+  title,
+}: {
+  icon: ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <main className={styles.page}>
+      <section className={styles.statePanel}>
+        <span>{icon}</span>
+        <div>
+          <h1>{title}</h1>
+          <p>{text}</p>
+          <Link href="/">Back to dashboard</Link>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 function iconForType(type: MovementType) {
-  if (type === "RECEIPT" || type === "OPENING") return <PackagePlus size={20} />;
+  if (type === "RECEIPT" || type === "OPENING")
+    return <PackagePlus size={20} />;
   if (type === "TRANSFER") return <ArrowRightLeft size={20} />;
-  if (type === "ISSUE" || type === "ADJUSTMENT_OUT") return <PackageMinus size={20} />;
+  if (type === "ISSUE" || type === "ADJUSTMENT_OUT")
+    return <PackageMinus size={20} />;
   return <SlidersHorizontal size={20} />;
 }
 
@@ -558,8 +883,10 @@ function movementDetailHref(movement: InventoryMovementHistoryContract) {
     type: movement.type,
     variant: `${movement.variant.color} / ${movement.variant.size}`,
   });
-  if (movement.sourceLocation?.name) params.set("source", movement.sourceLocation.name);
-  if (movement.destinationLocation?.name) params.set("destination", movement.destinationLocation.name);
+  if (movement.sourceLocation?.name)
+    params.set("source", movement.sourceLocation.name);
+  if (movement.destinationLocation?.name)
+    params.set("destination", movement.destinationLocation.name);
   return `/inventory/movements/${encodeURIComponent(movement.id)}?${params.toString()}`;
 }
 
@@ -572,11 +899,21 @@ function shortId(id: string) {
 }
 
 function initials(value: string) {
-  return value.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "SW";
+  return (
+    value
+      .split(/\s+/u)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "SW"
+  );
 }
 
 function humanize(value: string) {
-  return value.toLowerCase().replace(/_/gu, " ").replace(/\b\w/gu, (letter) => letter.toUpperCase());
+  return value
+    .toLowerCase()
+    .replace(/_/gu, " ")
+    .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
 function formatDateTime(value: string) {

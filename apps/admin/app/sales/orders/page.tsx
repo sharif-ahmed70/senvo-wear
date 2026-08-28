@@ -4,11 +4,14 @@ import { SalesOrdersListWorkspace } from "./_components/sales-orders-list-worksp
 
 export const metadata: Metadata = {
   title: "Sales Orders | SENVO Wear Admin",
-  description: "Review and find SENVO sales orders across supported sales sources.",
+  description:
+    "Review and find SENVO sales orders across supported sales sources.",
 };
 
 export default function SalesOrdersPage() {
   return (
-    <SalesOrdersListWorkspace permissions={adminFoundationSession.permissions} />
+    <SalesOrdersListWorkspace
+      permissions={adminFoundationSession.permissions}
+    />
   );
 }

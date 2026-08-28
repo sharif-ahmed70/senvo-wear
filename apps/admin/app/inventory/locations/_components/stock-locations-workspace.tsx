@@ -81,6 +81,7 @@ export function StockLocationsWorkspace({
   const [branchId, setBranchId] = useState("");
 
   const load = useCallback(async () => {
+    void reloadKey;
     if (!canRead) return;
     setLoading(true);
     setError("");
@@ -145,7 +146,7 @@ export function StockLocationsWorkspace({
   const typeMix = useMemo(() => {
     const counts = new Map<LocationType, number>();
     for (const location of page.items) {
-      counts.set(location.type as LocationType, (counts.get(location.type as LocationType) ?? 0) + 1);
+      counts.set(location.type, (counts.get(location.type) ?? 0) + 1);
     }
     return locationTypes
       .map((locationType) => ({
@@ -190,7 +191,14 @@ export function StockLocationsWorkspace({
   function exportCsv() {
     if (visibleItems.length === 0) return;
     const rows = [
-      ["location_name", "branch", "branch_status", "type", "sellable", "status"],
+      [
+        "location_name",
+        "branch",
+        "branch_status",
+        "type",
+        "sellable",
+        "status",
+      ],
       ...visibleItems.map((location) => [
         location.name,
         location.branch.name,
@@ -237,7 +245,10 @@ export function StockLocationsWorkspace({
         </div>
       </header>
 
-      <section className={styles.metrics} aria-label="Loaded stock location summary">
+      <section
+        className={styles.metrics}
+        aria-label="Loaded stock location summary"
+      >
         <Metric
           icon={<Building2 size={20} />}
           label="Loaded locations"
@@ -276,7 +287,11 @@ export function StockLocationsWorkspace({
             value={search}
           />
           {search ? (
-            <button aria-label="Clear search" onClick={() => setSearch("")} type="button">
+            <button
+              aria-label="Clear search"
+              onClick={() => setSearch("")}
+              type="button"
+            >
               <X size={14} />
             </button>
           ) : null}
@@ -284,7 +299,9 @@ export function StockLocationsWorkspace({
         <label className={styles.selectField}>
           <span className={styles.srOnly}>Location type</span>
           <select
-            onChange={(event) => setType(event.target.value as "" | LocationType)}
+            onChange={(event) =>
+              setType(event.target.value as "" | LocationType)
+            }
             value={type}
           >
             <option value="">All types</option>
@@ -298,7 +315,9 @@ export function StockLocationsWorkspace({
         <label className={styles.selectField}>
           <span className={styles.srOnly}>Status</span>
           <select
-            onChange={(event) => setStatus(event.target.value as "" | LocationStatus)}
+            onChange={(event) =>
+              setStatus(event.target.value as "" | LocationStatus)
+            }
             value={status}
           >
             <option value="">All statuses</option>
@@ -311,14 +330,23 @@ export function StockLocationsWorkspace({
         </label>
         <label className={styles.selectField}>
           <span className={styles.srOnly}>Branch</span>
-          <select onChange={(event) => setBranchId(event.target.value)} value={branchId}>
+          <select
+            onChange={(event) => setBranchId(event.target.value)}
+            value={branchId}
+          >
             <option value="">All branches</option>
             {branches.map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
+              <option key={id} value={id}>
+                {name}
+              </option>
             ))}
           </select>
         </label>
-        <button className={styles.resetButton} onClick={clearFilters} type="button">
+        <button
+          className={styles.resetButton}
+          onClick={clearFilters}
+          type="button"
+        >
           Reset
         </button>
         <button
@@ -338,7 +366,9 @@ export function StockLocationsWorkspace({
               <p className={styles.eyebrow}>Operational structure</p>
               <h2>Locations</h2>
             </div>
-            <span>{visibleItems.length} visible · {page.items.length} loaded</span>
+            <span>
+              {visibleItems.length} visible · {page.items.length} loaded
+            </span>
           </div>
 
           {loading ? (
@@ -350,7 +380,10 @@ export function StockLocationsWorkspace({
           ) : error ? (
             <InlineState
               action={
-                <button onClick={() => setReloadKey((current) => current + 1)} type="button">
+                <button
+                  onClick={() => setReloadKey((current) => current + 1)}
+                  type="button"
+                >
                   Retry
                 </button>
               }
@@ -381,10 +414,12 @@ export function StockLocationsWorkspace({
                     <tr key={location.id}>
                       <td>
                         <div className={styles.locationCell}>
-                          <span>{iconForType(location.type as LocationType)}</span>
+                          <span>{iconForType(location.type)}</span>
                           <div>
                             <strong>{location.name}</strong>
-                            <code title={location.id}>{shortId(location.id)}</code>
+                            <code title={location.id}>
+                              {shortId(location.id)}
+                            </code>
                           </div>
                         </div>
                       </td>
@@ -394,13 +429,23 @@ export function StockLocationsWorkspace({
                           <small>{humanize(location.branch.status)}</small>
                         </div>
                       </td>
-                      <td><TypeBadge type={location.type as LocationType} /></td>
                       <td>
-                        <span className={location.isSellable ? styles.sellable : styles.notSellable}>
+                        <TypeBadge type={location.type} />
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            location.isSellable
+                              ? styles.sellable
+                              : styles.notSellable
+                          }
+                        >
                           {location.isSellable ? "Yes" : "No"}
                         </span>
                       </td>
-                      <td><StatusBadge status={location.status as LocationStatus} /></td>
+                      <td>
+                        <StatusBadge status={location.status} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -448,7 +493,9 @@ export function StockLocationsWorkspace({
                 ))}
               </div>
             ) : (
-              <p className={styles.helperText}>No location types are loaded yet.</p>
+              <p className={styles.helperText}>
+                No location types are loaded yet.
+              </p>
             )}
           </section>
 
@@ -514,7 +561,9 @@ function Metric({
 }) {
   return (
     <article className={styles.metricCard}>
-      <span className={`${styles.metricIcon} ${styles[`metric_${tone}`]}`}>{icon}</span>
+      <span className={`${styles.metricIcon} ${styles[`metric_${tone}`]}`}>
+        {icon}
+      </span>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
@@ -525,7 +574,11 @@ function Metric({
 }
 
 function TypeBadge({ type }: { type: LocationType }) {
-  return <span className={`${styles.typeBadge} ${styles[`type_${type}`]}`}>{humanize(type)}</span>;
+  return (
+    <span className={`${styles.typeBadge} ${styles[`type_${type}`]}`}>
+      {humanize(type)}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: LocationStatus }) {

@@ -91,7 +91,8 @@ export function ReceiveStockWorkflow({
   const [sizes, setSizes] = useState<SizeContract[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [productDetails, setProductDetails] = useState<ProductDetailsContract | null>(null);
+  const [productDetails, setProductDetails] =
+    useState<ProductDetailsContract | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [scanValue, setScanValue] = useState("");
   const [lines, setLines] = useState<ReceiptLine[]>([]);
@@ -103,8 +104,10 @@ export function ReceiveStockWorkflow({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [integrationPending, setIntegrationPending] = useState(false);
-  const [draftMovement, setDraftMovement] = useState<InventoryMovementContract | null>(null);
-  const [postedMovement, setPostedMovement] = useState<InventoryMovementContract | null>(null);
+  const [draftMovement, setDraftMovement] =
+    useState<InventoryMovementContract | null>(null);
+  const [postedMovement, setPostedMovement] =
+    useState<InventoryMovementContract | null>(null);
   const [receiptId, setReceiptId] = useState(() => crypto.randomUUID());
 
   const loadFoundation = useCallback(async () => {
@@ -117,7 +120,9 @@ export function ReceiveStockWorkflow({
         (location) => location.status === "ACTIVE",
       );
       setLocations(activeLocations);
-      setSelectedLocationId((current) => current || activeLocations[0]?.id || "");
+      setSelectedLocationId(
+        (current) => current || activeLocations[0]?.id || "",
+      );
 
       if (canReadCatalog) {
         const [productResult, colorResult, sizeResult] = await Promise.all([
@@ -125,7 +130,9 @@ export function ReceiveStockWorkflow({
           client.listColors(),
           client.listSizes(),
         ]);
-        setProducts(productResult.data.filter((product) => product.status !== "ARCHIVED"));
+        setProducts(
+          productResult.data.filter((product) => product.status !== "ARCHIVED"),
+        );
         setColors(colorResult.data);
         setSizes(sizeResult.data);
       }
@@ -202,7 +209,9 @@ export function ReceiveStockWorkflow({
 
   function addLine(line: Omit<ReceiptLine, "quantity">, quantity = 1) {
     setLines((current) => {
-      const existing = current.find((item) => item.variantId === line.variantId);
+      const existing = current.find(
+        (item) => item.variantId === line.variantId,
+      );
       if (existing) {
         return current.map((item) =>
           item.variantId === line.variantId
@@ -212,7 +221,9 @@ export function ReceiveStockWorkflow({
       }
       return [...current, { ...line, quantity: clampQty(quantity) }];
     });
-    setNotice(`${line.productName} · ${line.color} / ${line.size} added to this receipt.`);
+    setNotice(
+      `${line.productName} · ${line.color} / ${line.size} added to this receipt.`,
+    );
   }
 
   function addVariant(variant: ProductVariantContract) {
@@ -239,7 +250,9 @@ export function ReceiveStockWorkflow({
       setScanValue("");
     } catch (caught) {
       if (caught instanceof AdminApiError && caught.status === 404) {
-        setError(`Barcode ${value} was not found. Check the label or choose the product manually.`);
+        setError(
+          `Barcode ${value} was not found. Check the label or choose the product manually.`,
+        );
       } else {
         setError(messageFor(caught));
       }
@@ -259,7 +272,9 @@ export function ReceiveStockWorkflow({
   }
 
   function removeLine(variantId: string) {
-    setLines((current) => current.filter((line) => line.variantId !== variantId));
+    setLines((current) =>
+      current.filter((line) => line.variantId !== variantId),
+    );
   }
 
   async function confirmReceipt() {
@@ -309,14 +324,19 @@ export function ReceiveStockWorkflow({
       }
 
       const posted = (
-        await client.request<InventoryMovementContract>("/inventory/movements", {
-          body: { movementId: draft.id },
-          method: "POST",
-        })
+        await client.request<InventoryMovementContract>(
+          "/inventory/movements",
+          {
+            body: { movementId: draft.id },
+            method: "POST",
+          },
+        )
       ).data;
       setPostedMovement(posted);
       setStep(4);
-      setNotice(`${totalUnits} units were received into ${selectedLocation?.name ?? "the selected location"}.`);
+      setNotice(
+        `${totalUnits} units were received into ${selectedLocation?.name ?? "the selected location"}.`,
+      );
       window.scrollTo({ behavior: "smooth", top: 0 });
     } catch (caught) {
       setError(messageFor(caught));
@@ -341,7 +361,13 @@ export function ReceiveStockWorkflow({
   }
 
   if (loading) {
-    return <StatePanel icon={<LoaderCircle className={styles.spin} size={27} />} title="Preparing stock receipt" text="Loading stock locations and catalog identity…" />;
+    return (
+      <StatePanel
+        icon={<LoaderCircle className={styles.spin} size={27} />}
+        title="Preparing stock receipt"
+        text="Loading stock locations and catalog identity…"
+      />
+    );
   }
 
   if (locations.length === 0) {
@@ -380,7 +406,11 @@ export function ReceiveStockWorkflow({
         <Feedback message={error} onClose={() => setError("")} tone="error" />
       ) : null}
       {notice ? (
-        <Feedback message={notice} onClose={() => setNotice("")} tone="success" />
+        <Feedback
+          message={notice}
+          onClose={() => setNotice("")}
+          tone="success"
+        />
       ) : null}
       {integrationPending ? (
         <div className={styles.integrationGate} role="status">
@@ -389,8 +419,8 @@ export function ReceiveStockWorkflow({
             <strong>One backend binding remains</strong>
             <p>
               Wire <code>POST /inventory/movement-drafts</code> to the existing
-              domain <code>createInventoryMovement</code> use case. Do not bypass
-              the ledger or write stock balances directly.
+              domain <code>createInventoryMovement</code> use case. Do not
+              bypass the ledger or write stock balances directly.
             </p>
           </div>
         </div>
@@ -415,7 +445,7 @@ export function ReceiveStockWorkflow({
           onBack={() => setStep(1)}
           onContinue={() => setStep(3)}
           onRemoveLine={removeLine}
-          onScan={scan}
+          onScan={(event) => void scan(event)}
           onUpdateQuantity={updateQuantity}
           productDetails={productDetails}
           productQuery={productQuery}
@@ -455,9 +485,21 @@ export function ReceiveStockWorkflow({
       ) : null}
 
       <section className={styles.principles} aria-label="Receipt safeguards">
-        <Principle icon={<Truck size={18} />} title="Physical receipt" text="Use this only when stock has actually arrived at the destination." />
-        <Principle icon={<ClipboardCheck size={18} />} title="Review first" text="Variant, location and quantities stay visible before posting." />
-        <Principle icon={<ShieldCheck size={18} />} title="Append-only history" text="Posting creates ledger history; it never replaces the stock total." />
+        <Principle
+          icon={<Truck size={18} />}
+          title="Physical receipt"
+          text="Use this only when stock has actually arrived at the destination."
+        />
+        <Principle
+          icon={<ClipboardCheck size={18} />}
+          title="Review first"
+          text="Variant, location and quantities stay visible before posting."
+        />
+        <Principle
+          icon={<ShieldCheck size={18} />}
+          title="Append-only history"
+          text="Posting creates ledger history; it never replaces the stock total."
+        />
       </section>
     </main>
   );
@@ -474,13 +516,17 @@ function LocationStep({
   selectedLocationId: string;
   setSelectedLocationId: (value: string) => void;
 }) {
-  const selected = locations.find((location) => location.id === selectedLocationId);
+  const selected = locations.find(
+    (location) => location.id === selectedLocationId,
+  );
   return (
     <section className={styles.workflowCard}>
       <div className={styles.sectionIntro}>
         <p className={styles.eyebrow}>Step 1</p>
         <h2>Where did the stock arrive?</h2>
-        <p>Choose the physical SENVO location that will own the received units.</p>
+        <p>
+          Choose the physical SENVO location that will own the received units.
+        </p>
       </div>
       <div className={styles.locationGrid}>
         {locations.map((location) => (
@@ -491,10 +537,14 @@ function LocationStep({
             onClick={() => setSelectedLocationId(location.id)}
             type="button"
           >
-            <span className={styles.locationIcon}><MapPin size={19} /></span>
+            <span className={styles.locationIcon}>
+              <MapPin size={19} />
+            </span>
             <span>
               <strong>{location.name}</strong>
-              <small>{location.branch.name} · {humanize(location.type)}</small>
+              <small>
+                {location.branch.name} · {humanize(location.type)}
+              </small>
             </span>
             {selectedLocationId === location.id ? <Check size={17} /> : null}
           </button>
@@ -503,12 +553,21 @@ function LocationStep({
       {selected ? (
         <div className={styles.selectionSummary}>
           <MapPin size={16} />
-          <span>Receiving into <strong>{selected.name}</strong></span>
+          <span>
+            Receiving into <strong>{selected.name}</strong>
+          </span>
         </div>
       ) : null}
       <div className={styles.footerActions}>
-        <Link className={styles.textLink} href="/inventory">Cancel</Link>
-        <button className={styles.primaryButton} disabled={!selectedLocationId} onClick={onContinue} type="button">
+        <Link className={styles.textLink} href="/inventory">
+          Cancel
+        </Link>
+        <button
+          className={styles.primaryButton}
+          disabled={!selectedLocationId}
+          onClick={onContinue}
+          type="button"
+        >
           Add received items <ArrowRight size={15} />
         </button>
       </div>
@@ -570,8 +629,13 @@ function ItemsStep({
       <div className={styles.itemEntryGrid}>
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Barcode size={19} /></span>
-            <div><strong>Scan barcode</strong><small>Fastest for labelled stock</small></div>
+            <span className={styles.entryIcon}>
+              <Barcode size={19} />
+            </span>
+            <div>
+              <strong>Scan barcode</strong>
+              <small>Fastest for labelled stock</small>
+            </div>
           </div>
           <form className={styles.scanForm} onSubmit={onScan}>
             <label>
@@ -584,8 +648,16 @@ function ItemsStep({
                 value={scanValue}
               />
             </label>
-            <button className={styles.secondaryButton} disabled={!scanValue.trim() || scanning || !canReadCatalog} type="submit">
-              {scanning ? <LoaderCircle className={styles.spin} size={16} /> : <Plus size={16} />}
+            <button
+              className={styles.secondaryButton}
+              disabled={!scanValue.trim() || scanning || !canReadCatalog}
+              type="submit"
+            >
+              {scanning ? (
+                <LoaderCircle className={styles.spin} size={16} />
+              ) : (
+                <Plus size={16} />
+              )}
               Add
             </button>
           </form>
@@ -593,34 +665,66 @@ function ItemsStep({
 
         <article className={styles.entryPanel}>
           <div className={styles.entryHeading}>
-            <span className={styles.entryIcon}><Search size={19} /></span>
-            <div><strong>Choose manually</strong><small>Product → variant</small></div>
+            <span className={styles.entryIcon}>
+              <Search size={19} />
+            </span>
+            <div>
+              <strong>Choose manually</strong>
+              <small>Product → variant</small>
+            </div>
           </div>
           {!canReadCatalog ? (
-            <p className={styles.catalogGate}>Catalog read permission is required to resolve a product variant.</p>
+            <p className={styles.catalogGate}>
+              Catalog read permission is required to resolve a product variant.
+            </p>
           ) : (
             <>
               <label className={styles.productSearch}>
                 <Search size={16} />
-                <input onChange={(event) => setProductQuery(event.target.value)} placeholder="Search product or code…" value={productQuery} />
+                <input
+                  onChange={(event) => setProductQuery(event.target.value)}
+                  placeholder="Search product or code…"
+                  value={productQuery}
+                />
               </label>
               <label className={styles.selectShell}>
                 <span>Product</span>
-                <select onChange={(event) => setSelectedProductId(event.target.value)} value={selectedProductId}>
+                <select
+                  onChange={(event) => setSelectedProductId(event.target.value)}
+                  value={selectedProductId}
+                >
                   <option value="">Choose product</option>
-                  {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.productCode}</option>)}
+                  {filteredProducts.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} · {product.productCode}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown size={15} />
               </label>
-              {loadingProduct ? <InlineLoading text="Loading variants…" /> : null}
+              {loadingProduct ? (
+                <InlineLoading text="Loading variants…" />
+              ) : null}
               {productDetails ? (
                 <div className={styles.variantPicker}>
-                  {productDetails.variants.filter((variant) => variant.status === "ACTIVE").map((variant) => (
-                    <button key={variant.id} onClick={() => onAddVariant(variant)} type="button">
-                      <span><strong>{colorNames.get(variant.colorId) ?? "Color"} / {sizeNames.get(variant.sizeId) ?? "Size"}</strong><small>{variant.sku}</small></span>
-                      <Plus size={15} />
-                    </button>
-                  ))}
+                  {productDetails.variants
+                    .filter((variant) => variant.status === "ACTIVE")
+                    .map((variant) => (
+                      <button
+                        key={variant.id}
+                        onClick={() => onAddVariant(variant)}
+                        type="button"
+                      >
+                        <span>
+                          <strong>
+                            {colorNames.get(variant.colorId) ?? "Color"} /{" "}
+                            {sizeNames.get(variant.sizeId) ?? "Size"}
+                          </strong>
+                          <small>{variant.sku}</small>
+                        </span>
+                        <Plus size={15} />
+                      </button>
+                    ))}
                 </div>
               ) : null}
             </>
@@ -628,11 +732,22 @@ function ItemsStep({
         </article>
       </div>
 
-      <ReceiptLines lines={lines} onRemove={onRemoveLine} onUpdateQuantity={onUpdateQuantity} />
+      <ReceiptLines
+        lines={lines}
+        onRemove={onRemoveLine}
+        onUpdateQuantity={onUpdateQuantity}
+      />
 
       <div className={styles.footerActions}>
-        <button className={styles.textButton} onClick={onBack} type="button"><ArrowLeft size={14} /> Location</button>
-        <button className={styles.primaryButton} disabled={lines.length === 0} onClick={onContinue} type="button">
+        <button className={styles.textButton} onClick={onBack} type="button">
+          <ArrowLeft size={14} /> Location
+        </button>
+        <button
+          className={styles.primaryButton}
+          disabled={lines.length === 0}
+          onClick={onContinue}
+          type="button"
+        >
           Review receipt <ArrowRight size={15} />
         </button>
       </div>
@@ -650,22 +765,79 @@ function ReceiptLines({
   onUpdateQuantity: (variantId: string, quantity: number) => void;
 }) {
   if (!lines.length) {
-    return <div className={styles.linesEmpty}><PackageCheck size={22} /><strong>No items added yet</strong><span>Scan a label or choose a variant above.</span></div>;
+    return (
+      <div className={styles.linesEmpty}>
+        <PackageCheck size={22} />
+        <strong>No items added yet</strong>
+        <span>Scan a label or choose a variant above.</span>
+      </div>
+    );
   }
   return (
     <div className={styles.linesSection}>
-      <div className={styles.linesHeader}><div><p className={styles.eyebrow}>Receipt lines</p><h3>{lines.length} variant{lines.length === 1 ? "" : "s"}</h3></div><span>{lines.reduce((sum, line) => sum + line.quantity, 0)} total units</span></div>
+      <div className={styles.linesHeader}>
+        <div>
+          <p className={styles.eyebrow}>Receipt lines</p>
+          <h3>
+            {lines.length} variant{lines.length === 1 ? "" : "s"}
+          </h3>
+        </div>
+        <span>
+          {lines.reduce((sum, line) => sum + line.quantity, 0)} total units
+        </span>
+      </div>
       <div className={styles.lineList}>
         {lines.map((line) => (
           <article className={styles.lineItem} key={line.variantId}>
-            <span className={styles.lineGlyph}>{line.productName.slice(0, 1).toUpperCase()}</span>
-            <div className={styles.lineIdentity}><strong>{line.productName}</strong><span>{line.color} / {line.size}</span><small>{line.sku}</small></div>
-            <div className={styles.qtyControl}>
-              <button aria-label={`Decrease ${line.sku}`} onClick={() => onUpdateQuantity(line.variantId, line.quantity - 1)} type="button"><Minus size={14} /></button>
-              <input aria-label={`Quantity for ${line.sku}`} inputMode="numeric" min={1} max={MAX_QTY} onChange={(event) => onUpdateQuantity(line.variantId, Number(event.target.value))} type="number" value={line.quantity} />
-              <button aria-label={`Increase ${line.sku}`} onClick={() => onUpdateQuantity(line.variantId, line.quantity + 1)} type="button"><Plus size={14} /></button>
+            <span className={styles.lineGlyph}>
+              {line.productName.slice(0, 1).toUpperCase()}
+            </span>
+            <div className={styles.lineIdentity}>
+              <strong>{line.productName}</strong>
+              <span>
+                {line.color} / {line.size}
+              </span>
+              <small>{line.sku}</small>
             </div>
-            <button aria-label={`Remove ${line.sku}`} className={styles.removeButton} onClick={() => onRemove(line.variantId)} type="button"><Trash2 size={16} /></button>
+            <div className={styles.qtyControl}>
+              <button
+                aria-label={`Decrease ${line.sku}`}
+                onClick={() =>
+                  onUpdateQuantity(line.variantId, line.quantity - 1)
+                }
+                type="button"
+              >
+                <Minus size={14} />
+              </button>
+              <input
+                aria-label={`Quantity for ${line.sku}`}
+                inputMode="numeric"
+                min={1}
+                max={MAX_QTY}
+                onChange={(event) =>
+                  onUpdateQuantity(line.variantId, Number(event.target.value))
+                }
+                type="number"
+                value={line.quantity}
+              />
+              <button
+                aria-label={`Increase ${line.sku}`}
+                onClick={() =>
+                  onUpdateQuantity(line.variantId, line.quantity + 1)
+                }
+                type="button"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+            <button
+              aria-label={`Remove ${line.sku}`}
+              className={styles.removeButton}
+              onClick={() => onRemove(line.variantId)}
+              type="button"
+            >
+              <Trash2 size={16} />
+            </button>
           </article>
         ))}
       </div>
@@ -699,27 +871,96 @@ function ReviewStep({
       <div className={styles.sectionIntro}>
         <p className={styles.eyebrow}>Step 3</p>
         <h2>Review before posting</h2>
-        <p>Once posted, this receipt becomes part of the inventory movement history.</p>
+        <p>
+          Once posted, this receipt becomes part of the inventory movement
+          history.
+        </p>
       </div>
       <div className={styles.reviewGrid}>
-        <article className={styles.reviewCard}><span>Destination</span><strong>{locationName}</strong><small>Receipt movement</small></article>
-        <article className={styles.reviewCard}><span>Variants</span><strong>{lines.length}</strong><small>Unique sellable variants</small></article>
-        <article className={styles.reviewCard}><span>Total units</span><strong>{totalUnits}</strong><small>Incoming physical quantity</small></article>
+        <article className={styles.reviewCard}>
+          <span>Destination</span>
+          <strong>{locationName}</strong>
+          <small>Receipt movement</small>
+        </article>
+        <article className={styles.reviewCard}>
+          <span>Variants</span>
+          <strong>{lines.length}</strong>
+          <small>Unique sellable variants</small>
+        </article>
+        <article className={styles.reviewCard}>
+          <span>Total units</span>
+          <strong>{totalUnits}</strong>
+          <small>Incoming physical quantity</small>
+        </article>
       </div>
       <div className={styles.reviewLines}>
-        {lines.map((line) => <div key={line.variantId}><span><strong>{line.productName}</strong><small>{line.color} / {line.size} · {line.sku}</small></span><b>+{line.quantity}</b></div>)}
+        {lines.map((line) => (
+          <div key={line.variantId}>
+            <span>
+              <strong>{line.productName}</strong>
+              <small>
+                {line.color} / {line.size} · {line.sku}
+              </small>
+            </span>
+            <b>+{line.quantity}</b>
+          </div>
+        ))}
       </div>
       <label className={styles.noteField}>
-        <span>Receipt note <small>optional</small></span>
-        <textarea maxLength={1000} onChange={(event) => setNote(event.target.value)} placeholder="Supplier reference, delivery note, condition or receiving context…" rows={4} value={note} />
+        <span>
+          Receipt note <small>optional</small>
+        </span>
+        <textarea
+          maxLength={1000}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="Supplier reference, delivery note, condition or receiving context…"
+          rows={4}
+          value={note}
+        />
       </label>
-      {draftMovement ? <div className={styles.draftNotice}><ClipboardCheck size={17} /><span>Draft {draftMovement.id} already exists. Confirm will retry posting this same draft rather than creating duplicate stock.</span></div> : null}
-      <div className={styles.postWarning}><AlertTriangle size={17} /><div><strong>Confirm physical quantities now</strong><p>If a mistake is discovered after posting, correct it with an explicit adjustment/reversal workflow—not by editing the stock total.</p></div></div>
+      {draftMovement ? (
+        <div className={styles.draftNotice}>
+          <ClipboardCheck size={17} />
+          <span>
+            Draft {draftMovement.id} already exists. Confirm will retry posting
+            this same draft rather than creating duplicate stock.
+          </span>
+        </div>
+      ) : null}
+      <div className={styles.postWarning}>
+        <AlertTriangle size={17} />
+        <div>
+          <strong>Confirm physical quantities now</strong>
+          <p>
+            If a mistake is discovered after posting, correct it with an
+            explicit adjustment/reversal workflow—not by editing the stock
+            total.
+          </p>
+        </div>
+      </div>
       <div className={styles.footerActions}>
-        <button className={styles.textButton} disabled={saving} onClick={onBack} type="button"><ArrowLeft size={14} /> Edit items</button>
-        <button className={styles.primaryButton} disabled={saving} onClick={onConfirm} type="button">
-          {saving ? <LoaderCircle className={styles.spin} size={16} /> : <PackageCheck size={16} />}
-          {draftMovement ? "Retry posting receipt" : `Receive ${totalUnits} units`}
+        <button
+          className={styles.textButton}
+          disabled={saving}
+          onClick={onBack}
+          type="button"
+        >
+          <ArrowLeft size={14} /> Edit items
+        </button>
+        <button
+          className={styles.primaryButton}
+          disabled={saving}
+          onClick={onConfirm}
+          type="button"
+        >
+          {saving ? (
+            <LoaderCircle className={styles.spin} size={16} />
+          ) : (
+            <PackageCheck size={16} />
+          )}
+          {draftMovement
+            ? "Retry posting receipt"
+            : `Receive ${totalUnits} units`}
         </button>
       </div>
     </section>
@@ -741,42 +982,146 @@ function SuccessStep({
 }) {
   return (
     <section className={styles.successCard}>
-      <span className={styles.successIcon}><CheckCircle2 size={30} /></span>
+      <span className={styles.successIcon}>
+        <CheckCircle2 size={30} />
+      </span>
       <p className={styles.eyebrow}>Stock received</p>
       <h2>{totalUnits} units are now in the ledger</h2>
-      <p>{lines.length} variant{lines.length === 1 ? "" : "s"} received into <strong>{locationName}</strong>.</p>
-      <div className={styles.successMeta}><span>Movement</span><strong>{"movementNumber" in movement ? String((movement as { movementNumber?: string }).movementNumber ?? movement.id) : movement.id}</strong><span>Status</span><strong>{"status" in movement ? String((movement as { status?: string }).status ?? "POSTED") : "POSTED"}</strong></div>
+      <p>
+        {lines.length} variant{lines.length === 1 ? "" : "s"} received into{" "}
+        <strong>{locationName}</strong>.
+      </p>
+      <div className={styles.successMeta}>
+        <span>Movement</span>
+        <strong>{movement.movementNumber}</strong>
+        <span>Status</span>
+        <strong>{humanize(movement.status)}</strong>
+      </div>
       <div className={styles.successActions}>
-        <Link className={styles.primaryButton} href="/inventory">View inventory <ArrowRight size={15} /></Link>
-        <Link className={styles.secondaryButton} href="/inventory/movements">Movement history</Link>
-        <button className={styles.textButton} onClick={onReset} type="button"><RotateCcw size={14} /> Receive another shipment</button>
+        <Link className={styles.primaryButton} href="/inventory">
+          View inventory <ArrowRight size={15} />
+        </Link>
+        <Link className={styles.secondaryButton} href="/inventory/movements">
+          Movement history
+        </Link>
+        <button className={styles.textButton} onClick={onReset} type="button">
+          <RotateCcw size={14} /> Receive another shipment
+        </button>
       </div>
     </section>
   );
 }
 
 function StepRail({ step }: { step: Step }) {
-  const steps = [[1, "Location"], [2, "Items"], [3, "Review"], [4, "Complete"]] as const;
-  return <nav aria-label="Receive stock progress" className={styles.stepRail}>{steps.map(([number, label], index) => { const complete = number < step; const active = number === step; return <div className={styles.stepGroup} key={number}><span aria-current={active ? "step" : undefined} className={`${styles.step} ${active ? styles.stepActive : ""} ${complete ? styles.stepComplete : ""}`}><span className={styles.stepNumber}>{complete ? <Check size={13} /> : number}</span>{label}</span>{index < steps.length - 1 ? <span className={styles.stepLine} /> : null}</div>; })}</nav>;
+  const steps = [
+    [1, "Location"],
+    [2, "Items"],
+    [3, "Review"],
+    [4, "Complete"],
+  ] as const;
+  return (
+    <nav aria-label="Receive stock progress" className={styles.stepRail}>
+      {steps.map(([number, label], index) => {
+        const complete = number < step;
+        const active = number === step;
+        return (
+          <div className={styles.stepGroup} key={number}>
+            <span
+              aria-current={active ? "step" : undefined}
+              className={`${styles.step} ${active ? styles.stepActive : ""} ${complete ? styles.stepComplete : ""}`}
+            >
+              <span className={styles.stepNumber}>
+                {complete ? <Check size={13} /> : number}
+              </span>
+              {label}
+            </span>
+            {index < steps.length - 1 ? (
+              <span className={styles.stepLine} />
+            ) : null}
+          </div>
+        );
+      })}
+    </nav>
+  );
 }
 
-function Principle({ icon, text, title }: { icon: React.ReactNode; text: string; title: string }) {
-  return <article><span>{icon}</span><div><strong>{title}</strong><small>{text}</small></div></article>;
+function Principle({
+  icon,
+  text,
+  title,
+}: {
+  icon: React.ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <article>
+      <span>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <small>{text}</small>
+      </div>
+    </article>
+  );
 }
 
-function Feedback({ message, onClose, tone }: { message: string; onClose: () => void; tone: "error" | "success" }) {
-  return <div className={`${styles.feedback} ${tone === "error" ? styles.feedbackError : styles.feedbackSuccess}`} role={tone === "error" ? "alert" : "status"}>{tone === "error" ? <AlertTriangle size={16} /> : <Check size={16} />}<span>{message}</span><button aria-label="Dismiss message" onClick={onClose} type="button"><X size={15} /></button></div>;
+function Feedback({
+  message,
+  onClose,
+  tone,
+}: {
+  message: string;
+  onClose: () => void;
+  tone: "error" | "success";
+}) {
+  return (
+    <div
+      className={`${styles.feedback} ${tone === "error" ? styles.feedbackError : styles.feedbackSuccess}`}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      {tone === "error" ? <AlertTriangle size={16} /> : <Check size={16} />}
+      <span>{message}</span>
+      <button aria-label="Dismiss message" onClick={onClose} type="button">
+        <X size={15} />
+      </button>
+    </div>
+  );
 }
 
-function StatePanel({ action, icon, text, title }: { action?: React.ReactNode; icon: React.ReactNode; text: string; title: string }) {
-  return <main className={styles.statePanel}><span>{icon}</span><div><h1>{title}</h1><p>{text}</p>{action ? <div className={styles.stateAction}>{action}</div> : null}</div></main>;
+function StatePanel({
+  action,
+  icon,
+  text,
+  title,
+}: {
+  action?: React.ReactNode;
+  icon: React.ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <main className={styles.statePanel}>
+      <span>{icon}</span>
+      <div>
+        <h1>{title}</h1>
+        <p>{text}</p>
+        {action ? <div className={styles.stateAction}>{action}</div> : null}
+      </div>
+    </main>
+  );
 }
 
 function InlineLoading({ text }: { text: string }) {
-  return <div className={styles.inlineLoading}><LoaderCircle className={styles.spin} size={16} /> {text}</div>;
+  return (
+    <div className={styles.inlineLoading}>
+      <LoaderCircle className={styles.spin} size={16} /> {text}
+    </div>
+  );
 }
 
-function fromBarcode(result: BarcodeLookupContract): Omit<ReceiptLine, "quantity"> {
+function fromBarcode(
+  result: BarcodeLookupContract,
+): Omit<ReceiptLine, "quantity"> {
   return {
     color: result.color,
     productName: result.productName,
@@ -792,17 +1137,25 @@ function clampQty(value: number) {
 }
 
 function movementNumber(receiptId: string) {
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/gu, "").slice(0, 14);
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/gu, "")
+    .slice(0, 14);
   return `RCV-${stamp}-${receiptId.replaceAll("-", "").slice(0, 6).toUpperCase()}`;
 }
 
 function humanize(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase());
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase());
 }
 
 function messageFor(caught: unknown) {
   if (caught instanceof AdminApiError) {
     return `${caught.message}${caught.requestId ? ` Request ID: ${caught.requestId}` : ""}`;
   }
-  return caught instanceof Error ? caught.message : "The stock receipt could not be completed.";
+  return caught instanceof Error
+    ? caught.message
+    : "The stock receipt could not be completed.";
 }

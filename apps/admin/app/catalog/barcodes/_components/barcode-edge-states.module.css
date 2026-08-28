@@ -1,1 +1,264 @@
-.previousBarcode{display:grid;gap:2px}.previousBarcode>span{color:#aaa29b}.previousBarcode small{color:#8a817a;font-size:.62rem;line-height:1.35}.intentAction{color:#6d2b32!important}.backdrop{align-items:center;background:rgba(22,18,17,.52);display:flex;inset:0;justify-content:center;padding:20px;position:fixed;z-index:95}.confirmDialog{background:#fffdf9;border:1px solid #ddd4ca;border-radius:14px;box-shadow:0 28px 80px rgba(25,17,14,.28);max-width:520px;padding:26px;width:100%}.confirmDialog h2{color:#281f1c;font-family:Georgia,"Times New Roman",serif;font-size:1.55rem;font-weight:500;letter-spacing:-.02em;margin:4px 0 10px}.confirmDialog>p:not(:first-of-type){color:#706762;font-size:.78rem;line-height:1.65;margin:0}.confirmIcon{align-items:center;border-radius:50%;display:inline-flex;height:48px;justify-content:center;margin-bottom:15px;width:48px}.confirmIconDanger{background:#fff0ed;color:#a83b2e}.confirmIconRestore{background:#eaf5ec;color:#287744}.actionFacts{background:#f8f3ed;border:1px solid #e6ddd3;border-radius:10px;display:grid;gap:0;margin:18px 0;overflow:hidden}.actionFacts div{align-items:center;border-bottom:1px solid #e7ded5;display:grid;gap:12px;grid-template-columns:92px minmax(0,1fr);min-height:44px;padding:9px 12px}.actionFacts div:last-child{border-bottom:0}.actionFacts dt{color:#847a73;font-size:.66rem}.actionFacts dd{color:#312925;font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:.72rem;margin:0;overflow-wrap:anywhere}.safetyNote{align-items:flex-start;background:#fff5e8;border:1px solid #eedbc1;border-radius:9px;color:#8e5427;display:grid;font-size:.72rem;gap:9px;grid-template-columns:18px minmax(0,1fr);line-height:1.5;padding:11px 12px}.dialogActions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px}.dangerButton,.restoreButton{align-items:center;border-radius:7px;cursor:pointer;display:inline-flex;font:inherit;font-size:.76rem;font-weight:780;gap:7px;justify-content:center;min-height:38px;padding:0 14px}.dangerButton{background:#8f2f25;border:1px solid #842b22;color:#fff}.dangerButton:hover{background:#74251e}.restoreButton{background:#256d3f;border:1px solid #215f37;color:#fff}.restoreButton:hover{background:#1d5732}.dangerButton:disabled,.restoreButton:disabled{cursor:not-allowed;opacity:.55}.scanDialog{max-width:620px!important}.scanIdle{align-items:flex-start;background:#f7f2eb;border:1px solid #e7ded4;border-radius:9px;color:#756d67;display:grid;font-size:.7rem;gap:9px;grid-template-columns:20px minmax(0,1fr);line-height:1.5;margin-top:14px;padding:12px}.scanState{align-items:flex-start;border:1px solid;border-radius:10px;display:grid;gap:12px;grid-template-columns:40px minmax(0,1fr);margin-top:15px;padding:14px}.scanStateIcon{align-items:center;border-radius:50%;display:inline-flex;height:38px;justify-content:center;width:38px}.scanState>div{display:grid;gap:4px;min-width:0}.scanStateLabel{font-size:.65rem!important;font-weight:800!important;letter-spacing:.05em;margin:0!important;text-transform:uppercase}.scanState strong{color:#2c2521;font-size:.86rem}.scanState span:not(.scanStateIcon),.scanState small{font-size:.72rem;line-height:1.45}.scanState code{background:rgba(255,255,255,.6);border-radius:5px;font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:.7rem;margin-top:4px;overflow-wrap:anywhere;padding:5px 7px;width:max-content;max-width:100%}.scanFound{background:#eff8f1;border-color:#cfe6d3;color:#316e46}.scanFound .scanStateIcon{background:#dceee0;color:#247144}.scanNotFound{background:#fff7ea;border-color:#ecd9bc;color:#8b572a}.scanNotFound .scanStateIcon{background:#f8e5c8;color:#ad641f}.scanFailed{background:#fff1f0;border-color:#efcfca;color:#983b30}.scanFailed .scanStateIcon{background:#f3dcd9;color:#a33b31}@media(max-width:620px){.backdrop{align-items:flex-end;padding:0}.confirmDialog{border-radius:15px 15px 0 0;max-width:none}.dialogActions{flex-direction:column-reverse}.dialogActions>*{width:100%}.actionFacts div{grid-template-columns:74px minmax(0,1fr)}}
+.previousBarcode {
+  display: grid;
+  gap: 2px;
+}
+.previousBarcode > span {
+  color: #aaa29b;
+}
+.previousBarcode small {
+  color: #8a817a;
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+.intentAction {
+  color: #6d2b32 !important;
+}
+.backdrop {
+  align-items: center;
+  background: rgba(22, 18, 17, 0.52);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 95;
+}
+.confirmDialog {
+  background: #fffdf9;
+  border: 1px solid #ddd4ca;
+  border-radius: 14px;
+  box-shadow: 0 28px 80px rgba(25, 17, 14, 0.28);
+  max-width: 520px;
+  padding: 26px;
+  width: 100%;
+}
+.confirmDialog h2 {
+  color: #281f1c;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.55rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 4px 0 10px;
+}
+.confirmDialog > p:not(:first-of-type) {
+  color: #706762;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  margin: 0;
+}
+.confirmIcon {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  margin-bottom: 15px;
+  width: 48px;
+}
+.confirmIconDanger {
+  background: #fff0ed;
+  color: #a83b2e;
+}
+.confirmIconRestore {
+  background: #eaf5ec;
+  color: #287744;
+}
+.actionFacts {
+  background: #f8f3ed;
+  border: 1px solid #e6ddd3;
+  border-radius: 10px;
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+  overflow: hidden;
+}
+.actionFacts div {
+  align-items: center;
+  border-bottom: 1px solid #e7ded5;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-height: 44px;
+  padding: 9px 12px;
+}
+.actionFacts div:last-child {
+  border-bottom: 0;
+}
+.actionFacts dt {
+  color: #847a73;
+  font-size: 0.66rem;
+}
+.actionFacts dd {
+  color: #312925;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.safetyNote {
+  align-items: flex-start;
+  background: #fff5e8;
+  border: 1px solid #eedbc1;
+  border-radius: 9px;
+  color: #8e5427;
+  display: grid;
+  font-size: 0.72rem;
+  gap: 9px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  line-height: 1.5;
+  padding: 11px 12px;
+}
+.dialogActions {
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.dangerButton,
+.restoreButton {
+  align-items: center;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 780;
+  gap: 7px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+}
+.dangerButton {
+  background: #8f2f25;
+  border: 1px solid #842b22;
+  color: #fff;
+}
+.dangerButton:hover {
+  background: #74251e;
+}
+.restoreButton {
+  background: #256d3f;
+  border: 1px solid #215f37;
+  color: #fff;
+}
+.restoreButton:hover {
+  background: #1d5732;
+}
+.dangerButton:disabled,
+.restoreButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.scanDialog {
+  max-width: 620px !important;
+}
+.scanIdle {
+  align-items: flex-start;
+  background: #f7f2eb;
+  border: 1px solid #e7ded4;
+  border-radius: 9px;
+  color: #756d67;
+  display: grid;
+  font-size: 0.7rem;
+  gap: 9px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  line-height: 1.5;
+  margin-top: 14px;
+  padding: 12px;
+}
+.scanState {
+  align-items: flex-start;
+  border: 1px solid;
+  border-radius: 10px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  margin-top: 15px;
+  padding: 14px;
+}
+.scanStateIcon {
+  align-items: center;
+  border-radius: 50%;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+.scanState > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.scanStateLabel {
+  font-size: 0.65rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em;
+  margin: 0 !important;
+  text-transform: uppercase;
+}
+.scanState strong {
+  color: #2c2521;
+  font-size: 0.86rem;
+}
+.scanState span:not(.scanStateIcon),
+.scanState small {
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+.scanState code {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 5px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  padding: 5px 7px;
+  width: max-content;
+  max-width: 100%;
+}
+.scanFound {
+  background: #eff8f1;
+  border-color: #cfe6d3;
+  color: #316e46;
+}
+.scanFound .scanStateIcon {
+  background: #dceee0;
+  color: #247144;
+}
+.scanNotFound {
+  background: #fff7ea;
+  border-color: #ecd9bc;
+  color: #8b572a;
+}
+.scanNotFound .scanStateIcon {
+  background: #f8e5c8;
+  color: #ad641f;
+}
+.scanFailed {
+  background: #fff1f0;
+  border-color: #efcfca;
+  color: #983b30;
+}
+.scanFailed .scanStateIcon {
+  background: #f3dcd9;
+  color: #a33b31;
+}
+@media (max-width: 620px) {
+  .backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .confirmDialog {
+    border-radius: 15px 15px 0 0;
+    max-width: none;
+  }
+  .dialogActions {
+    flex-direction: column-reverse;
+  }
+  .dialogActions > * {
+    width: 100%;
+  }
+  .actionFacts div {
+    grid-template-columns: 74px minmax(0, 1fr);
+  }
+}

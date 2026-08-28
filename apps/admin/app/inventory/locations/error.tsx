@@ -13,11 +13,19 @@ export default function StockLocationsError({
   return (
     <main className={styles.page}>
       <section className={styles.statePanel} role="alert">
-        <span><RefreshCw size={25} /></span>
+        <span>
+          <RefreshCw size={25} />
+        </span>
         <div>
           <h1>Stock Locations Unavailable</h1>
-          <p>{error.message || "The stock location page could not be loaded."}</p>
-          <button className={styles.secondaryButton} onClick={reset} type="button">
+          <p>
+            {error.message || "The stock location page could not be loaded."}
+          </p>
+          <button
+            className={styles.secondaryButton}
+            onClick={reset}
+            type="button"
+          >
             <RefreshCw size={15} /> Retry
           </button>
         </div>

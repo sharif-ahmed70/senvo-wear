@@ -45,7 +45,11 @@
 .primaryAction,
 .footerCallout > a {
   align-items: center;
-  background: linear-gradient(135deg, var(--catalog-burgundy), var(--catalog-burgundy-dark));
+  background: linear-gradient(
+    135deg,
+    var(--catalog-burgundy),
+    var(--catalog-burgundy-dark)
+  );
   border: 1px solid #5c101b;
   border-radius: 8px;
   box-shadow: 0 10px 22px rgba(94, 15, 28, 0.15);
@@ -194,7 +198,9 @@
   border-bottom: 1px solid var(--catalog-border);
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.44fr) minmax(130px, 0.36fr) auto;
+  grid-template-columns:
+    minmax(220px, 1fr) minmax(150px, 0.44fr) minmax(130px, 0.36fr)
+    auto;
   padding: 13px 18px;
 }
 
@@ -566,7 +572,9 @@
 }
 
 @keyframes catalog-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 1180px) {

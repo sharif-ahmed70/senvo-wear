@@ -234,10 +234,22 @@
   width: 34px;
 }
 
-.attention_orders { background: #f3e7df; color: #7a101e; }
-.attention_inventory { background: #fff1de; color: #bd691d; }
-.attention_session { background: #e6f4ea; color: #2c8056; }
-.attention_payment { background: #e8effb; color: #365e9c; }
+.attention_orders {
+  background: #f3e7df;
+  color: #7a101e;
+}
+.attention_inventory {
+  background: #fff1de;
+  color: #bd691d;
+}
+.attention_session {
+  background: #e6f4ea;
+  color: #2c8056;
+}
+.attention_payment {
+  background: #e8effb;
+  color: #365e9c;
+}
 
 .attentionRow > strong {
   color: #2a1f1d;
@@ -285,9 +297,18 @@
   width: 28px;
 }
 
-.channel_store { background: #e7f2ea; color: #25704a; }
-.channel_online { background: #fff0df; color: #d17720; }
-.channel_booth { background: #eceafa; color: #5f4da1; }
+.channel_store {
+  background: #e7f2ea;
+  color: #25704a;
+}
+.channel_online {
+  background: #fff0df;
+  color: #d17720;
+}
+.channel_booth {
+  background: #eceafa;
+  color: #5f4da1;
+}
 
 .channelName,
 .channelRow strong,
@@ -396,9 +417,18 @@
   color: #625650;
 }
 
-.status_reserved { background: #e8f0fb; color: #315e99; }
-.status_paid { background: #e7f4ea; color: #267148; }
-.status_confirmed { background: #f0eafd; color: #6e4fa0; }
+.status_reserved {
+  background: #e8f0fb;
+  color: #315e99;
+}
+.status_paid {
+  background: #e7f4ea;
+  color: #267148;
+}
+.status_confirmed {
+  background: #f0eafd;
+  color: #6e4fa0;
+}
 
 .productList {
   display: grid;
@@ -458,7 +488,12 @@
 
 .inventoryDonut {
   align-items: center;
-  background: conic-gradient(#27845a 0 63%, #f4a128 63% 68%, #c93f35 68% 75%, #d7d3cf 75% 100%);
+  background: conic-gradient(
+    #27845a 0 63%,
+    #f4a128 63% 68%,
+    #c93f35 68% 75%,
+    #d7d3cf 75% 100%
+  );
   border-radius: 50%;
   display: flex;
   height: 112px;
@@ -518,10 +553,18 @@
   width: 7px;
 }
 
-.legend_healthy { background: #27845a; }
-.legend_warning { background: #f4a128; }
-.legend_danger { background: #c93f35; }
-.legend_muted { background: #c7c3bf; }
+.legend_healthy {
+  background: #27845a;
+}
+.legend_warning {
+  background: #f4a128;
+}
+.legend_danger {
+  background: #c93f35;
+}
+.legend_muted {
+  background: #c7c3bf;
+}
 
 .inventoryNote {
   align-items: center;
@@ -583,30 +626,69 @@
 }
 
 @media (max-width: 1280px) {
-  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .primaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .channelPanel { grid-column: 1 / -1; }
-  .secondaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .inventoryPanel { grid-column: 1 / -1; }
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .primaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .channelPanel {
+    grid-column: 1 / -1;
+  }
+  .secondaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inventoryPanel {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 880px) {
-  .hero { align-items: flex-start; flex-direction: column; }
-  .heroMeta { flex-wrap: wrap; }
-  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .heroMeta {
+    flex-wrap: wrap;
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .primaryGrid,
-  .secondaryGrid { grid-template-columns: 1fr; }
+  .secondaryGrid {
+    grid-template-columns: 1fr;
+  }
   .channelPanel,
-  .inventoryPanel { grid-column: auto; }
-  .brandStatement { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .inventoryPanel {
+    grid-column: auto;
+  }
+  .brandStatement {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
 }
 
 @media (max-width: 560px) {
-  .dashboard { gap: 16px; }
-  .metrics { grid-template-columns: 1fr; }
-  .metricCard { min-height: 112px; }
-  .inventoryBody { grid-template-columns: 1fr; }
-  .inventoryDonut { margin-inline: auto; }
-  .brandStatement { padding: 18px; }
-  .brandStatement > div { align-items: flex-start; }
+  .dashboard {
+    gap: 16px;
+  }
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+  .metricCard {
+    min-height: 112px;
+  }
+  .inventoryBody {
+    grid-template-columns: 1fr;
+  }
+  .inventoryDonut {
+    margin-inline: auto;
+  }
+  .brandStatement {
+    padding: 18px;
+  }
+  .brandStatement > div {
+    align-items: flex-start;
+  }
 }

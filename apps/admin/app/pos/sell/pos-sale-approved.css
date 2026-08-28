@@ -514,7 +514,9 @@
   background: #fff;
   border-color: #dce3de;
   border-radius: 7px;
-  grid-template-columns: minmax(145px, 0.75fr) minmax(130px, 0.65fr) minmax(220px, 1.25fr) auto;
+  grid-template-columns:
+    minmax(145px, 0.75fr) minmax(130px, 0.65fr) minmax(220px, 1.25fr)
+    auto;
   margin: 0;
   padding: 14px;
 }

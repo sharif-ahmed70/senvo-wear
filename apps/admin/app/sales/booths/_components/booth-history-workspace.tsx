@@ -16,7 +16,13 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import styles from "./booth-history-workspace.module.css";
@@ -48,7 +54,8 @@ export function BoothHistoryWorkspace({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [showCreate, setShowCreate] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<PendingStatusChange | null>(null);
+  const [pendingStatus, setPendingStatus] =
+    useState<PendingStatusChange | null>(null);
   const [changingId, setChangingId] = useState("");
 
   const load = useCallback(
@@ -57,7 +64,8 @@ export function BoothHistoryWorkspace({
         setLoading(false);
         return;
       }
-      mode === "refresh" ? setRefreshing(true) : setLoading(true);
+      if (mode === "refresh") setRefreshing(true);
+      else setLoading(true);
       setError("");
       try {
         setBooths((await client.listSalesBooths()).data);
@@ -79,7 +87,8 @@ export function BoothHistoryWorkspace({
   const filtered = useMemo(
     () =>
       booths.filter((booth) => {
-        if (statusFilter !== "ALL" && booth.status !== statusFilter) return false;
+        if (statusFilter !== "ALL" && booth.status !== statusFilter)
+          return false;
         if (!normalizedQuery) return true;
         return [booth.name, booth.location, booth.responsibleStaffName ?? ""]
           .join(" ")
@@ -89,7 +98,9 @@ export function BoothHistoryWorkspace({
     [booths, normalizedQuery, statusFilter],
   );
 
-  const activeCount = booths.filter((booth) => booth.status === "ACTIVE").length;
+  const activeCount = booths.filter(
+    (booth) => booth.status === "ACTIVE",
+  ).length;
   const inactiveCount = booths.length - activeCount;
 
   async function changeStatus() {
@@ -119,7 +130,14 @@ export function BoothHistoryWorkspace({
   function exportCsv() {
     if (!filtered.length) return;
     const rows = [
-      ["Booth", "Location", "Start date", "End date", "Responsible staff", "Status"],
+      [
+        "Booth",
+        "Location",
+        "Start date",
+        "End date",
+        "Responsible staff",
+        "Status",
+      ],
       ...filtered.map((booth) => [
         booth.name,
         booth.location,
@@ -165,7 +183,10 @@ export function BoothHistoryWorkspace({
         <div>
           <p className={styles.eyebrow}>Sales</p>
           <h1>Booth History</h1>
-          <p>Manage temporary event sales locations without losing historical booth records.</p>
+          <p>
+            Manage temporary event sales locations without losing historical
+            booth records.
+          </p>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -174,7 +195,10 @@ export function BoothHistoryWorkspace({
             onClick={() => void load("refresh")}
             type="button"
           >
-            <RefreshCw className={refreshing ? styles.spin : undefined} size={16} />
+            <RefreshCw
+              className={refreshing ? styles.spin : undefined}
+              size={16}
+            />
             Refresh
           </button>
           {canCreate ? (
@@ -193,21 +217,39 @@ export function BoothHistoryWorkspace({
         <div className={styles.feedbackError} role="alert">
           <AlertCircle size={16} />
           <span>{error}</span>
-          <button onClick={() => setError("")} type="button">Dismiss</button>
+          <button onClick={() => setError("")} type="button">
+            Dismiss
+          </button>
         </div>
       ) : null}
       {success ? (
         <div className={styles.feedbackSuccess} role="status">
           <CheckCircle2 size={16} />
           <span>{success}</span>
-          <button onClick={() => setSuccess("")} type="button">Dismiss</button>
+          <button onClick={() => setSuccess("")} type="button">
+            Dismiss
+          </button>
         </div>
       ) : null}
 
       <section className={styles.summaryStrip} aria-label="Booth summary">
-        <SummaryItem label="Booths recorded" value={booths.length} note="Historical and current" />
-        <SummaryItem label="Active" value={activeCount} note="Available for current use" tone="green" />
-        <SummaryItem label="Inactive" value={inactiveCount} note="Kept for history" tone="muted" />
+        <SummaryItem
+          label="Booths recorded"
+          value={booths.length}
+          note="Historical and current"
+        />
+        <SummaryItem
+          label="Active"
+          value={activeCount}
+          note="Available for current use"
+          tone="green"
+        />
+        <SummaryItem
+          label="Inactive"
+          value={inactiveCount}
+          note="Kept for history"
+          tone="muted"
+        />
       </section>
 
       <section className={styles.workspace}>
@@ -221,7 +263,11 @@ export function BoothHistoryWorkspace({
               value={query}
             />
             {query ? (
-              <button aria-label="Clear search" onClick={() => setQuery("")} type="button">
+              <button
+                aria-label="Clear search"
+                onClick={() => setQuery("")}
+                type="button"
+              >
                 <X size={14} />
               </button>
             ) : null}
@@ -229,7 +275,9 @@ export function BoothHistoryWorkspace({
           <label className={styles.selectField}>
             <span>Status</span>
             <select
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as StatusFilter)
+              }
               value={statusFilter}
             >
               <option value="ALL">All statuses</option>
@@ -249,17 +297,34 @@ export function BoothHistoryWorkspace({
 
         {!booths.length ? (
           <EmptyState
-            action={canCreate ? (
-              <button className={styles.primaryButton} onClick={() => setShowCreate(true)} type="button">
-                <Plus size={16} /> Create first booth
-              </button>
-            ) : null}
+            action={
+              canCreate ? (
+                <button
+                  className={styles.primaryButton}
+                  onClick={() => setShowCreate(true)}
+                  type="button"
+                >
+                  <Plus size={16} /> Create first booth
+                </button>
+              ) : null
+            }
             title="No booth history yet"
             text="Create an event booth when the business starts selling from a temporary location."
           />
         ) : !filtered.length ? (
           <EmptyState
-            action={<button className={styles.secondaryButton} onClick={() => { setQuery(""); setStatusFilter("ALL"); }} type="button">Clear filters</button>}
+            action={
+              <button
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setQuery("");
+                  setStatusFilter("ALL");
+                }}
+                type="button"
+              >
+                Clear filters
+              </button>
+            }
             title="No booths match these filters"
             text="Try another search or include both active and inactive records."
           />
@@ -273,7 +338,9 @@ export function BoothHistoryWorkspace({
                   <th>Dates</th>
                   <th>Responsible staff</th>
                   <th>Status</th>
-                  <th><span className={styles.srOnly}>Action</span></th>
+                  <th>
+                    <span className={styles.srOnly}>Action</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -281,7 +348,9 @@ export function BoothHistoryWorkspace({
                   <tr key={booth.id}>
                     <td data-label="Booth">
                       <div className={styles.boothCell}>
-                        <span><TentTree size={17} /></span>
+                        <span>
+                          <TentTree size={17} />
+                        </span>
                         <div>
                           <strong>{booth.name}</strong>
                           <small>{dateStateLabel(booth)}</small>
@@ -289,26 +358,44 @@ export function BoothHistoryWorkspace({
                       </div>
                     </td>
                     <td data-label="Location">
-                      <span className={styles.iconText}><MapPin size={14} />{booth.location}</span>
+                      <span className={styles.iconText}>
+                        <MapPin size={14} />
+                        {booth.location}
+                      </span>
                     </td>
                     <td data-label="Dates">
-                      <span className={styles.iconText}><CalendarDays size={14} />{dateRange(booth)}</span>
+                      <span className={styles.iconText}>
+                        <CalendarDays size={14} />
+                        {dateRange(booth)}
+                      </span>
                     </td>
                     <td data-label="Responsible staff">
-                      <span className={styles.iconText}><UserRound size={14} />{booth.responsibleStaffName ?? "Signed-in team member"}</span>
+                      <span className={styles.iconText}>
+                        <UserRound size={14} />
+                        {booth.responsibleStaffName ?? "Signed-in team member"}
+                      </span>
                     </td>
-                    <td data-label="Status"><StatusBadge status={booth.status} /></td>
+                    <td data-label="Status">
+                      <StatusBadge status={booth.status} />
+                    </td>
                     <td data-label="Action" className={styles.actionCell}>
                       {canUpdate ? (
                         <button
                           className={styles.rowAction}
-                          onClick={() => setPendingStatus({
-                            booth,
-                            nextStatus: booth.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-                          })}
+                          onClick={() =>
+                            setPendingStatus({
+                              booth,
+                              nextStatus:
+                                booth.status === "ACTIVE"
+                                  ? "INACTIVE"
+                                  : "ACTIVE",
+                            })
+                          }
                           type="button"
                         >
-                          {booth.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                          {booth.status === "ACTIVE"
+                            ? "Deactivate"
+                            : "Activate"}
                         </button>
                       ) : null}
                     </td>
@@ -330,7 +417,10 @@ export function BoothHistoryWorkspace({
         <TentTree size={18} />
         <div>
           <strong>Inactive booths remain visible by design.</strong>
-          <p>Deactivation stops current use but preserves the booth record for accurate sales history.</p>
+          <p>
+            Deactivation stops current use but preserves the booth record for
+            accurate sales history.
+          </p>
         </div>
       </section>
 
@@ -405,27 +495,84 @@ function CreateBoothDialog({
 
   return (
     <div className={styles.dialogBackdrop} role="presentation">
-      <section aria-labelledby="create-booth-title" aria-modal="true" className={styles.dialog} role="dialog">
+      <section
+        aria-labelledby="create-booth-title"
+        aria-modal="true"
+        className={styles.dialog}
+        role="dialog"
+      >
         <header>
           <div>
             <p className={styles.eyebrow}>New event location</p>
             <h2 id="create-booth-title">Create Booth</h2>
           </div>
-          <button aria-label="Close create booth dialog" onClick={onClose} type="button"><X size={18} /></button>
+          <button
+            aria-label="Close create booth dialog"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
         </header>
         <form onSubmit={(event) => void submit(event)}>
-          <label><span>Booth name</span><input autoFocus maxLength={120} name="name" placeholder="UIU Spring Fest 2026" required /></label>
-          <label><span>Location</span><input maxLength={180} name="location" placeholder="United International University" required /></label>
+          <label>
+            <span>Booth name</span>
+            <input
+              autoFocus
+              maxLength={120}
+              name="name"
+              placeholder="UIU Spring Fest 2026"
+              required
+            />
+          </label>
+          <label>
+            <span>Location</span>
+            <input
+              maxLength={180}
+              name="location"
+              placeholder="United International University"
+              required
+            />
+          </label>
           <div className={styles.formGrid}>
-            <label><span>Start date</span><input name="startDate" required type="date" /></label>
-            <label><span>End date</span><input name="endDate" required type="date" /></label>
+            <label>
+              <span>Start date</span>
+              <input name="startDate" required type="date" />
+            </label>
+            <label>
+              <span>End date</span>
+              <input name="endDate" required type="date" />
+            </label>
           </div>
-          <p className={styles.formHint}><UserRound size={14} /> Responsible staff is assigned from the signed-in workforce context.</p>
-          {formError ? <p className={styles.formError} role="alert">{formError}</p> : null}
+          <p className={styles.formHint}>
+            <UserRound size={14} /> Responsible staff is assigned from the
+            signed-in workforce context.
+          </p>
+          {formError ? (
+            <p className={styles.formError} role="alert">
+              {formError}
+            </p>
+          ) : null}
           <footer>
-            <button className={styles.secondaryButton} disabled={saving} onClick={onClose} type="button">Cancel</button>
-            <button className={styles.primaryButton} disabled={saving} type="submit">
-              {saving ? <LoaderCircle className={styles.spin} size={15} /> : <Plus size={15} />} Create Booth
+            <button
+              className={styles.secondaryButton}
+              disabled={saving}
+              onClick={onClose}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className={styles.primaryButton}
+              disabled={saving}
+              type="submit"
+            >
+              {saving ? (
+                <LoaderCircle className={styles.spin} size={15} />
+              ) : (
+                <Plus size={15} />
+              )}{" "}
+              Create Booth
             </button>
           </footer>
         </form>
@@ -448,13 +595,36 @@ function StatusDialog({
   const activating = input.nextStatus === "ACTIVE";
   return (
     <div className={styles.dialogBackdrop} role="presentation">
-      <section aria-labelledby="booth-status-title" aria-modal="true" className={styles.dialogSmall} role="dialog">
+      <section
+        aria-labelledby="booth-status-title"
+        aria-modal="true"
+        className={styles.dialogSmall}
+        role="dialog"
+      >
         <TentTree size={24} />
-        <h2 id="booth-status-title">{activating ? "Activate" : "Deactivate"} {input.booth.name}?</h2>
-        <p>{activating ? "The booth will be available for current event sales again." : "The booth stays in history, but it will no longer be active for current use."}</p>
+        <h2 id="booth-status-title">
+          {activating ? "Activate" : "Deactivate"} {input.booth.name}?
+        </h2>
+        <p>
+          {activating
+            ? "The booth will be available for current event sales again."
+            : "The booth stays in history, but it will no longer be active for current use."}
+        </p>
         <footer>
-          <button className={styles.secondaryButton} disabled={busy} onClick={onCancel} type="button">Keep current status</button>
-          <button className={activating ? styles.primaryButton : styles.dangerButton} disabled={busy} onClick={onConfirm} type="button">
+          <button
+            className={styles.secondaryButton}
+            disabled={busy}
+            onClick={onCancel}
+            type="button"
+          >
+            Keep current status
+          </button>
+          <button
+            className={activating ? styles.primaryButton : styles.dangerButton}
+            disabled={busy}
+            onClick={onConfirm}
+            type="button"
+          >
             {busy ? <LoaderCircle className={styles.spin} size={15} /> : null}
             {activating ? "Activate Booth" : "Deactivate Booth"}
           </button>
@@ -464,20 +634,80 @@ function StatusDialog({
   );
 }
 
-function SummaryItem({ label, note, tone = "default", value }: { label: string; note: string; tone?: "default" | "green" | "muted"; value: number }) {
-  return <article className={`${styles.summaryItem} ${tone === "green" ? styles.summaryGreen : tone === "muted" ? styles.summaryMuted : ""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></article>;
+function SummaryItem({
+  label,
+  note,
+  tone = "default",
+  value,
+}: {
+  label: string;
+  note: string;
+  tone?: "default" | "green" | "muted";
+  value: number;
+}) {
+  return (
+    <article
+      className={`${styles.summaryItem} ${tone === "green" ? styles.summaryGreen : tone === "muted" ? styles.summaryMuted : ""}`}
+    >
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </article>
+  );
 }
 
 function StatusBadge({ status }: { status: SalesBoothContract["status"] }) {
-  return <span className={status === "ACTIVE" ? styles.statusActive : styles.statusInactive}><i />{status === "ACTIVE" ? "Active" : "Inactive"}</span>;
+  return (
+    <span
+      className={
+        status === "ACTIVE" ? styles.statusActive : styles.statusInactive
+      }
+    >
+      <i />
+      {status === "ACTIVE" ? "Active" : "Inactive"}
+    </span>
+  );
 }
 
-function EmptyState({ action, text, title }: { action?: React.ReactNode; text: string; title: string }) {
-  return <div className={styles.emptyState}><TentTree size={28} /><strong>{title}</strong><p>{text}</p>{action}</div>;
+function EmptyState({
+  action,
+  text,
+  title,
+}: {
+  action?: React.ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <div className={styles.emptyState}>
+      <TentTree size={28} />
+      <strong>{title}</strong>
+      <p>{text}</p>
+      {action}
+    </div>
+  );
 }
 
-function StatePanel({ icon, text, title }: { icon: React.ReactNode; text: string; title: string }) {
-  return <main className={styles.page}><section className={styles.statePanel}>{icon}<div><h1>{title}</h1><p>{text}</p></div></section></main>;
+function StatePanel({
+  icon,
+  text,
+  title,
+}: {
+  icon: React.ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <main className={styles.page}>
+      <section className={styles.statePanel}>
+        {icon}
+        <div>
+          <h1>{title}</h1>
+          <p>{text}</p>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 function dateRange(booth: SalesBoothContract) {
@@ -494,7 +724,12 @@ function dateStateLabel(booth: SalesBoothContract) {
 function formatDate(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-BD", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
+  return new Intl.DateTimeFormat("en-BD", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 function formText(data: FormData, field: string) {
@@ -509,8 +744,10 @@ function csvCell(value: string) {
 function messageFor(caught: unknown) {
   if (caught instanceof AdminApiError) {
     if (caught.category === "AUTHENTICATION") return "Sign in is required.";
-    if (caught.category === "AUTHORIZATION") return "Your role cannot perform this booth action.";
-    if (caught.category === "CONCURRENCY") return "This booth changed. Refresh the page and try again.";
+    if (caught.category === "AUTHORIZATION")
+      return "Your role cannot perform this booth action.";
+    if (caught.category === "CONCURRENCY")
+      return "This booth changed. Refresh the page and try again.";
     return caught.message;
   }
   if (caught instanceof Error) return caught.message;
