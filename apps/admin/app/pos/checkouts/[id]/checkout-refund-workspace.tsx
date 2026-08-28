@@ -14,15 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type FormEvent,
-  type SetStateAction,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { formatBdt, parseTaka, takaInput } from "../../sell/_lib/money";
@@ -307,19 +299,19 @@ export function CheckoutRefundWorkspace({
       <section className={styles.summary} aria-label="Refund balance">
         <div>
           <span>Gross received</span>
-          <strong>{formatBdt(account.grossReceivedMinor ?? 0)}</strong>
+          <strong>{moneyValue(account.grossReceivedMinor)}</strong>
         </div>
         <div>
           <span>Already refunded</span>
-          <strong>{formatBdt(account.cumulativeRefundedMinor ?? 0)}</strong>
+          <strong>{moneyValue(account.cumulativeRefundedMinor)}</strong>
         </div>
         <div>
           <span>Net received</span>
-          <strong>{formatBdt(account.netReceivedMinor ?? 0)}</strong>
+          <strong>{moneyValue(account.netReceivedMinor)}</strong>
         </div>
         <div className={styles.refundDue}>
           <span>Refund due now</span>
-          <strong>{formatBdt(refundableMinor)}</strong>
+          <strong>{moneyValue(account.refundableMinor)}</strong>
         </div>
       </section>
 
@@ -614,14 +606,6 @@ export function CheckoutRefundWorkspace({
   );
 }
 
-function updateLine(
-  index: number,
-  patch: Partial<RefundDraftLine>,
-  setLines: Dispatch<SetStateAction<RefundDraftLine[]>>,
-) {
-  setLines((items) => updateRefundMethod(items, index, patch));
-}
-
 export function updateRefundMethod(
   items: readonly RefundDraftLine[],
   index: number,
@@ -674,6 +658,10 @@ function messageFor(reason: unknown) {
       "Review the refund amount, method and transaction reference.",
   };
   return `${messages[reason.code] ?? reason.message} (${reason.requestId})`;
+}
+
+function moneyValue(value: number | null) {
+  return value === null ? "Not recorded" : formatBdt(value);
 }
 
 function formatDate(value: string) {
