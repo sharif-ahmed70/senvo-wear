@@ -1,8 +1,7 @@
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { SalesCountersWorkspace } from "./_components/sales-counters-workspace";
 
-export default function SalesCountersPage() {
-  return (
-    <SalesCountersWorkspace permissions={adminFoundationSession.permissions} />
-  );
+export default async function SalesCountersPage() {
+  const session = await getAdminSession();
+  return <SalesCountersWorkspace permissions={session?.permissions ?? []} />;
 }

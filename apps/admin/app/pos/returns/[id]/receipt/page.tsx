@@ -1,4 +1,4 @@
-import { adminFoundationSession } from "../../../../_lib/admin-access";
+import { getAdminSession } from "../../../../_lib/workforce-auth-server";
 import { ReturnReceiptPreview } from "./return-receipt-preview";
 
 export default async function ReturnReceiptPage({
@@ -10,11 +10,12 @@ export default async function ReturnReceiptPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const session = await getAdminSession();
   return (
     <ReturnReceiptPreview
       printOnLoad={query.print === "1"}
       returnId={id}
-      permissions={adminFoundationSession.permissions}
+      permissions={session?.permissions ?? []}
     />
   );
 }

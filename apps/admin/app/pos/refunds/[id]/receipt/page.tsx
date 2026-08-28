@@ -1,4 +1,4 @@
-import { adminFoundationSession } from "../../../../_lib/admin-access";
+import { getAdminSession } from "../../../../_lib/workforce-auth-server";
 import { RefundReceiptPreview } from "./refund-receipt-preview";
 
 export default async function RefundReceiptPage({
@@ -10,9 +10,10 @@ export default async function RefundReceiptPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const session = await getAdminSession();
   return (
     <RefundReceiptPreview
-      permissions={adminFoundationSession.permissions}
+      permissions={session?.permissions ?? []}
       printOnLoad={query.print === "1"}
       refundId={id}
     />
