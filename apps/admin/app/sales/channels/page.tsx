@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
+import { getAdminSession } from "../../_lib/workforce-auth-server";
 import { SalesSourcesOverview } from "./_components/sales-sources-overview";
 
 export const metadata: Metadata = {
   title: "Sales Sources | SENVO Admin",
 };
 
-export default function SalesChannelsPage() {
-  return <SalesSourcesOverview permissions={adminFoundationSession.permissions} />;
+export default async function SalesChannelsPage() {
+  const session = await getAdminSession();
+  return <SalesSourcesOverview permissions={session?.permissions ?? []} />;
 }
