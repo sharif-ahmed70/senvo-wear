@@ -1,0 +1,375 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(460px, 1.08fr);
+  background: #f3efe8;
+  color: #1d1a18;
+}
+
+.brandPanel {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  padding: clamp(32px, 5vw, 72px);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(141, 114, 84, 0.16), transparent 30%),
+    linear-gradient(145deg, #201e1c 0%, #161514 58%, #11100f 100%);
+  color: #f8f2e9;
+}
+
+.brandLockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 13px;
+  width: fit-content;
+}
+
+.brandLockup > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.brandLockup strong {
+  font-size: 15px;
+  letter-spacing: 0.18em;
+}
+
+.brandLockup small {
+  color: #bdb5aa;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.brandMark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #6f1730;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 23px;
+  line-height: 1;
+}
+
+.brandMessage {
+  max-width: 620px;
+  display: grid;
+  gap: 18px;
+}
+
+.eyebrow {
+  color: #8d1734;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.brandPanel .eyebrow {
+  color: #d4b99c;
+}
+
+.brandMessage h1,
+.heading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.brandMessage h1 {
+  max-width: 560px;
+  font-size: clamp(40px, 5.2vw, 70px);
+  line-height: 0.98;
+}
+
+.brandMessage p {
+  max-width: 520px;
+  margin: 0;
+  color: #c7c0b6;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.securityNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 420px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  color: #d5cdc2;
+}
+
+.securityNote svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #d4b99c;
+}
+
+.securityNote span {
+  display: grid;
+  gap: 4px;
+}
+
+.securityNote strong {
+  color: #f5eee5;
+  font-size: 13px;
+}
+
+.securityNote small {
+  color: #aaa399;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.formPanel {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(28px, 6vw, 88px);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.22)),
+    #f3efe8;
+}
+
+.formCard {
+  width: min(100%, 480px);
+  display: grid;
+  gap: 26px;
+  padding: clamp(30px, 5vw, 48px);
+  border: 1px solid #ddd5ca;
+  background: #fbf8f3;
+  box-shadow: 0 22px 65px rgba(47, 38, 31, 0.09);
+}
+
+.formIcon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ded3c5;
+  background: #f1eae0;
+  color: #6f1730;
+}
+
+.heading {
+  display: grid;
+  gap: 8px;
+}
+
+.heading h2 {
+  font-size: clamp(34px, 4vw, 46px);
+  line-height: 1;
+}
+
+.heading p {
+  margin: 2px 0 0;
+  color: #6d665e;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.error {
+  padding: 12px 14px;
+  border: 1px solid #dcb9b9;
+  background: #f8eaea;
+  color: #7b2528;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.form {
+  display: grid;
+  gap: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: #3b3732;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field input {
+  width: 100%;
+  min-height: 46px;
+  box-sizing: border-box;
+  border: 1px solid #d7cfc4;
+  border-radius: 2px;
+  outline: none;
+  background: #fffdfa;
+  color: #201d1a;
+  padding: 0 13px;
+  font: inherit;
+  font-weight: 500;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.field input::placeholder {
+  color: #a39a90;
+  font-weight: 400;
+}
+
+.field input:focus {
+  border-color: #8d1734;
+  box-shadow: 0 0 0 3px rgba(141, 23, 52, 0.09);
+}
+
+.passwordField {
+  position: relative;
+  display: block;
+}
+
+.passwordField input {
+  padding-right: 48px;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #716960;
+  cursor: pointer;
+}
+
+.passwordToggle:hover {
+  color: #6f1730;
+}
+
+.remember {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #4a453f;
+  cursor: pointer;
+}
+
+.remember input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #6f1730;
+}
+
+.remember span {
+  display: grid;
+  gap: 3px;
+}
+
+.remember strong {
+  font-size: 12px;
+}
+
+.remember small {
+  color: #827a71;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.submit {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #621329;
+  border-radius: 2px;
+  background: #6f1730;
+  color: #fff8f1;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.submit:hover:not(:disabled) {
+  background: #5d1027;
+}
+
+.submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.submit:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  .brandPanel {
+    min-height: auto;
+    padding: 32px 28px;
+    gap: 32px;
+  }
+
+  .brandMessage h1 {
+    max-width: 680px;
+    font-size: clamp(36px, 9vw, 56px);
+  }
+
+  .securityNote {
+    display: none;
+  }
+
+  .formPanel {
+    min-height: auto;
+    place-items: start center;
+    padding: 42px 22px 64px;
+  }
+}
+
+@media (max-width: 520px) {
+  .brandPanel {
+    padding: 26px 20px 30px;
+  }
+
+  .brandMessage {
+    gap: 13px;
+  }
+
+  .brandMessage p {
+    font-size: 13px;
+  }
+
+  .formPanel {
+    padding: 24px 14px 44px;
+  }
+
+  .formCard {
+    padding: 26px 20px;
+    box-shadow: none;
+  }
+}
