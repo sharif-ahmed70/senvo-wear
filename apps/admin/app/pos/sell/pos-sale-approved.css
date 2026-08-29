@@ -1,0 +1,773 @@
+.pos-sale-page {
+  gap: 14px;
+  padding: 22px clamp(18px, 2.5vw, 32px) 30px;
+}
+
+.pos-sale-header {
+  align-items: center;
+  border-bottom: 1px solid var(--admin-border);
+  padding-bottom: 14px;
+}
+
+.pos-sale-header > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.pos-sale-header p {
+  color: #5f6b65;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.pos-sale-header h1 {
+  color: #17201b;
+  font-size: clamp(1.45rem, 2.1vw, 2rem);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+
+.pos-sale-header > div:first-child > span {
+  color: #66716b;
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 3px;
+}
+
+.pos-sale-header__counter {
+  align-items: start;
+  background: #fff;
+  border: 1px solid #d8dfda;
+  border-radius: 7px;
+  min-width: 190px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.pos-sale-header__counter span {
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pos-sale-header__counter strong {
+  color: #1e2923;
+  font-size: 0.8rem;
+}
+
+.pos-sale-context,
+.pos-sale-context-select {
+  background: #f8f9f7;
+  border-color: #d8dfda;
+  border-radius: 7px;
+  min-height: 48px;
+  padding: 9px 12px;
+}
+
+.pos-sale-context {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.pos-sale-context > span {
+  font-size: 0.63rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pos-sale-context strong {
+  color: #27342d;
+  font-size: 0.8rem;
+}
+
+.pos-sale-context small {
+  background: #eef2ef;
+  border: 1px solid #d9e0db;
+  border-radius: 5px;
+  color: #526159;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  padding: 4px 7px;
+}
+
+.pos-sale-context-select {
+  max-width: none;
+}
+
+.pos-sale-layout {
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.pos-sale-main {
+  gap: 12px;
+}
+
+.pos-scan,
+.pos-cart-lines,
+.pos-order-summary {
+  border-color: #d8dfda;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(18 31 24 / 4%);
+}
+
+.pos-scan {
+  gap: 9px;
+  padding: 14px;
+}
+
+.pos-scan > label {
+  color: #334039;
+  font-size: 0.74rem;
+}
+
+.pos-scan__control {
+  background: #fff;
+  border-color: #c8d2cc;
+  border-radius: 7px;
+  min-height: 50px;
+  padding: 5px 5px 5px 13px;
+}
+
+.pos-scan__control:focus-within {
+  border-color: #7da995;
+  box-shadow: 0 0 0 3px rgb(47 114 94 / 10%);
+}
+
+.pos-scan__control > svg {
+  color: #66756d;
+}
+
+.pos-scan__control input {
+  font-size: 0.9rem;
+}
+
+.pos-scan__control input::placeholder {
+  color: #9aa49e;
+}
+
+.pos-scan__control button,
+.pos-order-summary > button {
+  background: #176b4d;
+  border-radius: 6px;
+  min-height: 40px;
+  padding-inline: 15px;
+}
+
+.pos-scan__control button:hover:not(:disabled),
+.pos-order-summary > button:hover:not(:disabled) {
+  background: #12573e;
+}
+
+.pos-cart-lines {
+  background: #fff;
+}
+
+.pos-cart-lines h2 {
+  align-items: center;
+  border-bottom: 1px solid #e2e7e3;
+  color: #26342c;
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: space-between;
+  letter-spacing: 0.01em;
+  padding: 12px 14px;
+}
+
+.pos-cart-line {
+  border-top: 0;
+  border-bottom: 1px solid #e8ece9;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, auto) auto;
+  min-height: 82px;
+  padding: 12px 14px;
+}
+
+.pos-cart-line:last-child {
+  border-bottom: 0;
+}
+
+.pos-cart-line:hover {
+  background: #fbfcfb;
+}
+
+.pos-cart-line__details strong {
+  color: #1f2b24;
+  font-size: 0.8rem;
+}
+
+.pos-cart-line__details span {
+  color: #5c6962;
+  font-size: 0.7rem;
+}
+
+.pos-cart-line__details small {
+  color: #89938d;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.66rem;
+}
+
+.pos-cart-line__price span {
+  font-size: 0.68rem;
+}
+
+.pos-cart-line__price strong {
+  color: #1b2821;
+  font-size: 0.8rem;
+}
+
+.pos-quantity {
+  gap: 3px;
+}
+
+.pos-quantity button,
+.pos-quantity input,
+.pos-remove {
+  border-color: #d8dfda;
+  border-radius: 5px;
+  height: 34px;
+}
+
+.pos-quantity button,
+.pos-remove {
+  width: 34px;
+}
+
+.pos-quantity input {
+  font-size: 0.76rem;
+  width: 48px;
+}
+
+.pos-remove {
+  margin-left: 4px;
+}
+
+.pos-order-summary {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  top: 14px;
+}
+
+.pos-order-summary > div:first-child {
+  border-bottom: 1px solid #e2e7e3;
+  padding: 14px 15px;
+}
+
+.pos-order-summary > div:first-child svg {
+  color: #57675e;
+}
+
+.pos-order-summary h2 {
+  color: #26342c;
+  font-size: 0.82rem;
+}
+
+.pos-order-summary dl {
+  gap: 0;
+  padding: 6px 15px;
+}
+
+.pos-order-summary dl > div {
+  min-height: 36px;
+  padding: 8px 0;
+}
+
+.pos-order-summary dt {
+  font-size: 0.72rem;
+}
+
+.pos-order-summary dd {
+  color: #26342c;
+  font-size: 0.78rem;
+}
+
+.pos-order-total {
+  border-top: 1px solid #d9e0db;
+  margin-top: 3px;
+}
+
+.pos-order-total dt,
+.pos-order-total dd {
+  color: #152119;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.pos-order-summary > p {
+  background: #f7f9f7;
+  border-top: 1px solid #e3e8e4;
+  line-height: 1.45;
+  padding: 10px 15px;
+}
+
+.pos-order-summary > button {
+  border-radius: 0;
+  margin: 0;
+  min-height: 50px;
+  width: 100%;
+}
+
+.pos-notice,
+.pos-form-error {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.76rem;
+}
+
+.pos-notice {
+  border-color: #cbe1d5;
+}
+
+.pos-form-error {
+  border-color: #efd1cd;
+}
+
+.pos-sale-state--compact {
+  background: #fff;
+  border: 1px dashed #d4dcd6;
+  border-radius: 8px;
+  min-height: 180px;
+}
+
+/* Approved Take Payment / Split Payment workspace */
+.pos-payment-panel {
+  background: #fff;
+  border-color: #d8dfda;
+  border-radius: 9px;
+  box-shadow: 0 10px 34px rgb(22 39 30 / 7%);
+  margin: 6px auto 18px;
+  max-width: 980px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.pos-payment-header {
+  align-items: flex-start;
+  border-bottom: 1px solid #e1e7e3;
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 22px 18px;
+}
+
+.pos-payment-header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.pos-payment-header > div > span {
+  color: #7a4a57;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pos-payment-header h2 {
+  color: #18231d;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.pos-payment-header p {
+  color: #69766f;
+  font-size: 0.78rem;
+  margin: 1px 0 0;
+}
+
+.pos-payment-header > button {
+  background: #fff;
+  border: 1px solid #d8dfda;
+  border-radius: 6px;
+  color: #56645c;
+  flex: 0 0 38px;
+  height: 38px;
+}
+
+.pos-payment-panel > form {
+  gap: 0;
+  margin: 0;
+}
+
+.pos-payment-summary {
+  background: #f7f8f6;
+  border-bottom: 1px solid #e1e7e3;
+  border-radius: 0;
+  gap: 0;
+  overflow: visible;
+}
+
+.pos-payment-summary > div {
+  background: transparent;
+  border-right: 1px solid #e1e7e3;
+  gap: 5px;
+  min-height: 78px;
+  padding: 17px 20px;
+}
+
+.pos-payment-summary > div:last-child {
+  border-right: 0;
+}
+
+.pos-payment-summary span {
+  color: #6d7972;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pos-payment-summary strong {
+  color: #1f2c25;
+  font-size: 1.04rem;
+}
+
+.pos-payment-summary__due strong {
+  color: #9a342f;
+}
+
+.pos-payment-choice,
+.pos-payment-entry {
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+}
+
+.pos-payment-choice {
+  border-bottom: 1px solid #e5eae7;
+}
+
+.pos-payment-section-heading {
+  align-items: end;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.pos-payment-section-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pos-payment-section-heading span {
+  color: #7d8a83;
+  font-size: 0.63rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pos-payment-section-heading h3 {
+  color: #253229;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.pos-payment-section-heading small {
+  color: #7b8780;
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+.pos-payment-methods {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pos-payment-method {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d7ded9;
+  border-radius: 7px;
+  color: #314039;
+  display: flex;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 750;
+  gap: 8px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 8px 10px;
+}
+
+.pos-payment-method svg {
+  color: #6f3847;
+}
+
+.pos-payment-method:hover:not(:disabled) {
+  background: #faf7f8;
+  border-color: #bdaab0;
+}
+
+.pos-payment-entry {
+  background: #fcfdfc;
+}
+
+.pos-payment-lines {
+  gap: 10px;
+}
+
+.pos-payment-lines fieldset {
+  background: #fff;
+  border-color: #dce3de;
+  border-radius: 7px;
+  grid-template-columns:
+    minmax(145px, 0.75fr) minmax(130px, 0.65fr) minmax(220px, 1.25fr)
+    auto;
+  margin: 0;
+  padding: 14px;
+}
+
+.pos-payment-lines legend {
+  color: #59675f;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+
+.pos-payment-lines label {
+  color: #68756e;
+  font-size: 0.68rem;
+}
+
+.pos-payment-lines :is(input, select) {
+  border-color: #d3dcd6;
+  border-radius: 6px;
+  min-height: 40px;
+}
+
+.pos-payment-lines :is(input, select):focus-visible {
+  border-color: #7da995;
+  box-shadow: 0 0 0 3px rgb(47 114 94 / 10%);
+  outline: 0;
+}
+
+.pos-payment-cash-note {
+  align-self: stretch;
+  background: #f7f9f7;
+  border: 1px dashed #d8dfda;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.pos-payment-cash-note span {
+  color: #4e5d55;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.pos-payment-cash-note small {
+  color: #7b8780;
+  font-size: 0.65rem;
+}
+
+.pos-payment-entry-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.pos-payment-entry-actions .pos-sale-text {
+  color: #68756e;
+  text-decoration: none;
+}
+
+.pos-payment-entry-actions .pos-sale-text:hover:not(:disabled) {
+  color: #6f3847;
+}
+
+.pos-due-option {
+  background: #fff9ea;
+  border-color: #ead8a9;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  margin: 0;
+  padding: 15px 22px;
+}
+
+.pos-due-option > label {
+  color: #5f4b1a;
+  font-size: 0.76rem;
+}
+
+.pos-due-option > p {
+  color: #7b692f;
+  margin: 6px 0 0 24px;
+}
+
+.pos-due-option__details {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin: 10px 0 0 24px;
+}
+
+.pos-due-option__details strong {
+  color: #725713;
+  font-size: 0.78rem;
+}
+
+.pos-payment-panel > form > .pos-form-error {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  margin: 0;
+}
+
+.pos-payment-actions {
+  align-items: center;
+  background: #f6f8f6;
+  border-top: 1px solid #dde4df;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 15px 22px;
+}
+
+.pos-payment-actions > div {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.pos-payment-actions > div > span {
+  color: #68756e;
+  font-size: 0.72rem;
+}
+
+.pos-payment-actions .pos-complete-button {
+  background: #176b4d;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  justify-self: auto;
+  min-width: 180px;
+  padding: 9px 16px;
+}
+
+.pos-payment-actions .pos-complete-button:hover:not(:disabled) {
+  background: #12573e;
+}
+
+@media (max-width: 980px) {
+  .pos-sale-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-order-summary {
+    position: static;
+  }
+
+  .pos-payment-methods {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pos-payment-lines fieldset {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pos-payment-lines fieldset > .pos-remove {
+    justify-self: end;
+  }
+}
+
+@media (max-width: 680px) {
+  .pos-sale-page {
+    padding: 14px;
+  }
+
+  .pos-sale-header {
+    align-items: stretch;
+  }
+
+  .pos-sale-header__counter {
+    min-width: 0;
+  }
+
+  .pos-sale-context {
+    align-items: start;
+    grid-template-columns: 1fr auto;
+  }
+
+  .pos-sale-context > span {
+    grid-column: 1 / -1;
+  }
+
+  .pos-cart-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pos-quantity {
+    grid-column: 1 / -1;
+  }
+
+  .pos-payment-header,
+  .pos-payment-choice,
+  .pos-payment-entry,
+  .pos-payment-actions {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .pos-payment-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-payment-summary > div {
+    border-bottom: 1px solid #e1e7e3;
+    border-right: 0;
+    min-height: auto;
+    padding: 12px 15px;
+  }
+
+  .pos-payment-summary > div:last-child {
+    border-bottom: 0;
+  }
+
+  .pos-payment-methods,
+  .pos-payment-lines fieldset {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-payment-section-heading,
+  .pos-payment-actions,
+  .pos-payment-actions > div,
+  .pos-due-option__details {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pos-payment-section-heading small {
+    text-align: left;
+  }
+
+  .pos-payment-entry-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pos-payment-entry-actions .pos-sale-secondary,
+  .pos-payment-actions .pos-sale-secondary,
+  .pos-payment-actions .pos-complete-button {
+    width: 100%;
+  }
+
+  .pos-payment-actions > div {
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pos-due-option > p,
+  .pos-due-option__details {
+    margin-left: 0;
+  }
+}

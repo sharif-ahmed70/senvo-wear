@@ -406,6 +406,7 @@ export function ProductMedia({
           ) : (
             media.map((image, index) => (
               <article className="product-media-item" key={image.linkId}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- admin media uses backend-provided URLs without next/image optimization config */}
                 <img
                   alt={image.altText}
                   height={120}

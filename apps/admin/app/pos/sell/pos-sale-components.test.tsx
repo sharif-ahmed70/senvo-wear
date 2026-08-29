@@ -166,8 +166,8 @@ describe("guided POS selling components", () => {
         totalMinor={250000}
       />,
     );
-    expect(html).toContain("Add another payment method");
-    expect(html).toContain("Allow remaining balance");
+    expect(html).toContain("Add payment method");
+    expect(html).toContain("Allow a remaining balance");
   });
 
   it("shows success without leaking receipt actions", () => {
@@ -216,7 +216,9 @@ describe("guided POS selling components", () => {
     expect(html).toContain("Sale completed");
     expect(html).toContain("View receipt");
     expect(html).toContain("The completed sale is safe.");
-    expect(html).toContain("Use Start new sale again to retry preparation.");
+    expect(html).toContain(
+      "Use Start new sale again to retry only the next-sale preparation.",
+    );
     expect(html).toContain("req_recovery_1");
   });
 });

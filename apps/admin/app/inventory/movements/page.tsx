@@ -1,11 +1,17 @@
+import type { Metadata } from "next";
 import { adminFoundationSession } from "../../_lib/admin-access";
-import { InventoryWorkspace } from "../_components/inventory-workspace";
+import { MovementHistoryWorkspace } from "./_components/movement-history-workspace";
+
+export const metadata: Metadata = {
+  title: "Movement History | SENVO Wear Admin",
+  description:
+    "Review real inventory ledger movement activity across SENVO stock locations.",
+};
 
 export default function InventoryMovementsPage() {
   return (
-    <InventoryWorkspace
+    <MovementHistoryWorkspace
       permissions={adminFoundationSession.permissions}
-      view="movements"
     />
   );
 }
