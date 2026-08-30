@@ -1,4 +1,3 @@
-import { adminFoundationSession } from "../../../_lib/admin-access";
 import { ProductInventoryDetail } from "../_components/product-inventory-detail";
 
 export default async function ProductDetailPage({
@@ -7,10 +6,5 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return (
-    <ProductInventoryDetail
-      permissions={adminFoundationSession.permissions}
-      productId={id}
-    />
-  );
+  return <ProductInventoryDetail productId={id} />;
 }

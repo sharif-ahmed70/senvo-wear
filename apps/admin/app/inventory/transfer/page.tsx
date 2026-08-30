@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { TransferStockWorkflow } from "./_components/transfer-stock-workflow";
 
 export const metadata: Metadata = {
@@ -9,7 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function TransferStockPage() {
-  return (
-    <TransferStockWorkflow permissions={adminFoundationSession.permissions} />
-  );
+  return <TransferStockWorkflow />;
 }

@@ -36,6 +36,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./movement-history-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -67,10 +68,13 @@ type Filters = {
 };
 
 export function MovementHistoryWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
+
   const canRead = permissions.includes("INVENTORY:READ");
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const [locationId, setLocationId] = useState("");

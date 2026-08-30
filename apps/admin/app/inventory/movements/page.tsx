@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { MovementHistoryWorkspace } from "./_components/movement-history-workspace";
 
 export const metadata: Metadata = {
@@ -9,9 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function InventoryMovementsPage() {
-  return (
-    <MovementHistoryWorkspace
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+  return <MovementHistoryWorkspace />;
 }

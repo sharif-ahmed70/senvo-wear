@@ -24,21 +24,25 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../../_components/page-header";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
+import { useAdminPermissions } from "../../admin-shell";
 
 type OrganizationView = "profile" | "roles" | "stores" | "team";
 type LoadState = "error" | "loading" | "ready";
 const client = new AdminApiClient();
 
 export function OrganizationWorkspace({
-  permissions,
+  permissions: propsPermissions,
   view,
 }: {
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
   view: OrganizationView;
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const required =
     view === "team" || view === "roles" ? "TEAM:READ" : "ORGANIZATION:READ";
   if (!permissions.includes(required)) return <AccessNotice />;
+
   if (view === "profile")
     return (
       <ProfilePanel canUpdate={permissions.includes("ORGANIZATION:UPDATE")} />

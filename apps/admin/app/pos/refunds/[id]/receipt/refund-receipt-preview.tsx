@@ -5,6 +5,7 @@ import { CircleAlert, LoaderCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import { useAdminPermissions } from "../../../../admin-shell";
 import { formatBdt } from "../../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -18,18 +19,21 @@ const methodLabels: Record<string, string> = {
 };
 
 export function RefundReceiptPreview({
-  permissions,
+  permissions: propsPermissions,
   printOnLoad = false,
   refundId,
 }: {
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
   printOnLoad?: boolean;
   refundId: string;
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead =
     permissions.includes("RECEIPT:READ") &&
     permissions.includes("PAYMENT:READ") &&
     permissions.includes("SALES:READ");
+
   const [receipt, setReceipt] = useState<PaymentRefundReceiptContract | null>(
     null,
   );

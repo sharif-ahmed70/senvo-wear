@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { BoothHistoryWorkspace } from "./_components/booth-history-workspace";
 
 export const metadata: Metadata = {
@@ -9,7 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function SalesBoothsPage() {
-  return (
-    <BoothHistoryWorkspace permissions={adminFoundationSession.permissions} />
-  );
+  return <BoothHistoryWorkspace />;
 }

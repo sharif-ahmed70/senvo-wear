@@ -35,6 +35,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./barcode-management.module.css";
 import edge from "./barcode-edge-states.module.css";
 
@@ -64,10 +65,13 @@ type ScanState =
   | { kind: "error"; message: string; value: string };
 
 export function BarcodeWorkspaceComplete({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
+
   const canCreate = permissions.includes("CATALOG:CREATE");
   const canUpdate = permissions.includes("CATALOG:UPDATE");
   const canRead = permissions.includes("CATALOG:READ");

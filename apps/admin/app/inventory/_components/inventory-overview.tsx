@@ -34,6 +34,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
+import { useAdminPermissions } from "../../admin-shell";
 import styles from "./inventory-overview.module.css";
 
 const client = new AdminApiClient({
@@ -56,11 +57,14 @@ type InventoryFilters = {
 };
 
 export function InventoryOverview({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("INVENTORY:READ");
+
   const canUpdate = permissions.includes("INVENTORY:UPDATE");
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState("");

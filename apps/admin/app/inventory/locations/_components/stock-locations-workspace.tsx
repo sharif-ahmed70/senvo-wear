@@ -31,6 +31,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./stock-locations-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -47,6 +48,7 @@ const locationTypes = [
   "TRANSIT",
   "OTHER",
 ] as const;
+
 const locationStatuses = ["ACTIVE", "INACTIVE", "ARCHIVED"] as const;
 
 type LocationType = (typeof locationTypes)[number];
@@ -58,10 +60,12 @@ type ApiPage = {
 };
 
 export function StockLocationsWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("INVENTORY:READ");
   const [page, setPage] = useState<ApiPage>({
     hasMore: false,

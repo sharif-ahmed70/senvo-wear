@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { StockLocationsWorkspace } from "./_components/stock-locations-workspace";
 
 export const metadata: Metadata = {
@@ -9,7 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function InventoryLocationsPage() {
-  return (
-    <StockLocationsWorkspace permissions={adminFoundationSession.permissions} />
-  );
+  return <StockLocationsWorkspace />;
 }

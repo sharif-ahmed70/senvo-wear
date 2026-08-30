@@ -25,6 +25,11 @@ const permissionResources = new Set<Permission["resource"]>([
   "RESERVATION",
   "SALES_ORDER",
   "REPORT",
+  "TEAM",
+  "SALES",
+  "POS",
+  "PAYMENT",
+  "RECEIPT",
 ]);
 
 export type HttpRequestContextFactory = {

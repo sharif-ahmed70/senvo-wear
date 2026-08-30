@@ -1,11 +1,5 @@
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { CatalogWorkspace } from "../_components/catalog-workspace";
 
 export default function SizesPage() {
-  return (
-    <CatalogWorkspace
-      kind="sizes"
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+  return <CatalogWorkspace kind="sizes" />;
 }

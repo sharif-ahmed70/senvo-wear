@@ -37,6 +37,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import { useAdminPermissions } from "../../../../admin-shell";
 import styles from "./movement-detail-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -75,11 +76,14 @@ type HistorySnapshot = {
 
 export function MovementDetailWorkspace({
   movementId,
-  permissions,
+  permissions: propsPermissions,
 }: {
   movementId: string;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
+
   const canRead = permissions.includes("INVENTORY:READ");
   const searchParams = useSearchParams();
   const snapshot = useMemo(() => snapshotFrom(searchParams), [searchParams]);

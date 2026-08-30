@@ -23,6 +23,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 
+import { useAdminPermissions } from "../../admin-shell";
+
 type CatalogKind =
   "categories" | "collections" | "colors" | "products" | "sizes";
 type CatalogRecord =
@@ -38,12 +40,15 @@ const client = new AdminApiClient({
 
 export function CatalogWorkspace({
   kind,
-  permissions,
+  permissions: propsPermissions,
 }: {
   kind: CatalogKind;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const [records, setRecords] = useState<CatalogRecord[]>([]);
+
   const [categories, setCategories] = useState<CategoryContract[]>([]);
   const [collections, setCollections] = useState<CollectionContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);

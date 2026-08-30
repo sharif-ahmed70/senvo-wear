@@ -41,6 +41,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "../../receive/_components/receive-stock-workflow.module.css";
 
 const client = new AdminApiClient({
@@ -75,10 +76,12 @@ type DraftCreateInput = {
 };
 
 export function TransferStockWorkflow({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canReadInventory = permissions.includes("INVENTORY:READ");
   const canCreateInventory = permissions.includes("INVENTORY:CREATE");
   const canReadCatalog = permissions.includes("CATALOG:READ");

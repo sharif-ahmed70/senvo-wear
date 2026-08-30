@@ -19,6 +19,11 @@ const authenticatedPrincipal = {
     { resource: "CATALOG", action: "READ" },
     { resource: "INVENTORY", action: "UPDATE" },
     { resource: "ORGANIZATION", action: "READ" },
+    { resource: "TEAM", action: "READ" },
+    { resource: "SALES", action: "READ" },
+    { resource: "POS", action: "CREATE" },
+    { resource: "PAYMENT", action: "APPROVE" },
+    { resource: "RECEIPT", action: "READ" },
     // Backend might send a future resource not yet in the allowlist
     { resource: "FUTURE_RESOURCE", action: "READ" },
   ],
@@ -77,7 +82,7 @@ describe("WorkforceSessionRequestContextFactory", () => {
       requestId: "req-1",
     });
 
-    // CATALOG:READ and INVENTORY:UPDATE and ORGANIZATION:READ are valid
+    // CATALOG:READ, INVENTORY:UPDATE, ORGANIZATION:READ, TEAM:READ, SALES:READ, POS:CREATE, PAYMENT:APPROVE, RECEIPT:READ are valid
     expect(context.permissions).toContainEqual({
       resource: "CATALOG",
       action: "READ",
@@ -88,6 +93,26 @@ describe("WorkforceSessionRequestContextFactory", () => {
     });
     expect(context.permissions).toContainEqual({
       resource: "ORGANIZATION",
+      action: "READ",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "TEAM",
+      action: "READ",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "SALES",
+      action: "READ",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "POS",
+      action: "CREATE",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "PAYMENT",
+      action: "APPROVE",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "RECEIPT",
       action: "READ",
     });
     // FUTURE_RESOURCE:READ must NOT appear

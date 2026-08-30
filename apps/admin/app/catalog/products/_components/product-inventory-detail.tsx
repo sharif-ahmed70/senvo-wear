@@ -18,19 +18,23 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
 });
 
 export function ProductInventoryDetail({
-  permissions,
+  permissions: propsPermissions,
   productId,
 }: {
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
   productId: string;
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const [product, setProduct] = useState<ProductDetailsContract | null>(null);
+
   const [availability, setAvailability] = useState<
     VariantInventoryAvailabilityContract[]
   >([]);

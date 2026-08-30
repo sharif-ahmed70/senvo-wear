@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { MouseEvent } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
+import { useAdminPermissions } from "../../admin-shell";
 import { InventoryOverview } from "./inventory-overview";
 
 const readyActionRoutes = new Map([
@@ -12,10 +13,12 @@ const readyActionRoutes = new Map([
 ] as const);
 
 export function InventoryOverviewReady({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const router = useRouter();
   const canCreateInventory = permissions.includes("INVENTORY:CREATE");
 

@@ -25,6 +25,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./sales-orders-list-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -61,11 +62,14 @@ type ApiPage = {
 };
 
 export function SalesOrdersListWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("SALES_ORDER:READ");
+
   const canStartPos = [
     "POS:READ",
     "POS:CREATE",
