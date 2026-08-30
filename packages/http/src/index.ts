@@ -25,6 +25,7 @@ export {
 export {
   DevelopmentHeaderRequestContextFactory,
   HttpRequestContextError,
+  WorkforceSessionRequestContextFactory,
   headerValue,
   type HttpRequestContextFactory,
 } from "./request-context.js";

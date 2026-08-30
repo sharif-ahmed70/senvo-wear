@@ -236,3 +236,30 @@
     padding: 24px 20px 40px;
   }
 }
+
+.logoutButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #66716b;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 6px;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+
+.logoutButton:hover {
+  background: #fff0ee;
+  border-color: #f5c9c5;
+  color: #a43a35;
+}
+
+.logoutButton:focus-visible {
+  outline: 3px solid #9bc4b4;
+  outline-offset: 2px;
+}

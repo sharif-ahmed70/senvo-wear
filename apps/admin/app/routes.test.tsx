@@ -65,6 +65,8 @@ import { ReturnReceiptPreview } from "./pos/returns/[id]/receipt/return-receipt-
 import { CheckoutRefundWorkspace } from "./pos/checkouts/[id]/checkout-refund-workspace";
 import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-preview";
 import { AdminApiError } from "./_lib/api-client";
+import { AdminLoginForm } from "./login/_components/admin-login-form";
+import { UnauthorizedAdminState } from "./_components/admin-app-frame";
 
 describe("admin routes", () => {
   it("renders ordered media controls only with catalog update access", () => {
@@ -469,3 +471,19 @@ function salesOrderDetails(
     version: 1,
   };
 }
+
+describe("auth routes", () => {
+  it("renders AdminLoginForm with email and password inputs", () => {
+    const html = renderToStaticMarkup(createElement(AdminLoginForm));
+    expect(html.toLowerCase()).toContain("sign in");
+    expect(html).toContain('type="email"');
+    expect(html).toContain('type="password"');
+    expect(html.toLowerCase()).toContain("remember me");
+  });
+
+  it("renders UnauthorizedAdminState access-required message", () => {
+    const html = renderToStaticMarkup(createElement(UnauthorizedAdminState));
+    expect(html.toLowerCase()).toContain("access required");
+    expect(html.toLowerCase()).toContain("sign in");
+  });
+});

@@ -1065,26 +1065,29 @@ function writeAdapterFailure(
     });
     return;
   }
-  if (
-    error instanceof SyntaxError ||
-    error instanceof HttpRequestContextError
-  ) {
+  if (error instanceof HttpRequestContextError) {
     writeJson(response, {
       response: createApiFailure({
-        code:
-          error instanceof SyntaxError
-            ? "VALIDATION.INVALID_JSON"
-            : "VALIDATION.INVALID_CONTEXT",
-        message:
-          error instanceof SyntaxError
-            ? "Request body must contain valid JSON."
-            : "Request context is invalid.",
+        code: "AUTHENTICATION.REQUIRED",
+        message: "Authentication is required.",
+        requestId,
+      }),
+      status: 401,
+    });
+    return;
+  }
+  if (error instanceof SyntaxError) {
+    writeJson(response, {
+      response: createApiFailure({
+        code: "VALIDATION.INVALID_JSON",
+        message: "Request body must contain valid JSON.",
         requestId,
       }),
       status: 400,
     });
     return;
   }
+
   writeJson(response, {
     response: createApiFailure({
       code: "INTERNAL.UNEXPECTED",
