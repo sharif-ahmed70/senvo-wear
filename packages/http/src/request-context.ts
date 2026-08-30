@@ -77,13 +77,20 @@ export class WorkforceSessionRequestContextFactory implements HttpRequestContext
         "Bearer token is required for authenticated requests.",
       );
     }
-    const principal =
-      await this.workforceAuthentication.authenticateSession(token);
+    let principal;
+    try {
+      principal = await this.workforceAuthentication.authenticateSession(token);
+    } catch (error) {
+      if (error instanceof HttpRequestContextError) throw error;
+      throw new HttpRequestContextError(
+        error instanceof Error ? error.message : "Authentication is required.",
+      );
+    }
     const permissions = principal.permissions.filter(
       (p): p is Permission =>
         permissionResources.has(p.resource as Permission["resource"]) &&
         permissionActions.has(p.action as Permission["action"]),
-    ) as Permission[];
+    );
     return {
       authenticatedUser: { userId: principal.userId },
       organizationId: principal.organizationId,

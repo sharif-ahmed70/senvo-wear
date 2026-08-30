@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WorkforceAuthenticationService } from "@senvo/application";
 import {
   HttpRequestContextError,
@@ -29,16 +29,21 @@ const authenticatedPrincipal = {
 
 function makeWorkforce(
   overrides: Partial<
-    Record<keyof WorkforceAuthenticationService, unknown>
+    Record<keyof WorkforceAuthenticationService, ReturnType<typeof vi.fn>>
   > = {},
-): WorkforceAuthenticationService {
+) {
   return {
     authenticateSession: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
     authorizeMutation: vi.fn(() => Promise.resolve()),
     login: vi.fn(() => Promise.resolve({} as never)),
     logout: vi.fn(() => Promise.resolve()),
     ...overrides,
-  } as unknown as WorkforceAuthenticationService;
+  } as unknown as WorkforceAuthenticationService & {
+    authenticateSession: ReturnType<typeof vi.fn>;
+    authorizeMutation: ReturnType<typeof vi.fn>;
+    login: ReturnType<typeof vi.fn>;
+    logout: ReturnType<typeof vi.fn>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +92,9 @@ describe("WorkforceSessionRequestContextFactory", () => {
     });
     // FUTURE_RESOURCE:READ must NOT appear
     expect(
-      context.permissions.some((p) => p.resource === "FUTURE_RESOURCE"),
+      context.permissions.some(
+        (p) => (p.resource as string) === "FUTURE_RESOURCE",
+      ),
     ).toBe(false);
   });
 

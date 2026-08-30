@@ -13,7 +13,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { ApiRequest } from "@senvo/api";
-import type { ApiResponse } from "@senvo/contracts";
 import {
   WorkforceAuthenticationError,
   type WorkforceAuthenticationService,
@@ -66,14 +65,19 @@ function makeWorkforceService(
   overrides: Partial<
     Record<keyof WorkforceAuthenticationService, ReturnType<typeof vi.fn>>
   > = {},
-): WorkforceAuthenticationService {
+) {
   return {
     authenticateSession: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
     authorizeMutation: vi.fn(() => Promise.resolve()),
     login: vi.fn(() => Promise.resolve({} as never)),
     logout: vi.fn(() => Promise.resolve()),
     ...overrides,
-  } as unknown as WorkforceAuthenticationService;
+  } as unknown as WorkforceAuthenticationService & {
+    authenticateSession: ReturnType<typeof vi.fn>;
+    authorizeMutation: ReturnType<typeof vi.fn>;
+    login: ReturnType<typeof vi.fn>;
+    logout: ReturnType<typeof vi.fn>;
+  };
 }
 
 /**
@@ -88,13 +92,13 @@ async function startIntegratedServer(
 ): Promise<string> {
   // Stub handler that captures the request context received by the handler
   const captureHandler = {
-    handle: vi.fn(async (request: ApiRequest) => {
+    handle: vi.fn((request: ApiRequest) => {
       capturedContext.value = request.context;
-      return {
+      return Promise.resolve({
         data: { captured: true },
         requestId: "req-test",
         success: true as const,
-      };
+      });
     }),
   };
 
