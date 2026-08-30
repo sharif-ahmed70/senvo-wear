@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { AdminAppFrame } from "./_components/admin-app-frame";
-import { adminFoundationSession } from "./_lib/admin-access";
+import { AdminShell } from "./admin-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,9 +13,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AdminAppFrame session={adminFoundationSession}>
-          {children}
-        </AdminAppFrame>
+        <AdminShell>{children}</AdminShell>
       </body>
     </html>
   );

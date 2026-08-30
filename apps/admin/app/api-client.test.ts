@@ -748,4 +748,151 @@ describe("AdminApiClient", () => {
       expect(body).not.toHaveProperty("providerRefundId");
     }
   });
+  it("withSession attaches Authorization: Bearer header on every request", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ data: [], requestId: "req-bearer", success: true }),
+      );
+    const base = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+    const client = base.withSession("my-session-token");
+
+    await client.listProducts();
+
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer my-session-token");
+  });
+
+  it("withSession does not override an explicitly provided Authorization header", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        data: {},
+        requestId: "req-bearer-override",
+        success: true,
+      }),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    }).withSession("default-token");
+
+    await client.request("/catalog/products", {
+      headers: { Authorization: "Bearer explicit-token" },
+    });
+
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer explicit-token");
+  });
+
+  it("base client without session does not attach Authorization header", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ data: [], requestId: "req-no-auth", success: true }),
+      );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    await client.listProducts();
+
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("authenticated Admin runtime automatically supplies Authorization: Bearer on existing business requests (Catalog, Inventory, Sales, POS)", async () => {
+    class InMemoryStorage implements Storage {
+      private readonly store = new Map<string, string>();
+      get length() {
+        return this.store.size;
+      }
+      clear() {
+        this.store.clear();
+      }
+      getItem(key: string) {
+        return this.store.get(key) ?? null;
+      }
+      key(index: number) {
+        return Array.from(this.store.keys())[index] ?? null;
+      }
+      removeItem(key: string) {
+        this.store.delete(key);
+      }
+      setItem(key: string, value: string) {
+        this.store.set(key, value);
+      }
+    }
+    const mockStorage = new InMemoryStorage();
+    const originalSession = globalThis.sessionStorage;
+    globalThis.sessionStorage = mockStorage;
+
+    try {
+      // Simulate workforce login: credentials stored in session storage
+      mockStorage.setItem(
+        "senvo.admin.session",
+        JSON.stringify({
+          csrfToken: "csrf-val",
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          rememberMe: false,
+          sessionToken: "workforce-live-token-456",
+        }),
+      );
+
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          Response.json({
+            data: [],
+            requestId: "req-business-call",
+            success: true,
+          }),
+        ),
+      );
+
+      // Existing component pattern: module-level instantiated client without explicit sessionToken
+      const standardClient = new AdminApiClient({
+        baseUrl: "https://admin.example.test",
+        fetcher,
+      });
+
+      // 1. Catalog route
+      await standardClient.listProducts();
+      let callHeaders = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+      expect(callHeaders.get("authorization")).toBe(
+        "Bearer workforce-live-token-456",
+      );
+
+      // 2. Inventory route
+      await standardClient.listStockLocations();
+      callHeaders = new Headers(fetcher.mock.calls[1]?.[1]?.headers);
+      expect(callHeaders.get("authorization")).toBe(
+        "Bearer workforce-live-token-456",
+      );
+
+      // 3. Sales route
+      await standardClient.listSalesOrders();
+      callHeaders = new Headers(fetcher.mock.calls[2]?.[1]?.headers);
+      expect(callHeaders.get("authorization")).toBe(
+        "Bearer workforce-live-token-456",
+      );
+
+      // 4. POS route
+      await standardClient.listSalesCounters();
+      callHeaders = new Headers(fetcher.mock.calls[3]?.[1]?.headers);
+      expect(callHeaders.get("authorization")).toBe(
+        "Bearer workforce-live-token-456",
+      );
+
+      // 5. On logout: storage cleared -> subsequent requests have no Bearer token
+      mockStorage.clear();
+      await standardClient.listProducts();
+      callHeaders = new Headers(fetcher.mock.calls[4]?.[1]?.headers);
+      expect(callHeaders.get("authorization")).toBeNull();
+    } finally {
+      globalThis.sessionStorage = originalSession;
+    }
+  });
 });

@@ -92,6 +92,10 @@ export type AdminApiClientOptions = {
   baseUrl?: string;
   createRequestId?: () => string;
   fetcher?: typeof fetch;
+  /** Custom session token resolver (defaults to reading from stored credentials). */
+  getSessionToken?: () => string | null | undefined;
+  /** When set, every request automatically includes Authorization: Bearer <sessionToken>. */
+  sessionToken?: string;
 };
 
 export type AdminApiRequest = {
@@ -134,16 +138,61 @@ export class AdminApiError extends Error {
   }
 }
 
+function defaultGetSessionToken(): string | undefined {
+  try {
+    const session =
+      typeof globalThis !== "undefined" && globalThis.sessionStorage
+        ? globalThis.sessionStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.sessionStorage
+          ? window.sessionStorage.getItem("senvo.admin.session")
+          : null;
+    const local =
+      typeof globalThis !== "undefined" && globalThis.localStorage
+        ? globalThis.localStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("senvo.admin.session")
+          : null;
+    const raw = session ?? local;
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { sessionToken?: unknown };
+    return typeof parsed?.sessionToken === "string"
+      ? parsed.sessionToken
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class AdminApiClient {
   private readonly baseUrl: string;
   private readonly createRequestId: () => string;
   private readonly fetcher: typeof fetch;
+  private readonly getSessionToken:
+    (() => string | null | undefined) | undefined;
+  private readonly sessionToken: string | undefined;
 
   constructor(options: AdminApiClientOptions = {}) {
     this.baseUrl = options.baseUrl?.replace(/\/$/u, "") ?? "";
     this.createRequestId =
       options.createRequestId ?? (() => crypto.randomUUID());
     this.fetcher = options.fetcher ?? fetch;
+    this.getSessionToken =
+      options.getSessionToken ??
+      (options.sessionToken !== undefined ? undefined : defaultGetSessionToken);
+    this.sessionToken = options.sessionToken;
+  }
+
+  /**
+   * Return a new AdminApiClient instance that automatically attaches
+   * Authorization: Bearer <token> on every request.
+   */
+  withSession(sessionToken: string): AdminApiClient {
+    return new AdminApiClient({
+      baseUrl: this.baseUrl,
+      createRequestId: this.createRequestId,
+      fetcher: this.fetcher,
+      sessionToken,
+    });
   }
 
   async request<T>(
@@ -156,6 +205,11 @@ export class AdminApiClient {
     headers.set("x-request-id", requestId);
     if (request.body !== undefined) {
       headers.set("content-type", "application/json");
+    }
+    const effectiveToken =
+      this.sessionToken ?? this.getSessionToken?.() ?? undefined;
+    if (effectiveToken && !headers.has("authorization")) {
+      headers.set("authorization", `Bearer ${effectiveToken}`);
     }
 
     let response: Response;

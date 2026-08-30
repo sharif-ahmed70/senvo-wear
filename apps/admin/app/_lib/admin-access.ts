@@ -150,7 +150,12 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
   },
 ];
 
-// Placeholder only: a future authenticated server boundary will supply this state.
+// ---------------------------------------------------------------------------
+// Placeholder only — kept for compatibility during the auth transition.
+// This constant is no longer used at runtime. The real AdminSession is
+// constructed from the backend principal by adminSessionFromPrincipal().
+// @deprecated Use adminSessionFromPrincipal(principal) instead.
+// ---------------------------------------------------------------------------
 export const adminFoundationSession: AdminSession = {
   displayName: "Admin preview",
   organizationName: "SENVO Wear",
@@ -169,4 +174,51 @@ export function visibleAdminNavigation(
       (!item.permissions ||
         item.permissions.every((key) => permissions.has(key))),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Backend-principal → AdminSession mapping
+// ---------------------------------------------------------------------------
+
+type BackendPermission = { resource: string; action: string };
+type WorkforcePrincipal = {
+  displayName: string;
+  organizationId: string;
+  organizationName: string;
+  permissions: BackendPermission[];
+  role: AdminSession["role"];
+  userId: string;
+};
+
+/**
+ * Map backend { resource, action }[] to AdminPermissionKey[].
+ *
+ * Only permissions whose composed key ("RESOURCE:ACTION") exists in the
+ * adminPermissionKeys allowlist are included. No inference from role is
+ * performed — unsupported UI permission resources (SALES, TEAM, POS,
+ * PAYMENT, RECEIPT) remain absent unless the backend explicitly supplies them.
+ */
+export function permissionsFromPrincipal(
+  principal: WorkforcePrincipal,
+): AdminPermissionKey[] {
+  const adminKeySet = new Set<AdminPermissionKey>(adminPermissionKeys);
+  return principal.permissions
+    .map(
+      (p) =>
+        `${p.resource.toUpperCase()}:${p.action.toUpperCase()}` as AdminPermissionKey,
+    )
+    .filter((key) => adminKeySet.has(key));
+}
+
+/** Build a typed AdminSession from a backend workforce principal. */
+export function adminSessionFromPrincipal(
+  principal: WorkforcePrincipal,
+): AdminSession {
+  return {
+    displayName: principal.displayName,
+    organizationName: principal.organizationName,
+    permissions: permissionsFromPrincipal(principal),
+    role: principal.role,
+    userId: principal.userId,
+  };
 }

@@ -1,4 +1,10 @@
-import { LockKeyhole, MapPin, PackagePlus, ShoppingBag } from "lucide-react";
+import {
+  LockKeyhole,
+  LogOut,
+  MapPin,
+  PackagePlus,
+  ShoppingBag,
+} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AdminSession } from "../_lib/admin-access";
@@ -7,9 +13,11 @@ import styles from "./admin-shell.module.css";
 
 export function AdminAppFrame({
   children,
+  onLogout,
   session,
 }: {
   children?: ReactNode;
+  onLogout?: () => void;
   session: AdminSession | null;
 }) {
   if (!session) {
@@ -70,6 +78,17 @@ export function AdminAppFrame({
                 <strong>{session.displayName}</strong>
                 <span>{session.role.toLowerCase()}</span>
               </span>
+              {onLogout && (
+                <button
+                  aria-label="Sign out"
+                  className={styles.logoutButton}
+                  onClick={onLogout}
+                  title="Sign out"
+                  type="button"
+                >
+                  <LogOut aria-hidden="true" size={15} strokeWidth={1.8} />
+                </button>
+              )}
             </div>
           </div>
         </header>

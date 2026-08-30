@@ -21,7 +21,10 @@ import { loadGoogleOAuthProvider } from "./google-oauth-provider.js";
 import { createDevelopmentCorsRequestListener } from "./development-cors.js";
 import { loadDevelopmentServerConfig } from "./development-server-config.js";
 import { createSenvoHttpRequestListener } from "./node-http-adapter.js";
-import { DevelopmentHeaderRequestContextFactory } from "./request-context.js";
+import {
+  DevelopmentHeaderRequestContextFactory,
+  WorkforceSessionRequestContextFactory,
+} from "./request-context.js";
 
 const config = loadDevelopmentServerConfig(process.env);
 const passwordHasher = new NodeScryptPasswordHasher();
@@ -63,7 +66,11 @@ const services = createApplicationServices({
     : {}),
 });
 const apiListener = createSenvoHttpRequestListener({
-  contextFactory: new DevelopmentHeaderRequestContextFactory("development"),
+  contextFactory: services.workforceAuthentication
+    ? new WorkforceSessionRequestContextFactory(
+        services.workforceAuthentication,
+      )
+    : new DevelopmentHeaderRequestContextFactory("development"),
   handlers: {
     createSalesOrder: createSalesOrderApiHandler({
       authenticationService,
