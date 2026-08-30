@@ -163,7 +163,6 @@ function defaultGetSessionToken(): string | undefined {
   }
 }
 
-
 export class AdminApiClient {
   private readonly baseUrl: string;
   private readonly createRequestId: () => string;

@@ -852,7 +852,6 @@ describe("AdminApiClient", () => {
         ),
       );
 
-
       // Existing component pattern: module-level instantiated client without explicit sessionToken
       const standardClient = new AdminApiClient({
         baseUrl: "https://admin.example.test",
@@ -886,7 +885,6 @@ describe("AdminApiClient", () => {
       expect(callHeaders.get("authorization")).toBe(
         "Bearer workforce-live-token-456",
       );
-
 
       // 5. On logout: storage cleared -> subsequent requests have no Bearer token
       mockStorage.clear();
