@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
 import {
   createContext,
   type ReactNode,
@@ -62,6 +63,8 @@ type ShellState =
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isPublicAuthRoute = pathname === "/login";
   const [state, setState] = useState<ShellState>({ kind: "restoring" });
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (state.kind === "unauthenticated") {
+    if (state.kind === "unauthenticated" && !isPublicAuthRoute) {
       const current = window.location.pathname;
       const returnTo =
         current !== "/login" && current !== "/"
@@ -92,7 +95,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
           : "";
       router.replace(`/login${returnTo}`);
     }
-  }, [state.kind, router]);
+  }, [state.kind, isPublicAuthRoute, router]);
+
+  useEffect(() => {
+    if (state.kind === "authenticated" && isPublicAuthRoute) {
+      router.replace("/");
+    }
+  }, [state.kind, isPublicAuthRoute, router]);
 
   useEffect(() => {
     function onLogin(event: Event) {

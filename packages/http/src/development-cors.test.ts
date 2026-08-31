@@ -94,7 +94,10 @@ async function startServer(
   listener: Parameters<typeof createDevelopmentCorsRequestListener>[0],
 ): Promise<string> {
   const server = createServer(
-    createDevelopmentCorsRequestListener(listener, "http://localhost:3000"),
+    createDevelopmentCorsRequestListener(listener, [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]),
   );
   servers.push(server);
   await new Promise<void>((resolve, reject) => {

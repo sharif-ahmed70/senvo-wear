@@ -11,6 +11,7 @@ describe("development server config", () => {
   it("loads loopback-only development defaults", () => {
     expect(loadDevelopmentServerConfig(validEnvironment)).toEqual({
       allowedOrigin: "http://localhost:3000",
+      allowedOrigins: ["http://localhost:3000", "http://localhost:3001"],
       databaseUrl: validEnvironment.DATABASE_URL,
       host: "127.0.0.1",
       organizationCode: "SENVO",

@@ -668,4 +668,11 @@ describe("real session runtime permission authority", () => {
     );
     expect(html).not.toContain("Add Product");
   });
+
+  it("LoginPage renders without requiring an authenticated session", () => {
+    const html = renderToStaticMarkup(createElement(AdminLoginForm));
+    expect(html).toContain("Sign in");
+    expect(html).toContain("Email");
+    expect(html).toContain("Password");
+  });
 });
