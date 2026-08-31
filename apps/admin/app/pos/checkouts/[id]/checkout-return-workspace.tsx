@@ -21,6 +21,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import { formatBdt } from "../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -36,11 +37,13 @@ const reasonLabels: Record<PosReturnReasonCode, string> = {
 
 export function CheckoutReturnWorkspace({
   checkoutId,
-  permissions,
+  permissions: propsPermissions,
 }: {
   checkoutId: string;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead =
     permissions.includes("POS:READ") &&
     permissions.includes("SALES:READ") &&

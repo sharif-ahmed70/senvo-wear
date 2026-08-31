@@ -25,6 +25,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./booth-history-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -39,11 +40,14 @@ type PendingStatusChange = {
 };
 
 export function BoothHistoryWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("SALES:READ");
+
   const canCreate = permissions.includes("SALES:CREATE");
   const canUpdate = permissions.includes("SALES:UPDATE");
   const [booths, setBooths] = useState<SalesBoothContract[]>([]);

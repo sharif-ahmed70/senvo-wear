@@ -24,6 +24,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./sales-sources-overview.module.css";
 
 const client = new AdminApiClient({
@@ -61,11 +62,14 @@ const presentation: Record<ChannelKey, ChannelPresentation> = {
 };
 
 export function SalesSourcesOverview({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("SALES:READ");
+
   const [summary, setSummary] = useState<SalesSourceSummaryContract | null>(
     null,
   );

@@ -31,6 +31,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import { useAdminPermissions } from "../../../../admin-shell";
 import styles from "./sales-order-detail-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -41,12 +42,15 @@ type SalesAction = "cancel" | "confirm" | "fulfill" | "reserve";
 
 export function SalesOrderDetailWorkspace({
   orderId,
-  permissions,
+  permissions: propsPermissions,
 }: {
   orderId: string;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("SALES_ORDER:READ");
+
   const canUpdate = permissions.includes("SALES_ORDER:UPDATE");
   const canReadPayment = permissions.includes("PAYMENT:READ");
   const canApprovePayment = permissions.includes("PAYMENT:APPROVE");

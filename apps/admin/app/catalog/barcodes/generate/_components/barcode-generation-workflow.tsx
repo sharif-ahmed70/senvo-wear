@@ -37,6 +37,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import { useAdminPermissions } from "../../../../admin-shell";
 import styles from "./barcode-generation.module.css";
 
 const client = new AdminApiClient({
@@ -77,11 +78,14 @@ type PrintSettings = {
 };
 
 export function BarcodeGenerationWorkflow({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const searchParams = useSearchParams();
+
   const requestedProductId = searchParams.get("productId") ?? "";
   const requestedVariantIds = useMemo(
     () =>

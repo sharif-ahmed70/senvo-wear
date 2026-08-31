@@ -38,6 +38,11 @@ const authenticatedPrincipal = {
   permissions: [
     { resource: "CATALOG", action: "READ" },
     { resource: "INVENTORY", action: "UPDATE" },
+    { resource: "TEAM", action: "READ" },
+    { resource: "SALES", action: "READ" },
+    { resource: "POS", action: "CREATE" },
+    { resource: "PAYMENT", action: "APPROVE" },
+    { resource: "RECEIPT", action: "READ" },
   ],
   role: "ADMIN" as const,
   sessionId: "session-integration-1",
@@ -164,6 +169,11 @@ describe("Bearer token → WorkforceSessionRequestContextFactory → ApiRequestC
       expect.arrayContaining([
         expect.objectContaining({ resource: "CATALOG", action: "READ" }),
         expect.objectContaining({ resource: "INVENTORY", action: "UPDATE" }),
+        expect.objectContaining({ resource: "TEAM", action: "READ" }),
+        expect.objectContaining({ resource: "SALES", action: "READ" }),
+        expect.objectContaining({ resource: "POS", action: "CREATE" }),
+        expect.objectContaining({ resource: "PAYMENT", action: "APPROVE" }),
+        expect.objectContaining({ resource: "RECEIPT", action: "READ" }),
       ]),
     );
   });

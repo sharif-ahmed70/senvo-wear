@@ -5,6 +5,7 @@ import { CircleAlert, LoaderCircle, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import { useAdminPermissions } from "../../../../admin-shell";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -12,14 +13,17 @@ const client = new AdminApiClient({
 
 export function ReceiptPreview({
   checkoutId,
-  permissions,
+  permissions: propsPermissions,
 }: {
   checkoutId: string;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead =
     permissions.includes("RECEIPT:READ") &&
     permissions.includes("PAYMENT:READ");
+
   const [receipt, setReceipt] = useState<SalesReceiptContract | null>(null);
   const [loading, setLoading] = useState(canRead);
   const [error, setError] = useState<string | null>(null);

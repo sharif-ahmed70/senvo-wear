@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./checkout-history-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -33,11 +34,14 @@ const paymentStatuses: Array<{
 ];
 
 export function CheckoutHistoryWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const allowed = permissions.includes("POS:READ");
+
   const canCollect = permissions.includes("PAYMENT:CREATE");
   const canReadPayment = permissions.includes("PAYMENT:READ");
   const canReadReceipt = permissions.includes("RECEIPT:READ") && canReadPayment;

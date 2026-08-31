@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { BarcodeWorkspaceComplete } from "./_components/barcode-workspace-complete";
 
 export const metadata: Metadata = {
@@ -9,9 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function BarcodesPage() {
-  return (
-    <BarcodeWorkspaceComplete
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+  return <BarcodeWorkspaceComplete />;
 }

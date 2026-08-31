@@ -1,4 +1,3 @@
-import { adminFoundationSession } from "../../../../_lib/admin-access";
 import { ReturnReceiptPreview } from "./return-receipt-preview";
 
 export default async function ReturnReceiptPage({
@@ -11,10 +10,6 @@ export default async function ReturnReceiptPage({
   const { id } = await params;
   const query = await searchParams;
   return (
-    <ReturnReceiptPreview
-      printOnLoad={query.print === "1"}
-      returnId={id}
-      permissions={adminFoundationSession.permissions}
-    />
+    <ReturnReceiptPreview printOnLoad={query.print === "1"} returnId={id} />
   );
 }

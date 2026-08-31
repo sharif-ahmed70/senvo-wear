@@ -36,6 +36,8 @@ import {
   type SellingContext,
 } from "./selling-context-selector";
 
+import { useAdminPermissions } from "../../../admin-shell";
+
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
 });
@@ -48,13 +50,16 @@ const requiredPermissions: readonly AdminPermissionKey[] = [
 ];
 
 export function PosSaleWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const allowed = requiredPermissions.every((permission) =>
     permissions.includes(permission),
   );
+
   if (!allowed) {
     return (
       <main className="pos-sale-page">

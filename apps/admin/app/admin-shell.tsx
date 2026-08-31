@@ -1,12 +1,55 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { AdminAppFrame } from "./_components/admin-app-frame";
 import { AdminAuthClient, type AdminCredentials } from "./_lib/admin-auth";
-import type { AdminSession } from "./_lib/admin-access";
+import type { AdminPermissionKey, AdminSession } from "./_lib/admin-access";
 
 const authClient = new AdminAuthClient();
+
+export const AdminSessionContext = createContext<AdminSession | null>(null);
+
+/**
+ * Access the real authenticated AdminSession from AdminShell context.
+ * Returns null when unauthenticated or during restoration.
+ */
+export function useAdminSession(): AdminSession | null {
+  return useContext(AdminSessionContext);
+}
+
+/**
+ * Access the current authenticated user's permissions.
+ * Returns empty array when unauthenticated or during restoration.
+ */
+export function useAdminPermissions(): readonly AdminPermissionKey[] {
+  const session = useContext(AdminSessionContext);
+  return session?.permissions ?? [];
+}
+
+/**
+ * Explicit provider for testing components that consume AdminSessionContext.
+ */
+export function AdminSessionProvider({
+  children,
+  session,
+}: {
+  children?: ReactNode;
+  session: AdminSession | null;
+}) {
+  return (
+    <AdminSessionContext.Provider value={session}>
+      {children}
+    </AdminSessionContext.Provider>
+  );
+}
 
 type ShellState =
   | { kind: "restoring" }
@@ -85,7 +128,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <AdminAppFrame session={state.session} onLogout={() => void handleLogout()}>
-      {children}
+      <AdminSessionContext.Provider value={state.session}>
+        {children}
+      </AdminSessionContext.Provider>
     </AdminAppFrame>
   );
 }

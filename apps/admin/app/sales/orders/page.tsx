@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { SalesOrdersListWorkspace } from "./_components/sales-orders-list-workspace";
 
 export const metadata: Metadata = {
@@ -9,9 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function SalesOrdersPage() {
-  return (
-    <SalesOrdersListWorkspace
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+  return <SalesOrdersListWorkspace />;
 }

@@ -26,18 +26,21 @@ import {
 import Link from "next/link";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
+import { useAdminPermissions } from "../../admin-shell";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
 });
 
 export function PosManagementWorkspace({
-  permissions,
+  permissions: propsPermissions,
   view,
 }: {
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
   view: "checkouts" | "counters" | "sessions";
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   if (!permissions.includes("POS:READ"))
     return (
       <main className="pos-page">

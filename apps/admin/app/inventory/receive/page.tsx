@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../../_lib/admin-access";
 import { ReceiveStockWorkflow } from "./_components/receive-stock-workflow";
 
 export const metadata: Metadata = {
@@ -9,7 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function ReceiveStockPage() {
-  return (
-    <ReceiveStockWorkflow permissions={adminFoundationSession.permissions} />
-  );
+  return <ReceiveStockWorkflow />;
 }

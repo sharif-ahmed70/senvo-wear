@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { adminFoundationSession } from "../_lib/admin-access";
 import { InventoryOverviewReady } from "./_components/inventory-overview-ready";
 
 export const metadata: Metadata = {
@@ -9,7 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function InventoryPage() {
-  return (
-    <InventoryOverviewReady permissions={adminFoundationSession.permissions} />
-  );
+  return <InventoryOverviewReady />;
 }

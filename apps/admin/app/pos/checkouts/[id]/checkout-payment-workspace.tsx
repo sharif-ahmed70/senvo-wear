@@ -28,6 +28,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { useAdminPermissions } from "../../../admin-shell";
 import { formatBdt, parseTaka, takaInput } from "../../sell/_lib/money";
 import styles from "./checkout-payment-workspace.module.css";
 
@@ -49,11 +50,13 @@ const blankLine = (amount = ""): DraftLine => ({
 
 export function CheckoutPaymentWorkspace({
   checkoutId,
-  permissions,
+  permissions: propsPermissions,
 }: {
   checkoutId: string;
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const canRead =
     permissions.includes("POS:READ") && permissions.includes("PAYMENT:READ");
   const canCollect = canRead && permissions.includes("PAYMENT:CREATE");
