@@ -172,10 +172,13 @@ export class AdminApiClient {
   private readonly sessionToken: string | undefined;
 
   constructor(options: AdminApiClientOptions = {}) {
-    this.baseUrl = options.baseUrl?.replace(/\/$/u, "") ?? "";
+    this.baseUrl =
+      options.baseUrl?.replace(/\/$/u, "") ??
+      process.env.NEXT_PUBLIC_SENVO_API_URL?.replace(/\/$/u, "") ??
+      "";
     this.createRequestId =
       options.createRequestId ?? (() => crypto.randomUUID());
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? ((...args) => fetch(...args));
     this.getSessionToken =
       options.getSessionToken ??
       (options.sessionToken !== undefined ? undefined : defaultGetSessionToken);

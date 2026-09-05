@@ -52,7 +52,7 @@ export function AdminSessionProvider({
   );
 }
 
-type ShellState =
+export type AdminShellState =
   | { kind: "restoring" }
   | {
       kind: "authenticated";
@@ -61,11 +61,61 @@ type ShellState =
     }
   | { kind: "unauthenticated" };
 
+export function computeAdminRedirect(
+  stateKind: AdminShellState["kind"],
+  isPublicAuthRoute: boolean,
+  currentPathname: string,
+): string | null {
+  if (stateKind === "unauthenticated" && !isPublicAuthRoute) {
+    const returnTo =
+      currentPathname !== "/login" && currentPathname !== "/"
+        ? `?returnTo=${encodeURIComponent(currentPathname)}`
+        : "";
+    return `/login${returnTo}`;
+  }
+  if (stateKind === "authenticated" && isPublicAuthRoute) {
+    return "/";
+  }
+  return null;
+}
+
+export function AdminShellView({
+  children,
+  isPublicAuthRoute,
+  onLogout,
+  state,
+}: {
+  children?: ReactNode;
+  isPublicAuthRoute: boolean;
+  onLogout?: () => void;
+  state: AdminShellState;
+}) {
+  if (state.kind === "restoring") {
+    return <AdminRestoringState />;
+  }
+
+  if (state.kind === "unauthenticated") {
+    return isPublicAuthRoute ? (
+      <AdminSessionContext.Provider value={null}>
+        {children}
+      </AdminSessionContext.Provider>
+    ) : null;
+  }
+
+  return (
+    <AdminAppFrame session={state.session} onLogout={onLogout ?? (() => {})}>
+      <AdminSessionContext.Provider value={state.session}>
+        {children}
+      </AdminSessionContext.Provider>
+    </AdminAppFrame>
+  );
+}
+
 export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const isPublicAuthRoute = pathname === "/login";
-  const [state, setState] = useState<ShellState>({ kind: "restoring" });
+  const [state, setState] = useState<AdminShellState>({ kind: "restoring" });
 
   useEffect(() => {
     let cancelled = false;
@@ -87,19 +137,15 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (state.kind === "unauthenticated" && !isPublicAuthRoute) {
-      const current = window.location.pathname;
-      const returnTo =
-        current !== "/login" && current !== "/"
-          ? `?returnTo=${encodeURIComponent(current)}`
-          : "";
-      router.replace(`/login${returnTo}`);
-    }
-  }, [state.kind, isPublicAuthRoute, router]);
-
-  useEffect(() => {
-    if (state.kind === "authenticated" && isPublicAuthRoute) {
-      router.replace("/");
+    const current =
+      typeof window !== "undefined" ? window.location.pathname : "";
+    const redirect = computeAdminRedirect(
+      state.kind,
+      isPublicAuthRoute,
+      current,
+    );
+    if (redirect) {
+      router.replace(redirect);
     }
   }, [state.kind, isPublicAuthRoute, router]);
 
@@ -127,20 +173,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
     setState({ kind: "unauthenticated" });
   }, [state]);
 
-  if (state.kind === "restoring") {
-    return <AdminRestoringState />;
-  }
-
-  if (state.kind === "unauthenticated") {
-    return null;
-  }
-
   return (
-    <AdminAppFrame session={state.session} onLogout={() => void handleLogout()}>
-      <AdminSessionContext.Provider value={state.session}>
-        {children}
-      </AdminSessionContext.Provider>
-    </AdminAppFrame>
+    <AdminShellView
+      isPublicAuthRoute={isPublicAuthRoute}
+      onLogout={() => void handleLogout()}
+      state={state}
+    >
+      {children}
+    </AdminShellView>
   );
 }
 
