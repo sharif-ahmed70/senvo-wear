@@ -1,9 +1,5 @@
 import { createServer } from "node:http";
-import {
-  createPostInventoryMovementApiHandler,
-  createSalesOrderApiHandler,
-  createStorefrontApiHandlers,
-} from "@senvo/api";
+import { createDevelopmentApiHandlers } from "./development-handlers.js";
 import {
   createApplicationServices,
   type ApplicationAuthorizationService,
@@ -71,19 +67,11 @@ const apiListener = createSenvoHttpRequestListener({
         services.workforceAuthentication,
       )
     : new DevelopmentHeaderRequestContextFactory("development"),
-  handlers: {
-    createSalesOrder: createSalesOrderApiHandler({
-      authenticationService,
-      authorizationService,
-      sales: services.sales,
-    }),
-    postInventoryMovement: createPostInventoryMovementApiHandler({
-      authenticationService,
-      authorizationService,
-      inventory: services.inventory,
-    }),
-    storefront: createStorefrontApiHandlers(services.storefront),
-  },
+  handlers: createDevelopmentApiHandlers({
+    authenticationService,
+    authorizationService,
+    services,
+  }),
 });
 const listener = (() => {
   let wrapped = apiListener;
@@ -91,7 +79,7 @@ const listener = (() => {
     wrapped = createWorkforceAuthenticationRequestListener({
       application: services.workforceAuthentication,
       delegate: wrapped,
-      publicOrigin: config.allowedOrigin,
+      publicOrigin: config.allowedOrigins,
       secureCookies: false,
     });
   }
@@ -106,7 +94,7 @@ const listener = (() => {
   return wrapped;
 })();
 const server = createServer(
-  createDevelopmentCorsRequestListener(listener, config.allowedOrigin),
+  createDevelopmentCorsRequestListener(listener, config.allowedOrigins),
 );
 
 server.once("error", (error) => {
