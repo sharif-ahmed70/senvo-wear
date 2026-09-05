@@ -214,16 +214,63 @@ describe("workforce authentication HTTP boundary", () => {
     expect(response.status).toBe(200);
     expect(delegate).toHaveBeenCalled();
   });
+
+  it("rejects unknown origin localhost:3999 in multi-origin setup", async () => {
+    const application = workforceApplication();
+    const url = await start(application, [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]);
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3999",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(application.login).not.toHaveBeenCalled();
+  });
+
+  it("rejects wildcard origin * in multi-origin setup", async () => {
+    const application = workforceApplication();
+    const url = await start(application, [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]);
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: "*",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(application.login).not.toHaveBeenCalled();
+  });
 });
 
 function workforceApplication(
-  overrides: Partial<
-    Record<keyof WorkforceAuthenticationService, ReturnType<typeof vi.fn>>
-  > = {},
-) {
+  overrides: Partial<WorkforceAuthenticationService> = {},
+): WorkforceAuthenticationService & {
+  authenticateSession: ReturnType<typeof vi.fn>;
+  authorizeMutation: ReturnType<typeof vi.fn>;
+  login: ReturnType<typeof vi.fn>;
+  logout: ReturnType<typeof vi.fn>;
+} {
   return {
     authenticateSession: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
-    authorizeMutation: vi.fn(() => Promise.resolve()),
+    authorizeMutation: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
     login: vi.fn(() => Promise.resolve(workforceSession)),
     logout: vi.fn(() => Promise.resolve()),
     ...overrides,
@@ -235,22 +282,30 @@ function workforceApplication(
   };
 }
 
-async function start(application: WorkforceAuthenticationService) {
-  return startWithDelegate(application, (_request, response) => {
-    (response as { statusCode: number }).statusCode = 404;
-    (response as { end: () => void }).end();
-  });
+async function start(
+  application: WorkforceAuthenticationService,
+  origin: string | readonly string[] = publicOrigin,
+) {
+  return startWithDelegate(
+    application,
+    (_request, response) => {
+      (response as { statusCode: number }).statusCode = 404;
+      (response as { end: () => void }).end();
+    },
+    origin,
+  );
 }
 
 async function startWithDelegate(
   application: WorkforceAuthenticationService,
   delegate: (request: unknown, response: unknown) => void,
+  origin: string | readonly string[] = publicOrigin,
 ) {
   const server = createServer(
     createWorkforceAuthenticationRequestListener({
       application,
       delegate,
-      publicOrigin,
+      publicOrigin: origin,
       secureCookies: false,
     }),
   );

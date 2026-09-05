@@ -12,12 +12,21 @@ const allowedHeaders = [
 
 export function createDevelopmentCorsRequestListener(
   listener: RequestListener,
-  allowedOrigin: string,
+  allowedOrigin: string | readonly string[],
 ): RequestListener {
+  const allowedOrigins: readonly string[] =
+    typeof allowedOrigin === "string"
+      ? allowedOrigin
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      : allowedOrigin;
+  const allowedSet = new Set(allowedOrigins);
+
   return (request, response) => {
     const origin = request.headers.origin;
     response.setHeader("vary", "Origin");
-    if (origin && origin !== allowedOrigin) {
+    if (origin && !allowedSet.has(origin)) {
       response.statusCode = 403;
       response.setHeader("content-type", "application/json; charset=utf-8");
       response.end(
@@ -32,8 +41,8 @@ export function createDevelopmentCorsRequestListener(
       );
       return;
     }
-    if (origin === allowedOrigin) {
-      response.setHeader("access-control-allow-origin", allowedOrigin);
+    if (origin && allowedSet.has(origin)) {
+      response.setHeader("access-control-allow-origin", origin);
       response.setHeader("access-control-allow-credentials", "true");
       response.setHeader(
         "access-control-allow-methods",

@@ -820,7 +820,17 @@ function mapProduct(record: Product): ProductContract {
 }
 
 function mapVariant(record: ProductVariant): ProductVariantContract {
-  return productVariantContractSchema.parse(mapRecord(record));
+  return productVariantContractSchema.parse({
+    colorId: record.colorId,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    organizationId: record.organizationId,
+    productId: record.productId,
+    sizeId: record.sizeId,
+    sku: record.sku,
+    status: record.status,
+    updatedAt: record.updatedAt.toISOString(),
+  });
 }
 
 function mapBarcode(record: VariantBarcode): VariantBarcodeContract {

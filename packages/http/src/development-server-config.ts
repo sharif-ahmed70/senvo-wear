@@ -1,5 +1,6 @@
 export type DevelopmentServerConfig = {
   allowedOrigin: string;
+  allowedOrigins: readonly string[];
   databaseUrl: string;
   host: "127.0.0.1";
   organizationCode: string;
@@ -14,15 +15,30 @@ export function loadDevelopmentServerConfig(
   }
   const databaseUrl = requiredValue(environment.DATABASE_URL, "DATABASE_URL");
   assertSafeLocalDatabaseUrl(databaseUrl);
-  const allowedOrigin =
-    environment.SENVO_API_ALLOWED_ORIGIN?.trim() || "http://localhost:3000";
-  assertSafeLocalOrigin(allowedOrigin);
+  const rawAllowedOrigin =
+    environment.SENVO_API_ALLOWED_ORIGIN?.trim() ||
+    "http://localhost:3000,http://localhost:3001";
+  const allowedOrigins = rawAllowedOrigin
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (allowedOrigins.length === 0) {
+    throw new Error(
+      "SENVO_API_ALLOWED_ORIGIN must contain at least one origin.",
+    );
+  }
+  for (const origin of allowedOrigins) {
+    assertSafeLocalOrigin(origin);
+  }
+  const allowedOrigin = allowedOrigins[0]!;
+
   const port = Number(environment.SENVO_API_PORT?.trim() || "4000");
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("SENVO_API_PORT must be an integer from 1 to 65535.");
   }
   return {
     allowedOrigin,
+    allowedOrigins,
     databaseUrl,
     host: "127.0.0.1",
     organizationCode: requiredValue(

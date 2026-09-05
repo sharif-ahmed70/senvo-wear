@@ -67,7 +67,11 @@ import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-
 import { AdminApiError } from "./_lib/api-client";
 import { AdminLoginForm } from "./login/_components/admin-login-form";
 import { UnauthorizedAdminState } from "./_components/admin-app-frame";
-import { AdminSessionProvider } from "./admin-shell";
+import {
+  AdminSessionProvider,
+  AdminShellView,
+  computeAdminRedirect,
+} from "./admin-shell";
 import type { AdminSession } from "./_lib/admin-access";
 
 describe("admin routes", () => {
@@ -667,5 +671,85 @@ describe("real session runtime permission authority", () => {
       ),
     );
     expect(html).not.toContain("Add Product");
+  });
+
+  it("LoginPage renders without requiring an authenticated session", () => {
+    const html = renderToStaticMarkup(createElement(AdminLoginForm));
+    expect(html).toContain("Sign in");
+    expect(html).toContain("Email");
+    expect(html).toContain("Password");
+  });
+});
+
+describe("AdminShell state and route gating", () => {
+  it("computes correct redirect path for unauthenticated and authenticated users", () => {
+    expect(computeAdminRedirect("unauthenticated", true, "/login")).toBeNull();
+    expect(computeAdminRedirect("unauthenticated", false, "/")).toBe("/login");
+    expect(computeAdminRedirect("unauthenticated", false, "/pos/sell")).toBe(
+      "/login?returnTo=%2Fpos%2Fsell",
+    );
+    expect(computeAdminRedirect("authenticated", true, "/login")).toBe("/");
+    expect(computeAdminRedirect("authenticated", false, "/catalog")).toBeNull();
+    expect(computeAdminRedirect("restoring", false, "/")).toBeNull();
+  });
+
+  it("renders public login children when unauthenticated on /login without redirecting", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: true,
+          state: { kind: "unauthenticated" },
+        },
+        createElement("div", { id: "login-child" }, "Public Login Content"),
+      ),
+    );
+    expect(html).toContain("Public Login Content");
+    expect(html).not.toContain("Operations overview");
+  });
+
+  it("renders nothing / redirects when unauthenticated on a protected route", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: false,
+          state: { kind: "unauthenticated" },
+        },
+        createElement("div", { id: "protected-child" }, "Secret POS Content"),
+      ),
+    );
+    expect(html).not.toContain("Secret POS Content");
+  });
+
+  it("renders AdminAppFrame and children when authenticated on protected route", () => {
+    const session: AdminSession = {
+      displayName: "Store Admin",
+      organizationName: "SENVO Wear",
+      permissions: ["CATALOG:READ"],
+      role: "STAFF",
+      userId: "u-1",
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: false,
+          state: {
+            credentials: {
+              csrfToken: "csrf-1",
+              expiresAt: "2099-01-01T00:00:00.000Z",
+              rememberMe: false,
+              sessionToken: "tok-1",
+            },
+            kind: "authenticated",
+            session,
+          },
+        },
+        createElement("div", { id: "dash-child" }, "Protected Dashboard"),
+      ),
+    );
+    expect(html).toContain("Protected Dashboard");
+    expect(html).toContain("Store Admin");
   });
 });

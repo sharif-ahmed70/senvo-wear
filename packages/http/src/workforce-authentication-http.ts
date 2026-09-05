@@ -23,23 +23,36 @@ import {
 export function createWorkforceAuthenticationRequestListener(options: {
   application: WorkforceAuthenticationService;
   delegate: RequestListener;
-  publicOrigin: string;
+  publicOrigin: string | readonly string[];
   secureCookies: boolean;
 }): RequestListener {
+  const allowedOrigins: readonly string[] =
+    typeof options.publicOrigin === "string"
+      ? options.publicOrigin
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      : options.publicOrigin;
+  const allowedSet = new Set(allowedOrigins);
+  const normalizedOptions = {
+    ...options,
+    allowedOrigins: allowedSet,
+  };
   return (request, response) => {
     const path = pathname(request);
     if (!path.startsWith("/admin/auth/")) {
       options.delegate(request, response);
       return;
     }
-    void handle(options, request, response);
+    void handle(normalizedOptions, request, response);
   };
 }
 
 async function handle(
   options: {
+    allowedOrigins: ReadonlySet<string>;
     application: WorkforceAuthenticationService;
-    publicOrigin: string;
+    publicOrigin: string | readonly string[];
     secureCookies: boolean;
   },
   request: IncomingMessage,
@@ -48,8 +61,10 @@ async function handle(
   const requestId = requestIdFrom(request);
   applySecurityHeaders(response, defaultHttpSecurityHeaders);
   try {
-    if (request.method !== "GET") assertOrigin(request, options.publicOrigin);
+    if (request.method !== "GET") assertOrigin(request, options.allowedOrigins);
+
     const path = pathname(request);
+
     const body = request.method === "GET" ? {} : await readBody(request);
     const sessionToken = extractBearerToken(request);
     const csrfToken = header(request, "x-csrf-token") ?? "";
@@ -150,8 +165,12 @@ function extractBearerToken(request: IncomingMessage): string {
   return match?.[1]?.trim() ?? "";
 }
 
-function assertOrigin(request: IncomingMessage, publicOrigin: string): void {
-  if (header(request, "origin") !== publicOrigin) {
+function assertOrigin(
+  request: IncomingMessage,
+  allowedOrigins: ReadonlySet<string>,
+): void {
+  const origin = header(request, "origin");
+  if (!origin || !allowedOrigins.has(origin)) {
     throw new WorkforceAuthenticationError(
       "UNAUTHORIZED",
       "Request origin is not allowed.",
