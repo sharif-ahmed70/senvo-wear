@@ -20,8 +20,32 @@ type User = WorkforceSessionWithPrincipal["user"];
 type UserCredential = NonNullable<
   Awaited<ReturnType<UserCredentialRepository["findByProviderIdentifier"]>>
 >;
+type Permission = Awaited<
+  ReturnType<RolePermissionRepository["listActivePermissionsByRole"]>
+>[number];
 
 const now = new Date("2026-09-01T12:00:00.000Z");
+
+const permissions: Permission[] = [
+  {
+    action: "READ",
+    createdAt: now,
+    description: null,
+    id: "perm-1",
+    resource: "ORGANIZATION",
+    status: "ACTIVE",
+    updatedAt: now,
+  },
+  {
+    action: "READ",
+    createdAt: now,
+    description: null,
+    id: "perm-2",
+    resource: "CATALOG",
+    status: "ACTIVE",
+    updatedAt: now,
+  },
+];
 
 const validCredential: UserCredential = {
   createdAt: now,
@@ -84,12 +108,7 @@ describe("WorkforceAuthenticationService", () => {
   it("authenticates valid credentials and resolves DB role permissions", async () => {
     const harness = createHarness({
       rolePermissions: {
-        listActivePermissionsByRole: vi.fn(() =>
-          Promise.resolve([
-            { action: "READ", resource: "ORGANIZATION" },
-            { action: "WRITE", resource: "CATALOG" },
-          ]),
-        ),
+        listActivePermissionsByRole: vi.fn(() => Promise.resolve(permissions)),
       },
     });
 
@@ -102,7 +121,7 @@ describe("WorkforceAuthenticationService", () => {
     expect(result.csrfToken).toBeDefined();
     expect(result.principal.permissions).toEqual([
       { action: "READ", resource: "ORGANIZATION" },
-      { action: "WRITE", resource: "CATALOG" },
+      { action: "READ", resource: "CATALOG" },
     ]);
     expect(harness.createSession).toHaveBeenCalled();
   });
@@ -124,8 +143,8 @@ describe("WorkforceAuthenticationService", () => {
 
   it("does not restore defaultRolePermissions when all grants are removed", async () => {
     const listActivePermissionsByRole = vi
-      .fn()
-      .mockResolvedValueOnce([{ action: "READ", resource: "ORGANIZATION" }])
+      .fn<RolePermissionRepository["listActivePermissionsByRole"]>()
+      .mockResolvedValueOnce([permissions[0]!])
       .mockResolvedValueOnce([]);
 
     const harness = createHarness({
@@ -289,16 +308,19 @@ function createHarness(
       } | null>;
     };
     rateLimiter?: WorkforceAuthenticationRateLimiter;
-    rolePermissions?: RolePermissionRepository;
+    rolePermissions?: Partial<RolePermissionRepository>;
     secrets?: Partial<AuthenticationSecretService>;
     users?: Partial<UserRepository>;
     workforceSessions?: Partial<WorkforceAuthenticationRepository>;
   } = {},
 ) {
   const secrets: AuthenticationSecretService = {
+    generateCode: vi.fn(() => "code-123"),
     generateToken: vi.fn(() => "token-xyz"),
     hashSecret: vi.fn((t: string) => `hash:${t}`),
-    timingSafeEqual: vi.fn((a: string, b: string) => a === b),
+    verifySecret: vi.fn(
+      (secret: string, secretHash: string) => `hash:${secret}` === secretHash,
+    ),
     ...overrides.secrets,
   };
 
@@ -331,13 +353,34 @@ function createHarness(
     assignRole: vi.fn(() => Promise.resolve(validMembership)),
     changeStatus: vi.fn(() => Promise.resolve(validMembership)),
     create: vi.fn(() => Promise.resolve(validMembership)),
-    findByOrganizationIdAndRole: vi.fn(() => Promise.resolve(validMembership)),
     findByUserAndOrganization: vi.fn(() => Promise.resolve(validMembership)),
     findFirstActiveByUser: vi.fn(() => Promise.resolve(validMembership)),
     findById: vi.fn(() => Promise.resolve(validMembership)),
     listByUser: vi.fn(() => Promise.resolve([validMembership])),
     ...overrides.memberships,
   };
+
+  const defaultRolePermissionsRepository: RolePermissionRepository = {
+    create: vi.fn(() =>
+      Promise.resolve({
+        createdAt: now,
+        id: "role-perm-1",
+        permissionId: "perm-1",
+        role: "ADMIN" as const,
+        status: "ACTIVE" as const,
+        updatedAt: now,
+      }),
+    ),
+    findByRoleAndPermission: vi.fn(() => Promise.resolve(null)),
+    listActivePermissionsByRole: vi.fn(() => Promise.resolve(permissions)),
+  };
+
+  const rolePermissions: RolePermissionRepository = overrides.rolePermissions
+    ? {
+        ...defaultRolePermissionsRepository,
+        ...overrides.rolePermissions,
+      }
+    : defaultRolePermissionsRepository;
 
   const organizationResolver = overrides.organizationResolver ?? {
     findOrganizationById: vi.fn(() =>
@@ -369,7 +412,7 @@ function createHarness(
     organizationResolver,
     passwords,
     rateLimiter: overrides.rateLimiter,
-    rolePermissions: overrides.rolePermissions,
+    rolePermissions,
     secrets,
     users,
     workforceSessions,
