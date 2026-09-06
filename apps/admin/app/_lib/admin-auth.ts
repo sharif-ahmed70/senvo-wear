@@ -9,7 +9,7 @@ export type AdminCredentials = {
   csrfToken: string;
   expiresAt: string;
   rememberMe: boolean;
-  sessionToken: string;
+  sessionToken?: string;
 };
 
 export type AdminLoginError =
@@ -82,11 +82,24 @@ export function clearCredentials(): void {
   local?.removeItem(STORAGE_KEY);
 }
 
+function readCsrfCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = /(?:^|;\s*)senvo_workforce_csrf=([^;]*)/u.exec(document.cookie);
+  if (match && match[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
+  return undefined;
+}
+
 function isCredentials(value: unknown): value is AdminCredentials {
   if (!value || typeof value !== "object") return false;
   const c = value as Record<string, unknown>;
   return (
-    typeof c.sessionToken === "string" &&
+    (c.sessionToken === undefined || typeof c.sessionToken === "string") &&
     typeof c.csrfToken === "string" &&
     typeof c.expiresAt === "string" &&
     typeof c.rememberMe === "boolean"
@@ -122,7 +135,7 @@ export class AdminAuthClient {
           role: "OWNER" | "ADMIN" | "MANAGER" | "STAFF";
           userId: string;
         };
-        sessionToken: string;
+        sessionToken?: string;
       }>("/admin/auth/login", {
         body: { email, password, rememberMe },
         method: "POST",
@@ -132,7 +145,7 @@ export class AdminAuthClient {
         csrfToken: data.csrfToken,
         expiresAt: data.expiresAt,
         rememberMe,
-        sessionToken: data.sessionToken,
+        ...(data.sessionToken ? { sessionToken: data.sessionToken } : {}),
       };
 
       storeCredentials(credentials);
@@ -156,15 +169,18 @@ export class AdminAuthClient {
     session: AdminSession;
   } | null> {
     const stored = readStoredCredentials();
-    if (!stored) return null;
 
     // Optimistic expiry check (client-side only — backend is authoritative)
-    if (new Date(stored.expiresAt).getTime() <= Date.now()) {
+    if (stored && new Date(stored.expiresAt).getTime() <= Date.now()) {
       clearCredentials();
       return null;
     }
 
     try {
+      const headers: Record<string, string> = {};
+      if (stored?.sessionToken) {
+        headers.Authorization = `Bearer ${stored.sessionToken}`;
+      }
       const { data } = await this.client.request<{
         csrfTokenHash: string;
         displayName: string;
@@ -176,12 +192,22 @@ export class AdminAuthClient {
         sessionId: string;
         userId: string;
       }>("/admin/auth/session", {
-        headers: { Authorization: `Bearer ${stored.sessionToken}` },
+        headers,
         method: "GET",
       });
 
+      const csrfFromCookie = readCsrfCookie();
+      const credentials: AdminCredentials = {
+        csrfToken: stored?.csrfToken || csrfFromCookie || "",
+        expiresAt: data.expiresAt,
+        rememberMe: stored?.rememberMe ?? false,
+        ...(stored?.sessionToken ? { sessionToken: stored.sessionToken } : {}),
+      };
+
+      storeCredentials(credentials);
+
       return {
-        credentials: stored,
+        credentials,
         session: adminSessionFromPrincipal(data),
       };
     } catch (error) {
@@ -196,14 +222,20 @@ export class AdminAuthClient {
    * Logout: calls the backend to revoke the session, then clears local
    * credentials regardless of server response (idempotent cleanup).
    */
-  async logout(credentials: AdminCredentials): Promise<AdminLogoutResult> {
+  async logout(credentials?: AdminCredentials): Promise<AdminLogoutResult> {
+    const stored = credentials ?? readStoredCredentials();
     try {
+      const headers: Record<string, string> = {};
+      if (stored?.sessionToken) {
+        headers.Authorization = `Bearer ${stored.sessionToken}`;
+      }
+      const csrf = stored?.csrfToken || readCsrfCookie();
+      if (csrf) {
+        headers["x-csrf-token"] = csrf;
+      }
       await this.client.request("/admin/auth/logout", {
         body: {},
-        headers: {
-          Authorization: `Bearer ${credentials.sessionToken}`,
-          "x-csrf-token": credentials.csrfToken,
-        },
+        headers,
         method: "POST",
       });
     } catch {

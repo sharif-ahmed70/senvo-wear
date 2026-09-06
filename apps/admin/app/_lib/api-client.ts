@@ -91,7 +91,10 @@ import type {
 export type AdminApiClientOptions = {
   baseUrl?: string;
   createRequestId?: () => string;
+  credentials?: RequestCredentials;
   fetcher?: typeof fetch;
+  /** Custom CSRF token resolver (defaults to reading from stored credentials or cookie). */
+  getCsrfToken?: () => string | null | undefined;
   /** Custom session token resolver (defaults to reading from stored credentials). */
   getSessionToken?: () => string | null | undefined;
   /** When set, every request automatically includes Authorization: Bearer <sessionToken>. */
@@ -163,10 +166,51 @@ function defaultGetSessionToken(): string | undefined {
   }
 }
 
+function defaultGetCsrfToken(): string | undefined {
+  try {
+    const session =
+      typeof globalThis !== "undefined" && globalThis.sessionStorage
+        ? globalThis.sessionStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.sessionStorage
+          ? window.sessionStorage.getItem("senvo.admin.session")
+          : null;
+    const local =
+      typeof globalThis !== "undefined" && globalThis.localStorage
+        ? globalThis.localStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("senvo.admin.session")
+          : null;
+    const raw = session ?? local;
+    if (raw) {
+      const parsed = JSON.parse(raw) as { csrfToken?: unknown };
+      if (typeof parsed?.csrfToken === "string" && parsed.csrfToken) {
+        return parsed.csrfToken;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (typeof document !== "undefined") {
+    const match = /(?:^|;\s*)senvo_workforce_csrf=([^;]*)/u.exec(
+      document.cookie,
+    );
+    if (match && match[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return undefined;
+}
+
 export class AdminApiClient {
   private readonly baseUrl: string;
   private readonly createRequestId: () => string;
+  private readonly credentials: RequestCredentials;
   private readonly fetcher: typeof fetch;
+  private readonly getCsrfToken: (() => string | null | undefined) | undefined;
   private readonly getSessionToken:
     (() => string | null | undefined) | undefined;
   private readonly sessionToken: string | undefined;
@@ -178,7 +222,12 @@ export class AdminApiClient {
       "";
     this.createRequestId =
       options.createRequestId ?? (() => crypto.randomUUID());
+    this.credentials = options.credentials ?? "include";
     this.fetcher = options.fetcher ?? ((...args) => fetch(...args));
+    this.getCsrfToken =
+      options.getCsrfToken !== undefined
+        ? options.getCsrfToken
+        : defaultGetCsrfToken;
     this.getSessionToken =
       options.getSessionToken ??
       (options.sessionToken !== undefined ? undefined : defaultGetSessionToken);
@@ -193,7 +242,9 @@ export class AdminApiClient {
     return new AdminApiClient({
       baseUrl: this.baseUrl,
       createRequestId: this.createRequestId,
+      credentials: this.credentials,
       fetcher: this.fetcher,
+      getCsrfToken: this.getCsrfToken,
       sessionToken,
     });
   }
@@ -209,10 +260,17 @@ export class AdminApiClient {
     if (request.body !== undefined) {
       headers.set("content-type", "application/json");
     }
+    const method = request.method ?? "GET";
     const effectiveToken =
       this.sessionToken ?? this.getSessionToken?.() ?? undefined;
     if (effectiveToken && !headers.has("authorization")) {
       headers.set("authorization", `Bearer ${effectiveToken}`);
+    }
+    if (method !== "GET" && !headers.has("x-csrf-token")) {
+      const csrf = this.getCsrfToken?.();
+      if (csrf) {
+        headers.set("x-csrf-token", csrf);
+      }
     }
 
     let response: Response;
@@ -220,8 +278,9 @@ export class AdminApiClient {
       response = await this.fetcher(`${this.baseUrl}${path}`, {
         body:
           request.body === undefined ? undefined : JSON.stringify(request.body),
+        credentials: this.credentials,
         headers,
-        method: request.method ?? "GET",
+        method,
         signal: request.signal,
       });
     } catch {
