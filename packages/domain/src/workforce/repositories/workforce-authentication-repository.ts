@@ -6,7 +6,6 @@ import type {
 
 export type WorkforceSessionWithPrincipal = {
   membership: OrganizationMembership;
-  organization: { id: string; name: string };
   organization: { id: string; name: string; status?: "ACTIVE" | "INACTIVE" };
   session: WorkforceAuthenticationSession;
   user: User;
