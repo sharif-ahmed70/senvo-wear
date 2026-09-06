@@ -21,8 +21,13 @@ export function createProductionCorsRequestListener(
   ]);
 
   return (request: IncomingMessage, response: ServerResponse) => {
-    const rawOrigin = request.headers.origin;
-    const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+    const rawOrigin: unknown = request.headers.origin;
+    const origin =
+      typeof rawOrigin === "string"
+        ? rawOrigin
+        : Array.isArray(rawOrigin) && typeof rawOrigin[0] === "string"
+          ? rawOrigin[0]
+          : undefined;
     const path = pathname(request);
 
     const allowedSet = path.startsWith("/admin/")

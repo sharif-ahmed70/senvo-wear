@@ -54,7 +54,7 @@ describe("production server HTTP listener", () => {
 
   it("responds to /ready with 200 when checkReadiness returns true", async () => {
     const services = createMockServices({
-      checkReadiness: vi.fn(async () => true),
+      checkReadiness: vi.fn(() => Promise.resolve(true)),
     });
     const url = await startServer(services, mockConfig);
 
@@ -66,7 +66,7 @@ describe("production server HTTP listener", () => {
 
   it("responds to /ready with 503 when checkReadiness returns false", async () => {
     const services = createMockServices({
-      checkReadiness: vi.fn(async () => false),
+      checkReadiness: vi.fn(() => Promise.resolve(false)),
     });
     const url = await startServer(services, mockConfig);
 
@@ -117,7 +117,25 @@ describe("production server HTTP listener", () => {
   });
 
   it("authenticates workforce session via cookie", async () => {
-    const services = createMockServices();
+    const authenticateSession = vi.fn(() =>
+      Promise.resolve({
+        csrfTokenHash: "csrf-hash",
+        displayName: "SENVO Admin",
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        organizationId: "org-1",
+        organizationName: "SENVO",
+        permissions: [{ action: "READ", resource: "ORGANIZATION" }],
+        role: "ADMIN" as const,
+        sessionId: "sess-1",
+        userId: "user-1",
+      }),
+    );
+    const services = createMockServices({
+      workforceAuthentication: {
+        ...createMockWorkforceAuth(),
+        authenticateSession,
+      } as unknown as ApplicationServices["workforceAuthentication"],
+    });
     const url = await startServer(services, mockConfig);
 
     const response = await fetch(`${url}/admin/auth/session`, {
@@ -133,14 +151,13 @@ describe("production server HTTP listener", () => {
       data: { userId: string };
     };
     expect(body.data.userId).toBe("user-1");
-    expect(
-      services.workforceAuthentication!.authenticateSession,
-    ).toHaveBeenCalledWith("valid-session-token");
+    expect(authenticateSession).toHaveBeenCalledWith("valid-session-token");
   });
 
   it("gracefully shuts down the server and disconnects services", async () => {
+    const disconnect = vi.fn(() => Promise.resolve());
     const services = createMockServices({
-      disconnect: vi.fn(async () => {}),
+      disconnect,
     });
     const { server, url } = await startServerWithHandle(services, mockConfig);
 
@@ -153,20 +170,15 @@ describe("production server HTTP listener", () => {
       services,
     });
 
-    expect(services.disconnect).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledTimes(1);
     await expect(fetch(`${url}/health`)).rejects.toThrow();
   });
 });
 
-function createMockServices(
-  overrides: Partial<ApplicationServices> = {},
-): ApplicationServices {
+function createMockWorkforceAuth() {
   return {
-    checkReadiness: vi.fn(async () => true),
-    customerAuthentication: undefined,
-    disconnect: vi.fn(async () => {}),
-    workforceAuthentication: {
-      authenticateSession: vi.fn(async (_token: string) => ({
+    authenticateSession: vi.fn(() =>
+      Promise.resolve({
         csrfTokenHash: "csrf-hash",
         displayName: "SENVO Admin",
         expiresAt: new Date(Date.now() + 3600000).toISOString(),
@@ -176,8 +188,10 @@ function createMockServices(
         role: "ADMIN" as const,
         sessionId: "sess-1",
         userId: "user-1",
-      })),
-      authorizeMutation: vi.fn(async () => ({
+      }),
+    ),
+    authorizeMutation: vi.fn(() =>
+      Promise.resolve({
         csrfTokenHash: "csrf-hash",
         displayName: "SENVO Admin",
         expiresAt: new Date(Date.now() + 3600000).toISOString(),
@@ -187,8 +201,10 @@ function createMockServices(
         role: "ADMIN" as const,
         sessionId: "sess-1",
         userId: "user-1",
-      })),
-      login: vi.fn(async () => ({
+      }),
+    ),
+    login: vi.fn(() =>
+      Promise.resolve({
         csrfToken: "csrf-test-token",
         expiresAt: new Date(Date.now() + 3600000).toISOString(),
         principal: {
@@ -200,9 +216,21 @@ function createMockServices(
           userId: "user-1",
         },
         sessionToken: "valid-session-token",
-      })),
-      logout: vi.fn(async () => {}),
-    } as unknown as ApplicationServices["workforceAuthentication"],
+      }),
+    ),
+    logout: vi.fn(() => Promise.resolve()),
+  };
+}
+
+function createMockServices(
+  overrides: Partial<ApplicationServices> = {},
+): ApplicationServices {
+  return {
+    checkReadiness: vi.fn(() => Promise.resolve(true)),
+    customerAuthentication: undefined,
+    disconnect: vi.fn(() => Promise.resolve()),
+    workforceAuthentication:
+      createMockWorkforceAuth() as unknown as ApplicationServices["workforceAuthentication"],
     ...overrides,
   } as unknown as ApplicationServices;
 }
