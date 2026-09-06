@@ -267,6 +267,5 @@ async function startServerWithHandle(
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address() as AddressInfo;
-  return `http://127.0.0.1:${address.port}`;
   return { server, url: `http://127.0.0.1:${address.port}` };
 }

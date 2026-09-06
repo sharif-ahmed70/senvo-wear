@@ -5,7 +5,6 @@ import {
   type WorkforceAuthenticationService,
 } from "@senvo/application";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkforceAuthenticationRequestListener } from "./workforce-authentication-http.js";
 import {
   createWorkforceAuthenticationRequestListener,
   workforceCsrfCookie,
