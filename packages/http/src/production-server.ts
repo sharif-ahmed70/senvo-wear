@@ -127,6 +127,7 @@ export function createProductionRequestListener(options: {
       application: services.workforceAuthentication,
       cookieDomain: config.cookieDomain,
       delegate: wrapped,
+      omitSessionTokenInBody: true,
       publicOrigin: config.adminOrigins,
       sameSite:
         config.cookieSameSite === "strict"

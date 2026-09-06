@@ -368,6 +368,7 @@ describe("workforce authentication HTTP boundary", () => {
     });
 
     expect(unauthenticatedResponse.status).toBe(401);
+    expect(application.logout).not.toHaveBeenCalled();
 
     // With valid CSRF token header
     const authenticatedResponse = await fetch(url + "/admin/auth/logout", {

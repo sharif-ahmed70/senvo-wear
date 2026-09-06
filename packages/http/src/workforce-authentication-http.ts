@@ -139,6 +139,9 @@ async function handle(
     if (matches(request, path, "POST", "/admin/auth/logout")) {
       parse(workforceLogoutInputSchema, body);
       if (!sessionToken) throw unauthorized();
+      if (fromCookie && !csrfToken) {
+        throw unauthorized();
+      }
       if (fromCookie || csrfToken) {
         await options.application.authorizeMutation(sessionToken, csrfToken);
       }
