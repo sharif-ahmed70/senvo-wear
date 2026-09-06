@@ -15,6 +15,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "start:production": "node dist/production-server.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest --passWithNoTests",

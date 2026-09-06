@@ -161,4 +161,46 @@ describe("WorkforceSessionRequestContextFactory", () => {
       }),
     ).rejects.toThrow("Session expired");
   });
+
+  it("authenticates workforce session from cookie when authorization header is absent", async () => {
+    const service = makeWorkforce();
+    const factory = new WorkforceSessionRequestContextFactory(service);
+
+    const context = await factory.create({
+      headers: {
+        cookie:
+          "other=foo; senvo_workforce_session=cookie-session-token; bar=baz",
+      },
+      requestId: "req-cookie-1",
+    });
+
+    expect(context.authenticatedUser).toEqual({ userId: "user-1" });
+    expect(context.organizationId).toBe("org-1");
+    expect(context.requestId).toBe("req-cookie-1");
+    expect(service.authenticateSession).toHaveBeenCalledWith(
+      "cookie-session-token",
+    );
+  });
+
+  it("strictly ignores client-supplied x-dev-* headers and derives identity solely from session", async () => {
+    const service = makeWorkforce();
+    const factory = new WorkforceSessionRequestContextFactory(service);
+
+    const context = await factory.create({
+      headers: {
+        authorization: "Bearer valid-session-token",
+        "x-dev-organization-id": "spoofed-org",
+        "x-dev-permissions": "ORGANIZATION:DELETE,USER:DELETE",
+        "x-dev-user-id": "spoofed-user",
+      },
+      requestId: "req-spoof-1",
+    });
+
+    expect(context.authenticatedUser).toEqual({ userId: "user-1" });
+    expect(context.organizationId).toBe("org-1");
+    expect(context.permissions).not.toContainEqual({
+      resource: "ORGANIZATION",
+      action: "DELETE",
+    });
+  });
 });
