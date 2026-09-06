@@ -152,6 +152,7 @@ export type CreateApplicationServicesOptions = {
 
 export type ApplicationServices = {
   catalog: CatalogApplicationService;
+  checkReadiness?(): Promise<boolean>;
   disconnect(): Promise<void>;
   inventory: InventoryApplicationService;
   organization: OrganizationApplicationService;
@@ -409,16 +410,32 @@ export function createApplicationServices(
     options.passwordHasher
       ? new WorkforceAuthenticationService({
           credentials: userCredentialRepository,
+          fallbackPasswordHash: options.fallbackPasswordHash,
           memberships: membershipRepository,
           organizationResolver: {
             findOrganizationById: async (id: string) => {
               const organization = await organizationRepository.findById(id);
               return organization
-                ? { id: organization.id, name: organization.name }
+                ? {
+                    id: organization.id,
+                    name: organization.name,
+                    status: organization.status,
+                  }
                 : null;
+            },
+            findOrganizationIdByCode: async (code: string) => {
+              const org = await organizationRepository.findByCode(code);
+              return org?.id ?? null;
             },
           },
           passwords: options.passwordHasher,
+          rateLimiter: customerAuthenticationRepository
+            ? {
+                consumeRateLimit: (input) =>
+                  customerAuthenticationRepository.consumeRateLimit(input),
+              }
+            : undefined,
+          rolePermissions: rolePermissionRepository,
           secrets: options.authenticationSecrets,
           users: userRepository,
           workforceSessions: workforceAuthenticationRepository,
@@ -440,6 +457,21 @@ export function createApplicationServices(
       sizes: sizeRepository,
       transactionManager,
     }),
+    checkReadiness: async () => {
+      try {
+        if (prismaClient) {
+          await (
+            prismaClient as {
+              $queryRaw(query: TemplateStringsArray): Promise<unknown>;
+            }
+          ).$queryRaw`SELECT 1`;
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
     disconnect: async () => {
       if (ownsPrismaClient) {
         await prismaClient?.$disconnect();

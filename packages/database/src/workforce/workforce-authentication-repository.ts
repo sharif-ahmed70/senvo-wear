@@ -63,6 +63,7 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
       organization: {
         id: record.organization.id,
         name: record.organization.name,
+        status: record.organization.status,
       },
       session: mapSession(record),
       user: {
