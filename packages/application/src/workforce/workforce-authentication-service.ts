@@ -67,9 +67,6 @@ export type WorkforceAuthenticationServiceDeps = {
   idGenerator?: () => string;
   memberships: OrganizationMembershipRepository;
   organizationResolver: {
-    findOrganizationById(
-      id: string,
-    ): Promise<{ id: string; name: string } | null>;
     findOrganizationById(id: string): Promise<{
       id: string;
       name: string;
