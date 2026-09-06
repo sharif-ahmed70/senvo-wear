@@ -4,57 +4,56 @@ import type {
   OrganizationMembershipRepository,
   PasswordHasher,
   RolePermissionRepository,
-  UserAccount,
-  UserCredentialRecord,
   UserCredentialRepository,
   UserRepository,
   WorkforceAuthenticationRepository,
+  WorkforceAuthenticationSession,
   WorkforceSessionWithPrincipal,
 } from "@senvo/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
-  WorkforceAuthenticationError,
   WorkforceAuthenticationService,
   type WorkforceAuthenticationRateLimiter,
 } from "./workforce-authentication-service.js";
 
+type User = WorkforceSessionWithPrincipal["user"];
+type UserCredential = NonNullable<
+  Awaited<ReturnType<UserCredentialRepository["findByProviderIdentifier"]>>
+>;
+
 const now = new Date("2026-09-01T12:00:00.000Z");
 
-const validCredential: UserCredentialRecord = {
-  active: true,
-  organization: {
-    id: "org-1",
-    name: "SENVO Wear",
-    status: "ACTIVE",
-  },
+const validCredential: UserCredential = {
+  createdAt: now,
+  id: "cred-1",
+  identifier: "admin@senvo.test",
   passwordHash: "hashed-correct-password",
-  role: "ADMIN",
+  provider: "PASSWORD",
   status: "ACTIVE",
+  updatedAt: now,
   userId: "user-1",
-  username: "admin@senvo.test",
+  version: 1,
 };
 
-const validUser: UserAccount = {
+const validUser: User = {
   createdAt: now,
-  defaultOrganizationId: "org-1",
-  displayName: "SENVO Admin",
   email: "admin@senvo.test",
   id: "user-1",
-  locale: "en-US",
   name: "SENVO Admin",
   status: "ACTIVE",
   updatedAt: now,
+  version: 1,
 };
 
 const validMembership: OrganizationMembership = {
   createdAt: now,
   id: "membership-1",
-  joinedAt: now,
   organizationId: "org-1",
   role: "ADMIN",
   status: "ACTIVE",
   updatedAt: now,
   userId: "user-1",
+  version: 1,
 };
 
 const validSessionRecord: WorkforceSessionWithPrincipal = {
@@ -85,10 +84,12 @@ describe("WorkforceAuthenticationService", () => {
   it("authenticates valid credentials and resolves DB role permissions", async () => {
     const harness = createHarness({
       rolePermissions: {
-        listActivePermissionsByRole: vi.fn(async () => [
-          { action: "READ", resource: "ORGANIZATION" },
-          { action: "WRITE", resource: "CATALOG" },
-        ]),
+        listActivePermissionsByRole: vi.fn(() =>
+          Promise.resolve([
+            { action: "READ", resource: "ORGANIZATION" },
+            { action: "WRITE", resource: "CATALOG" },
+          ]),
+        ),
       },
     });
 
@@ -103,13 +104,13 @@ describe("WorkforceAuthenticationService", () => {
       { action: "READ", resource: "ORGANIZATION" },
       { action: "WRITE", resource: "CATALOG" },
     ]);
-    expect(harness.workforceSessions.createSession).toHaveBeenCalled();
+    expect(harness.createSession).toHaveBeenCalled();
   });
 
   it("resolves zero permissions when DB role has zero active grants", async () => {
     const harness = createHarness({
       rolePermissions: {
-        listActivePermissionsByRole: vi.fn(async () => []),
+        listActivePermissionsByRole: vi.fn(() => Promise.resolve([])),
       },
     });
 
@@ -148,11 +149,13 @@ describe("WorkforceAuthenticationService", () => {
   it("rejects login when organization is INACTIVE", async () => {
     const harness = createHarness({
       organizationResolver: {
-        findOrganizationById: vi.fn(async () => ({
-          id: "org-1",
-          name: "SENVO Wear",
-          status: "INACTIVE" as const,
-        })),
+        findOrganizationById: vi.fn(() =>
+          Promise.resolve({
+            id: "org-1",
+            name: "SENVO Wear",
+            status: "INACTIVE" as const,
+          }),
+        ),
       },
     });
 
@@ -167,13 +170,15 @@ describe("WorkforceAuthenticationService", () => {
   });
 
   it("enforces login rate limiting on failed attempts", async () => {
-    const consumeRateLimit = vi.fn(async () => ({
-      allowed: true,
-      retryAfterSeconds: 0,
-    }));
+    const consumeRateLimit = vi.fn(() =>
+      Promise.resolve({
+        allowed: true,
+        retryAfterSeconds: 0,
+      }),
+    );
     const harness = createHarness({
       credentials: {
-        findByProviderIdentifier: vi.fn(async () => null), // user not found
+        findByProviderIdentifier: vi.fn(() => Promise.resolve(null)), // user not found
       },
       rateLimiter: {
         consumeRateLimit,
@@ -197,10 +202,12 @@ describe("WorkforceAuthenticationService", () => {
   it("rejects login with RATE_LIMITED when rate limiter rejects", async () => {
     const harness = createHarness({
       rateLimiter: {
-        consumeRateLimit: vi.fn(async () => ({
-          allowed: false,
-          retryAfterSeconds: 900,
-        })),
+        consumeRateLimit: vi.fn(() =>
+          Promise.resolve({
+            allowed: false,
+            retryAfterSeconds: 900,
+          }),
+        ),
       },
     });
 
@@ -217,17 +224,20 @@ describe("WorkforceAuthenticationService", () => {
   it("rejects session authentication when organization is INACTIVE", async () => {
     const harness = createHarness({
       workforceSessions: {
-        createSession: vi.fn(),
-        deleteSessionByTokenHash: vi.fn(),
-        deleteSessionsForUser: vi.fn(),
-        findSessionByTokenHash: vi.fn(async () => ({
-          ...validSessionRecord,
-          organization: {
-            ...validSessionRecord.organization,
-            status: "INACTIVE" as const,
-          },
-        })),
-        touchSession: vi.fn(),
+        createSession: vi.fn((input: WorkforceAuthenticationSession) =>
+          Promise.resolve(input),
+        ),
+        findSessionByTokenHash: vi.fn(() =>
+          Promise.resolve({
+            ...validSessionRecord,
+            organization: {
+              ...validSessionRecord.organization,
+              status: "INACTIVE" as const,
+            },
+          }),
+        ),
+        revokeAllForUser: vi.fn(() => Promise.resolve(0)),
+        revokeSession: vi.fn(() => Promise.resolve(true)),
       },
     });
 
@@ -241,17 +251,20 @@ describe("WorkforceAuthenticationService", () => {
   it("rejects session authentication when session is expired", async () => {
     const harness = createHarness({
       workforceSessions: {
-        createSession: vi.fn(),
-        deleteSessionByTokenHash: vi.fn(),
-        deleteSessionsForUser: vi.fn(),
-        findSessionByTokenHash: vi.fn(async () => ({
-          ...validSessionRecord,
-          session: {
-            ...validSessionRecord.session,
-            expiresAt: new Date(now.getTime() - 10000), // expired
-          },
-        })),
-        touchSession: vi.fn(),
+        createSession: vi.fn((input: WorkforceAuthenticationSession) =>
+          Promise.resolve(input),
+        ),
+        findSessionByTokenHash: vi.fn(() =>
+          Promise.resolve({
+            ...validSessionRecord,
+            session: {
+              ...validSessionRecord.session,
+              expiresAt: new Date(now.getTime() - 10000), // expired
+            },
+          }),
+        ),
+        revokeAllForUser: vi.fn(() => Promise.resolve(0)),
+        revokeSession: vi.fn(() => Promise.resolve(true)),
       },
     });
 
@@ -275,8 +288,8 @@ function createHarness(
         status?: "ACTIVE" | "INACTIVE";
       } | null>;
     };
-    rateLimiter?: Partial<WorkforceAuthenticationRateLimiter>;
-    rolePermissions?: Partial<RolePermissionRepository>;
+    rateLimiter?: WorkforceAuthenticationRateLimiter;
+    rolePermissions?: RolePermissionRepository;
     secrets?: Partial<AuthenticationSecretService>;
     users?: Partial<UserRepository>;
     workforceSessions?: Partial<WorkforceAuthenticationRepository>;
@@ -290,60 +303,61 @@ function createHarness(
   };
 
   const passwords: PasswordHasher = {
-    hash: vi.fn(async (p: string) => `hash:${p}`),
-    verify: vi.fn(
-      async (p: string, h: string) =>
+    hash: vi.fn((p: string) => Promise.resolve(`hash:${p}`)),
+    verify: vi.fn((p: string, h: string) =>
+      Promise.resolve(
         h === "hashed-correct-password" && p === "CorrectPassword123!",
+      ),
     ),
     ...overrides.hasher,
   };
 
   const credentials: UserCredentialRepository = {
-    create: vi.fn(),
-    delete: vi.fn(),
-    findByProviderIdentifier: vi.fn(async () => validCredential as never),
-    findByUserId: vi.fn(),
-    updatePasswordHash: vi.fn(),
+    changeStatus: vi.fn(() => Promise.resolve(validCredential)),
+    create: vi.fn(() => Promise.resolve(validCredential)),
+    findById: vi.fn(() => Promise.resolve(validCredential)),
+    findByProviderIdentifier: vi.fn(() => Promise.resolve(validCredential)),
     ...overrides.credentials,
-  } as unknown as UserCredentialRepository;
-
-  const users: UserRepository = {
-    create: vi.fn(),
-    findById: vi.fn(async () => validUser),
-    findByUsername: vi.fn(),
-    list: vi.fn(),
-    update: vi.fn(),
-    ...overrides.users,
-  } as unknown as UserRepository;
-
-  const memberships: OrganizationMembershipRepository = {
-    create: vi.fn(),
-    delete: vi.fn(),
-    findByOrganizationIdAndRole: vi.fn(),
-    findByUserAndOrganization: vi.fn(async () => validMembership),
-    findFirstActiveByUser: vi.fn(async () => validMembership),
-    findById: vi.fn(),
-    listByOrganizationId: vi.fn(),
-    listByUser: vi.fn(async () => [validMembership]),
-    listByUserId: vi.fn(async () => [validMembership]),
-    update: vi.fn(),
-    ...overrides.memberships,
-  } as unknown as OrganizationMembershipRepository;
-
-  const organizationResolver = overrides.organizationResolver ?? {
-    findOrganizationById: vi.fn(async () => ({
-      id: "org-1",
-      name: "SENVO Wear",
-      status: "ACTIVE" as const,
-    })),
   };
 
+  const users: UserRepository = {
+    create: vi.fn(() => Promise.resolve(validUser)),
+    findByEmail: vi.fn(() => Promise.resolve(validUser)),
+    findById: vi.fn(() => Promise.resolve(validUser)),
+    ...overrides.users,
+  };
+
+  const memberships: OrganizationMembershipRepository = {
+    assignRole: vi.fn(() => Promise.resolve(validMembership)),
+    changeStatus: vi.fn(() => Promise.resolve(validMembership)),
+    create: vi.fn(() => Promise.resolve(validMembership)),
+    findByOrganizationIdAndRole: vi.fn(() => Promise.resolve(validMembership)),
+    findByUserAndOrganization: vi.fn(() => Promise.resolve(validMembership)),
+    findFirstActiveByUser: vi.fn(() => Promise.resolve(validMembership)),
+    findById: vi.fn(() => Promise.resolve(validMembership)),
+    listByUser: vi.fn(() => Promise.resolve([validMembership])),
+    ...overrides.memberships,
+  };
+
+  const organizationResolver = overrides.organizationResolver ?? {
+    findOrganizationById: vi.fn(() =>
+      Promise.resolve({
+        id: "org-1",
+        name: "SENVO Wear",
+        status: "ACTIVE" as const,
+      }),
+    ),
+  };
+
+  const createSession = vi.fn((input: WorkforceAuthenticationSession) =>
+    Promise.resolve(input),
+  );
+
   const workforceSessions: WorkforceAuthenticationRepository = {
-    createSession: vi.fn(async () => {}),
-    deleteSessionByTokenHash: vi.fn(async () => {}),
-    deleteSessionsForUser: vi.fn(async () => {}),
-    findSessionByTokenHash: vi.fn(async () => validSessionRecord),
-    touchSession: vi.fn(async () => {}),
+    createSession,
+    findSessionByTokenHash: vi.fn(() => Promise.resolve(validSessionRecord)),
+    revokeAllForUser: vi.fn(() => Promise.resolve(0)),
+    revokeSession: vi.fn(() => Promise.resolve(true)),
     ...overrides.workforceSessions,
   };
 
@@ -354,14 +368,15 @@ function createHarness(
     memberships,
     organizationResolver,
     passwords,
-    rateLimiter: overrides.rateLimiter as WorkforceAuthenticationRateLimiter,
-    rolePermissions: overrides.rolePermissions as RolePermissionRepository,
+    rateLimiter: overrides.rateLimiter,
+    rolePermissions: overrides.rolePermissions,
     secrets,
     users,
     workforceSessions,
   });
 
   return {
+    createSession,
     credentials,
     memberships,
     passwords,
