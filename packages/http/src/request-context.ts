@@ -76,10 +76,12 @@ export class WorkforceSessionRequestContextFactory implements HttpRequestContext
     headers: IncomingHttpHeaders;
     requestId: string;
   }): Promise<ApiRequestContext> {
-    const token = bearerToken(input.headers);
+    const token =
+      extractCookieToken(input.headers.cookie, "senvo_workforce_session") ||
+      bearerToken(input.headers);
     if (!token) {
       throw new HttpRequestContextError(
-        "Bearer token is required for authenticated requests.",
+        "Authentication is required for authenticated requests.",
       );
     }
     let principal;
@@ -152,4 +154,26 @@ function parsePermissions(value: string | null): Permission[] {
       resource: resource as Permission["resource"],
     };
   });
+}
+
+function extractCookieToken(
+  cookieHeader: string | undefined,
+  name: string,
+): string {
+  if (!cookieHeader) return "";
+  for (const part of cookieHeader.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0) {
+      const key = part.slice(0, eq).trim();
+      if (key === name) {
+        const val = part.slice(eq + 1).trim();
+        try {
+          return decodeURIComponent(val);
+        } catch {
+          return val;
+        }
+      }
+    }
+  }
+  return "";
 }

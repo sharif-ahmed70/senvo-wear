@@ -20,12 +20,22 @@ import {
   defaultHttpSecurityHeaders,
 } from "./security-headers.js";
 
-export function createWorkforceAuthenticationRequestListener(options: {
+export const workforceSessionCookie = "senvo_workforce_session";
+export const workforceCsrfCookie = "senvo_workforce_csrf";
+
+export type WorkforceAuthenticationHttpOptions = {
   application: WorkforceAuthenticationService;
+  cookieDomain?: string;
   delegate: RequestListener;
+  omitSessionTokenInBody?: boolean;
   publicOrigin: string | readonly string[];
+  sameSite?: "Lax" | "Strict" | "None";
   secureCookies: boolean;
-}): RequestListener {
+};
+
+export function createWorkforceAuthenticationRequestListener(
+  options: WorkforceAuthenticationHttpOptions,
+): RequestListener {
   const allowedOrigins: readonly string[] =
     typeof options.publicOrigin === "string"
       ? options.publicOrigin
@@ -37,6 +47,7 @@ export function createWorkforceAuthenticationRequestListener(options: {
   const normalizedOptions = {
     ...options,
     allowedOrigins: allowedSet,
+    sameSite: options.sameSite ?? "Lax",
   };
   return (request, response) => {
     const path = pathname(request);
@@ -52,7 +63,10 @@ async function handle(
   options: {
     allowedOrigins: ReadonlySet<string>;
     application: WorkforceAuthenticationService;
+    cookieDomain?: string;
+    omitSessionTokenInBody?: boolean;
     publicOrigin: string | readonly string[];
+    sameSite: "Lax" | "Strict" | "None";
     secureCookies: boolean;
   },
   request: IncomingMessage,
@@ -66,12 +80,22 @@ async function handle(
     const path = pathname(request);
 
     const body = request.method === "GET" ? {} : await readBody(request);
-    const sessionToken = extractBearerToken(request);
+    const { token: sessionToken, fromCookie } =
+      extractWorkforceSessionToken(request);
     const csrfToken = header(request, "x-csrf-token") ?? "";
 
     if (matches(request, path, "POST", "/admin/auth/login")) {
       const input = parse(workforceLoginInputSchema, body);
       const result = await options.application.login(input);
+      setWorkforceCookies(
+        response,
+        result.sessionToken,
+        result.csrfToken,
+        result.expiresAt,
+        options.secureCookies,
+        options.cookieDomain,
+        options.sameSite,
+      );
       return write(
         response,
         createApiSuccess(
@@ -79,7 +103,10 @@ async function handle(
             principal: result.principal,
             csrfToken: result.csrfToken,
             expiresAt: result.expiresAt,
-            sessionToken: result.sessionToken,
+            sessionToken:
+              options.secureCookies || options.omitSessionTokenInBody
+                ? undefined
+                : result.sessionToken,
           },
           requestId,
         ),
@@ -112,8 +139,18 @@ async function handle(
     if (matches(request, path, "POST", "/admin/auth/logout")) {
       parse(workforceLogoutInputSchema, body);
       if (!sessionToken) throw unauthorized();
-      await options.application.authorizeMutation(sessionToken, csrfToken);
+      if (fromCookie && !csrfToken) {
+        throw unauthorized();
+      }
+      if (fromCookie || csrfToken) {
+        await options.application.authorizeMutation(sessionToken, csrfToken);
+      }
       await options.application.logout(sessionToken);
+      clearWorkforceCookies(
+        response,
+        options.secureCookies,
+        options.cookieDomain,
+      );
       return write(response, createApiSuccess({ loggedOut: true }, requestId));
     }
 
@@ -158,11 +195,152 @@ function parse<T>(
   return parsed.data;
 }
 
+export function extractWorkforceSessionToken(request: IncomingMessage): {
+  fromCookie: boolean;
+  token: string;
+} {
+  const cookieHeader = header(request, "cookie");
+  if (cookieHeader) {
+    const cookies = parseCookies(cookieHeader);
+    const sessionFromCookie = cookies.get(workforceSessionCookie);
+    if (sessionFromCookie) {
+      return { fromCookie: true, token: sessionFromCookie };
+    }
+  }
+  const bearer = extractBearerToken(request);
+  if (bearer) {
+    return { fromCookie: false, token: bearer };
+  }
+  return { fromCookie: false, token: "" };
+}
+
 function extractBearerToken(request: IncomingMessage): string {
   const authorization = header(request, "authorization");
   if (!authorization) return "";
   const match = /^Bearer\s+(.+)$/u.exec(authorization.trim());
   return match?.[1]?.trim() ?? "";
+}
+
+function setWorkforceCookies(
+  response: ServerResponse,
+  sessionToken: string,
+  csrfToken: string,
+  expiresAt: string,
+  secure: boolean,
+  domain?: string,
+  sameSite: "Lax" | "Strict" | "None" = "Lax",
+): void {
+  const maxAge = Math.max(
+    0,
+    Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000),
+  );
+  appendCookie(
+    response,
+    serializeCookie({
+      domain,
+      httpOnly: true,
+      maxAgeSeconds: maxAge,
+      name: workforceSessionCookie,
+      path: "/",
+      sameSite,
+      secure,
+      value: sessionToken,
+    }),
+  );
+  appendCookie(
+    response,
+    serializeCookie({
+      domain,
+      httpOnly: false,
+      maxAgeSeconds: maxAge,
+      name: workforceCsrfCookie,
+      path: "/",
+      sameSite,
+      secure,
+      value: csrfToken,
+    }),
+  );
+}
+
+function clearWorkforceCookies(
+  response: ServerResponse,
+  secure: boolean,
+  domain?: string,
+): void {
+  appendCookie(
+    response,
+    serializeCookie({
+      domain,
+      httpOnly: true,
+      maxAgeSeconds: 0,
+      name: workforceSessionCookie,
+      path: "/",
+      secure,
+      value: "",
+    }),
+  );
+  appendCookie(
+    response,
+    serializeCookie({
+      domain,
+      httpOnly: false,
+      maxAgeSeconds: 0,
+      name: workforceCsrfCookie,
+      path: "/",
+      secure,
+      value: "",
+    }),
+  );
+}
+
+function appendCookie(response: ServerResponse, cookieString: string): void {
+  const existing = response.getHeader("set-cookie");
+  if (!existing) {
+    response.setHeader("set-cookie", cookieString);
+  } else if (Array.isArray(existing)) {
+    response.setHeader("set-cookie", [...existing, cookieString]);
+  } else {
+    response.setHeader("set-cookie", [String(existing), cookieString]);
+  }
+}
+
+function parseCookies(headerValue: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const part of headerValue.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0) {
+      const key = part.slice(0, eq).trim();
+      const val = part.slice(eq + 1).trim();
+      try {
+        map.set(key, decodeURIComponent(val));
+      } catch {
+        map.set(key, val);
+      }
+    }
+  }
+  return map;
+}
+
+function serializeCookie(options: {
+  name: string;
+  value: string;
+  maxAgeSeconds?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: "Lax" | "Strict" | "None";
+  domain?: string;
+  path?: string;
+}): string {
+  const parts = [`${options.name}=${encodeURIComponent(options.value)}`];
+  parts.push(`Path=${options.path ?? "/"}`);
+  if (options.maxAgeSeconds !== undefined) {
+    parts.push(`Max-Age=${options.maxAgeSeconds}`);
+  }
+  parts.push(`SameSite=${options.sameSite ?? "Lax"}`);
+  if (options.httpOnly) parts.push("HttpOnly");
+  if (options.secure) parts.push("Secure");
+  if (options.domain) parts.push(`Domain=${options.domain}`);
+  return parts.join("; ");
 }
 
 function assertOrigin(

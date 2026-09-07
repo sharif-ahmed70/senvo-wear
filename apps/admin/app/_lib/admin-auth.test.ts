@@ -391,4 +391,72 @@ describe("AdminAuthClient", () => {
     await client.logout(creds);
     expect(readStoredCredentials()).toBeNull();
   });
+
+  it("login: cookie mode without sessionToken stores credentials and returns session", async () => {
+    const cookieLoginResponse = {
+      csrfToken: "csrf-cookie-123",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      principal: ownerPrincipal,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(makeApiSuccess(cookieLoginResponse));
+    const client = new AdminAuthClient({ fetcher });
+
+    const result = await client.login("admin@test.com", "Pass123!", false);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.session.displayName).toBe("Alice Owner");
+      expect(result.credentials.csrfToken).toBe("csrf-cookie-123");
+      expect(result.credentials.sessionToken).toBeUndefined();
+    }
+    const stored = readStoredCredentials();
+    expect(stored?.csrfToken).toBe("csrf-cookie-123");
+    expect(stored?.sessionToken).toBeUndefined();
+  });
+
+  it("restoreSession: validates session via cookie when stored credentials have no sessionToken", async () => {
+    storeCredentials({
+      csrfToken: "csrf-cookie-123",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      rememberMe: false,
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(makeApiSuccess(sessionResponse));
+    const client = new AdminAuthClient({ fetcher });
+
+    const result = await client.restoreSession();
+
+    expect(result).not.toBeNull();
+    expect(result?.session.displayName).toBe("Alice Owner");
+    expect(result?.credentials.sessionToken).toBeUndefined();
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("logout: sends CSRF header without Bearer when sessionToken is omitted", async () => {
+    const creds: AdminCredentials = {
+      csrfToken: "csrf-cookie-123",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      rememberMe: false,
+    };
+    storeCredentials(creds);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(makeApiSuccess({ loggedOut: true }));
+    const client = new AdminAuthClient({ fetcher });
+
+    await client.logout(creds);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/auth/logout"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-csrf-token")).toBe("csrf-cookie-123");
+    expect(headers.get("authorization")).toBeNull();
+    expect(readStoredCredentials()).toBeNull();
+  });
 });

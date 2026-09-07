@@ -43,19 +43,45 @@ export class WorkforceAuthenticationError extends Error {
   }
 }
 
+export type WorkforceAuthenticationRateLimiter = {
+  consumeRateLimit(input: {
+    action: string;
+    blockForMs: number;
+    keyHash: string;
+    maximumAttempts: number;
+    now: Date;
+    organizationId: string;
+    windowMs: number;
+  }): Promise<{ allowed: boolean; retryAfterSeconds: number }>;
+  reset?(input: {
+    action: string;
+    keyHash: string;
+    organizationId: string;
+  }): Promise<void>;
+};
+
 export type WorkforceAuthenticationServiceDeps = {
   clock?: () => Date;
   credentials: UserCredentialRepository;
+  fallbackPasswordHash?: string;
   idGenerator?: () => string;
   memberships: OrganizationMembershipRepository;
   organizationResolver: {
-    findOrganizationById(
-      id: string,
-    ): Promise<{ id: string; name: string } | null>;
+    findOrganizationById(id: string): Promise<{
+      id: string;
+      name: string;
+      status?: "ACTIVE" | "INACTIVE";
+    } | null>;
     findOrganizationIdByCode?(code: string): Promise<string | null>;
     listOrganizationIdsForUser?(userId: string): Promise<string[]>;
   };
   passwords: PasswordHasher;
+  rateLimiter?: WorkforceAuthenticationRateLimiter;
+  rolePermissions?: {
+    listActivePermissionsByRole(
+      role: string,
+    ): Promise<{ action: string; resource: string }[]>;
+  };
   secrets: AuthenticationSecretService;
   users: UserRepository;
   workforceSessions: WorkforceAuthenticationRepository;
@@ -80,11 +106,51 @@ export class WorkforceAuthenticationService {
         "INVALID_CREDENTIALS",
         "Invalid credentials.",
       );
+
     const credential = await this.deps.credentials.findByProviderIdentifier(
       "PASSWORD",
       email,
     );
-    if (!credential)
+    const user = credential
+      ? await this.deps.users.findById(credential.userId)
+      : null;
+    const membership = user
+      ? await this.resolveActiveMembership(user.id)
+      : null;
+
+    const keyHash = this.deps.secrets.hashSecret(email);
+    const rateLimitOrgId =
+      membership?.organizationId ??
+      (await this.deps.organizationResolver.findOrganizationIdByCode?.(
+        "DEFAULT",
+      )) ??
+      "00000000-0000-0000-0000-000000000000";
+
+    if (this.deps.rateLimiter && rateLimitOrgId) {
+      const rate = await this.deps.rateLimiter.consumeRateLimit({
+        action: "WORKFORCE_LOGIN",
+        blockForMs: 15 * 60_000,
+        keyHash,
+        maximumAttempts: 5,
+        now: this.clock(),
+        organizationId: rateLimitOrgId,
+        windowMs: 15 * 60_000,
+      });
+      if (!rate.allowed) {
+        throw new WorkforceAuthenticationError(
+          "RATE_LIMITED",
+          "Too many login attempts. Please try again later.",
+        );
+      }
+    }
+
+    const passwordHash =
+      credential?.passwordHash ?? this.deps.fallbackPasswordHash;
+    const verified = passwordHash
+      ? await this.deps.passwords.verify(input.password, passwordHash)
+      : false;
+
+    if (!credential || !verified)
       throw new WorkforceAuthenticationError(
         "INVALID_CREDENTIALS",
         "Invalid credentials.",
@@ -94,16 +160,6 @@ export class WorkforceAuthenticationService {
         "ACCOUNT_DISABLED",
         "Account is disabled.",
       );
-    const verified = await this.deps.passwords.verify(
-      input.password,
-      credential.passwordHash ?? "",
-    );
-    if (!verified)
-      throw new WorkforceAuthenticationError(
-        "INVALID_CREDENTIALS",
-        "Invalid credentials.",
-      );
-    const user = await this.deps.users.findById(credential.userId);
     if (!user)
       throw new WorkforceAuthenticationError(
         "INVALID_CREDENTIALS",
@@ -114,15 +170,7 @@ export class WorkforceAuthenticationService {
         "ACCOUNT_DISABLED",
         "User account is inactive.",
       );
-    // Resolve active membership — for now pick first active membership
-    // In multi-org case we select the first; future enhancement can support explicit org selection
-    const membership = await this.resolveActiveMembership(user.id);
-    if (!membership)
-      throw new WorkforceAuthenticationError(
-        "MEMBERSHIP_INACTIVE",
-        "No active organization membership.",
-      );
-    if (membership.status !== "ACTIVE")
+    if (!membership || membership.status !== "ACTIVE")
       throw new WorkforceAuthenticationError(
         "MEMBERSHIP_INACTIVE",
         "Membership is inactive.",
@@ -137,6 +185,21 @@ export class WorkforceAuthenticationService {
         "MEMBERSHIP_INACTIVE",
         "Organization not found.",
       );
+    if (organization.status && organization.status !== "ACTIVE")
+      throw new WorkforceAuthenticationError(
+        "MEMBERSHIP_INACTIVE",
+        "Organization is inactive.",
+      );
+
+    if (this.deps.rateLimiter?.reset && rateLimitOrgId) {
+      void this.deps.rateLimiter
+        .reset({
+          action: "WORKFORCE_LOGIN",
+          keyHash,
+          organizationId: rateLimitOrgId,
+        })
+        .catch(() => {});
+    }
 
     const now = this.clock();
     const sessionToken = this.deps.secrets.generateToken();
@@ -160,9 +223,7 @@ export class WorkforceAuthenticationService {
       userId: user.id,
     });
 
-    const permissions = defaultRolePermissions
-      .filter((g) => g.role === membership.role)
-      .map((g) => ({ resource: g.resource, action: g.action }));
+    const permissions = await this.resolvePermissions(membership.role);
 
     return {
       csrfToken,
@@ -226,9 +287,12 @@ export class WorkforceAuthenticationService {
         "UNAUTHORIZED",
         "Session is invalid.",
       );
-    const permissions = defaultRolePermissions
-      .filter((g) => g.role === found.membership.role)
-      .map((g) => ({ resource: g.resource, action: g.action }));
+    if (found.organization.status && found.organization.status !== "ACTIVE")
+      throw new WorkforceAuthenticationError(
+        "MEMBERSHIP_INACTIVE",
+        "Organization is inactive.",
+      );
+    const permissions = await this.resolvePermissions(found.membership.role);
     return {
       csrfTokenHash: found.session.csrfTokenHash,
       displayName: found.user.name ?? found.user.email,
@@ -240,6 +304,22 @@ export class WorkforceAuthenticationService {
       sessionId: found.session.id,
       userId: found.user.id,
     };
+  }
+
+  private async resolvePermissions(
+    role: OrganizationMembership["role"],
+  ): Promise<{ action: string; resource: string }[]> {
+    if (this.deps.rolePermissions) {
+      const active =
+        await this.deps.rolePermissions.listActivePermissionsByRole(role);
+      return (active ?? []).map((g) => ({
+        resource: g.resource,
+        action: g.action,
+      }));
+    }
+    return defaultRolePermissions
+      .filter((g) => g.role === role)
+      .map((g) => ({ resource: g.resource, action: g.action }));
   }
 
   async authorizeMutation(

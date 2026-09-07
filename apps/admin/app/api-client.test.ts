@@ -149,6 +149,37 @@ describe("AdminApiClient", () => {
     });
   });
 
+  it("includes credentials and automatically attaches CSRF header on state-changing requests", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: { success: true },
+          requestId: "req_csrf_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      fetcher,
+      getCsrfToken: () => "mock-csrf-token",
+    });
+
+    await client.request("/test-post", {
+      body: { foo: "bar" },
+      method: "POST",
+    });
+    const postCall = fetcher.mock.calls[0];
+    expect(postCall?.[1]?.credentials).toBe("include");
+    const postHeaders = new Headers(postCall?.[1]?.headers);
+    expect(postHeaders.get("x-csrf-token")).toBe("mock-csrf-token");
+
+    await client.request("/test-get", { method: "GET" });
+    const getCall = fetcher.mock.calls[1];
+    expect(getCall?.[1]?.credentials).toBe("include");
+    const getHeaders = new Headers(getCall?.[1]?.headers);
+    expect(getHeaders.get("x-csrf-token")).toBeNull();
+  });
+
   it("uses typed catalog endpoints and preserves standard error handling", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
