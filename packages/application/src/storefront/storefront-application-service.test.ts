@@ -10,6 +10,7 @@ import type {
   StorefrontRepository,
 } from "@senvo/domain";
 import { StorefrontApplicationService } from "./storefront-application-service.js";
+import type { StorefrontReservationMaintenanceService } from "./storefront-reservation-maintenance-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 
@@ -292,6 +293,164 @@ describe("StorefrontApplicationService", () => {
       },
       ok: true,
     });
+  });
+
+  it("assigns 24-hour expiresAt for CASH_ON_DELIVERY and 30-minute expiresAt for ONLINE_PAYMENT", async () => {
+    vi.useFakeTimers();
+    const fixedNow = new Date("2026-09-07T12:00:00.000Z");
+    vi.setSystemTime(fixedNow);
+    try {
+      const clock = { now: () => fixedNow };
+
+      const storefront = storefrontRepository();
+      const capturedCOD: { expiresAt?: Date | null } = {};
+      const salesCOD = salesRepository({});
+      salesCOD.reserve = vi.fn(async (record) => {
+        capturedCOD.expiresAt = record.expiresAt;
+        return order("RESERVED", 2);
+      });
+
+      const codService = new StorefrontApplicationService({
+        clock,
+        organizationCode: "SENVO",
+        repository: storefront,
+        transactionManager: transactionManager(storefront, salesCOD),
+      });
+
+      const codResult = await codService.checkout("request-cod-12345", {
+        ...payload,
+        idempotencyKey: "web:cod-ttl-test",
+        paymentPreference: "CASH_ON_DELIVERY",
+      });
+      expect(codResult.ok).toBe(true);
+
+      // COD TTL is 24 hours
+      expect(capturedCOD.expiresAt).toEqual(
+        new Date("2026-09-08T12:00:00.000Z"),
+      );
+
+      const payment = onlinePaymentService(true);
+      const capturedOnline: { expiresAt?: Date | null } = {};
+      const salesOnline = salesRepository({});
+      salesOnline.reserve = vi.fn(async (record) => {
+        capturedOnline.expiresAt = record.expiresAt;
+        return order("RESERVED", 2);
+      });
+
+      const onlineService = new StorefrontApplicationService({
+        clock,
+        onlinePayments: payment.service,
+        organizationCode: "SENVO",
+        repository: storefront,
+        transactionManager: transactionManager(storefront, salesOnline),
+      });
+
+      const onlineResult = await onlineService.checkout(
+        "request-online-12345",
+        {
+          ...payload,
+          idempotencyKey: "web:online-ttl-test",
+          paymentPreference: "ONLINE_PAYMENT",
+        },
+      );
+      expect(onlineResult.ok).toBe(true);
+
+      // ONLINE_PAYMENT TTL is 30 minutes
+      expect(capturedOnline.expiresAt).toEqual(
+        new Date("2026-09-07T12:30:00.000Z"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects terminal replays with CONFLICT for both CASH_ON_DELIVERY and ONLINE_PAYMENT when order is CANCELLED", async () => {
+    const storefront = storefrontRepository();
+    const sales = salesRepository({});
+    const service = new StorefrontApplicationService({
+      organizationCode: "SENVO",
+      repository: storefront,
+      transactionManager: transactionManager(storefront, sales),
+    });
+
+    await service.checkout("req-initial", payload);
+    const profile = vi.mocked(storefront.createCommerceProfile).mock
+      .calls[0]?.[0];
+
+    // Simulate expired/cancelled replay for COD
+    vi.mocked(storefront.findCheckoutByIdempotencyKey).mockResolvedValueOnce({
+      currencyCode: "BDT",
+      orderId,
+      orderNumber: "WEB-COD-CANCELLED",
+      paymentPreference: "CASH_ON_DELIVERY",
+      requestSignature: profile?.requestSignature ?? "",
+      status: "CANCELLED",
+      totalMinor: 259800,
+    });
+
+    const codConflict = await service.checkout("req-cod-replay", payload);
+    expect(codConflict).toMatchObject({
+      error: {
+        code: "CONFLICT",
+        message: "The existing storefront order is no longer reserved.",
+      },
+      ok: false,
+    });
+
+    // Simulate expired/cancelled replay for ONLINE_PAYMENT
+    vi.mocked(storefront.findCheckoutByIdempotencyKey).mockResolvedValueOnce({
+      currencyCode: "BDT",
+      orderId,
+      orderNumber: "WEB-ONLINE-CANCELLED",
+      paymentPreference: "ONLINE_PAYMENT",
+      requestSignature: profile?.requestSignature ?? "",
+      status: "CANCELLED",
+      totalMinor: 259800,
+    });
+
+    const onlineConflict = await service.checkout("req-online-replay", payload);
+    expect(onlineConflict).toMatchObject({
+      error: {
+        code: "CONFLICT",
+        message: "The existing storefront order is no longer reserved.",
+      },
+      ok: false,
+    });
+  });
+
+  it("invokes bounded maintenance before listCatalog, getProduct, and checkout", async () => {
+    const storefront = storefrontRepository();
+    const sales = salesRepository({});
+    const reclaimSpy = vi.fn(async () => ({
+      candidatesFound: 0,
+      cutoff: new Date(),
+      hasMore: false,
+      reclaimedCount: 0,
+      reclaimedOrderIds: [],
+    }));
+
+    const maintenanceService = {
+      reclaimDueReservations: reclaimSpy,
+    } as unknown as StorefrontReservationMaintenanceService;
+
+    const service = new StorefrontApplicationService({
+      maintenanceService,
+      organizationCode: "SENVO",
+      repository: storefront,
+      transactionManager: transactionManager(storefront, sales),
+    });
+
+    await service.listCatalog("req-list", { page: 1, pageSize: 24 });
+    expect(reclaimSpy).toHaveBeenCalledTimes(1);
+    expect(reclaimSpy).toHaveBeenLastCalledWith({ organizationId });
+
+    await service.getProduct("req-product", { slug: "test-product" });
+    expect(reclaimSpy).toHaveBeenCalledTimes(2);
+    expect(reclaimSpy).toHaveBeenLastCalledWith({ organizationId });
+
+    await service.checkout("req-checkout", payload);
+    expect(reclaimSpy).toHaveBeenCalledTimes(3);
+    expect(reclaimSpy).toHaveBeenLastCalledWith({ organizationId });
   });
 });
 

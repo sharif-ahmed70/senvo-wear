@@ -155,6 +155,28 @@ export type SalesOrderListFilter = {
   status?: SalesOrderStatus;
 };
 
+export type FindDueStorefrontReservationOrderIdsFilter = {
+  cutoff: Date;
+  limit: number;
+  organizationId: string;
+};
+
+export type ReclaimExpiredStorefrontReservationRecord = {
+  applicationTime?: Date;
+  cutoff: Date;
+  organizationId: string;
+  salesOrderId: string;
+};
+
+export type ReclaimExpiredStorefrontReservationResult = {
+  expiresAt: Date | null;
+  orderId: string;
+  orderNumber?: string;
+  reclaimed: boolean;
+  reservationId?: string;
+  reservationNumber?: string;
+};
+
 export type SalesOrderRepository = {
   amendDraft(record: AmendDraftSalesOrderRecord): Promise<SalesOrder>;
   cancel(record: CancelSalesOrderRecord): Promise<SalesOrder>;
@@ -172,11 +194,17 @@ export type SalesOrderRepository = {
     organizationId: string,
     orderNumber: string,
   ): Promise<SalesOrder | null>;
+  findDueStorefrontReservationOrderIds(
+    filter: FindDueStorefrontReservationOrderIdsFilter,
+  ): Promise<string[]>;
   fulfill(
     record: FulfillSalesOrderRecord,
     payloadSignature: string,
   ): Promise<SalesOrder>;
   list(filter: SalesOrderListFilter): Promise<CursorPageResult<SalesOrder>>;
+  reclaimExpiredStorefrontReservation(
+    record: ReclaimExpiredStorefrontReservationRecord,
+  ): Promise<ReclaimExpiredStorefrontReservationResult>;
   reserve(
     record: ReserveSalesOrderRecord,
     payloadSignature: string,

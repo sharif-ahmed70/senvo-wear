@@ -66,6 +66,31 @@ describe("RepositoryAuditWriter", () => {
       }),
     ).rejects.toBeInstanceOf(ValidationApplicationError);
   });
+
+  it("accepts STOREFRONT_RESERVATION_EXPIRED with SALES_ORDER resource and null user", async () => {
+    const repository = new MemoryAuditEntryRepository();
+    const writer = new RepositoryAuditWriter(repository);
+
+    await writer.record({
+      action: "STOREFRONT_RESERVATION_EXPIRED",
+      actor: { userId: null },
+      metadata: {
+        orderNumber: "WEB-12345",
+        reservationId: "55555555-5555-4555-8555-555555555555",
+      },
+      organizationId,
+      resource: "SALES_ORDER",
+      resourceId,
+    });
+
+    expect(repository.lastRecord).toMatchObject({
+      action: "STOREFRONT_RESERVATION_EXPIRED",
+      organizationId,
+      resource: "SALES_ORDER",
+      resourceId,
+      userId: null,
+    });
+  });
 });
 
 class MemoryAuditEntryRepository implements AuditEntryRepository {

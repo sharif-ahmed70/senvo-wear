@@ -571,6 +571,11 @@ export class PrismaInventoryReservationRepository implements InventoryReservatio
           if (!current) {
             return null;
           }
+          if (current.referenceType === "SALES_ORDER") {
+            throw new BusinessRuleError(
+              "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+            );
+          }
           if (current.status !== "ACTIVE") {
             throw new BusinessRuleError(
               "Terminal inventory reservations cannot transition.",
@@ -857,6 +862,11 @@ export class PrismaInventoryReservationConsumptionRepository implements Inventor
           }
           throw new ConflictError(
             "Inventory reservation has already been consumed.",
+          );
+        }
+        if (reservation.referenceType === "SALES_ORDER") {
+          throw new BusinessRuleError(
+            "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
           );
         }
         if (reservation.status !== "ACTIVE") {

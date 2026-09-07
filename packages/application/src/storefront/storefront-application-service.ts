@@ -21,14 +21,23 @@ import {
 } from "@senvo/contracts";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import type { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
+import type { Clock } from "../context/clock.js";
+import { systemClock } from "../context/clock.js";
 import { validateExecutionContext } from "../context/execution-context.js";
 import {
   ApplicationServiceError,
   type ApplicationServiceResult,
 } from "../errors/application-error.js";
 import type { CatalogMediaApplicationService } from "../catalog/catalog-media-application-service.js";
+import {
+  type StorefrontReservationMaintenanceService,
+  STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS,
+  STOREFRONT_COD_RESERVATION_TTL_MS,
+} from "./storefront-reservation-maintenance-service.js";
 
 export type StorefrontApplicationServiceDependencies = {
+  clock?: Clock;
+  maintenanceService?: StorefrontReservationMaintenanceService;
   organizationCode: string;
   repository: StorefrontRepository;
   requestIdGenerator?: () => string;
@@ -38,6 +47,8 @@ export type StorefrontApplicationServiceDependencies = {
 };
 
 export class StorefrontApplicationService {
+  private readonly clock: Clock;
+  private readonly maintenanceService?: StorefrontReservationMaintenanceService;
   private readonly organizationCode: string;
   private readonly repository: StorefrontRepository;
   private readonly requestIdGenerator: () => string;
@@ -46,6 +57,8 @@ export class StorefrontApplicationService {
   private readonly onlinePayments?: OnlinePaymentApplicationService;
 
   constructor(dependencies: StorefrontApplicationServiceDependencies) {
+    this.clock = dependencies.clock ?? systemClock;
+    this.maintenanceService = dependencies.maintenanceService;
     this.organizationCode = dependencies.organizationCode.trim().toUpperCase();
     this.repository = dependencies.repository;
     this.requestIdGenerator =
@@ -62,6 +75,7 @@ export class StorefrontApplicationService {
     return this.execute(requestId, async () => {
       const input = storefrontCatalogQuerySchema.parse(payload);
       const organization = await this.resolveOrganization();
+      await this.runMaintenance(organization.id);
       const catalog = await this.repository.listCatalog({
         ...input,
         organizationId: organization.id,
@@ -90,6 +104,7 @@ export class StorefrontApplicationService {
     return this.execute(requestId, async () => {
       const input = storefrontProductQuerySchema.parse(payload);
       const organization = await this.resolveOrganization();
+      await this.runMaintenance(organization.id);
       const product = await this.repository.getProductBySlug(
         organization.id,
         input.slug,
@@ -133,6 +148,7 @@ export class StorefrontApplicationService {
     return this.execute(requestId, async () => {
       const input = storefrontCheckoutInputSchema.parse(payload);
       const organization = await this.resolveOrganization();
+      await this.runMaintenance(organization.id);
       const normalized = normalizeCheckout(input);
       const signature = createHash("sha256")
         .update(JSON.stringify(normalized))
@@ -170,10 +186,7 @@ export class StorefrontApplicationService {
                 "Storefront idempotency key was already used with different details.",
               );
             }
-            if (
-              replay.paymentPreference === "CASH_ON_DELIVERY" &&
-              replay.status !== "RESERVED"
-            ) {
+            if (replay.status !== "RESERVED") {
               throw new ConflictError(
                 "The existing storefront order is no longer reserved.",
               );
@@ -259,8 +272,14 @@ export class StorefrontApplicationService {
             orderNumber: `WEB-${reference}`,
             organizationId: organization.id,
           });
+          const ttlMs =
+            normalized.paymentPreference === "ONLINE_PAYMENT"
+              ? STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS
+              : STOREFRONT_COD_RESERVATION_TTL_MS;
+          const expiresAt = new Date(this.clock.now().getTime() + ttlMs);
           const reserved = await reserveSalesOrder(sales, {
             expectedVersion: draft.version,
+            expiresAt,
             organizationId: organization.id,
             reservationIdempotencyKey: `storefront-reservation:${normalized.idempotencyKey}`,
             reservationNumber: `WEB-RSV-${reference}`,
@@ -356,6 +375,12 @@ export class StorefrontApplicationService {
   paymentNotification(requestId: string, payload: unknown) {
     if (!this.onlinePayments) return unavailablePaymentResult(requestId);
     return this.onlinePayments.notification(requestId, payload);
+  }
+
+  private async runMaintenance(organizationId: string): Promise<void> {
+    if (this.maintenanceService) {
+      await this.maintenanceService.reclaimDueReservations({ organizationId });
+    }
   }
 
   private async resolveOrganization() {
@@ -473,7 +498,10 @@ function normalizeError(error: unknown): ApplicationServiceError {
       code: error.message.toLowerCase().includes("idempotency")
         ? "IDEMPOTENCY_CONFLICT"
         : "CONFLICT",
-      message: "This request was already used with different details.",
+      message:
+        error.message ||
+        error.publicMessage ||
+        "This request was already used with different details.",
     });
   }
   if (error instanceof BusinessRuleError) {

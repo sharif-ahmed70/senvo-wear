@@ -1343,6 +1343,92 @@ describeWithDatabase("Prisma sales order repositories", () => {
       }),
     ).rejects.toThrow(/constraint/i);
   });
+
+  it("finds and reclaims expired storefront reservations while restoring sellable availability", async () => {
+    const base = await createSalesBase("RECLAIM");
+    await seedOnHand(base, 10);
+
+    const order = await createOrder(base, "SO-RECLAIM-1", 3);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    const cutoff = new Date("2026-09-07T11:00:00.000Z");
+
+    const reserved = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      expiresAt: pastDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-reclaim-1",
+      reservationNumber: "RSV-RECLAIM-1",
+      salesOrderId: order.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-reclaim-1",
+        salesOrderId: reserved.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    const availabilityHeld = await availability.getAvailability({
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.location.id,
+    });
+    expect(availabilityHeld.reservedQuantity).toBe(3);
+    expect(availabilityHeld.availableQuantity).toBe(7);
+
+    // Verify discovery finds the due candidate
+    const dueIds = await salesOrders.findDueStorefrontReservationOrderIds({
+      cutoff,
+      limit: 10,
+      organizationId: base.organization.id,
+    });
+    expect(dueIds).toEqual([order.id]);
+
+    // Reclaim the candidate
+    const reclaimResult = await salesOrders.reclaimExpiredStorefrontReservation(
+      {
+        cutoff,
+        organizationId: base.organization.id,
+        salesOrderId: order.id,
+      },
+    );
+    expect(reclaimResult.reclaimed).toBe(true);
+    expect(reclaimResult.orderId).toBe(order.id);
+
+    // Verify stock availability restored
+    const availabilityRestored = await availability.getAvailability({
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.location.id,
+    });
+    expect(availabilityRestored.reservedQuantity).toBe(0);
+    expect(availabilityRestored.availableQuantity).toBe(10);
+
+    // Verify DB states
+    const cancelledOrder = await prisma.salesOrder.findUnique({
+      where: { id: order.id },
+    });
+    expect(cancelledOrder?.status).toBe("CANCELLED");
+
+    const expiredReservation = await prisma.inventoryReservation.findFirst({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+    });
+    expect(expiredReservation?.status).toBe("EXPIRED");
+
+    // Subsequent reclaim is an idempotent no-op
+    const secondReclaim = await salesOrders.reclaimExpiredStorefrontReservation(
+      {
+        cutoff,
+        organizationId: base.organization.id,
+        salesOrderId: order.id,
+      },
+    );
+    expect(secondReclaim.reclaimed).toBe(false);
+  });
 });
 
 type SalesBase = Awaited<ReturnType<typeof createSalesBase>>;

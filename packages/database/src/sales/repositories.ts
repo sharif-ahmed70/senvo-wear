@@ -8,7 +8,10 @@ import {
   parseSalesOrderCursor,
   type AmendDraftSalesOrderRecord,
   type CreateDraftSalesOrderRecord,
+  type FindDueStorefrontReservationOrderIdsFilter,
   type FulfillSalesOrderRecord,
+  type ReclaimExpiredStorefrontReservationRecord,
+  type ReclaimExpiredStorefrontReservationResult,
   type ReserveSalesOrderRecord,
   type SalesOrder,
   type SalesOrderListFilter,
@@ -31,6 +34,7 @@ type SalesPrismaClient = Pick<
   | "inventoryReservationLine"
   | "productVariant"
   | "salesOrder"
+  | "salesOrderCommerceProfile"
   | "salesOrderLine"
 >;
 
@@ -396,6 +400,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           const reservation = await transaction.inventoryReservation.findFirst({
             where: {
               id: order.inventoryReservationId,
@@ -472,6 +481,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           await assertMovementIdempotencyAvailable(
             transaction,
             record,
@@ -556,6 +570,132 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
     }
   }
 
+  async findDueStorefrontReservationOrderIds(
+    filter: FindDueStorefrontReservationOrderIdsFilter,
+  ): Promise<string[]> {
+    const orders = await this.prisma.salesOrder.findMany({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+      take: filter.limit,
+      where: {
+        commerceProfile: {
+          source: "STOREFRONT",
+        },
+        inventoryReservation: {
+          consumedByMovementId: null,
+          expiresAt: {
+            lte: filter.cutoff,
+            not: null,
+          },
+          status: "ACTIVE",
+        },
+        organizationId: filter.organizationId,
+        status: "RESERVED",
+      },
+    });
+    return orders.map((order) => order.id);
+  }
+
+  async reclaimExpiredStorefrontReservation(
+    record: ReclaimExpiredStorefrontReservationRecord,
+  ): Promise<ReclaimExpiredStorefrontReservationResult> {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockOrderRow(
+          transaction,
+          record.organizationId,
+          record.salesOrderId,
+        );
+        const order = await transaction.salesOrder.findFirst({
+          include: {
+            commerceProfile: true,
+            lines: { orderBy: { lineNumber: "asc" } },
+          },
+          where: {
+            id: record.salesOrderId,
+            organizationId: record.organizationId,
+          },
+        });
+
+        if (
+          !order ||
+          order.status !== "RESERVED" ||
+          !order.inventoryReservationId ||
+          order.commerceProfile?.source !== "STOREFRONT"
+        ) {
+          return {
+            expiresAt: null,
+            orderId: record.salesOrderId,
+            reclaimed: false,
+          };
+        }
+
+        await lockReservationRow(
+          transaction,
+          order.organizationId,
+          order.inventoryReservationId,
+        );
+        const reservation = await transaction.inventoryReservation.findFirst({
+          include: { lines: { orderBy: { lineNumber: "asc" } } },
+          where: {
+            id: order.inventoryReservationId,
+            organizationId: order.organizationId,
+          },
+        });
+
+        if (
+          !reservation ||
+          reservation.status !== "ACTIVE" ||
+          reservation.consumedByMovementId !== null ||
+          !reservation.expiresAt ||
+          reservation.expiresAt.getTime() > record.cutoff.getTime()
+        ) {
+          return {
+            expiresAt: reservation?.expiresAt ?? null,
+            orderId: order.id,
+            reclaimed: false,
+          };
+        }
+
+        await lockStockKeys(transaction, {
+          lines: reservation.lines,
+          organizationId: reservation.organizationId,
+          stockLocationId: reservation.stockLocationId,
+        });
+
+        const now = record.applicationTime ?? new Date();
+        await transaction.inventoryReservation.update({
+          data: {
+            expiredAt: now,
+            status: "EXPIRED",
+            version: { increment: 1 },
+          },
+          where: { id: reservation.id },
+        });
+
+        await transaction.salesOrder.update({
+          data: {
+            cancelledAt: now,
+            status: "CANCELLED",
+            version: { increment: 1 },
+          },
+          where: { id: order.id },
+        });
+
+        return {
+          expiresAt: reservation.expiresAt,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          reclaimed: true,
+          reservationId: reservation.id,
+          reservationNumber: reservation.reservationNumber,
+        };
+      });
+    } catch (error) {
+      mapSalesOrderIntegrityError(error);
+    }
+  }
+
   private async transitionWithReservationCheck(
     record: {
       expectedVersion: number;
@@ -584,6 +724,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           const reservation = await transaction.inventoryReservation.findFirst({
             where: {
               id: order.inventoryReservationId,
@@ -597,6 +742,12 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
             throw new BusinessRuleError(
               "Sales order reservation must remain active before confirmation.",
             );
+          }
+          if (
+            reservation.expiresAt &&
+            reservation.expiresAt.getTime() <= Date.now()
+          ) {
+            throw new BusinessRuleError("Sales order reservation has expired.");
           }
           return transaction.salesOrder.update({
             data: {
@@ -668,6 +819,7 @@ export function createTransactionScopedSalesOrderRepository(
     inventoryReservationLine: transaction.inventoryReservationLine,
     productVariant: transaction.productVariant,
     salesOrder: transaction.salesOrder,
+    salesOrderCommerceProfile: transaction.salesOrderCommerceProfile,
     salesOrderLine: transaction.salesOrderLine,
   };
   return new PrismaSalesOrderRepository(client);
@@ -848,6 +1000,20 @@ async function lockOrderRow(
     SELECT id
     FROM sales_orders
     WHERE id = ${salesOrderId}::uuid
+      AND organization_id = ${organizationId}::uuid
+    FOR UPDATE
+  `;
+}
+
+async function lockReservationRow(
+  transaction: SalesTransaction,
+  organizationId: string,
+  reservationId: string,
+): Promise<void> {
+  await transaction.$executeRaw`
+    SELECT id
+    FROM inventory_reservations
+    WHERE id = ${reservationId}::uuid
       AND organization_id = ${organizationId}::uuid
     FOR UPDATE
   `;

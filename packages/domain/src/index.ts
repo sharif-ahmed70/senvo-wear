@@ -645,7 +645,10 @@ export type {
   DraftSalesOrderMetadataChanges,
   CursorPageRequest as SalesCursorPageRequest,
   CursorPageResult as SalesCursorPageResult,
+  FindDueStorefrontReservationOrderIdsFilter,
   FulfillSalesOrderRecord,
+  ReclaimExpiredStorefrontReservationRecord,
+  ReclaimExpiredStorefrontReservationResult,
   ReserveSalesOrderRecord,
   ReplaceSalesOrderLineRecord,
   SalesOrderListFilter,
@@ -656,6 +659,11 @@ export type {
   SalesSourceRepository,
   SalesSourceSummary,
 } from "./sales/repositories/sales-order-repositories.js";
+export {
+  assertValidReservationCutoff,
+  isStorefrontReservationDue,
+  type DueStorefrontReservationCandidate,
+} from "./sales/application/reservation-expiry-use-cases.js";
 export {
   getSalesOrderDetails,
   listSalesOrderReadModel,
