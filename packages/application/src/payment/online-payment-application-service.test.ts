@@ -253,9 +253,42 @@ describe("OnlinePaymentApplicationService", () => {
       }),
     );
   });
+
+  it("returns only CASH_ON_DELIVERY when provider is disabled and performs no repository or provider I/O", async () => {
+    const fixture = createFixture({}, { enabled: false });
+
+    const result = await fixture.service.options("request-options-disabled");
+
+    expect(result).toEqual({
+      data: { methods: ["CASH_ON_DELIVERY"] },
+      ok: true,
+    });
+    expect(fixture.provider.createSession).not.toHaveBeenCalled();
+    expect(fixture.provider.queryTransaction).not.toHaveBeenCalled();
+    expect(fixture.repository.findLatestAttemptForOrder).not.toHaveBeenCalled();
+    expect(fixture.repository.createAttempt).not.toHaveBeenCalled();
+  });
+
+  it("returns CASH_ON_DELIVERY and ONLINE_PAYMENT when provider is enabled and performs no repository or provider I/O", async () => {
+    const fixture = createFixture({}, { enabled: true });
+
+    const result = await fixture.service.options("request-options-enabled");
+
+    expect(result).toEqual({
+      data: { methods: ["CASH_ON_DELIVERY", "ONLINE_PAYMENT"] },
+      ok: true,
+    });
+    expect(fixture.provider.createSession).not.toHaveBeenCalled();
+    expect(fixture.provider.queryTransaction).not.toHaveBeenCalled();
+    expect(fixture.repository.findLatestAttemptForOrder).not.toHaveBeenCalled();
+    expect(fixture.repository.createAttempt).not.toHaveBeenCalled();
+  });
 });
 
-function createFixture(overrides: Partial<OnlinePaymentOrderFacts> = {}) {
+function createFixture(
+  overrides: Partial<OnlinePaymentOrderFacts> = {},
+  providerOverrides: Partial<OnlinePaymentProviderAdapter> = {},
+) {
   const facts: OnlinePaymentOrderFacts = {
     currencyCode: "BDT",
     customerEmail: null,
@@ -298,6 +331,7 @@ function createFixture(overrides: Partial<OnlinePaymentOrderFacts> = {}) {
       status: "SUCCEEDED" as const,
       validationId,
     })),
+    ...providerOverrides,
   };
   const repository = createRepository(facts, attempts, refunds, notifications);
   const confirmOrder = vi.fn(async () => ({ id: salesOrderId }));

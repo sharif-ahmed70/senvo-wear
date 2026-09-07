@@ -100,3 +100,8 @@ jobs:
 
       - name: Verify database migration and catalog integration
         run: pnpm verify:database
+
+      - name: Verify application checkout commerce integrity
+        run: |
+          pnpm --filter @senvo/application... build
+          pnpm --filter @senvo/application test:integration
