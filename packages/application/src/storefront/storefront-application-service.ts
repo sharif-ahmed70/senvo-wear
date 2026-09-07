@@ -189,6 +189,16 @@ export class StorefrontApplicationService {
             });
           }
 
+          if (normalized.paymentPreference === "ONLINE_PAYMENT") {
+            const options = await this.paymentOptions(context.requestId);
+            if (!options.ok) {
+              throw new ApplicationServiceError(options.error);
+            }
+            if (!options.data.methods.includes("ONLINE_PAYMENT")) {
+              throw new BusinessRuleError("Online payment is unavailable.");
+            }
+          }
+
           const facts = await storefront.loadCheckoutFacts(
             organization.id,
             normalized.lines.map((line) => line.productVariantId),
@@ -469,7 +479,7 @@ function normalizeError(error: unknown): ApplicationServiceError {
   if (error instanceof BusinessRuleError) {
     return new ApplicationServiceError({
       code: "BUSINESS_RULE_VIOLATION",
-      message: error.publicMessage,
+      message: error.message || error.publicMessage,
     });
   }
   if (error instanceof ApplicationError) {
