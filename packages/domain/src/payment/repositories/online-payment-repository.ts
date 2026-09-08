@@ -92,6 +92,10 @@ export type OnlinePaymentRepository = {
     salesOrderId: string,
   ): Promise<OnlinePaymentProjection | null>;
   lockAttempt(id: string, organizationId: string): Promise<void>;
+  lockOrderLifecycle(
+    organizationId: string,
+    salesOrderId: string,
+  ): Promise<void>;
   recordNotification(record: {
     dedupeKey: string;
     eventType: string;

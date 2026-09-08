@@ -379,7 +379,16 @@ export class StorefrontApplicationService {
 
   private async runMaintenance(organizationId: string): Promise<void> {
     if (this.maintenanceService) {
-      await this.maintenanceService.reclaimDueReservations({ organizationId });
+      const result = await this.maintenanceService.reclaimDueReservations({
+        organizationId,
+      });
+      if (result.hasMore) {
+        throw new ApplicationServiceError({
+          code: "INTERNAL_ERROR",
+          message: "Storefront availability is being refreshed. Please retry.",
+          retryable: true,
+        });
+      }
     }
   }
 

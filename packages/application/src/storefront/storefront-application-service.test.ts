@@ -367,28 +367,38 @@ describe("StorefrontApplicationService", () => {
   it("rejects terminal replays with CONFLICT for both CASH_ON_DELIVERY and ONLINE_PAYMENT when order is CANCELLED", async () => {
     const storefront = storefrontRepository();
     const sales = salesRepository({});
+    const payment = onlinePaymentService(true);
     const service = new StorefrontApplicationService({
+      onlinePayments: payment.service,
       organizationCode: "SENVO",
       repository: storefront,
       transactionManager: transactionManager(storefront, sales),
     });
 
-    await service.checkout("req-initial", payload);
-    const profile = vi.mocked(storefront.createCommerceProfile).mock
+    const codPayload = {
+      ...payload,
+      idempotencyKey: "web:cod-terminal-test",
+      paymentPreference: "CASH_ON_DELIVERY" as const,
+    };
+    await service.checkout("request-cod-initial-12345", codPayload);
+    const codProfile = vi.mocked(storefront.createCommerceProfile).mock
       .calls[0]?.[0];
 
-    // Simulate expired/cancelled replay for COD
+    // Simulate expired/cancelled replay for COD with real COD payload and signature
     vi.mocked(storefront.findCheckoutByIdempotencyKey).mockResolvedValueOnce({
       currencyCode: "BDT",
       orderId,
       orderNumber: "WEB-COD-CANCELLED",
       paymentPreference: "CASH_ON_DELIVERY",
-      requestSignature: profile?.requestSignature ?? "",
+      requestSignature: codProfile?.requestSignature ?? "",
       status: "CANCELLED",
       totalMinor: 259800,
     });
 
-    const codConflict = await service.checkout("req-cod-replay", payload);
+    const codConflict = await service.checkout(
+      "request-cod-replay-12345",
+      codPayload,
+    );
     expect(codConflict).toMatchObject({
       error: {
         code: "CONFLICT",
@@ -397,18 +407,30 @@ describe("StorefrontApplicationService", () => {
       ok: false,
     });
 
-    // Simulate expired/cancelled replay for ONLINE_PAYMENT
+    const onlinePayload = {
+      ...payload,
+      idempotencyKey: "web:online-terminal-test",
+      paymentPreference: "ONLINE_PAYMENT" as const,
+    };
+    await service.checkout("request-online-initial-12345", onlinePayload);
+    const onlineProfile = vi.mocked(storefront.createCommerceProfile).mock
+      .calls[1]?.[0];
+
+    // Simulate expired/cancelled replay for ONLINE_PAYMENT with real ONLINE_PAYMENT payload and signature
     vi.mocked(storefront.findCheckoutByIdempotencyKey).mockResolvedValueOnce({
       currencyCode: "BDT",
       orderId,
       orderNumber: "WEB-ONLINE-CANCELLED",
       paymentPreference: "ONLINE_PAYMENT",
-      requestSignature: profile?.requestSignature ?? "",
+      requestSignature: onlineProfile?.requestSignature ?? "",
       status: "CANCELLED",
       totalMinor: 259800,
     });
 
-    const onlineConflict = await service.checkout("req-online-replay", payload);
+    const onlineConflict = await service.checkout(
+      "request-online-replay-12345",
+      onlinePayload,
+    );
     expect(onlineConflict).toMatchObject({
       error: {
         code: "CONFLICT",
@@ -416,6 +438,77 @@ describe("StorefrontApplicationService", () => {
       },
       ok: false,
     });
+  });
+
+  it("blocks listCatalog, getProduct, and checkout with retryable INTERNAL_ERROR when maintenance hasMore is true", async () => {
+    const storefront = storefrontRepository();
+    const sales = salesRepository({});
+    const payment = onlinePaymentService(true);
+    const reclaimSpy = vi.fn(async () => ({
+      candidatesFound: 25,
+      cutoff: new Date(),
+      hasMore: true,
+      reclaimedCount: 25,
+      reclaimedOrderIds: ["order-1"],
+    }));
+
+    const maintenanceService = {
+      reclaimDueReservations: reclaimSpy,
+    } as unknown as StorefrontReservationMaintenanceService;
+
+    const service = new StorefrontApplicationService({
+      maintenanceService,
+      onlinePayments: payment.service,
+      organizationCode: "SENVO",
+      repository: storefront,
+      transactionManager: transactionManager(storefront, sales),
+    });
+
+    // 1. listCatalog is blocked
+    const listResult = await service.listCatalog("request-list-more", {
+      page: 1,
+      pageSize: 24,
+    });
+    expect(listResult).toMatchObject({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Storefront availability is being refreshed. Please retry.",
+        retryable: true,
+      },
+      ok: false,
+    });
+    expect(storefront.listCatalog).not.toHaveBeenCalled();
+
+    // 2. getProduct is blocked
+    const productResult = await service.getProduct("request-prod-more", {
+      slug: "everyday-tee",
+    });
+    expect(productResult).toMatchObject({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Storefront availability is being refreshed. Please retry.",
+        retryable: true,
+      },
+      ok: false,
+    });
+    expect(storefront.getProductBySlug).not.toHaveBeenCalled();
+
+    // 3. checkout is blocked before loading facts, creating orders, or initiating payment
+    const checkoutResult = await service.checkout(
+      "request-check-more",
+      payload,
+    );
+    expect(checkoutResult).toMatchObject({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Storefront availability is being refreshed. Please retry.",
+        retryable: true,
+      },
+      ok: false,
+    });
+    expect(storefront.loadCheckoutFacts).not.toHaveBeenCalled();
+    expect(storefront.createCommerceProfile).not.toHaveBeenCalled();
+    expect(sales.reserve).not.toHaveBeenCalled();
   });
 
   it("invokes bounded maintenance before listCatalog, getProduct, and checkout", async () => {
@@ -634,6 +727,7 @@ function onlinePaymentService(providerEnabled = true) {
     })),
     getProjection: vi.fn(),
     lockAttempt: vi.fn(async () => undefined),
+    lockOrderLifecycle: vi.fn(async () => undefined),
     recordNotification: vi.fn(),
     settleConfirmedPayment: vi.fn(),
     totalReservedRefundMinor: vi.fn(async () => 0),

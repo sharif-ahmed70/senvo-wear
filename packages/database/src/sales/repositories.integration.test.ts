@@ -35,6 +35,7 @@ let salesOrderReads: PrismaSalesOrderReadRepository;
 let salesSources: PrismaSalesSourceRepository;
 let balances: PrismaInventoryBalanceQueryRepository;
 let availability: PrismaInventoryAvailabilityQueryRepository;
+let onlinePayments: PrismaOnlinePaymentRepository;
 
 describeWithDatabase("Prisma sales order repositories", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
@@ -47,6 +48,7 @@ describeWithDatabase("Prisma sales order repositories", () => {
     salesSources = new PrismaSalesSourceRepository(prisma);
     balances = new PrismaInventoryBalanceQueryRepository(prisma);
     availability = new PrismaInventoryAvailabilityQueryRepository(prisma);
+    onlinePayments = new PrismaOnlinePaymentRepository(prisma);
   });
 
   beforeEach(async () => {
@@ -1349,12 +1351,13 @@ describeWithDatabase("Prisma sales order repositories", () => {
     await seedOnHand(base, 10);
 
     const order = await createOrder(base, "SO-RECLAIM-1", 3);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
     const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
     const cutoff = new Date("2026-09-07T11:00:00.000Z");
 
     const reserved = await reserveSalesOrder(salesOrders, {
       expectedVersion: order.version,
-      expiresAt: pastDeadline,
+      expiresAt: futureDeadline,
       organizationId: base.organization.id,
       reservationIdempotencyKey: "idem-rsv-reclaim-1",
       reservationNumber: "RSV-RECLAIM-1",
@@ -1370,6 +1373,11 @@ describeWithDatabase("Prisma sales order repositories", () => {
         salesOrderId: reserved.id,
         source: "STOREFRONT",
       },
+    });
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
     });
 
     const availabilityHeld = await availability.getAvailability({
@@ -1428,6 +1436,449 @@ describeWithDatabase("Prisma sales order repositories", () => {
       },
     );
     expect(secondReclaim.reclaimed).toBe(false);
+  });
+
+  it("blocks stock during active unexpired reservation, refuses reclaim before deadline, and preserves confirmed order past old deadline", async () => {
+    const base = await createSalesBase("UNEXPIRED");
+    await seedOnHand(base, 10);
+
+    const order = await createOrder(base, "SO-UNEXP-1", 4);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const now = new Date();
+
+    const reserved = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-unexp-1",
+      reservationNumber: "RSV-UNEXP-1",
+      salesOrderId: order.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-unexp-1",
+        salesOrderId: reserved.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    const availabilityHeld = await availability.getAvailability({
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.location.id,
+    });
+    expect(availabilityHeld.reservedQuantity).toBe(4);
+    expect(availabilityHeld.availableQuantity).toBe(6);
+
+    const dueBefore = await salesOrders.findDueStorefrontReservationOrderIds({
+      cutoff: now,
+      limit: 10,
+      organizationId: base.organization.id,
+    });
+    expect(dueBefore).toEqual([]);
+
+    const earlyReclaim = await salesOrders.reclaimExpiredStorefrontReservation({
+      cutoff: now,
+      organizationId: base.organization.id,
+      salesOrderId: order.id,
+    });
+    expect(earlyReclaim.reclaimed).toBe(false);
+
+    const confirmed = await confirmSalesOrder(salesOrders, {
+      expectedVersion: reserved.version,
+      organizationId: base.organization.id,
+      salesOrderId: order.id,
+    });
+    expect(confirmed.status).toBe("CONFIRMED");
+
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const dueAfterConfirm =
+      await salesOrders.findDueStorefrontReservationOrderIds({
+        cutoff: new Date(),
+        limit: 10,
+        organizationId: base.organization.id,
+      });
+    expect(dueAfterConfirm).not.toContain(order.id);
+
+    const postConfirmReclaim =
+      await salesOrders.reclaimExpiredStorefrontReservation({
+        cutoff: new Date(),
+        organizationId: base.organization.id,
+        salesOrderId: order.id,
+      });
+    expect(postConfirmReclaim.reclaimed).toBe(false);
+
+    const orderRecord = await prisma.salesOrder.findUnique({
+      where: { id: order.id },
+    });
+    expect(orderRecord?.status).toBe("CONFIRMED");
+  });
+
+  it("restores sellable availability after reclaim so fresh order can reserve recovered stock", async () => {
+    const base = await createSalesBase("RESTORE");
+    await seedOnHand(base, 5);
+
+    const order1 = await createOrder(base, "SO-RESTORE-1", 5);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    const cutoff = new Date("2026-09-07T11:00:00.000Z");
+
+    await reserveSalesOrder(salesOrders, {
+      expectedVersion: order1.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-rst-1",
+      reservationNumber: "RSV-RST-1",
+      salesOrderId: order1.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "ONLINE_PAYMENT",
+        requestSignature: "sig-rst-1",
+        salesOrderId: order1.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    const availBefore = await availability.getAvailability({
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.location.id,
+    });
+    expect(availBefore.availableQuantity).toBe(0);
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order1.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const reclaimResult = await salesOrders.reclaimExpiredStorefrontReservation(
+      {
+        cutoff,
+        organizationId: base.organization.id,
+        salesOrderId: order1.id,
+      },
+    );
+    expect(reclaimResult.reclaimed).toBe(true);
+
+    const availAfter = await availability.getAvailability({
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      stockLocationId: base.location.id,
+    });
+    expect(availAfter.availableQuantity).toBe(5);
+
+    const order2 = await createOrder(base, "SO-RESTORE-2", 5);
+    const reserved2 = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order2.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-rst-2",
+      reservationNumber: "RSV-RST-2",
+      salesOrderId: order2.id,
+    });
+    expect(reserved2.status).toBe("RESERVED");
+  });
+
+  it("ignores cancelled or fulfilled orders during reclaim and preserves correct status pairs", async () => {
+    const base = await createSalesBase("TERMINAL");
+    await seedOnHand(base, 10);
+
+    const cancelOrder = await createOrder(base, "SO-TERM-CANCEL", 2);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+
+    const reservedCancel = await reserveSalesOrder(salesOrders, {
+      expectedVersion: cancelOrder.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-term-cancel",
+      reservationNumber: "RSV-TERM-CANCEL",
+      salesOrderId: cancelOrder.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-term-cancel",
+        salesOrderId: cancelOrder.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    await cancelSalesOrder(salesOrders, {
+      expectedVersion: reservedCancel.version,
+      organizationId: base.organization.id,
+      salesOrderId: cancelOrder.id,
+    });
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: cancelOrder.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const cancelReclaim = await salesOrders.reclaimExpiredStorefrontReservation(
+      {
+        cutoff: new Date(),
+        organizationId: base.organization.id,
+        salesOrderId: cancelOrder.id,
+      },
+    );
+    expect(cancelReclaim.reclaimed).toBe(false);
+
+    const reservationAfterCancel = await prisma.inventoryReservation.findFirst({
+      where: { referenceId: cancelOrder.id, referenceType: "SALES_ORDER" },
+    });
+    expect(reservationAfterCancel?.status).toBe("RELEASED");
+
+    const fulfillOrder = await createOrder(base, "SO-TERM-FULFILL", 2);
+    const reservedFulfill = await reserveSalesOrder(salesOrders, {
+      expectedVersion: fulfillOrder.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-term-fulfill",
+      reservationNumber: "RSV-TERM-FULFILL",
+      salesOrderId: fulfillOrder.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-term-fulfill",
+        salesOrderId: fulfillOrder.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    const confirmedFulfill = await confirmSalesOrder(salesOrders, {
+      expectedVersion: reservedFulfill.version,
+      organizationId: base.organization.id,
+      salesOrderId: fulfillOrder.id,
+    });
+
+    await fulfillSalesOrder(salesOrders, {
+      consumptionIdempotencyKey: "consume-fulfill-term",
+      expectedVersion: confirmedFulfill.version,
+      movementNumber: "MV-FULFILL-TERM",
+      occurredAt: "2026-07-03T01:00:00.000Z",
+      organizationId: base.organization.id,
+      salesOrderId: fulfillOrder.id,
+    });
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: fulfillOrder.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const fulfillReclaim =
+      await salesOrders.reclaimExpiredStorefrontReservation({
+        cutoff: new Date(),
+        organizationId: base.organization.id,
+        salesOrderId: fulfillOrder.id,
+      });
+    expect(fulfillReclaim.reclaimed).toBe(false);
+
+    const reservationAfterFulfill = await prisma.inventoryReservation.findFirst(
+      {
+        where: { referenceId: fulfillOrder.id, referenceType: "SALES_ORDER" },
+      },
+    );
+    expect(reservationAfterFulfill?.status).toBe("CONSUMED");
+  });
+
+  it("serializes concurrent reclaims so exactly one succeeds", async () => {
+    const base = await createSalesBase("CONCUR_RECLAIM");
+    await seedOnHand(base, 10);
+
+    const order = await createOrder(base, "SO-CONCUR-REC", 2);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    const cutoff = new Date("2026-09-07T11:00:00.000Z");
+
+    await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-concur-rec",
+      reservationNumber: "RSV-CONCUR-REC",
+      salesOrderId: order.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-concur-rec",
+        salesOrderId: order.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const client2 = createPrismaClient();
+    const salesOrders2 = new PrismaSalesOrderRepository(client2);
+
+    try {
+      const [res1, res2] = await Promise.all([
+        salesOrders.reclaimExpiredStorefrontReservation({
+          cutoff,
+          organizationId: base.organization.id,
+          salesOrderId: order.id,
+        }),
+        salesOrders2.reclaimExpiredStorefrontReservation({
+          cutoff,
+          organizationId: base.organization.id,
+          salesOrderId: order.id,
+        }),
+      ]);
+
+      const reclaimedCount =
+        (res1.reclaimed ? 1 : 0) + (res2.reclaimed ? 1 : 0);
+      expect(reclaimedCount).toBe(1);
+    } finally {
+      await client2.$disconnect();
+    }
+  });
+
+  it("locks order lifecycle and accurately reflects order facts after reclaim", async () => {
+    const base = await createSalesBase("LOCK_LIFECYCLE");
+    await seedOnHand(base, 10);
+
+    const order = await createOrder(base, "SO-LOCK-LC", 2);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    const cutoff = new Date("2026-09-07T11:00:00.000Z");
+
+    await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-lock-lc",
+      reservationNumber: "RSV-LOCK-LC",
+      salesOrderId: order.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "ONLINE_PAYMENT",
+        requestSignature: "sig-lock-lc",
+        salesOrderId: order.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    await expect(
+      onlinePayments.lockOrderLifecycle(base.organization.id, order.id),
+    ).resolves.toBeUndefined();
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const reclaimResult = await salesOrders.reclaimExpiredStorefrontReservation(
+      {
+        cutoff,
+        organizationId: base.organization.id,
+        salesOrderId: order.id,
+      },
+    );
+    expect(reclaimResult.reclaimed).toBe(true);
+
+    const facts = await onlinePayments.getOrderFacts(
+      base.organization.id,
+      order.id,
+    );
+    expect(facts).toMatchObject({
+      reservationStatus: "EXPIRED",
+      salesOrderStatus: "CANCELLED",
+    });
+  });
+
+  it("enforces strict cross-tenant isolation during discovery and reclaim", async () => {
+    const base1 = await createSalesBase("TENANT_1");
+    const base2 = await createSalesBase("TENANT_2");
+    await seedOnHand(base1, 10);
+    await seedOnHand(base2, 10);
+
+    const order1 = await createOrder(base1, "SO-T1-1", 2);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date("2026-09-07T10:00:00.000Z");
+    const cutoff = new Date("2026-09-07T11:00:00.000Z");
+
+    await reserveSalesOrder(salesOrders, {
+      expectedVersion: order1.version,
+      expiresAt: futureDeadline,
+      organizationId: base1.organization.id,
+      reservationIdempotencyKey: "idem-rsv-t1",
+      reservationNumber: "RSV-T1",
+      salesOrderId: order1.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base1.organization.id,
+        paymentPreference: "CASH_ON_DELIVERY",
+        requestSignature: "sig-t1",
+        salesOrderId: order1.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order1.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    const t2Due = await salesOrders.findDueStorefrontReservationOrderIds({
+      cutoff,
+      limit: 10,
+      organizationId: base2.organization.id,
+    });
+    expect(t2Due).toEqual([]);
+
+    const t2Reclaim = await salesOrders.reclaimExpiredStorefrontReservation({
+      cutoff,
+      organizationId: base2.organization.id,
+      salesOrderId: order1.id,
+    });
+    expect(t2Reclaim.reclaimed).toBe(false);
+
+    const t1Order = await prisma.salesOrder.findUnique({
+      where: { id: order1.id },
+    });
+    expect(t1Order?.status).toBe("RESERVED");
+  });
+
+  it("rejects lockOrderLifecycle for non-existent order or foreign organization", async () => {
+    const base = await createSalesBase("LOCK_NOT_FOUND");
+    await expect(
+      onlinePayments.lockOrderLifecycle(base.organization.id, randomUUID()),
+    ).rejects.toThrow(NotFoundError);
   });
 });
 

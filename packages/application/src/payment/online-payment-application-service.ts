@@ -655,6 +655,10 @@ export class OnlinePaymentApplicationService {
         }
         return true;
       }
+      await repository.lockOrderLifecycle(
+        attempt.organizationId,
+        attempt.salesOrderId,
+      );
       const facts = await repository.getOrderFacts(
         attempt.organizationId,
         attempt.salesOrderId,
@@ -670,11 +674,33 @@ export class OnlinePaymentApplicationService {
       let operationalReason: string | null =
         observation.riskLevel === 1 ? "PROVIDER_RISK_REVIEW" : null;
       if (facts.salesOrderStatus === "RESERVED" && reservationAvailable) {
-        await confirmSalesOrder(sales, {
-          expectedVersion: facts.salesOrderVersion,
-          organizationId: attempt.organizationId,
-          salesOrderId: attempt.salesOrderId,
-        });
+        try {
+          await confirmSalesOrder(sales, {
+            expectedVersion: facts.salesOrderVersion,
+            organizationId: attempt.organizationId,
+            salesOrderId: attempt.salesOrderId,
+          });
+        } catch (error) {
+          const freshFacts = await repository.getOrderFacts(
+            attempt.organizationId,
+            attempt.salesOrderId,
+          );
+          const freshReservationAvailable =
+            freshFacts?.reservationStatus === "ACTIVE" &&
+            (!freshFacts.reservationExpiresAt ||
+              freshFacts.reservationExpiresAt > this.clock.now());
+          if (
+            freshFacts &&
+            (freshFacts.salesOrderStatus === "CANCELLED" ||
+              freshFacts.reservationStatus === "EXPIRED" ||
+              !freshReservationAvailable)
+          ) {
+            resolutionStatus = "REFUND_REQUIRED";
+            operationalReason = "LATE_SUCCESS_RESERVATION_UNAVAILABLE";
+          } else {
+            throw error;
+          }
+        }
       } else if (
         facts.salesOrderStatus !== "CONFIRMED" &&
         facts.salesOrderStatus !== "FULFILLED"

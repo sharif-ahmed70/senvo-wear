@@ -123,6 +123,71 @@ describe("OnlinePaymentApplicationService", () => {
     });
   });
 
+  it("locks order lifecycle before reading facts on successful provider observation", async () => {
+    const fixture = createFixture();
+    const attempt = await fixture.service.initiateForCheckout({
+      idempotencyKey: "checkout:payment-lifecycle-lock",
+      organizationId,
+      requestId: "request-1",
+      salesOrderId,
+    });
+    const callOrder: string[] = [];
+    vi.mocked(fixture.repository.lockOrderLifecycle).mockImplementation(
+      async () => {
+        callOrder.push("lockOrderLifecycle");
+      },
+    );
+    vi.mocked(fixture.repository.getOrderFacts).mockImplementation(async () => {
+      callOrder.push("getOrderFacts");
+      return fixture.facts;
+    });
+
+    const result = await fixture.service.notification(
+      "request-ipn",
+      validNotification(attempt),
+    );
+    expect(result.ok).toBe(true);
+    expect(callOrder).toEqual(["lockOrderLifecycle", "getOrderFacts"]);
+  });
+
+  it("handles deadline crossing safely when reservation expires during order confirmation", async () => {
+    const fixture = createFixture();
+    const attempt = await fixture.service.initiateForCheckout({
+      idempotencyKey: "checkout:payment-deadline-crossing",
+      organizationId,
+      requestId: "request-1",
+      salesOrderId,
+    });
+
+    // Simulate concurrent reservation expiry during confirmSalesOrder
+    fixture.confirmOrder.mockImplementation(async () => {
+      fixture.facts.salesOrderStatus = "CANCELLED";
+      fixture.facts.reservationStatus = "EXPIRED";
+      throw new Error("Sales order reservation has expired.");
+    });
+
+    const result = await fixture.service.notification(
+      "request-ipn",
+      validNotification(attempt),
+    );
+    expect(result).toEqual({
+      data: { accepted: true, replayed: false },
+      ok: true,
+    });
+    expect(fixture.repository.settleConfirmedPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ resolutionStatus: "REFUND_REQUIRED" }),
+    );
+    expect(fixture.repository.createReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: "LATE_SUCCESS_RESERVATION_UNAVAILABLE",
+      }),
+    );
+    expect(fixture.attempts[0]).toMatchObject({
+      resolutionStatus: "REFUND_REQUIRED",
+      status: "SUCCEEDED",
+    });
+  });
+
   it("records an amount mismatch and never settles it", async () => {
     const fixture = createFixture();
     const attempt = await fixture.service.initiateForCheckout({
@@ -458,6 +523,7 @@ function createRepository(
     ),
     getProjection: vi.fn(),
     lockAttempt: vi.fn(async () => undefined),
+    lockOrderLifecycle: vi.fn(async () => undefined),
     recordNotification: vi.fn(async (record) => {
       const existing = notifications.get(record.dedupeKey);
       if (existing)
