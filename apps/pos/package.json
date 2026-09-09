@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@senvo/ui": "workspace:*",
-    "next": "16.2.11",
+    "next": "16.3.3",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
@@ -22,6 +22,6 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "typescript": "6.0.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   }
 }
