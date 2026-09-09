@@ -2186,6 +2186,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       quantity: 10,
     });
 
+    // 1. Create real sales order as DRAFT
     const salesOrder = await prisma.salesOrder.create({
       data: {
         channel: "ONLINE",
@@ -2199,12 +2200,19 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
         orderNumber: `SO-${randomUUID().slice(0, 8)}`,
         organizationId: base.organization.id,
         payloadSignature: "{}",
-        status: "RESERVED",
+        status: "DRAFT",
         subtotalMinor: 1000,
         totalMinor: 1000,
+        inventoryReservationId: null,
+        reservedAt: null,
+        confirmedAt: null,
+        cancelledAt: null,
+        fulfilledAt: null,
       },
     });
     const salesOrderId = salesOrder.id;
+
+    // 2. Create the real inventory reservation with referenceType = "SALES_ORDER"
     const reservation = await reserve(base, {
       quantity: 4,
       referenceId: salesOrderId,
@@ -2212,13 +2220,54 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       reservationNumber: "RSV-SALES-GUARD",
     });
 
-    expect(reservation.status).toBe("ACTIVE");
-    expect(reservation.referenceType).toBe("SALES_ORDER");
+    // 3. Transition/link the order in ONE valid database update
+    await prisma.salesOrder.update({
+      where: { id: salesOrderId },
+      data: {
+        status: "RESERVED",
+        inventoryReservationId: reservation.id,
+        reservedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+
+    // 4. Re-read both rows
+    const initialOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: salesOrderId },
+    });
+    const initialReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+
+    // Assert BOTH relationship directions and statuses:
+    expect(initialOrder.inventoryReservationId).toBe(reservation.id);
+    expect(initialReservation.referenceType).toBe("SALES_ORDER");
+    expect(initialReservation.referenceId).toBe(initialOrder.id);
+    expect(initialOrder.status).toBe("RESERVED");
+    expect(initialReservation.status).toBe("ACTIVE");
+
+    // Capture initial state
+    const orderInitialVersion = initialOrder.version;
+    const reservationInitialVersion = initialReservation.version;
+    await expectAvailability(base, 10, 4, 6);
+
+    const initialIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
+    });
+    const initialMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
 
     // 1. Direct release must reject
     await expect(
       releaseInventoryReservation(reservations, {
-        expectedVersion: reservation.version,
+        expectedVersion: reservationInitialVersion,
         organizationId: base.organization.id,
         reservationId: reservation.id,
       }),
@@ -2229,7 +2278,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     // 2. Direct expire must reject
     await expect(
       expireInventoryReservation(reservations, {
-        expectedVersion: reservation.version,
+        expectedVersion: reservationInitialVersion,
         organizationId: base.organization.id,
         reservationId: reservation.id,
       }),
@@ -2240,7 +2289,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     // 3. Direct confirm must reject
     await expect(
       confirmInventoryReservation(reservations, {
-        expectedVersion: reservation.version,
+        expectedVersion: reservationInitialVersion,
         organizationId: base.organization.id,
         reservationId: reservation.id,
       }),
@@ -2251,7 +2300,7 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     // 4. Direct consume must reject
     await expect(
       consume(base, reservation, {
-        expectedReservationVersion: reservation.version,
+        expectedReservationVersion: reservationInitialVersion,
         idempotencyKey: "idem-direct-consume",
         movementNumber: "MV-DIRECT-CONSUME",
       }),
@@ -2259,29 +2308,41 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
     );
 
-    // Real sales order unchanged:
-    const persistedOrder = await prisma.salesOrder.findUnique({
+    // Real sales order remains RESERVED with version unchanged
+    const finalOrder = await prisma.salesOrder.findUniqueOrThrow({
       where: { id: salesOrderId },
     });
-    expect(persistedOrder?.status).toBe("RESERVED");
-    expect(persistedOrder?.version).toBe(salesOrder.version);
+    expect(finalOrder.status).toBe("RESERVED");
+    expect(finalOrder.version).toBe(orderInitialVersion);
 
-    // State verification:
-    const persisted = await prisma.inventoryReservation.findUnique({
-      where: { id: reservation.id },
-    });
-    expect(persisted?.status).toBe("ACTIVE");
-    expect(persisted?.version).toBe(reservation.version);
-    expect(persisted?.consumedByMovementId).toBeNull();
+    // Reservation remains ACTIVE with version unchanged and consumedByMovementId null
+    const finalReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+    expect(finalReservation.status).toBe("ACTIVE");
+    expect(finalReservation.version).toBe(reservationInitialVersion);
+    expect(finalReservation.consumedByMovementId).toBeNull();
 
     // Availability remains unchanged (10 on hand, 4 reserved, 6 available)
     await expectAvailability(base, 10, 4, 6);
 
-    // No movement lines created
-    const movement = await prisma.inventoryMovement.findFirst({
-      where: { movementNumber: "MV-DIRECT-CONSUME" },
+    // No new ISSUE movement created
+    const finalIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
     });
-    expect(movement).toBeNull();
+    expect(finalIssueMovementCount).toBe(initialIssueMovementCount);
+
+    // No new consumption ledger mutation
+    const finalMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
+    expect(finalMovementLineCount).toBe(initialMovementLineCount);
   });
 
   async function createPolicy(
