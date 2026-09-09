@@ -1758,7 +1758,10 @@ describeWithDatabase("Prisma sales order repositories", () => {
         where: { referenceId: fulfillOrder.id, referenceType: "SALES_ORDER" },
       },
     );
-    expect(reservationAfterFulfill?.status).toBe("CONSUMED");
+    expect(reservationAfterFulfill?.status).toBe("CONFIRMED");
+    expect(reservationAfterFulfill?.consumedByMovementId).toEqual(
+      expect.any(String),
+    );
   });
 
   it("serializes concurrent reclaims so exactly one succeeds", async () => {
