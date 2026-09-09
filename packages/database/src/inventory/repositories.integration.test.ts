@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   allocateAndCreateInventoryReservation,
   changeInventoryAllocationPolicyStatus,
@@ -2185,7 +2186,25 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       quantity: 10,
     });
 
-    const salesOrderId = "44444444-4444-4444-8444-444444444444";
+    const salesOrder = await prisma.salesOrder.create({
+      data: {
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        customerName: "Real Customer",
+        customerPhone: "01712345678",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryAddressLine1: "Road 1",
+        idempotencyKey: `idem-so-${randomUUID()}`,
+        orderNumber: `SO-${randomUUID().slice(0, 8)}`,
+        organizationId: base.organization.id,
+        payloadSignature: "{}",
+        status: "RESERVED",
+        subtotalMinor: 1000,
+        totalMinor: 1000,
+      },
+    });
+    const salesOrderId = salesOrder.id;
     const reservation = await reserve(base, {
       quantity: 4,
       referenceId: salesOrderId,
@@ -2239,6 +2258,13 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     ).rejects.toThrow(
       "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
     );
+
+    // Real sales order unchanged:
+    const persistedOrder = await prisma.salesOrder.findUnique({
+      where: { id: salesOrderId },
+    });
+    expect(persistedOrder?.status).toBe("RESERVED");
+    expect(persistedOrder?.version).toBe(salesOrder.version);
 
     // State verification:
     const persisted = await prisma.inventoryReservation.findUnique({

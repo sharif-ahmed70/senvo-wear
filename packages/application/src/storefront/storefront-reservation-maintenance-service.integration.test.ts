@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/require-await */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import {
 } from "@senvo/domain";
 import {
   createPrismaClient,
+  createTransactionScopedSalesOrderRepository,
   PrismaInventoryAvailabilityQueryRepository,
   PrismaOnlinePaymentRepository,
   PrismaSalesOrderRepository,
@@ -38,6 +40,16 @@ type StorefrontFixture = {
   variant: { id: string };
 };
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("StorefrontReservationMaintenanceService coordinated reclaim integration", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
   let prisma: ReturnType<typeof createPrismaClient>;
@@ -64,6 +76,7 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
     pastDeadline?: Date;
     quantity?: number;
     paymentPreference?: "CASH_ON_DELIVERY" | "ONLINE_PAYMENT";
+    providerAdapter?: OnlinePaymentProviderAdapter;
   }) {
     const client = params.prismaClient ?? prisma;
     const quantity = params.quantity ?? 1;
@@ -79,9 +92,42 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       salesOrderRepository: salesOrderRepo,
       transactionManager,
     });
+
+    const paymentRepo = new PrismaOnlinePaymentRepository(client);
+    const defaultProvider: OnlinePaymentProviderAdapter = {
+      createSession: vi.fn(async () => ({
+        expiresAt: null,
+        redirectUrl: "https://sandbox.sslcommerz.com/redirect",
+        sessionId: "session-1",
+      })),
+      enabled: true,
+      initiateRefund: vi.fn(),
+      queryRefund: vi.fn(),
+      queryTransaction: vi.fn(),
+      validateNotificationSignature: vi.fn(() => true),
+      validateTransaction: vi.fn(async (validationId) => ({
+        amountMinor: 129900 * quantity,
+        bankTransactionId: "BANK-1",
+        currencyCode: "BDT",
+        providerStatus: "VALID",
+        providerTransactionId: `TX-${randomUUID()}`,
+        riskLevel: 0,
+        status: "SUCCEEDED" as const,
+        validationId,
+      })),
+    };
+
+    const onlinePayments = new OnlinePaymentApplicationService({
+      clock: testClock,
+      provider: params.providerAdapter ?? defaultProvider,
+      repository: paymentRepo,
+      transactionManager,
+    });
+
     const storefront = new StorefrontApplicationService({
       clock: testClock,
       maintenanceService,
+      onlinePayments,
       organizationCode: params.fixture.organization.code,
       repository: storefrontRepo,
       transactionManager,
@@ -114,19 +160,30 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       throw new Error(`Checkout failed: ${JSON.stringify(checkoutResult)}`);
     }
     const orderId = checkoutResult.data.orderId;
-    const pastDeadline =
-      params.pastDeadline ?? new Date(Date.now() - 60 * 1000);
-    await client.inventoryReservation.updateMany({
-      where: { referenceId: orderId, referenceType: "SALES_ORDER" },
-      data: { expiresAt: pastDeadline },
-    });
+    if (params.pastDeadline) {
+      await client.inventoryReservation.updateMany({
+        where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+        data: { expiresAt: params.pastDeadline },
+      });
+    }
     const order = await client.salesOrder.findUniqueOrThrow({
       where: { id: orderId },
     });
+    const attempt =
+      params.paymentPreference === "ONLINE_PAYMENT"
+        ? await client.onlinePaymentAttempt.findFirst({
+            where: { salesOrderId: orderId },
+          })
+        : null;
+
     return {
+      attempt,
+      checkoutResult,
+      onlinePayments,
       order,
       orderId,
       payload,
+      paymentRepo,
       salesOrderRepo,
       storefront,
       transactionManager,
@@ -141,7 +198,7 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       prisma,
     ) as unknown as ApplicationTransactionManager;
 
-    let currentTime = new Date("2026-09-07T12:00:00.000Z");
+    let currentTime = new Date();
     const testClock = { now: () => currentTime };
 
     const maintenanceService = new StorefrontReservationMaintenanceService({
@@ -215,7 +272,7 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       expect(earlyReclaim.candidatesFound).toBe(0);
 
       // 5. Fast-forward clock past the 24 hour expiry TTL
-      currentTime = new Date("2026-09-08T12:00:01.000Z");
+      currentTime = new Date(Date.now() + 25 * 60 * 60 * 1000);
 
       // 6. Run maintenance sweep now that reservation has expired
       const reclaimResult = await maintenanceService.reclaimDueReservations({
@@ -277,50 +334,19 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
 
   it("enforces cleanup vs checkout concurrency so stock is never double allocated", async () => {
     const fixture = await createFixture(prisma);
-    const storefrontRepo = new PrismaStorefrontRepository(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
-    const transactionManager = new PrismaTransactionManager(
-      prisma,
-    ) as unknown as ApplicationTransactionManager;
-
-    let currentTime = new Date("2026-09-07T12:00:00.000Z");
-    const testClock = { now: () => currentTime };
-    const maintenanceService = new StorefrontReservationMaintenanceService({
-      clock: testClock,
-      salesOrderRepository: salesOrderRepo,
-      transactionManager,
-    });
-    const storefront = new StorefrontApplicationService({
-      clock: testClock,
-      maintenanceService,
-      organizationCode: fixture.organization.code,
-      repository: storefrontRepo,
-      transactionManager,
-    });
+    const client2 = createPrismaClient();
 
     try {
-      // 1. Checkout all 5 available units
-      const payload1 = {
-        customer: { name: "Buyer 1", phone: "01711111111" },
-        deliveryAddress: {
-          city: "Dhaka",
-          district: "Dhaka",
-          line1: "Street 1",
-        },
-        idempotencyKey: `idem-contend-1-${randomUUID()}`,
-        lines: [
-          {
-            productVariantId: fixture.variant.id,
-            quantity: 5,
-            reviewedUnitPriceMinor: 129900,
-          },
-        ],
-        paymentPreference: "CASH_ON_DELIVERY" as const,
-      };
-      const order1Result = await storefront.checkout("req-contend-1", payload1);
-      expect(order1Result.ok).toBe(true);
+      // 1. Checkout all 5 available units with past deadline
+      const pastDeadline = new Date(Date.now() - 60 * 1000);
+      const { orderId: orderId1 } = await createDueStorefrontOrder({
+        fixture,
+        pastDeadline,
+        prismaClient: prisma,
+        quantity: 5,
+      });
 
-      // Available stock is now 0
+      // Stock is 5 on hand, 5 reserved, 0 available
       const avail0 = await availabilityRepo.getAvailability({
         organizationId: fixture.organization.id,
         productVariantId: fixture.variant.id,
@@ -329,7 +355,37 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       expect(avail0.reservedQuantity).toBe(5);
       expect(avail0.availableQuantity).toBe(0);
 
-      // Second checkout fails due to INSUFFICIENT_STOCK
+      const reclaimHeld = createDeferred();
+      const releaseReclaim = createDeferred();
+
+      // Start reclaim transaction on connection 1, hold it open
+      const reclaimPromise = prisma.$transaction(async (tx) => {
+        const txSales = createTransactionScopedSalesOrderRepository(tx);
+        const res = await txSales.reclaimExpiredStorefrontReservation({
+          cutoff: new Date(),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId1,
+        });
+        reclaimHeld.resolve();
+        await releaseReclaim.promise;
+        return res;
+      });
+
+      await reclaimHeld.promise;
+
+      // Reclaim transaction holds row locks on connection 1.
+      // Start fresh checkout for 3 units on independent connection 2.
+      const storefront2Repo = new PrismaStorefrontRepository(client2);
+      const txManager2 = new PrismaTransactionManager(
+        client2,
+      ) as unknown as ApplicationTransactionManager;
+      const storefront2 = new StorefrontApplicationService({
+        clock: { now: () => new Date() },
+        organizationCode: fixture.organization.code,
+        repository: storefront2Repo,
+        transactionManager: txManager2,
+      });
+
       const payload2 = {
         customer: { name: "Buyer 2", phone: "01722222222" },
         deliveryAddress: {
@@ -347,24 +403,24 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         ],
         paymentPreference: "CASH_ON_DELIVERY" as const,
       };
-      const failOrder2 = await storefront.checkout("req-contend-2", payload2);
-      expect(failOrder2.ok).toBe(false);
 
-      // Fast-forward past expiry
-      currentTime = new Date("2026-09-08T12:00:01.000Z");
+      const checkoutPromise = storefront2.checkout(
+        `req-contend-2-${randomUUID()}`,
+        payload2,
+      );
 
-      // Concurrent sweep and second checkout
-      const [reclaimRes, order2Res] = await Promise.all([
-        maintenanceService.reclaimDueReservations({
-          organizationId: fixture.organization.id,
-        }),
-        storefront.checkout(`req-contend-3-${randomUUID()}`, payload2),
+      // Release reclaim transaction
+      releaseReclaim.resolve();
+
+      const [reclaimRes, checkoutRes] = await Promise.all([
+        reclaimPromise,
+        checkoutPromise,
       ]);
 
-      expect(reclaimRes.reclaimedCount).toBe(1);
-      expect(order2Res.ok).toBe(true);
+      expect(reclaimRes.reclaimed).toBe(true);
+      expect(checkoutRes.ok).toBe(true);
 
-      // Final availability: 3 reserved by buyer 2, 2 remaining available
+      // Assert invariants: no double allocation, no oversell
       const finalAvail = await availabilityRepo.getAvailability({
         organizationId: fixture.organization.id,
         productVariantId: fixture.variant.id,
@@ -373,14 +429,101 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       expect(finalAvail.onHandQuantity).toBe(5);
       expect(finalAvail.reservedQuantity).toBe(3);
       expect(finalAvail.availableQuantity).toBe(2);
+      expect(finalAvail.onHandQuantity).toBeGreaterThanOrEqual(0);
+
+      // Old reservation is EXPIRED
+      const oldRsv = await observerPrisma.inventoryReservation.findFirst({
+        where: { referenceId: orderId1, referenceType: "SALES_ORDER" },
+      });
+      expect(oldRsv?.status).toBe("EXPIRED");
+
+      // New reservation is ACTIVE
+      if (checkoutRes.ok) {
+        const newRsv = await observerPrisma.inventoryReservation.findFirst({
+          where: {
+            referenceId: checkoutRes.data.orderId,
+            referenceType: "SALES_ORDER",
+          },
+        });
+        expect(newRsv?.status).toBe("ACTIVE");
+      }
     } finally {
-      await cleanupFixture(prisma, fixture);
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
     }
   });
 
-  it("resolves cleanup vs confirmation race with exactly one valid terminal outcome", async () => {
+  it("resolves cleanup vs confirmation race with confirm winning deterministically", async () => {
     const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+    const client2 = createPrismaClient();
+
+    try {
+      // 1. Create valid unexpired order
+      const { order, orderId } = await createDueStorefrontOrder({
+        fixture,
+        prismaClient: prisma,
+        quantity: 2,
+      });
+
+      const confirmHeld = createDeferred();
+      const releaseConfirm = createDeferred();
+
+      // Connection 1: confirmation transaction holds lifecycle lock
+      const confirmPromise = prisma.$transaction(async (tx) => {
+        const txSales = createTransactionScopedSalesOrderRepository(tx);
+        const res = await confirmSalesOrder(txSales, {
+          expectedVersion: order.version,
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+        confirmHeld.resolve();
+        await releaseConfirm.promise;
+        return res;
+      });
+
+      await confirmHeld.promise;
+
+      // Connection 2: cleanup starts on independent client and contends
+      const salesOrderRepo2 = new PrismaSalesOrderRepository(client2);
+      const cleanupPromise =
+        salesOrderRepo2.reclaimExpiredStorefrontReservation({
+          cutoff: new Date(Date.now() + 100000),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+
+      releaseConfirm.resolve();
+
+      const [confirmRes, cleanupRes] = await Promise.all([
+        confirmPromise,
+        cleanupPromise,
+      ]);
+
+      expect(confirmRes.status).toBe("CONFIRMED");
+      expect(cleanupRes.reclaimed).toBe(false);
+
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
+        where: { id: orderId },
+      });
+      expect(dbOrder?.status).toBe("CONFIRMED");
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
+        where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+      });
+      expect(dbRsv?.status).toBe("ACTIVE");
+    } finally {
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
+    }
+  });
+
+  it("resolves cleanup vs confirmation race with reclaim winning deterministically", async () => {
+    const fixture = await createFixture(prisma);
+    const client2 = createPrismaClient();
 
     try {
       const pastDeadline = new Date(Date.now() - 60 * 1000);
@@ -391,81 +534,65 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         quantity: 2,
       });
 
-      // Reclaim wins
-      const reclaimResult =
-        await salesOrderRepo.reclaimExpiredStorefrontReservation({
+      const reclaimHeld = createDeferred();
+      const releaseReclaim = createDeferred();
+
+      // Connection 1: reclaim transaction holds lifecycle lock
+      const reclaimPromise = prisma.$transaction(async (tx) => {
+        const txSales = createTransactionScopedSalesOrderRepository(tx);
+        const res = await txSales.reclaimExpiredStorefrontReservation({
           cutoff: new Date(),
           organizationId: fixture.organization.id,
           salesOrderId: orderId,
         });
-      expect(reclaimResult.reclaimed).toBe(true);
-
-      // Subsequent confirmation MUST fail
-      await expect(
-        confirmSalesOrder(salesOrderRepo, {
-          expectedVersion: order.version,
-          organizationId: fixture.organization.id,
-          salesOrderId: orderId,
-        }),
-      ).rejects.toThrow();
-
-      // State is CANCELLED + EXPIRED, never mixed
-      const dbOrder = await prisma.salesOrder.findUnique({
-        where: { id: orderId },
-      });
-      expect(dbOrder?.status).toBe("CANCELLED");
-      const dbRsv = await prisma.inventoryReservation.findFirst({
-        where: { referenceId: orderId, referenceType: "SALES_ORDER" },
-      });
-      expect(dbRsv?.status).toBe("EXPIRED");
-    } finally {
-      await cleanupFixture(prisma, fixture);
-    }
-  });
-
-  it("enforces cleanup vs cancellation race resulting only in valid terminal pairs", async () => {
-    const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
-
-    try {
-      const pastDeadline = new Date(Date.now() - 60 * 1000);
-      const { order, orderId } = await createDueStorefrontOrder({
-        fixture,
-        pastDeadline,
-        prismaClient: prisma,
-        quantity: 1,
+        reclaimHeld.resolve();
+        await releaseReclaim.promise;
+        return res;
       });
 
-      // Manual cancellation wins
-      await cancelSalesOrder(salesOrderRepo, {
+      await reclaimHeld.promise;
+
+      // Connection 2: confirmation starts and contends
+      const salesOrderRepo2 = new PrismaSalesOrderRepository(client2);
+      const confirmPromise = confirmSalesOrder(salesOrderRepo2, {
         expectedVersion: order.version,
         organizationId: fixture.organization.id,
         salesOrderId: orderId,
       });
 
-      // Reclaim attempt skips
-      const reclaimA = await salesOrderRepo.reclaimExpiredStorefrontReservation(
-        {
-          cutoff: new Date(),
-          organizationId: fixture.organization.id,
-          salesOrderId: orderId,
-        },
-      );
-      expect(reclaimA.reclaimed).toBe(false);
+      releaseReclaim.resolve();
 
-      // Valid terminal pair: CANCELLED / RELEASED (never EXPIRED)
-      const rsvA = await prisma.inventoryReservation.findFirst({
+      const [reclaimRes, confirmRes] = await Promise.allSettled([
+        reclaimPromise,
+        confirmPromise,
+      ]);
+
+      expect(reclaimRes.status).toBe("fulfilled");
+      if (reclaimRes.status === "fulfilled") {
+        expect(reclaimRes.value.reclaimed).toBe(true);
+      }
+      expect(confirmRes.status).toBe("rejected");
+
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
+        where: { id: orderId },
+      });
+      expect(dbOrder?.status).toBe("CANCELLED");
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
         where: { referenceId: orderId, referenceType: "SALES_ORDER" },
       });
-      expect(rsvA?.status).toBe("RELEASED");
+      expect(dbRsv?.status).toBe("EXPIRED");
     } finally {
-      await cleanupFixture(prisma, fixture);
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
     }
   });
 
-  it("skips confirmed orders during cleanup and allows fulfillment to consume active hold", async () => {
+  it("enforces cleanup vs cancellation race resulting only in valid terminal pairs", async () => {
     const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+    const client2 = createPrismaClient();
 
     try {
       const pastDeadline = new Date(Date.now() - 60 * 1000);
@@ -476,6 +603,75 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         quantity: 1,
       });
 
+      const cancelHeld = createDeferred();
+      const releaseCancel = createDeferred();
+
+      // Connection 1: manual cancellation transaction holds lifecycle lock
+      const cancelPromise = prisma.$transaction(async (tx) => {
+        const txSales = createTransactionScopedSalesOrderRepository(tx);
+        const res = await cancelSalesOrder(txSales, {
+          expectedVersion: order.version,
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+        cancelHeld.resolve();
+        await releaseCancel.promise;
+        return res;
+      });
+
+      await cancelHeld.promise;
+
+      // Connection 2: reclaim starts and contends
+      const salesOrderRepo2 = new PrismaSalesOrderRepository(client2);
+      const reclaimPromise =
+        salesOrderRepo2.reclaimExpiredStorefrontReservation({
+          cutoff: new Date(),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+
+      releaseCancel.resolve();
+
+      const [cancelRes, reclaimRes] = await Promise.all([
+        cancelPromise,
+        reclaimPromise,
+      ]);
+
+      expect(cancelRes.status).toBe("CANCELLED");
+      expect(reclaimRes.reclaimed).toBe(false);
+
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
+        where: { id: orderId },
+      });
+      expect(dbOrder?.status).toBe("CANCELLED");
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
+        where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+      });
+      expect(dbRsv?.status).toBe("RELEASED");
+    } finally {
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
+    }
+  });
+
+  it("skips confirmed orders during cleanup and allows fulfillment to consume active hold (DETERMINISTIC_OVERLAP_NO_CANDIDATE)", async () => {
+    const fixture = await createFixture(prisma);
+    const client2 = createPrismaClient();
+
+    try {
+      // 1. Create valid unexpired order
+      const { order, orderId, salesOrderRepo } = await createDueStorefrontOrder(
+        {
+          fixture,
+          prismaClient: prisma,
+          quantity: 1,
+        },
+      );
+
+      // 2. Confirm order while reservation is ACTIVE and unexpired
       const confirmed = await confirmSalesOrder(salesOrderRepo, {
         expectedVersion: order.version,
         organizationId: fixture.organization.id,
@@ -483,65 +679,130 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       });
       expect(confirmed.status).toBe("CONFIRMED");
 
-      // Cleanup must skip confirmed order
-      const reclaim = await salesOrderRepo.reclaimExpiredStorefrontReservation({
-        cutoff: new Date(),
-        organizationId: fixture.organization.id,
-        salesOrderId: orderId,
+      // 3. Maintenance sweep on connection 2
+      const salesOrderRepo2 = new PrismaSalesOrderRepository(client2);
+      const txManager2 = new PrismaTransactionManager(
+        client2,
+      ) as unknown as ApplicationTransactionManager;
+      const maint2 = new StorefrontReservationMaintenanceService({
+        clock: { now: () => new Date(Date.now() + 100000) },
+        salesOrderRepository: salesOrderRepo2,
+        transactionManager: txManager2,
       });
-      expect(reclaim.reclaimed).toBe(false);
 
-      // Fulfillment proceeds
-      const fulfilled = await fulfillSalesOrder(salesOrderRepo, {
-        consumptionIdempotencyKey: `consume-ful-${randomUUID()}`,
-        expectedVersion: confirmed.version,
-        movementNumber: `MV-FUL-${randomUUID().slice(0, 6)}`,
-        occurredAt: new Date().toISOString(),
-        organizationId: fixture.organization.id,
-        salesOrderId: orderId,
-      });
+      // Overlap maintenance and fulfillment
+      const [reclaimResult, fulfilled] = await Promise.all([
+        maint2.reclaimDueReservations({
+          organizationId: fixture.organization.id,
+        }),
+        fulfillSalesOrder(salesOrderRepo, {
+          consumptionIdempotencyKey: `consume-ful-${randomUUID()}`,
+          expectedVersion: confirmed.version,
+          movementNumber: `MV-FUL-${randomUUID().slice(0, 6)}`,
+          occurredAt: new Date().toISOString(),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        }),
+      ]);
+
+      // Maintenance candidate discovery excludes CONFIRMED orders
+      expect(reclaimResult.candidatesFound).toBe(0);
+      expect(reclaimResult.reclaimedCount).toBe(0);
+
+      // Fulfillment completes
       expect(fulfilled.status).toBe("FULFILLED");
 
-      // Final valid pair: FULFILLED / CONSUMED
-      const rsv = await prisma.inventoryReservation.findFirst({
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
+        where: { id: orderId },
+      });
+      expect(dbOrder?.status).toBe("FULFILLED");
+
+      // Reservation status is CONFIRMED and consumedByMovementId is set
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
         where: { referenceId: orderId, referenceType: "SALES_ORDER" },
       });
-      expect(rsv?.status).toBe("CONSUMED");
+      expect(dbRsv?.status).toBe("CONFIRMED");
+      expect(dbRsv?.consumedByMovementId).toBeTruthy();
+
+      // Exactly one ISSUE inventory movement
+      const movement = await observerPrisma.inventoryMovement.findUnique({
+        where: { id: dbRsv!.consumedByMovementId! },
+      });
+      expect(movement?.type).toBe("ISSUE");
+      expect(movement?.status).toBe("POSTED");
+
+      // No STOREFRONT_RESERVATION_EXPIRED audit for this order
+      const expiryAudits = await observerPrisma.auditEntry.findMany({
+        where: {
+          action: "STOREFRONT_RESERVATION_EXPIRED",
+          organizationId: fixture.organization.id,
+          resourceId: orderId,
+        },
+      });
+      expect(expiryAudits.length).toBe(0);
+
+      // Stock availability reflects consumption
+      const avail = await availabilityRepo.getAvailability({
+        organizationId: fixture.organization.id,
+        productVariantId: fixture.variant.id,
+        stockLocationId: fixture.location.id,
+      });
+      expect(avail.onHandQuantity).toBe(4);
+      expect(avail.reservedQuantity).toBe(0);
+      expect(avail.availableQuantity).toBe(4);
     } finally {
-      await cleanupFixture(prisma, fixture);
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
     }
   });
 
   it("preserves confirmed order when payment wins before cleanup", async () => {
     const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
-    const paymentRepo = new PrismaOnlinePaymentRepository(prisma);
-    const transactionManager = new PrismaTransactionManager(
-      prisma,
-    ) as unknown as ApplicationTransactionManager;
+    const client2 = createPrismaClient();
 
     try {
-      const pastDeadline = new Date(Date.now() - 60 * 1000);
-      const { orderId } = await createDueStorefrontOrder({
+      // 1. Create online checkout with reservation expiry safely in the future
+      const { attempt, orderId, paymentRepo } = await createDueStorefrontOrder({
         fixture,
-        pastDeadline,
         paymentPreference: "ONLINE_PAYMENT",
         prismaClient: prisma,
         quantity: 1,
       });
 
-      const attempt = await paymentRepo.createAttempt({
-        amountMinor: 129900,
-        createdAt: new Date(),
-        currencyCode: "BDT",
-        id: randomUUID(),
-        idempotencyKey: `idem-attempt-win-${randomUUID()}`,
-        organizationId: fixture.organization.id,
-        providerTransactionId: `TX-WIN-${randomUUID()}`,
-        publicToken: randomUUID(),
-        requestSignature: "sig-attempt-win",
-        salesOrderId: orderId,
-      });
+      if (!attempt) throw new Error("Online payment attempt must exist");
+
+      const lockAcquired = createDeferred();
+      const releasePayment = createDeferred();
+
+      // Gated transaction manager intercepts lockOrderLifecycle inside payment transaction
+      const baseTxManager = new PrismaTransactionManager(
+        prisma,
+      ) as unknown as ApplicationTransactionManager;
+      const gatedTxManager: ApplicationTransactionManager = {
+        execute: async <TResult>(
+          appContext: any,
+          operation: any,
+        ): Promise<TResult> => {
+          return baseTxManager.execute(appContext, async (txContext: any) => {
+            if (txContext.onlinePaymentRepository) {
+              const origLock =
+                txContext.onlinePaymentRepository.lockOrderLifecycle.bind(
+                  txContext.onlinePaymentRepository,
+                );
+              txContext.onlinePaymentRepository.lockOrderLifecycle = async (
+                ...args: any[]
+              ) => {
+                await origLock(...args);
+                lockAcquired.resolve();
+                await releasePayment.promise;
+              };
+            }
+            return operation(txContext);
+          });
+        },
+      };
 
       const providerStub: OnlinePaymentProviderAdapter = {
         createSession: vi.fn(async () => ({
@@ -570,11 +831,11 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         clock: { now: () => new Date() },
         provider: providerStub,
         repository: paymentRepo,
-        transactionManager,
+        transactionManager: gatedTxManager,
       });
 
-      // Settle payment (payment wins)
-      const payResult = await paymentService.notification("req-pay-win", {
+      // Start payment settlement
+      const payPromise = paymentService.notification("req-pay-win", {
         amountMinor: 129900,
         bankTransactionId: "BANK-WIN-1",
         currencyCode: "BDT",
@@ -586,27 +847,55 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         status: "SUCCEEDED",
         validationId: "VAL-WIN-1",
       });
+
+      // Wait until payment acquires lifecycle locks
+      await lockAcquired.promise;
+
+      // Cleanup starts on connection 2 and contends
+      const salesOrderRepo2 = new PrismaSalesOrderRepository(client2);
+      const cleanupPromise =
+        salesOrderRepo2.reclaimExpiredStorefrontReservation({
+          cutoff: new Date(Date.now() + 100000),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+
+      // Release payment lock
+      releasePayment.resolve();
+
+      const [payResult, cleanupRes] = await Promise.all([
+        payPromise,
+        cleanupPromise,
+      ]);
+
       expect(payResult.ok).toBe(true);
+      expect(cleanupRes.reclaimed).toBe(false);
 
-      // Reclaim runs after payment confirmed order
-      const reclaim = await salesOrderRepo.reclaimExpiredStorefrontReservation({
-        cutoff: new Date(),
-        organizationId: fixture.organization.id,
-        salesOrderId: orderId,
-      });
-      expect(reclaim.reclaimed).toBe(false);
-
-      // State remains CONFIRMED and ACTIVE
-      const dbOrder = await prisma.salesOrder.findUnique({
+      // Order is CONFIRMED and reservation is ACTIVE
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
         where: { id: orderId },
       });
       expect(dbOrder?.status).toBe("CONFIRMED");
-      const dbRsv = await prisma.inventoryReservation.findFirst({
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
         where: { referenceId: orderId, referenceType: "SALES_ORDER" },
       });
       expect(dbRsv?.status).toBe("ACTIVE");
 
-      // Replay payment notification
+      // Attempt is SUCCEEDED
+      const dbAttempt = await observerPrisma.onlinePaymentAttempt.findUnique({
+        where: { id: attempt.id },
+      });
+      expect(dbAttempt?.status).toBe("SUCCEEDED");
+      expect(dbAttempt?.resolutionStatus).toBe("NORMAL");
+
+      // Exactly one payment batch / settlement
+      const batches = await observerPrisma.paymentBatch.findMany({
+        where: { organizationId: fixture.organization.id },
+      });
+      expect(batches.length).toBe(1);
+
+      // Replay notification remains idempotent
       const replay = await paymentService.notification("req-pay-win", {
         amountMinor: 129900,
         bankTransactionId: "BANK-WIN-1",
@@ -621,21 +910,20 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       });
       expect(replay).toMatchObject({ data: { replayed: true }, ok: true });
     } finally {
-      await cleanupFixture(prisma, fixture);
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
     }
   });
 
   it("routes to REFUND_REQUIRED when cleanup wins before payment settlement", async () => {
     const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
-    const paymentRepo = new PrismaOnlinePaymentRepository(prisma);
-    const transactionManager = new PrismaTransactionManager(
-      prisma,
-    ) as unknown as ApplicationTransactionManager;
+    const client2 = createPrismaClient();
 
     try {
       const pastDeadline = new Date(Date.now() - 60 * 1000);
-      const { orderId } = await createDueStorefrontOrder({
+      const { attempt, orderId } = await createDueStorefrontOrder({
         fixture,
         pastDeadline,
         paymentPreference: "ONLINE_PAYMENT",
@@ -643,26 +931,31 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         quantity: 1,
       });
 
-      const attempt = await paymentRepo.createAttempt({
-        amountMinor: 129900,
-        createdAt: new Date(),
-        currencyCode: "BDT",
-        id: randomUUID(),
-        idempotencyKey: `idem-attempt-cln-${randomUUID()}`,
-        organizationId: fixture.organization.id,
-        providerTransactionId: `TX-CLN-${randomUUID()}`,
-        publicToken: randomUUID(),
-        requestSignature: "sig-attempt-cln",
-        salesOrderId: orderId,
+      if (!attempt) throw new Error("Online payment attempt must exist");
+
+      const reclaimHeld = createDeferred();
+      const releaseReclaim = createDeferred();
+
+      // Connection 1: reclaim transaction executes reclaim, holds locks
+      const reclaimPromise = prisma.$transaction(async (tx) => {
+        const txSales = createTransactionScopedSalesOrderRepository(tx);
+        const res = await txSales.reclaimExpiredStorefrontReservation({
+          cutoff: new Date(),
+          organizationId: fixture.organization.id,
+          salesOrderId: orderId,
+        });
+        reclaimHeld.resolve();
+        await releaseReclaim.promise;
+        return res;
       });
 
-      // Cleanup runs first and reclaims
-      const reclaim = await salesOrderRepo.reclaimExpiredStorefrontReservation({
-        cutoff: new Date(),
-        organizationId: fixture.organization.id,
-        salesOrderId: orderId,
-      });
-      expect(reclaim.reclaimed).toBe(true);
+      await reclaimHeld.promise;
+
+      // Connection 2: payment settlement starts on independent connection
+      const paymentRepo2 = new PrismaOnlinePaymentRepository(client2);
+      const txManager2 = new PrismaTransactionManager(
+        client2,
+      ) as unknown as ApplicationTransactionManager;
 
       const providerStub: OnlinePaymentProviderAdapter = {
         createSession: vi.fn(async () => ({
@@ -687,15 +980,14 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         })),
       };
 
-      const paymentService = new OnlinePaymentApplicationService({
+      const paymentService2 = new OnlinePaymentApplicationService({
         clock: { now: () => new Date() },
         provider: providerStub,
-        repository: paymentRepo,
-        transactionManager,
+        repository: paymentRepo2,
+        transactionManager: txManager2,
       });
 
-      // Payment settlement runs after reclaim
-      const payResult = await paymentService.notification("req-pay-cln", {
+      const payPromise = paymentService2.notification("req-pay-cln", {
         amountMinor: 129900,
         bankTransactionId: "BANK-CLN-1",
         currencyCode: "BDT",
@@ -707,33 +999,69 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         status: "SUCCEEDED",
         validationId: "VAL-CLN-1",
       });
+
+      // Release reclaim transaction
+      releaseReclaim.resolve();
+
+      const [reclaimRes, payResult] = await Promise.all([
+        reclaimPromise,
+        payPromise,
+      ]);
+
+      expect(reclaimRes.reclaimed).toBe(true);
       expect(payResult.ok).toBe(true);
 
       // Verified provider success settled as SUCCEEDED with REFUND_REQUIRED
-      const dbAttempt = await prisma.onlinePaymentAttempt.findUnique({
+      const dbAttempt = await observerPrisma.onlinePaymentAttempt.findUnique({
         where: { id: attempt.id },
       });
       expect(dbAttempt?.status).toBe("SUCCEEDED");
       expect(dbAttempt?.resolutionStatus).toBe("REFUND_REQUIRED");
 
-      const reconciliation = await prisma.paymentReconciliation.findFirst({
-        where: { paymentAttemptId: attempt.id },
-      });
+      const reconciliation =
+        await observerPrisma.paymentReconciliation.findFirst({
+          where: { paymentAttemptId: attempt.id },
+        });
       expect(reconciliation?.reasonCode).toBe(
         "LATE_SUCCESS_RESERVATION_UNAVAILABLE",
       );
 
-      // Order remains CANCELLED, reservation remains EXPIRED (no resurrection)
-      const dbOrder = await prisma.salesOrder.findUnique({
+      // Order remains CANCELLED, reservation remains EXPIRED
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
         where: { id: orderId },
       });
       expect(dbOrder?.status).toBe("CANCELLED");
-      const dbRsv = await prisma.inventoryReservation.findFirst({
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
         where: { referenceId: orderId, referenceType: "SALES_ORDER" },
       });
       expect(dbRsv?.status).toBe("EXPIRED");
+
+      // Exactly one payment batch / settlement
+      const batches = await observerPrisma.paymentBatch.findMany({
+        where: { organizationId: fixture.organization.id },
+      });
+      expect(batches.length).toBe(1);
+
+      // Replay remains idempotent
+      const replay = await paymentService2.notification("req-pay-cln", {
+        amountMinor: 129900,
+        bankTransactionId: "BANK-CLN-1",
+        currencyCode: "BDT",
+        providerPayload: {},
+        providerTransactionId: attempt.providerTransactionId,
+        rawPayload: "{}",
+        riskLevel: 0,
+        signature: "sig",
+        status: "SUCCEEDED",
+        validationId: "VAL-CLN-1",
+      });
+      expect(replay).toMatchObject({ data: { replayed: true }, ok: true });
     } finally {
-      await cleanupFixture(prisma, fixture);
+      await Promise.all([
+        client2.$disconnect(),
+        cleanupFixture(prisma, fixture),
+      ]);
     }
   });
 
@@ -752,23 +1080,58 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       ) as unknown as ApplicationTransactionManager;
 
       const pastDeadline = new Date(Date.now() - 60 * 1000);
-      const now = new Date();
-
-      const { orderId } = await createDueStorefrontOrder({
+      const { order, orderId } = await createDueStorefrontOrder({
         fixture,
         pastDeadline,
         prismaClient: prisma,
         quantity: 1,
       });
 
+      const initialRsv =
+        await observerPrisma.inventoryReservation.findFirstOrThrow({
+          where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+        });
+
+      // Wrap findDueStorefrontReservationOrderIds to ensure BOTH discover BEFORE either reclaims
+      const aDiscovered = createDeferred();
+      const bDiscovered = createDeferred();
+
+      const wrappedRepo1 = Object.create(salesOrderRepo1);
+      wrappedRepo1.findDueStorefrontReservationOrderIds = async (
+        filter: Parameters<
+          PrismaSalesOrderRepository["findDueStorefrontReservationOrderIds"]
+        >[0],
+      ) => {
+        const ids =
+          await salesOrderRepo1.findDueStorefrontReservationOrderIds(filter);
+        expect(ids).toContain(orderId);
+        aDiscovered.resolve();
+        await bDiscovered.promise;
+        return ids;
+      };
+
+      const wrappedRepo2 = Object.create(salesOrderRepo2);
+      wrappedRepo2.findDueStorefrontReservationOrderIds = async (
+        filter: Parameters<
+          PrismaSalesOrderRepository["findDueStorefrontReservationOrderIds"]
+        >[0],
+      ) => {
+        const ids =
+          await salesOrderRepo2.findDueStorefrontReservationOrderIds(filter);
+        expect(ids).toContain(orderId);
+        bDiscovered.resolve();
+        await aDiscovered.promise;
+        return ids;
+      };
+
       const maint1 = new StorefrontReservationMaintenanceService({
-        clock: { now: () => now },
-        salesOrderRepository: salesOrderRepo1,
+        clock: { now: () => new Date() },
+        salesOrderRepository: wrappedRepo1,
         transactionManager: txManager1,
       });
       const maint2 = new StorefrontReservationMaintenanceService({
-        clock: { now: () => now },
-        salesOrderRepository: salesOrderRepo2,
+        clock: { now: () => new Date() },
+        salesOrderRepository: wrappedRepo2,
         transactionManager: txManager2,
       });
 
@@ -785,6 +1148,17 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
       // Exactly one service reclaims the reservation
       const totalReclaimed = res1.reclaimedCount + res2.reclaimedCount;
       expect(totalReclaimed).toBe(1);
+
+      // Order and reservation version incremented exactly once by reclaim
+      const dbOrder = await observerPrisma.salesOrder.findUnique({
+        where: { id: orderId },
+      });
+      expect(dbOrder?.version).toBe(order.version + 1);
+
+      const dbRsv = await observerPrisma.inventoryReservation.findFirst({
+        where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+      });
+      expect(dbRsv?.version).toBe(initialRsv.version + 1);
 
       // Exactly one audit row exists for this reclaim
       const audits = await observerPrisma.auditEntry.findMany({
@@ -806,7 +1180,6 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
 
   it("rolls back order and reservation changes on real database audit failure", async () => {
     const fixture = await createFixture(prisma);
-    const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
 
     try {
       const pastDeadline = new Date(Date.now() - 60 * 1000);
@@ -817,11 +1190,17 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         quantity: 2,
       });
 
+      const initialRsv =
+        await observerPrisma.inventoryReservation.findFirstOrThrow({
+          where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+        });
+
       const nonExistentUserId = "00000000-0000-4000-8000-000000000099";
       await expect(
         prisma.$transaction(async (tx) => {
+          const txSales = createTransactionScopedSalesOrderRepository(tx);
           // 1. Reclaim the reservation inside transaction
-          await salesOrderRepo.reclaimExpiredStorefrontReservation({
+          await txSales.reclaimExpiredStorefrontReservation({
             cutoff: new Date(),
             organizationId: fixture.organization.id,
             salesOrderId: orderId,
@@ -835,7 +1214,7 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
               organizationId: fixture.organization.id,
               resource: "SALES_ORDER",
               resourceId: orderId,
-              userId: nonExistentUserId, // FK VIOLATION in real Postgres
+              userId: nonExistentUserId, // REAL FK VIOLATION in PostgreSQL
             },
           });
         }),
@@ -853,14 +1232,28 @@ describe("StorefrontReservationMaintenanceService coordinated reclaim integratio
         where: { referenceId: orderId, referenceType: "SALES_ORDER" },
       });
       expect(dbRsv?.status).toBe("ACTIVE");
-      expect(dbRsv?.version).toBe(1);
+      expect(dbRsv?.version).toBe(initialRsv.version);
       expect(dbRsv?.expiredAt).toBeNull();
 
-      // No audit row persisted
-      const audits = await observerPrisma.auditEntry.findMany({
-        where: { resourceId: orderId },
+      // Filter specifically: NO STOREFRONT_RESERVATION_EXPIRED audit exists
+      const expiryAudits = await observerPrisma.auditEntry.findMany({
+        where: {
+          action: "STOREFRONT_RESERVATION_EXPIRED",
+          organizationId: fixture.organization.id,
+          resourceId: orderId,
+        },
       });
-      expect(audits.length).toBe(0);
+      expect(expiryAudits.length).toBe(0);
+
+      // The placement audit must remain
+      const placementAudits = await observerPrisma.auditEntry.findMany({
+        where: {
+          action: "STOREFRONT_ORDER_PLACED",
+          organizationId: fixture.organization.id,
+          resourceId: orderId,
+        },
+      });
+      expect(placementAudits.length).toBe(1);
 
       // Stock availability still reflects active hold (3 available, 2 reserved)
       const avail = await availabilityRepo.getAvailability({
