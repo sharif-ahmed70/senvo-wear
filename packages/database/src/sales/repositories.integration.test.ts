@@ -3,6 +3,7 @@ import {
   ConflictError,
   ConcurrencyError,
   NotFoundError,
+  SalesOrderReservationExpiredError,
   amendDraftSalesOrder,
   cancelSalesOrder,
   confirmSalesOrder,
@@ -1436,6 +1437,64 @@ describeWithDatabase("Prisma sales order repositories", () => {
       },
     );
     expect(secondReclaim.reclaimed).toBe(false);
+  });
+
+  it("rejects confirmation with SalesOrderReservationExpiredError when reservation deadline has passed, leaving state unchanged", async () => {
+    const base = await createSalesBase("TYPED_EXPIRY");
+    await seedOnHand(base, 10);
+
+    const order = await createOrder(base, "SO-TYPED-EXP", 3);
+    const futureDeadline = new Date(Date.now() + 60 * 60 * 1000);
+    const pastDeadline = new Date(Date.now() - 60 * 1000);
+
+    const reserved = await reserveSalesOrder(salesOrders, {
+      expectedVersion: order.version,
+      expiresAt: futureDeadline,
+      organizationId: base.organization.id,
+      reservationIdempotencyKey: "idem-rsv-typed-exp",
+      reservationNumber: "RSV-TYPED-EXP",
+      salesOrderId: order.id,
+    });
+
+    await prisma.salesOrderCommerceProfile.create({
+      data: {
+        id: randomUUID(),
+        organizationId: base.organization.id,
+        paymentPreference: "ONLINE_PAYMENT",
+        requestSignature: "sig-typed-exp",
+        salesOrderId: order.id,
+        source: "STOREFRONT",
+      },
+    });
+
+    // Age persisted expiresAt into the past
+    await prisma.inventoryReservation.updateMany({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+      data: { expiresAt: pastDeadline },
+    });
+
+    // Confirmation must reject specifically with SalesOrderReservationExpiredError
+    await expect(
+      confirmSalesOrder(salesOrders, {
+        expectedVersion: reserved.version,
+        organizationId: base.organization.id,
+        salesOrderId: order.id,
+      }),
+    ).rejects.toThrow(SalesOrderReservationExpiredError);
+
+    // Independent persisted-state check
+    const orderRecord = await prisma.salesOrder.findUnique({
+      where: { id: order.id },
+    });
+    expect(orderRecord?.status).toBe("RESERVED");
+    expect(orderRecord?.version).toBe(reserved.version);
+    expect(orderRecord?.confirmedAt).toBeNull();
+
+    const reservationRecord = await prisma.inventoryReservation.findFirst({
+      where: { referenceId: order.id, referenceType: "SALES_ORDER" },
+    });
+    expect(reservationRecord?.status).toBe("ACTIVE");
+    expect(reservationRecord?.version).toBe(1);
   });
 
   it("blocks stock during active unexpired reservation, refuses reclaim before deadline, and preserves confirmed order past old deadline", async () => {

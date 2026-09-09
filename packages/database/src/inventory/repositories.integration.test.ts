@@ -2178,6 +2178,86 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     expect(indexes).toHaveLength(5);
   });
 
+  it("rejects direct inventory mutation (release, expire, confirm, consume) for SALES_ORDER-linked reservations", async () => {
+    const base = await createInventoryBase("SALES_LINKED_GUARD");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    const salesOrderId = "44444444-4444-4444-8444-444444444444";
+    const reservation = await reserve(base, {
+      quantity: 4,
+      referenceId: salesOrderId,
+      referenceType: "SALES_ORDER",
+      reservationNumber: "RSV-SALES-GUARD",
+    });
+
+    expect(reservation.status).toBe("ACTIVE");
+    expect(reservation.referenceType).toBe("SALES_ORDER");
+
+    // 1. Direct release must reject
+    await expect(
+      releaseInventoryReservation(reservations, {
+        expectedVersion: reservation.version,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 2. Direct expire must reject
+    await expect(
+      expireInventoryReservation(reservations, {
+        expectedVersion: reservation.version,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 3. Direct confirm must reject
+    await expect(
+      confirmInventoryReservation(reservations, {
+        expectedVersion: reservation.version,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 4. Direct consume must reject
+    await expect(
+      consume(base, reservation, {
+        expectedReservationVersion: reservation.version,
+        idempotencyKey: "idem-direct-consume",
+        movementNumber: "MV-DIRECT-CONSUME",
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
+    );
+
+    // State verification:
+    const persisted = await prisma.inventoryReservation.findUnique({
+      where: { id: reservation.id },
+    });
+    expect(persisted?.status).toBe("ACTIVE");
+    expect(persisted?.version).toBe(reservation.version);
+    expect(persisted?.consumedByMovementId).toBeNull();
+
+    // Availability remains unchanged (10 on hand, 4 reserved, 6 available)
+    await expectAvailability(base, 10, 4, 6);
+
+    // No movement lines created
+    const movement = await prisma.inventoryMovement.findFirst({
+      where: { movementNumber: "MV-DIRECT-CONSUME" },
+    });
+    expect(movement).toBeNull();
+  });
+
   async function createPolicy(
     base: Awaited<ReturnType<typeof createInventoryBase>>,
     code: string,

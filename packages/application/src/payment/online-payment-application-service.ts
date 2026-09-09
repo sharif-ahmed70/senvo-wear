@@ -6,6 +6,7 @@ import {
   BusinessRuleError,
   ConflictError,
   NotFoundError,
+  SalesOrderReservationExpiredError,
   ValidationApplicationError,
   confirmSalesOrder,
   type OnlinePaymentAttempt,
@@ -681,25 +682,12 @@ export class OnlinePaymentApplicationService {
             salesOrderId: attempt.salesOrderId,
           });
         } catch (error) {
-          const freshFacts = await repository.getOrderFacts(
-            attempt.organizationId,
-            attempt.salesOrderId,
-          );
-          const freshReservationAvailable =
-            freshFacts?.reservationStatus === "ACTIVE" &&
-            (!freshFacts.reservationExpiresAt ||
-              freshFacts.reservationExpiresAt > this.clock.now());
-          if (
-            freshFacts &&
-            (freshFacts.salesOrderStatus === "CANCELLED" ||
-              freshFacts.reservationStatus === "EXPIRED" ||
-              !freshReservationAvailable)
-          ) {
-            resolutionStatus = "REFUND_REQUIRED";
-            operationalReason = "LATE_SUCCESS_RESERVATION_UNAVAILABLE";
-          } else {
+          if (!(error instanceof SalesOrderReservationExpiredError)) {
             throw error;
           }
+
+          resolutionStatus = "REFUND_REQUIRED";
+          operationalReason = "LATE_SUCCESS_RESERVATION_UNAVAILABLE";
         }
       } else if (
         facts.salesOrderStatus !== "CONFIRMED" &&

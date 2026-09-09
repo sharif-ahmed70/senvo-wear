@@ -29,6 +29,7 @@ export {
   InternalApplicationError,
   NotFoundError,
   RateLimitError,
+  SalesOrderReservationExpiredError,
   ValidationApplicationError,
 } from "./errors.js";
 export type {

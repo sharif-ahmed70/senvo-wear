@@ -3,6 +3,7 @@ import {
   ConcurrencyError,
   ConflictError,
   NotFoundError,
+  SalesOrderReservationExpiredError,
   calculateSalesOrderTotals,
   encodeSalesOrderCursor,
   parseSalesOrderCursor,
@@ -747,7 +748,7 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
             reservation.expiresAt &&
             reservation.expiresAt.getTime() <= Date.now()
           ) {
-            throw new BusinessRuleError("Sales order reservation has expired.");
+            throw new SalesOrderReservationExpiredError();
           }
           return transaction.salesOrder.update({
             data: {
