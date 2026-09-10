@@ -2154,10 +2154,20 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
             reservedAt: new Date(Date.now() - 10 * 60 * 1000),
           });
 
+        const orderBefore = await observerPrisma.salesOrder.findUniqueOrThrow({
+          where: { id: orderId },
+        });
+        const rsvBefore =
+          await observerPrisma.inventoryReservation.findUniqueOrThrow({
+            where: { id: beforeReservation.id },
+          });
+
         const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
         const transactionManager = new PrismaTransactionManager(
           prisma,
         ) as unknown as ApplicationTransactionManager;
+
+        const txExecuteSpy = vi.spyOn(transactionManager, "execute");
 
         const service = new StorefrontReservationNormalizationService({
           salesOrderRepository: salesOrderRepo,
@@ -2194,17 +2204,61 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
           }),
         ).rejects.toThrow("positive integer");
 
-        const afterReservation =
-          await prisma.inventoryReservation.findFirstOrThrow({
+        expect(txExecuteSpy).not.toHaveBeenCalled();
+
+        const orderAfter = await observerPrisma.salesOrder.findUniqueOrThrow({
+          where: { id: orderId },
+        });
+        expect(orderAfter.status).toBe(orderBefore.status);
+        expect(orderAfter.version).toBe(orderBefore.version);
+        expect(orderAfter.inventoryReservationId).toBe(
+          orderBefore.inventoryReservationId,
+        );
+        expect(orderAfter.reservedAt?.getTime()).toBe(
+          orderBefore.reservedAt?.getTime(),
+        );
+        expect(orderAfter.confirmedAt).toBe(orderBefore.confirmedAt);
+        expect(orderAfter.cancelledAt).toBe(orderBefore.cancelledAt);
+        expect(orderAfter.fulfilledAt).toBe(orderBefore.fulfilledAt);
+        expect(orderAfter.updatedAt.getTime()).toBe(
+          orderBefore.updatedAt.getTime(),
+        );
+
+        const rsvAfter =
+          await observerPrisma.inventoryReservation.findUniqueOrThrow({
             where: { id: beforeReservation.id },
           });
-        expect(afterReservation.expiresAt).toBeNull();
-        expect(afterReservation.version).toBe(beforeReservation.version);
+        expect(rsvAfter.expiresAt).toBeNull();
+        expect(rsvAfter.status).toBe(rsvBefore.status);
+        expect(rsvAfter.version).toBe(rsvBefore.version);
+        expect(rsvAfter.confirmedAt).toBe(rsvBefore.confirmedAt);
+        expect(rsvAfter.releasedAt).toBe(rsvBefore.releasedAt);
+        expect(rsvAfter.expiredAt).toBe(rsvBefore.expiredAt);
+        expect(rsvAfter.updatedAt.getTime()).toBe(
+          rsvBefore.updatedAt.getTime(),
+        );
 
-        const audits = await prisma.auditEntry.findMany({
-          where: { organizationId: fixture.organization.id },
+        const setupAudits = await observerPrisma.auditEntry.findMany({
+          where: {
+            action: "STOREFRONT_ORDER_PLACED",
+            organizationId: fixture.organization.id,
+            resourceId: orderId,
+          },
         });
-        expect(audits).toHaveLength(0);
+        expect(setupAudits.length).toBeGreaterThanOrEqual(1);
+
+        const phase2bAudits = await observerPrisma.auditEntry.findMany({
+          where: {
+            action: {
+              in: [
+                "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
+                "STOREFRONT_RESERVATION_EXPIRED",
+              ],
+            },
+            organizationId: fixture.organization.id,
+          },
+        });
+        expect(phase2bAudits).toHaveLength(0);
       } finally {
         await cleanupFixture(prisma, fixture);
       }

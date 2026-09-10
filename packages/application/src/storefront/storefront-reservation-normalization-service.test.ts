@@ -853,5 +853,134 @@ describe("StorefrontReservationNormalizationService", () => {
       expect(passedRecord?.expectedReservationNumber).toBe("RES-001");
       expect(passedRecord?.expectedReservationVersion).toBe(1);
     });
+
+    it("rejects conflicting expectedVersions override pre-transaction without starting transactions", async () => {
+      const executeMock = vi.fn();
+      const mockTransactionManager = {
+        execute: executeMock,
+      } as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: createMockClock(),
+        transactionManager: mockTransactionManager,
+      });
+
+      const manifest = {
+        candidates: [
+          {
+            baselineVersion: 1,
+            calculatedExpiresAt: "2026-09-10T11:30:00.000Z",
+            dueClassification: "DUE" as const,
+            organizationId: ORG_ID,
+            paymentPreference: "ONLINE_PAYMENT",
+            policyVersion: "phase-2b-v1" as const,
+            reservationId: "33333333-3333-4333-8333-333333333333",
+            reservationNumber: "RES-001",
+            reservedAt: "2026-09-10T11:00:00.000Z",
+            runReferenceTime: FIXED_NOW.toISOString(),
+            salesOrderId: "44444444-4444-4444-8444-444444444444",
+          },
+        ],
+        cutoff: FIXED_NOW.toISOString(),
+        generatedAt: FIXED_NOW.toISOString(),
+        organizationId: ORG_ID,
+        policyVersion: "phase-2b-v1" as const,
+        totalCandidates: 1,
+      };
+
+      await expect(
+        service.executeApprovedManifest({
+          approvedManifest: manifest,
+          expectedVersions: {
+            "44444444-4444-4444-8444-444444444444": 2,
+          },
+          organizationId: ORG_ID,
+        }),
+      ).rejects.toThrow(
+        "Conflicting expected version override for order 44444444-4444-4444-8444-444444444444: manifest approved baseline version is 1, but received 2.",
+      );
+
+      expect(executeMock).not.toHaveBeenCalled();
+    });
+
+    it("accepts matching expectedVersions override without altering approved baseline version semantics", async () => {
+      let passedRecord: NormalizeLegacyStorefrontReservationRecord | undefined;
+
+      const mockTransactionManager = {
+        execute: async <T>(
+          _context: unknown,
+          operation: (txContext: unknown) => Promise<T>,
+        ): Promise<T> => {
+          const transactionContext = {
+            auditWriter: {
+              recordWithinTransaction: () => Promise.resolve(),
+            },
+            salesOrderLifecycleRepository: {
+              normalizeLegacyStorefrontReservation: (
+                record: NormalizeLegacyStorefrontReservationRecord,
+              ): Promise<NormalizeLegacyStorefrontReservationResult> => {
+                passedRecord = record;
+                return Promise.resolve({
+                  calculatedExpiresAt: new Date("2026-09-10T11:30:00.000Z"),
+                  orderId: record.salesOrderId,
+                  orderNumber: "ORD-001",
+                  paymentPreference: "ONLINE_PAYMENT",
+                  previousExpiresAt: null,
+                  reclaimed: false,
+                  reservationId: record.expectedReservationId,
+                  reservationNumber: record.expectedReservationNumber,
+                  reservationVersionAfter: 2,
+                  reservationVersionBefore: 1,
+                  reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+                  status: "NORMALIZED_STILL_VALID",
+                });
+              },
+            },
+          };
+          return await operation(transactionContext);
+        },
+      } as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: createMockClock(),
+        transactionManager: mockTransactionManager,
+      });
+
+      const manifest = {
+        candidates: [
+          {
+            baselineVersion: 1,
+            calculatedExpiresAt: "2026-09-10T11:30:00.000Z",
+            dueClassification: "DUE" as const,
+            organizationId: ORG_ID,
+            paymentPreference: "ONLINE_PAYMENT",
+            policyVersion: "phase-2b-v1" as const,
+            reservationId: "33333333-3333-4333-8333-333333333333",
+            reservationNumber: "RES-001",
+            reservedAt: "2026-09-10T11:00:00.000Z",
+            runReferenceTime: FIXED_NOW.toISOString(),
+            salesOrderId: "44444444-4444-4444-8444-444444444444",
+          },
+        ],
+        cutoff: FIXED_NOW.toISOString(),
+        generatedAt: FIXED_NOW.toISOString(),
+        organizationId: ORG_ID,
+        policyVersion: "phase-2b-v1" as const,
+        totalCandidates: 1,
+      };
+
+      const report = await service.executeApprovedManifest({
+        approvedManifest: manifest,
+        expectedVersions: {
+          "44444444-4444-4444-8444-444444444444": 1,
+        },
+        organizationId: ORG_ID,
+      });
+
+      expect(report.totalProcessed).toBe(1);
+      expect(report.committedCount).toBe(1);
+      expect(passedRecord).toBeDefined();
+      expect(passedRecord?.expectedReservationVersion).toBe(1);
+    });
   });
 });

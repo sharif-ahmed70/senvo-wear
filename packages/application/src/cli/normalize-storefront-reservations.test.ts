@@ -230,7 +230,7 @@ describe("normalize-storefront-reservations CLI", () => {
     });
 
     afterEach(() => {
-      process.exitCode = originalExitCode as number | undefined;
+      process.exitCode = originalExitCode;
     });
 
     it("handles --help without calling dependencyFactory and returns 0", async () => {

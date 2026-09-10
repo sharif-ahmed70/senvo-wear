@@ -602,13 +602,23 @@ export class StorefrontReservationNormalizationService {
 
       effectiveCutoff = manifestCutoff;
 
-      targets = validatedManifest.candidates.map((entry) => ({
-        expectedReservationId: entry.reservationId,
-        expectedReservationNumber: entry.reservationNumber,
-        expectedReservationVersion:
-          expectedVersions[entry.salesOrderId] ?? entry.baselineVersion,
-        salesOrderId: entry.salesOrderId,
-      }));
+      targets = validatedManifest.candidates.map((entry) => {
+        const explicitExpectedVersion = expectedVersions[entry.salesOrderId];
+        if (
+          explicitExpectedVersion !== undefined &&
+          explicitExpectedVersion !== entry.baselineVersion
+        ) {
+          throw new Error(
+            `Conflicting expected version override for order ${entry.salesOrderId}: manifest approved baseline version is ${entry.baselineVersion}, but received ${explicitExpectedVersion}.`,
+          );
+        }
+        return {
+          expectedReservationId: entry.reservationId,
+          expectedReservationNumber: entry.reservationNumber,
+          expectedReservationVersion: entry.baselineVersion,
+          salesOrderId: entry.salesOrderId,
+        };
+      });
     } else if (
       input.approvedSalesOrderIds &&
       input.approvedSalesOrderIds.length > 0
