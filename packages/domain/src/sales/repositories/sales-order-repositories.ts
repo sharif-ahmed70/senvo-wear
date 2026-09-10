@@ -188,14 +188,24 @@ export type FindLegacyNullExpiryCandidatesFilter = {
 };
 
 export type LegacyNullExpiryCandidateRecord = {
+  cancelledAt?: Date | null;
+  channel?: string | null;
+  confirmedAt?: Date | null;
   createdAt: Date;
+  fulfilledAt?: Date | null;
+  fulfillmentMovementId?: string | null;
   hasOnlinePaymentAttempts?: boolean;
   hasPaymentBatches?: boolean;
   id: string;
   inventoryReservationId: string;
   orderNumber: string;
   paymentPreference: string | null;
+  reservationConfirmedAt?: Date | null;
+  reservationExpiredAt?: Date | null;
   reservationNumber: string;
+  reservationReferenceId?: string | null;
+  reservationReferenceType?: string | null;
+  reservationReleasedAt?: Date | null;
   reservationVersion: number;
   reservedAt: Date | null;
 };
@@ -203,6 +213,8 @@ export type LegacyNullExpiryCandidateRecord = {
 export type NormalizeLegacyStorefrontReservationRecord = {
   applicationTime?: Date;
   cutoff: Date;
+  expectedReservationId?: string;
+  expectedReservationNumber?: string;
   expectedReservationVersion?: number;
   organizationId: string;
   salesOrderId: string;

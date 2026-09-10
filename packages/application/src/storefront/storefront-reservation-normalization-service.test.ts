@@ -3,6 +3,7 @@ import {
   NormalizationExecutionStoppedError,
   StorefrontReservationNormalizationService,
   assertValidBatchSize,
+  assertValidCandidateManifest,
   assertValidOrganizationId,
 } from "./storefront-reservation-normalization-service.js";
 import type {
@@ -394,7 +395,7 @@ describe("StorefrontReservationNormalizationService", () => {
         expect(stoppedError.name).toBe("NormalizationExecutionStoppedError");
         expect(stoppedError.message).toContain("order ord-2");
         expect(stoppedError.failedSalesOrderId).toBe("ord-2");
-        expect(stoppedError.partialReport.totalProcessed).toBe(3);
+        expect(stoppedError.partialReport.totalProcessed).toBe(2);
         expect(stoppedError.partialReport.details).toHaveLength(1);
         expect(stoppedError.partialReport.committedCount).toBe(1);
         expect(stoppedError.partialReport.failedCount).toBe(1);
@@ -450,6 +451,407 @@ describe("StorefrontReservationNormalizationService", () => {
       expect(report.manifest.candidates).toHaveLength(0);
       expect(report.exclusionCounts.PAYMENT_EXPOSED).toBe(1);
       expect(report.exclusionCounts.PAYMENT_BATCH_EXPOSED).toBe(1);
+    });
+  });
+
+  describe("assertValidCandidateManifest", () => {
+    const validCandidate = {
+      baselineVersion: 1,
+      calculatedExpiresAt: "2026-09-10T11:30:00.000Z",
+      dueClassification: "DUE",
+      organizationId: ORG_ID,
+      paymentPreference: "ONLINE_PAYMENT",
+      policyVersion: "phase-2b-v1",
+      reservationId: "33333333-3333-4333-8333-333333333333",
+      reservationNumber: "RES-001",
+      reservedAt: "2026-09-10T11:00:00.000Z",
+      runReferenceTime: FIXED_NOW.toISOString(),
+      salesOrderId: "44444444-4444-4444-8444-444444444444",
+    };
+
+    const validManifest = {
+      candidates: [validCandidate],
+      cutoff: FIXED_NOW.toISOString(),
+      generatedAt: FIXED_NOW.toISOString(),
+      organizationId: ORG_ID,
+      policyVersion: "phase-2b-v1",
+      totalCandidates: 1,
+    };
+
+    it("accepts a valid candidate manifest", () => {
+      const validated = assertValidCandidateManifest(validManifest, ORG_ID);
+      expect(validated.totalCandidates).toBe(1);
+      expect(validated.candidates[0]?.salesOrderId).toBe(
+        "44444444-4444-4444-8444-444444444444",
+      );
+    });
+
+    it("rejects non-object manifest", () => {
+      expect(() => assertValidCandidateManifest(null)).toThrow(
+        "non-null object",
+      );
+      expect(() => assertValidCandidateManifest([])).toThrow("non-null object");
+      expect(() => assertValidCandidateManifest("invalid")).toThrow(
+        "non-null object",
+      );
+    });
+
+    it("rejects invalid or mismatched organizationId", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          organizationId: "bad",
+        }),
+      ).toThrow("must be a valid UUID");
+      expect(() =>
+        assertValidCandidateManifest(
+          validManifest,
+          "99999999-9999-4999-8999-999999999999",
+        ),
+      ).toThrow("does not match requested organization");
+    });
+
+    it("rejects unsupported policy version", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          policyVersion: "unsupported-v2",
+        }),
+      ).toThrow("Unsupported policy version");
+    });
+
+    it("rejects invalid cutoff and generatedAt timestamps", () => {
+      expect(() =>
+        assertValidCandidateManifest({ ...validManifest, cutoff: "bad-date" }),
+      ).toThrow("invalid cutoff timestamp");
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          generatedAt: "bad-date",
+        }),
+      ).toThrow("invalid generatedAt timestamp");
+    });
+
+    it("rejects candidate count mismatch or non-array candidates", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: "not-array",
+        }),
+      ).toThrow("candidates must be an array");
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          totalCandidates: 2,
+        }),
+      ).toThrow("candidate count mismatch");
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          totalCandidates: -1,
+        }),
+      ).toThrow("candidate count mismatch");
+    });
+
+    it("rejects candidate with invalid or duplicate salesOrderId", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, salesOrderId: "not-uuid" }],
+        }),
+      ).toThrow("invalid salesOrderId");
+
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [validCandidate, validCandidate],
+          totalCandidates: 2,
+        }),
+      ).toThrow("duplicate salesOrderId");
+    });
+
+    it("rejects candidate with invalid reservationId or empty reservationNumber", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, reservationId: "not-uuid" }],
+        }),
+      ).toThrow("invalid reservationId");
+
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, reservationNumber: "   " }],
+        }),
+      ).toThrow("invalid reservationNumber");
+    });
+
+    it("rejects candidate with mismatched organizationId", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [
+            {
+              ...validCandidate,
+              organizationId: "99999999-9999-4999-8999-999999999999",
+            },
+          ],
+        }),
+      ).toThrow("mismatched organizationId");
+    });
+
+    it("rejects candidate with invalid baselineVersion", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, baselineVersion: 0 }],
+        }),
+      ).toThrow("positive integer");
+
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, baselineVersion: -1 }],
+        }),
+      ).toThrow("positive integer");
+
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, baselineVersion: 1.5 }],
+        }),
+      ).toThrow("positive integer");
+    });
+
+    it("rejects candidate with unsupported paymentPreference", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [{ ...validCandidate, paymentPreference: "BITCOIN" }],
+        }),
+      ).toThrow("unsupported paymentPreference");
+    });
+
+    it("rejects candidate with runReferenceTime not matching cutoff", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [
+            {
+              ...validCandidate,
+              runReferenceTime: "2026-09-10T11:00:00.000Z",
+            },
+          ],
+        }),
+      ).toThrow("runReferenceTime does not match manifest cutoff");
+    });
+
+    it("rejects candidate where calculatedExpiresAt does not match policy recalculation", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [
+            {
+              ...validCandidate,
+              calculatedExpiresAt: "2026-09-10T11:59:00.000Z",
+            },
+          ],
+        }),
+      ).toThrow("calculatedExpiresAt does not match policy recalculation");
+    });
+
+    it("rejects candidate where dueClassification does not match policy recalculation", () => {
+      expect(() =>
+        assertValidCandidateManifest({
+          ...validManifest,
+          candidates: [
+            {
+              ...validCandidate,
+              dueClassification: "STILL_VALID", // but reservedAt 11:00 + 30m = 11:30 <= 12:00 -> DUE
+            },
+          ],
+        }),
+      ).toThrow("dueClassification does not match policy recalculation");
+    });
+  });
+
+  describe("dryRun integrity parity with execution", () => {
+    it("excludes candidates violating channel, reference, or terminal timestamp rules", async () => {
+      const candidates: LegacyNullExpiryCandidateRecord[] = [
+        {
+          createdAt: new Date("2026-09-10T11:00:00.000Z"),
+          channel: "POS", // Channel mismatch
+          id: "11111111-1111-4111-8111-111111111111",
+          inventoryReservationId: "res-1",
+          orderNumber: "ORD-001",
+          paymentPreference: "ONLINE_PAYMENT",
+          reservationNumber: "RES-001",
+          reservationReferenceId: "11111111-1111-4111-8111-111111111111",
+          reservationReferenceType: "SALES_ORDER",
+          reservationVersion: 1,
+          reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+        },
+        {
+          createdAt: new Date("2026-09-10T11:00:00.000Z"),
+          channel: "ONLINE",
+          id: "22222222-1111-4111-8111-111111111111",
+          inventoryReservationId: "res-2",
+          orderNumber: "ORD-002",
+          paymentPreference: "ONLINE_PAYMENT",
+          reservationNumber: "RES-002",
+          reservationReferenceId: "wrong-order-id", // Reference ID mismatch
+          reservationReferenceType: "SALES_ORDER",
+          reservationVersion: 1,
+          reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+        },
+        {
+          createdAt: new Date("2026-09-10T11:00:00.000Z"),
+          channel: "ONLINE",
+          id: "33333333-1111-4111-8111-111111111111",
+          inventoryReservationId: "res-3",
+          orderNumber: "ORD-003",
+          paymentPreference: "ONLINE_PAYMENT",
+          reservationNumber: "RES-003",
+          reservationReferenceId: "33333333-1111-4111-8111-111111111111",
+          reservationReferenceType: "POS_ORDER", // Reference type mismatch
+          reservationVersion: 1,
+          reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+        },
+        {
+          createdAt: new Date("2026-09-10T11:00:00.000Z"),
+          channel: "ONLINE",
+          confirmedAt: new Date("2026-09-10T11:05:00.000Z"), // Terminal order
+          id: "44444444-1111-4111-8111-111111111111",
+          inventoryReservationId: "res-4",
+          orderNumber: "ORD-004",
+          paymentPreference: "ONLINE_PAYMENT",
+          reservationNumber: "RES-004",
+          reservationReferenceId: "44444444-1111-4111-8111-111111111111",
+          reservationReferenceType: "SALES_ORDER",
+          reservationVersion: 1,
+          reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+        },
+        {
+          createdAt: new Date("2026-09-10T11:00:00.000Z"),
+          channel: "ONLINE",
+          reservationReleasedAt: new Date("2026-09-10T11:05:00.000Z"), // Terminal reservation
+          id: "55555555-1111-4111-8111-111111111111",
+          inventoryReservationId: "res-5",
+          orderNumber: "ORD-005",
+          paymentPreference: "ONLINE_PAYMENT",
+          reservationNumber: "RES-005",
+          reservationReferenceId: "55555555-1111-4111-8111-111111111111",
+          reservationReferenceType: "SALES_ORDER",
+          reservationVersion: 1,
+          reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+        },
+      ];
+
+      const mockSalesOrders: Partial<SalesOrderRepository> = {
+        findLegacyNullExpiryCandidates: vi.fn().mockResolvedValue(candidates),
+      };
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: createMockClock(),
+        salesOrders: mockSalesOrders as SalesOrderRepository,
+        transactionManager: {} as ApplicationTransactionManager,
+      });
+
+      const report = await service.dryRun({
+        cutoff: FIXED_NOW,
+        organizationId: ORG_ID,
+      });
+
+      expect(report.scannedCount).toBe(5);
+      expect(report.candidatesFound).toBe(0);
+      expect(report.exclusionCounts.INTEGRITY_MISMATCH).toBe(5);
+      expect(report.manifest.candidates).toHaveLength(0);
+    });
+  });
+
+  describe("manifest-based execution identity binding", () => {
+    it("passes expectedReservationId, expectedReservationNumber, and baselineVersion to repository", async () => {
+      let passedRecord: NormalizeLegacyStorefrontReservationRecord | undefined;
+
+      const mockTransactionManager = {
+        execute: async <T>(
+          _context: unknown,
+          operation: (txContext: unknown) => Promise<T>,
+        ): Promise<T> => {
+          const transactionContext = {
+            auditWriter: {
+              recordWithinTransaction: () => Promise.resolve(),
+            },
+            salesOrderLifecycleRepository: {
+              normalizeLegacyStorefrontReservation: (
+                record: NormalizeLegacyStorefrontReservationRecord,
+              ): Promise<NormalizeLegacyStorefrontReservationResult> => {
+                passedRecord = record;
+                return Promise.resolve({
+                  calculatedExpiresAt: new Date("2026-09-10T11:30:00.000Z"),
+                  orderId: record.salesOrderId,
+                  orderNumber: "ORD-001",
+                  paymentPreference: "ONLINE_PAYMENT",
+                  previousExpiresAt: null,
+                  reclaimed: false,
+                  reservationId: record.expectedReservationId,
+                  reservationNumber: record.expectedReservationNumber,
+                  reservationVersionAfter: 2,
+                  reservationVersionBefore: 1,
+                  reservedAt: new Date("2026-09-10T11:00:00.000Z"),
+                  status: "NORMALIZED_STILL_VALID",
+                });
+              },
+            },
+          };
+          return await operation(transactionContext);
+        },
+      } as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: createMockClock(),
+        transactionManager: mockTransactionManager,
+      });
+
+      const manifest = {
+        candidates: [
+          {
+            baselineVersion: 1,
+            calculatedExpiresAt: "2026-09-10T11:30:00.000Z",
+            dueClassification: "DUE" as const,
+            organizationId: ORG_ID,
+            paymentPreference: "ONLINE_PAYMENT",
+            policyVersion: "phase-2b-v1" as const,
+            reservationId: "33333333-3333-4333-8333-333333333333",
+            reservationNumber: "RES-001",
+            reservedAt: "2026-09-10T11:00:00.000Z",
+            runReferenceTime: FIXED_NOW.toISOString(),
+            salesOrderId: "44444444-4444-4444-8444-444444444444",
+          },
+        ],
+        cutoff: FIXED_NOW.toISOString(),
+        generatedAt: FIXED_NOW.toISOString(),
+        organizationId: ORG_ID,
+        policyVersion: "phase-2b-v1" as const,
+        totalCandidates: 1,
+      };
+
+      const report = await service.executeApprovedManifest({
+        approvedManifest: manifest,
+        organizationId: ORG_ID,
+      });
+
+      expect(report.totalProcessed).toBe(1);
+      expect(report.committedCount).toBe(1);
+      expect(passedRecord).toBeDefined();
+      expect(passedRecord?.salesOrderId).toBe(
+        "44444444-4444-4444-8444-444444444444",
+      );
+      expect(passedRecord?.expectedReservationId).toBe(
+        "33333333-3333-4333-8333-333333333333",
+      );
+      expect(passedRecord?.expectedReservationNumber).toBe("RES-001");
+      expect(passedRecord?.expectedReservationVersion).toBe(1);
     });
   });
 });

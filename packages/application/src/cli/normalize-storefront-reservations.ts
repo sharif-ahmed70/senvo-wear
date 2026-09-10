@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   assertValidBatchSize,
+  assertValidCandidateManifest,
   assertValidOrganizationId,
   NORMALIZATION_POLICY_VERSION,
   NormalizationExecutionStoppedError,
@@ -11,6 +14,7 @@ import {
   type ExecutionReport,
 } from "../storefront/storefront-reservation-normalization-service.js";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
+import type { ValidatedApplicationExecutionContext } from "../context/execution-context.js";
 import type { SalesOrderRepository } from "@senvo/domain";
 
 export type CliArgs = {
@@ -131,11 +135,13 @@ Options:
     let manifest: CandidateManifest;
     try {
       const raw = fs.readFileSync(manifestFile, "utf8");
-      manifest = JSON.parse(raw) as CandidateManifest;
-    } catch (err: unknown) {
-      console.error(
-        `ERROR: Failed to parse manifest JSON: ${(err as Error).message}`,
+      const parsedJson: unknown = JSON.parse(raw);
+      manifest = assertValidCandidateManifest(
+        parsedJson,
+        cliArgs.organizationId,
       );
+    } catch (err: unknown) {
+      console.error(`ERROR: Invalid manifest: ${(err as Error).message}`);
       return 1;
     }
 
@@ -289,4 +295,69 @@ Options:
   }
 
   return 0;
+}
+
+export type CliDependencies = {
+  prisma?: { $disconnect(): Promise<void> };
+  salesOrders?: SalesOrderRepository;
+  transactionManager: ApplicationTransactionManager;
+};
+
+export type DependencyFactory = () =>
+  Promise<CliDependencies> | CliDependencies;
+
+export async function defaultDependencyFactory(): Promise<CliDependencies> {
+  const {
+    createPrismaClient,
+    PrismaSalesOrderRepository,
+    PrismaTransactionManager,
+  } = await import("@senvo/database");
+  const prisma = createPrismaClient();
+  const salesOrders = new PrismaSalesOrderRepository(prisma);
+  const transactionManager =
+    new PrismaTransactionManager<ValidatedApplicationExecutionContext>(prisma);
+  return { prisma, salesOrders, transactionManager };
+}
+
+export async function executeCliMain(
+  argv: string[] = process.argv.slice(2),
+  dependencyFactory: DependencyFactory = defaultDependencyFactory,
+): Promise<number> {
+  const parsed = parseCliArgs(argv);
+  if (parsed.help) {
+    return await runNormalizationCli(argv, {
+      transactionManager: {} as ApplicationTransactionManager,
+    });
+  }
+
+  let deps: CliDependencies | undefined;
+  try {
+    deps = await dependencyFactory();
+    const exitCode = await runNormalizationCli(argv, {
+      salesOrders: deps.salesOrders,
+      transactionManager: deps.transactionManager,
+    });
+    process.exitCode = exitCode;
+    return exitCode;
+  } catch (err: unknown) {
+    console.error(`FATAL: ${(err as Error).message}`);
+    process.exitCode = 1;
+    return 1;
+  } finally {
+    if (deps?.prisma?.$disconnect) {
+      await deps.prisma.$disconnect();
+    }
+  }
+}
+
+const entryScript = process.argv?.[1];
+const isDirectExecution =
+  typeof process !== "undefined" &&
+  Boolean(entryScript) &&
+  typeof import.meta?.url === "string" &&
+  pathToFileURL(path.resolve(entryScript!)).href.toLowerCase() ===
+    import.meta.url.toLowerCase();
+
+if (isDirectExecution) {
+  void executeCliMain();
 }

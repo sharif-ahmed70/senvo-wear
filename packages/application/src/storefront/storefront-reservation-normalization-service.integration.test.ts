@@ -2086,6 +2086,217 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       await cleanupFixture(prisma, fixture);
     }
   });
+
+  describe("Phase 2B hardened manifest validation and execution proofs", () => {
+    it("executes valid approved manifest, normalizes reservation, increments version, and writes audit", async () => {
+      const fixture = await createFixture(prisma);
+      try {
+        const { orderId } = await createLegacyStorefrontOrder({
+          fixture,
+          paymentPreference: "ONLINE_PAYMENT",
+          reservedAt: new Date(Date.now() - 10 * 60 * 1000),
+        });
+
+        const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+        const transactionManager = new PrismaTransactionManager(
+          prisma,
+        ) as unknown as ApplicationTransactionManager;
+
+        const service = new StorefrontReservationNormalizationService({
+          salesOrderRepository: salesOrderRepo,
+          transactionManager,
+        });
+
+        const dryRunReport = await service.dryRun({
+          organizationId: fixture.organization.id,
+        });
+
+        expect(dryRunReport.candidatesFound).toBe(1);
+        expect(dryRunReport.manifest.candidates).toHaveLength(1);
+
+        const executionReport = await service.executeApprovedManifest({
+          approvedManifest: dryRunReport.manifest,
+          organizationId: fixture.organization.id,
+        });
+
+        expect(executionReport.totalProcessed).toBe(1);
+        expect(executionReport.committedCount).toBe(1);
+        expect(executionReport.failedCount).toBe(0);
+
+        const updatedReservation =
+          await prisma.inventoryReservation.findFirstOrThrow({
+            where: { referenceId: orderId, referenceType: "SALES_ORDER" },
+          });
+
+        expect(updatedReservation.expiresAt).not.toBeNull();
+        expect(updatedReservation.version).toBeGreaterThan(1);
+
+        const audit = await prisma.auditEntry.findFirst({
+          where: {
+            action: "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
+            organizationId: fixture.organization.id,
+            resourceId: orderId,
+          },
+        });
+        expect(audit).not.toBeNull();
+      } finally {
+        await cleanupFixture(prisma, fixture);
+      }
+    });
+
+    it("rejects malformed manifest immediately with zero mutations and zero audits", async () => {
+      const fixture = await createFixture(prisma);
+      try {
+        const { orderId, reservation: beforeReservation } =
+          await createLegacyStorefrontOrder({
+            fixture,
+            paymentPreference: "ONLINE_PAYMENT",
+            reservedAt: new Date(Date.now() - 10 * 60 * 1000),
+          });
+
+        const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+        const transactionManager = new PrismaTransactionManager(
+          prisma,
+        ) as unknown as ApplicationTransactionManager;
+
+        const service = new StorefrontReservationNormalizationService({
+          salesOrderRepository: salesOrderRepo,
+          transactionManager,
+        });
+
+        const malformedManifest = {
+          candidates: [
+            {
+              baselineVersion: -5,
+              calculatedExpiresAt: new Date().toISOString(),
+              dueClassification: "DUE" as const,
+              organizationId: fixture.organization.id,
+              paymentPreference: "ONLINE_PAYMENT",
+              policyVersion: "phase-2b-v1" as const,
+              reservationId: beforeReservation.id,
+              reservationNumber: beforeReservation.reservationNumber,
+              reservedAt: new Date().toISOString(),
+              runReferenceTime: new Date().toISOString(),
+              salesOrderId: orderId,
+            },
+          ],
+          cutoff: new Date().toISOString(),
+          generatedAt: new Date().toISOString(),
+          organizationId: fixture.organization.id,
+          policyVersion: "phase-2b-v1" as const,
+          totalCandidates: 1,
+        };
+
+        await expect(
+          service.executeApprovedManifest({
+            approvedManifest: malformedManifest,
+            organizationId: fixture.organization.id,
+          }),
+        ).rejects.toThrow("positive integer");
+
+        const afterReservation =
+          await prisma.inventoryReservation.findFirstOrThrow({
+            where: { id: beforeReservation.id },
+          });
+        expect(afterReservation.expiresAt).toBeNull();
+        expect(afterReservation.version).toBe(beforeReservation.version);
+
+        const audits = await prisma.auditEntry.findMany({
+          where: { organizationId: fixture.organization.id },
+        });
+        expect(audits).toHaveLength(0);
+      } finally {
+        await cleanupFixture(prisma, fixture);
+      }
+    });
+
+    it("defers with zero mutation when reservation identity mismatches under lock", async () => {
+      const fixture = await createFixture(prisma);
+      try {
+        const { reservation } = await createLegacyStorefrontOrder({
+          fixture,
+          paymentPreference: "ONLINE_PAYMENT",
+          reservedAt: new Date(Date.now() - 10 * 60 * 1000),
+        });
+
+        const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+        const transactionManager = new PrismaTransactionManager(
+          prisma,
+        ) as unknown as ApplicationTransactionManager;
+
+        const service = new StorefrontReservationNormalizationService({
+          salesOrderRepository: salesOrderRepo,
+          transactionManager,
+        });
+
+        const dryRunReport = await service.dryRun({
+          organizationId: fixture.organization.id,
+        });
+
+        const tamperedManifest = {
+          ...dryRunReport.manifest,
+          candidates: dryRunReport.manifest.candidates.map((c) => ({
+            ...c,
+            reservationId: randomUUID(),
+          })),
+        };
+
+        const result = await service.executeApprovedManifest({
+          approvedManifest: tamperedManifest,
+          organizationId: fixture.organization.id,
+        });
+
+        expect(result.deferredCount).toBe(1);
+        expect(result.committedCount).toBe(0);
+        expect(result.details[0]?.skipOrDeferReason).toBe("INTEGRITY_MISMATCH");
+
+        const untouchedReservation =
+          await prisma.inventoryReservation.findFirstOrThrow({
+            where: { id: reservation.id },
+          });
+        expect(untouchedReservation.expiresAt).toBeNull();
+        expect(untouchedReservation.version).toBe(reservation.version);
+      } finally {
+        await cleanupFixture(prisma, fixture);
+      }
+    });
+
+    it("excludes orders with channel or reference integrity mismatch in dry-run", async () => {
+      const fixture = await createFixture(prisma);
+      try {
+        const { orderId } = await createLegacyStorefrontOrder({
+          fixture,
+          paymentPreference: "ONLINE_PAYMENT",
+          reservedAt: new Date(Date.now() - 10 * 60 * 1000),
+        });
+
+        await prisma.salesOrder.update({
+          where: { id: orderId },
+          data: { channel: "POS" },
+        });
+
+        const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+        const transactionManager = new PrismaTransactionManager(
+          prisma,
+        ) as unknown as ApplicationTransactionManager;
+
+        const service = new StorefrontReservationNormalizationService({
+          salesOrderRepository: salesOrderRepo,
+          transactionManager,
+        });
+
+        const dryRunReport = await service.dryRun({
+          organizationId: fixture.organization.id,
+        });
+
+        expect(dryRunReport.scannedCount).toBe(1);
+        expect(dryRunReport.candidatesFound).toBe(0);
+        expect(dryRunReport.exclusionCounts.INTEGRITY_MISMATCH).toBe(1);
+      } finally {
+        await cleanupFixture(prisma, fixture);
+      }
+    });
+  });
 });
 
 async function createFixture(

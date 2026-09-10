@@ -632,7 +632,12 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
             id: true,
           },
         },
+        cancelledAt: true,
+        channel: true,
+        confirmedAt: true,
         createdAt: true,
+        fulfilledAt: true,
+        fulfillmentMovementId: true,
         id: true,
         orderNumber: true,
         reservedAt: true,
@@ -643,7 +648,12 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
         },
         inventoryReservation: {
           select: {
+            confirmedAt: true,
+            expiredAt: true,
             id: true,
+            referenceId: true,
+            referenceType: true,
+            releasedAt: true,
             reservationNumber: true,
             version: true,
           },
@@ -667,14 +677,25 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
     });
 
     return orders.map((order) => ({
+      cancelledAt: order.cancelledAt,
+      channel: order.channel,
+      confirmedAt: order.confirmedAt,
       createdAt: order.createdAt,
+      fulfilledAt: order.fulfilledAt,
+      fulfillmentMovementId: order.fulfillmentMovementId,
       hasOnlinePaymentAttempts: (order._count?.onlinePaymentAttempts ?? 0) > 0,
       hasPaymentBatches: order.paymentBatch !== null,
       id: order.id,
       inventoryReservationId: order.inventoryReservation!.id,
       orderNumber: order.orderNumber,
       paymentPreference: order.commerceProfile?.paymentPreference ?? null,
+      reservationConfirmedAt: order.inventoryReservation?.confirmedAt ?? null,
+      reservationExpiredAt: order.inventoryReservation?.expiredAt ?? null,
       reservationNumber: order.inventoryReservation!.reservationNumber,
+      reservationReferenceId: order.inventoryReservation?.referenceId ?? null,
+      reservationReferenceType:
+        order.inventoryReservation?.referenceType ?? null,
+      reservationReleasedAt: order.inventoryReservation?.releasedAt ?? null,
       reservationVersion: order.inventoryReservation!.version,
       reservedAt: order.reservedAt,
     }));
@@ -804,6 +825,42 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
         }
 
         if (reservation.consumedByMovementId !== null) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          record.expectedReservationId !== undefined &&
+          reservation.id !== record.expectedReservationId
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          record.expectedReservationNumber !== undefined &&
+          reservation.reservationNumber !== record.expectedReservationNumber
+        ) {
           return {
             orderId: record.salesOrderId,
             orderNumber: order.orderNumber,

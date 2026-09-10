@@ -66,6 +66,253 @@ export type CandidateManifest = {
   totalCandidates: number;
 };
 
+export function assertValidCandidateManifest(
+  manifest: unknown,
+  expectedOrganizationId?: string,
+): CandidateManifest {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error("Candidate manifest must be a non-null object.");
+  }
+
+  const raw = manifest as Record<string, unknown>;
+
+  if (
+    typeof raw.organizationId !== "string" ||
+    !UUID_REGEX.test(raw.organizationId)
+  ) {
+    throw new Error(
+      `Candidate manifest organizationId must be a valid UUID. Received: "${String(raw.organizationId)}"`,
+    );
+  }
+
+  if (expectedOrganizationId && raw.organizationId !== expectedOrganizationId) {
+    throw new Error(
+      `Manifest organization (${raw.organizationId}) does not match requested organization (${expectedOrganizationId}).`,
+    );
+  }
+
+  if (raw.policyVersion !== NORMALIZATION_POLICY_VERSION) {
+    throw new Error(
+      `Unsupported policy version: "${String(raw.policyVersion)}". Expected: "${NORMALIZATION_POLICY_VERSION}".`,
+    );
+  }
+
+  if (typeof raw.cutoff !== "string") {
+    throw new Error("Manifest cutoff must be an ISO date string.");
+  }
+  const cutoffDate = new Date(raw.cutoff);
+  if (Number.isNaN(cutoffDate.getTime())) {
+    throw new Error("Manifest has invalid cutoff timestamp.");
+  }
+
+  if (typeof raw.generatedAt !== "string") {
+    throw new Error("Manifest generatedAt must be an ISO date string.");
+  }
+  const generatedAtDate = new Date(raw.generatedAt);
+  if (Number.isNaN(generatedAtDate.getTime())) {
+    throw new Error("Manifest has invalid generatedAt timestamp.");
+  }
+
+  if (!Array.isArray(raw.candidates)) {
+    throw new Error("Malformed manifest: candidates must be an array.");
+  }
+
+  if (
+    typeof raw.totalCandidates !== "number" ||
+    !Number.isInteger(raw.totalCandidates) ||
+    raw.totalCandidates < 0 ||
+    raw.totalCandidates !== raw.candidates.length
+  ) {
+    throw new Error(
+      `Malformed manifest: candidate count mismatch (totalCandidates: ${String(raw.totalCandidates)}, array length: ${raw.candidates.length}).`,
+    );
+  }
+
+  const seenSalesOrderIds = new Set<string>();
+  const validatedCandidates: CandidateManifestEntry[] = [];
+  const rawCandidates = raw.candidates as unknown[];
+
+  for (let i = 0; i < rawCandidates.length; i++) {
+    const item = rawCandidates[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(
+        `Malformed manifest: candidate entry at index ${i} must be an object.`,
+      );
+    }
+
+    const c = item as Record<string, unknown>;
+
+    if (
+      typeof c.salesOrderId !== "string" ||
+      !UUID_REGEX.test(c.salesOrderId)
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry at index ${i} has invalid salesOrderId.`,
+      );
+    }
+    if (seenSalesOrderIds.has(c.salesOrderId)) {
+      throw new Error(
+        `Malformed manifest: duplicate salesOrderId "${c.salesOrderId}" found in candidates.`,
+      );
+    }
+    seenSalesOrderIds.add(c.salesOrderId);
+
+    if (
+      typeof c.reservationId !== "string" ||
+      !UUID_REGEX.test(c.reservationId)
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid reservationId.`,
+      );
+    }
+
+    if (
+      typeof c.reservationNumber !== "string" ||
+      c.reservationNumber.trim().length === 0
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid reservationNumber.`,
+      );
+    }
+
+    if (
+      typeof c.organizationId !== "string" ||
+      c.organizationId !== raw.organizationId
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has mismatched organizationId.`,
+      );
+    }
+
+    if (
+      typeof c.baselineVersion !== "number" ||
+      !Number.isInteger(c.baselineVersion) ||
+      c.baselineVersion <= 0
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid baselineVersion. Must be a positive integer.`,
+      );
+    }
+
+    if (c.policyVersion !== NORMALIZATION_POLICY_VERSION) {
+      throw new Error(
+        `Malformed manifest: candidate entry policy version "${String(c.policyVersion)}" is unsupported.`,
+      );
+    }
+
+    if (
+      c.paymentPreference !== "ONLINE_PAYMENT" &&
+      c.paymentPreference !== "CASH_ON_DELIVERY"
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has unsupported paymentPreference "${String(c.paymentPreference)}".`,
+      );
+    }
+
+    if (typeof c.reservedAt !== "string") {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid reservedAt.`,
+      );
+    }
+    const reservedAtDate = new Date(c.reservedAt);
+    if (Number.isNaN(reservedAtDate.getTime())) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has unparseable reservedAt date.`,
+      );
+    }
+
+    if (typeof c.calculatedExpiresAt !== "string") {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid calculatedExpiresAt.`,
+      );
+    }
+    const calculatedExpiresAtDate = new Date(c.calculatedExpiresAt);
+    if (Number.isNaN(calculatedExpiresAtDate.getTime())) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has unparseable calculatedExpiresAt date.`,
+      );
+    }
+
+    if (
+      c.dueClassification !== "DUE" &&
+      c.dueClassification !== "STILL_VALID"
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid dueClassification "${String(c.dueClassification)}".`,
+      );
+    }
+
+    if (typeof c.runReferenceTime !== "string") {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has invalid runReferenceTime.`,
+      );
+    }
+    const runRefDate = new Date(c.runReferenceTime);
+    if (Number.isNaN(runRefDate.getTime())) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} has unparseable runReferenceTime date.`,
+      );
+    }
+    if (runRefDate.getTime() !== cutoffDate.getTime()) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} runReferenceTime does not match manifest cutoff.`,
+      );
+    }
+
+    let recalculated: ReturnType<typeof calculateHistoricalReservationExpiry>;
+    try {
+      recalculated = calculateHistoricalReservationExpiry({
+        paymentPreference: c.paymentPreference,
+        referenceTime: cutoffDate,
+        reservedAt: reservedAtDate,
+      });
+    } catch (err: unknown) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} failed policy recalculation: ${(err as Error).message}`,
+      );
+    }
+
+    if (
+      recalculated.calculatedExpiresAt.getTime() !==
+      calculatedExpiresAtDate.getTime()
+    ) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} calculatedExpiresAt does not match policy recalculation.`,
+      );
+    }
+
+    const expectedDue = recalculated.isDue ? "DUE" : "STILL_VALID";
+    if (c.dueClassification !== expectedDue) {
+      throw new Error(
+        `Malformed manifest: candidate entry for order ${c.salesOrderId} dueClassification does not match policy recalculation.`,
+      );
+    }
+
+    validatedCandidates.push({
+      baselineVersion: c.baselineVersion,
+      calculatedExpiresAt: c.calculatedExpiresAt,
+      dueClassification: c.dueClassification,
+      organizationId: c.organizationId,
+      paymentPreference: c.paymentPreference,
+      policyVersion: NORMALIZATION_POLICY_VERSION,
+      reservationId: c.reservationId,
+      reservationNumber: c.reservationNumber,
+      reservedAt: c.reservedAt,
+      runReferenceTime: c.runReferenceTime,
+      salesOrderId: c.salesOrderId,
+    });
+  }
+
+  return {
+    candidates: validatedCandidates,
+    cutoff: raw.cutoff,
+    generatedAt: raw.generatedAt,
+    organizationId: raw.organizationId,
+    policyVersion: NORMALIZATION_POLICY_VERSION,
+    totalCandidates: raw.totalCandidates,
+  };
+}
+
 export type DryRunInput = {
   batchSize?: number;
   cutoff?: Date;
@@ -242,8 +489,20 @@ export class StorefrontReservationNormalizationService {
         }
 
         if (
-          candidate.paymentPreference !== "ONLINE_PAYMENT" &&
-          candidate.paymentPreference !== "CASH_ON_DELIVERY"
+          (candidate.channel !== undefined && candidate.channel !== "ONLINE") ||
+          (candidate.reservationReferenceType !== undefined &&
+            candidate.reservationReferenceType !== "SALES_ORDER") ||
+          (candidate.reservationReferenceId !== undefined &&
+            candidate.reservationReferenceId !== candidate.id) ||
+          candidate.confirmedAt != null ||
+          candidate.cancelledAt != null ||
+          candidate.fulfilledAt != null ||
+          candidate.fulfillmentMovementId != null ||
+          candidate.reservationConfirmedAt != null ||
+          candidate.reservationReleasedAt != null ||
+          candidate.reservationExpiredAt != null ||
+          (candidate.paymentPreference !== "ONLINE_PAYMENT" &&
+            candidate.paymentPreference !== "CASH_ON_DELIVERY")
         ) {
           exclusionCounts.INTEGRITY_MISMATCH += 1;
           continue;
@@ -315,39 +574,26 @@ export class StorefrontReservationNormalizationService {
   ): Promise<ExecutionReport> {
     const organizationId = assertValidOrganizationId(input.organizationId);
     let effectiveCutoff: Date;
-    let targetIds: string[] = [];
     const expectedVersions: Record<string, number> = {
       ...(input.expectedVersions ?? {}),
     };
 
+    interface ExecutionTarget {
+      expectedReservationId?: string;
+      expectedReservationNumber?: string;
+      expectedReservationVersion?: number;
+      salesOrderId: string;
+    }
+
+    let targets: ExecutionTarget[] = [];
+
     if (input.approvedManifest) {
-      const manifest = input.approvedManifest;
-      const manifestPolicy = (manifest as { policyVersion?: unknown })
-        .policyVersion;
-      if (manifestPolicy !== NORMALIZATION_POLICY_VERSION) {
-        throw new Error(
-          `Unsupported policy version: "${String(manifestPolicy)}". Expected: "${NORMALIZATION_POLICY_VERSION}".`,
-        );
-      }
-      if (manifest.organizationId !== organizationId) {
-        throw new Error(
-          `Manifest organization (${manifest.organizationId}) does not match requested organization (${organizationId}).`,
-        );
-      }
-      if (!Array.isArray(manifest.candidates)) {
-        throw new Error("Malformed manifest: candidates must be an array.");
-      }
-      if (manifest.totalCandidates !== manifest.candidates.length) {
-        throw new Error(
-          `Malformed manifest: candidate count mismatch (totalCandidates: ${manifest.totalCandidates}, array length: ${manifest.candidates.length}).`,
-        );
-      }
+      const validatedManifest = assertValidCandidateManifest(
+        input.approvedManifest,
+        organizationId,
+      );
 
-      const manifestCutoff = new Date(manifest.cutoff);
-      if (Number.isNaN(manifestCutoff.getTime())) {
-        throw new Error("Manifest has invalid cutoff timestamp.");
-      }
-
+      const manifestCutoff = new Date(validatedManifest.cutoff);
       if (input.cutoff && input.cutoff.getTime() !== manifestCutoff.getTime()) {
         throw new Error(
           "Conflicting cutoff override: requested cutoff does not match approved manifest cutoff.",
@@ -356,22 +602,13 @@ export class StorefrontReservationNormalizationService {
 
       effectiveCutoff = manifestCutoff;
 
-      for (const entry of manifest.candidates) {
-        if (!entry.salesOrderId || typeof entry.salesOrderId !== "string") {
-          throw new Error(
-            "Malformed manifest: candidate entry is missing salesOrderId.",
-          );
-        }
-        const candidatePolicy = (entry as { policyVersion?: unknown })
-          .policyVersion;
-        if (candidatePolicy !== NORMALIZATION_POLICY_VERSION) {
-          throw new Error(
-            `Malformed manifest: candidate entry policy version "${String(candidatePolicy)}" is unsupported.`,
-          );
-        }
-        targetIds.push(entry.salesOrderId);
-        expectedVersions[entry.salesOrderId] = entry.baselineVersion;
-      }
+      targets = validatedManifest.candidates.map((entry) => ({
+        expectedReservationId: entry.reservationId,
+        expectedReservationNumber: entry.reservationNumber,
+        expectedReservationVersion:
+          expectedVersions[entry.salesOrderId] ?? entry.baselineVersion,
+        salesOrderId: entry.salesOrderId,
+      }));
     } else if (
       input.approvedSalesOrderIds &&
       input.approvedSalesOrderIds.length > 0
@@ -379,7 +616,10 @@ export class StorefrontReservationNormalizationService {
       effectiveCutoff = assertValidReservationCutoff(
         input.cutoff ?? this.clock.now(),
       );
-      targetIds = [...input.approvedSalesOrderIds];
+      targets = input.approvedSalesOrderIds.map((id) => ({
+        expectedReservationVersion: expectedVersions[id],
+        salesOrderId: id,
+      }));
     } else {
       throw new Error(
         "Execution requires an approved candidate manifest or explicit approved order IDs.",
@@ -399,9 +639,11 @@ export class StorefrontReservationNormalizationService {
     let deferredCount = 0;
     let failedCount = 0;
     let reclaimedCount = 0;
+    let totalAttempted = 0;
     const details: NormalizeLegacyStorefrontReservationResult[] = [];
 
-    for (const salesOrderId of targetIds) {
+    for (const target of targets) {
+      totalAttempted += 1;
       const execContext = this.createExecutionContext(organizationId);
 
       try {
@@ -418,9 +660,11 @@ export class StorefrontReservationNormalizationService {
             const outcome = await sales.normalizeLegacyStorefrontReservation({
               applicationTime,
               cutoff: effectiveCutoff,
-              expectedReservationVersion: expectedVersions[salesOrderId],
+              expectedReservationId: target.expectedReservationId,
+              expectedReservationNumber: target.expectedReservationNumber,
+              expectedReservationVersion: target.expectedReservationVersion,
               organizationId,
-              salesOrderId,
+              salesOrderId: target.salesOrderId,
             });
 
             if (outcome.status === "NORMALIZED_STILL_VALID") {
@@ -522,12 +766,12 @@ export class StorefrontReservationNormalizationService {
           organizationId,
           reclaimedCount,
           skippedCount,
-          totalProcessed: targetIds.length,
+          totalProcessed: totalAttempted,
         };
         throw new NormalizationExecutionStoppedError(
-          `Normalization stopped due to unexpected error on order ${salesOrderId}: ${(err as Error).message}`,
+          `Normalization stopped due to unexpected error on order ${target.salesOrderId}: ${(err as Error).message}`,
           partialReport,
-          salesOrderId,
+          target.salesOrderId,
           err,
         );
       }
@@ -542,7 +786,7 @@ export class StorefrontReservationNormalizationService {
       organizationId,
       reclaimedCount,
       skippedCount,
-      totalProcessed: targetIds.length,
+      totalProcessed: totalAttempted,
     };
   }
 
