@@ -16,6 +16,26 @@ export {
   type ReclaimDueReservationsResult,
 } from "./storefront/storefront-reservation-maintenance-service.js";
 export {
+  StorefrontReservationNormalizationService,
+  DEFAULT_NORMALIZATION_BATCH_SIZE,
+  MAX_NORMALIZATION_BATCH_SIZE,
+  NORMALIZATION_POLICY_VERSION,
+  assertValidBatchSize,
+  assertValidOrganizationId,
+  type CandidateManifest,
+  type CandidateManifestEntry,
+  type DryRunInput,
+  type DryRunReport,
+  type ExecuteApprovedManifestInput,
+  type ExecutionReport,
+  type StorefrontReservationNormalizationDependencies,
+} from "./storefront/storefront-reservation-normalization-service.js";
+export {
+  parseCliArgs,
+  runNormalizationCli,
+  type CliArgs,
+} from "./cli/normalize-storefront-reservations.js";
+export {
   OnlinePaymentApplicationService,
   type OnlinePaymentApplicationServiceDependencies,
 } from "./payment/online-payment-application-service.js";

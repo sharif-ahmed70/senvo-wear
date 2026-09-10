@@ -19,7 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest --passWithNoTests --exclude \"**/*.integration.test.ts\"",
     "test:run": "vitest run --passWithNoTests --exclude \"**/*.integration.test.ts\"",
-    "test:integration": "node ../../scripts/run-test-database-command.mjs corepack pnpm exec vitest run --fileParallelism=false src/storefront/storefront-application-service.integration.test.ts src/storefront/storefront-reservation-maintenance-service.integration.test.ts",
+    "test:integration": "node ../../scripts/run-test-database-command.mjs corepack pnpm exec vitest run --fileParallelism=false src/storefront/storefront-application-service.integration.test.ts src/storefront/storefront-reservation-maintenance-service.integration.test.ts src/storefront/storefront-reservation-normalization-service.integration.test.ts",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {

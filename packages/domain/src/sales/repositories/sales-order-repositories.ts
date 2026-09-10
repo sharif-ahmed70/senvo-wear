@@ -6,6 +6,7 @@ import type {
   SalesOrderChannel,
   SalesOrderStatus,
 } from "../domain/models.js";
+import type { LegacyReservationExclusionReason } from "../application/reservation-expiry-use-cases.js";
 
 export type CursorPageRequest = {
   cursor?: string;
@@ -177,6 +178,70 @@ export type ReclaimExpiredStorefrontReservationResult = {
   reservationNumber?: string;
 };
 
+export type FindLegacyNullExpiryCandidatesFilter = {
+  cursor?: {
+    createdAt: Date;
+    id: string;
+  };
+  limit: number;
+  organizationId: string;
+};
+
+export type LegacyNullExpiryCandidateRecord = {
+  cancelledAt?: Date | null;
+  channel?: string | null;
+  confirmedAt?: Date | null;
+  createdAt: Date;
+  fulfilledAt?: Date | null;
+  fulfillmentMovementId?: string | null;
+  hasOnlinePaymentAttempts?: boolean;
+  hasPaymentBatches?: boolean;
+  id: string;
+  inventoryReservationId: string;
+  orderNumber: string;
+  paymentPreference: string | null;
+  reservationConfirmedAt?: Date | null;
+  reservationExpiredAt?: Date | null;
+  reservationNumber: string;
+  reservationReferenceId?: string | null;
+  reservationReferenceType?: string | null;
+  reservationReleasedAt?: Date | null;
+  reservationVersion: number;
+  reservedAt: Date | null;
+};
+
+export type NormalizeLegacyStorefrontReservationRecord = {
+  applicationTime?: Date;
+  cutoff: Date;
+  expectedReservationId?: string;
+  expectedReservationNumber?: string;
+  expectedReservationVersion?: number;
+  organizationId: string;
+  salesOrderId: string;
+};
+
+export type NormalizeLegacyStorefrontReservationStatus =
+  | "NORMALIZED_STILL_VALID"
+  | "NORMALIZED_AND_RECLAIMED"
+  | "SKIPPED"
+  | "DEFERRED";
+
+export type NormalizeLegacyStorefrontReservationResult = {
+  calculatedExpiresAt?: Date;
+  orderId: string;
+  orderNumber?: string;
+  paymentPreference?: string;
+  previousExpiresAt: null;
+  reclaimed: boolean;
+  reservationId?: string;
+  reservationNumber?: string;
+  reservationVersionAfter?: number;
+  reservationVersionBefore?: number;
+  reservedAt?: Date;
+  skipOrDeferReason?: LegacyReservationExclusionReason;
+  status: NormalizeLegacyStorefrontReservationStatus;
+};
+
 export type SalesOrderRepository = {
   amendDraft(record: AmendDraftSalesOrderRecord): Promise<SalesOrder>;
   cancel(record: CancelSalesOrderRecord): Promise<SalesOrder>;
@@ -197,11 +262,17 @@ export type SalesOrderRepository = {
   findDueStorefrontReservationOrderIds(
     filter: FindDueStorefrontReservationOrderIdsFilter,
   ): Promise<string[]>;
+  findLegacyNullExpiryCandidates(
+    filter: FindLegacyNullExpiryCandidatesFilter,
+  ): Promise<LegacyNullExpiryCandidateRecord[]>;
   fulfill(
     record: FulfillSalesOrderRecord,
     payloadSignature: string,
   ): Promise<SalesOrder>;
   list(filter: SalesOrderListFilter): Promise<CursorPageResult<SalesOrder>>;
+  normalizeLegacyStorefrontReservation(
+    record: NormalizeLegacyStorefrontReservationRecord,
+  ): Promise<NormalizeLegacyStorefrontReservationResult>;
   reclaimExpiredStorefrontReservation(
     record: ReclaimExpiredStorefrontReservationRecord,
   ): Promise<ReclaimExpiredStorefrontReservationResult>;

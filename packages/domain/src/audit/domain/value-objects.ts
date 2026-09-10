@@ -25,6 +25,7 @@ export const auditActions = [
   "SALES_ORDER_CREATED",
   "STOREFRONT_ORDER_PLACED",
   "STOREFRONT_RESERVATION_EXPIRED",
+  "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [

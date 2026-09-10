@@ -1,6 +1,14 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import { ConflictError } from "@senvo/domain";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { createPrismaClient } from "../index.js";
 import { PrismaCustomerAuthenticationRepository } from "./customer-authentication-repository.js";
 
@@ -12,6 +20,8 @@ describeWithDatabase("Prisma customer authentication repository", () => {
   let prisma: ReturnType<typeof createPrismaClient>;
   let repository: PrismaCustomerAuthenticationRepository;
   let organizationId: string;
+  let testSuffix: string;
+  let trackedUserIds: Set<string>;
 
   beforeAll(() => {
     process.env.DATABASE_URL = testDatabaseUrl;
@@ -20,18 +30,23 @@ describeWithDatabase("Prisma customer authentication repository", () => {
   });
 
   beforeEach(async () => {
-    await prisma.authenticationSession.deleteMany();
-    await prisma.authenticationChallenge.deleteMany();
-    await prisma.authenticationRateLimit.deleteMany();
-    await prisma.customerAccount.deleteMany();
-    await prisma.userCredential.deleteMany();
-    await prisma.organizationMembership.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.organization.deleteMany();
+    testSuffix = randomUUID().replace(/-/g, "").slice(0, 8);
     organizationId = randomUUID();
+    trackedUserIds = new Set<string>();
+
     await prisma.organization.create({
-      data: { code: "SENVO", id: organizationId, name: "SENVO Wear" },
+      data: {
+        code: `AUTH_${testSuffix}`.toUpperCase(),
+        id: organizationId,
+        name: `Customer Auth Test ${testSuffix}`,
+      },
     });
+  });
+
+  afterEach(async () => {
+    if (organizationId) {
+      await cleanupCustomerAuthFixture(prisma, organizationId, trackedUserIds);
+    }
   });
 
   afterAll(async () => {
@@ -40,28 +55,48 @@ describeWithDatabase("Prisma customer authentication repository", () => {
   });
 
   it("creates one organization-scoped customer and prevents duplicate identities", async () => {
-    const customer = await createCustomer(repository, organizationId);
+    const email = `customer-${testSuffix}@example.com`;
+    const customer = await createCustomer(
+      repository,
+      organizationId,
+      { email },
+      trackedUserIds,
+      testSuffix,
+    );
     expect(customer).toMatchObject({
-      email: "customer@example.com",
+      email,
       organizationId,
       status: "PENDING_VERIFICATION",
     });
 
     await expect(
-      createCustomer(repository, organizationId),
+      createCustomer(
+        repository,
+        organizationId,
+        { email },
+        trackedUserIds,
+        testSuffix,
+      ),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("allows exactly one simultaneous registration for a normalized identity", async () => {
+    const raceEmail = `registration-race-${testSuffix}@example.com`;
     const results = await Promise.allSettled([
-      createCustomer(repository, organizationId, {
-        email: "registration-race@example.com",
-        phone: null,
-      }),
-      createCustomer(repository, organizationId, {
-        email: "registration-race@example.com",
-        phone: null,
-      }),
+      createCustomer(
+        repository,
+        organizationId,
+        { email: raceEmail, phone: null },
+        trackedUserIds,
+        testSuffix,
+      ),
+      createCustomer(
+        repository,
+        organizationId,
+        { email: raceEmail, phone: null },
+        trackedUserIds,
+        testSuffix,
+      ),
     ]);
 
     expect(
@@ -76,15 +111,21 @@ describeWithDatabase("Prisma customer authentication repository", () => {
   });
 
   it("normalizes a verified-phone uniqueness collision", async () => {
-    const first = await createCustomer(repository, organizationId, {
-      email: "phone-owner@example.com",
-      phone: null,
-    });
-    const second = await createCustomer(repository, organizationId, {
-      email: "phone-race@example.com",
-      phone: null,
-    });
-    const phone = "+8801812345678";
+    const first = await createCustomer(
+      repository,
+      organizationId,
+      { email: `phone-owner-${testSuffix}@example.com`, phone: null },
+      trackedUserIds,
+      testSuffix,
+    );
+    const second = await createCustomer(
+      repository,
+      organizationId,
+      { email: `phone-race-${testSuffix}@example.com`, phone: null },
+      trackedUserIds,
+      testSuffix,
+    );
+    const phone = `+88018${Math.floor(10000000 + Math.random() * 90000000)}`;
 
     await repository.markPhoneVerified({
       organizationId,
@@ -103,30 +144,48 @@ describeWithDatabase("Prisma customer authentication repository", () => {
   });
 
   it("stores only session hashes and enforces organization isolation", async () => {
-    const customer = await createCustomer(repository, organizationId);
+    const customer = await createCustomer(
+      repository,
+      organizationId,
+      {},
+      trackedUserIds,
+      testSuffix,
+    );
+    const tokenHash = `a${testSuffix}`.padEnd(64, "a").slice(0, 64);
+    const csrfTokenHash = `b${testSuffix}`.padEnd(64, "b").slice(0, 64);
+
     await repository.createSession({
       createdAt: new Date(),
-      csrfTokenHash: "b".repeat(64),
+      csrfTokenHash,
       expiresAt: new Date(Date.now() + 60_000),
       id: randomUUID(),
       lastUsedAt: new Date(),
       organizationId,
       rememberMe: false,
       revokedAt: null,
-      tokenHash: "a".repeat(64),
+      tokenHash,
       userId: customer.userId,
     });
 
     await expect(
-      repository.findSession(organizationId, "a".repeat(64)),
+      repository.findSession(organizationId, tokenHash),
     ).resolves.toMatchObject({ profile: { userId: customer.userId } });
     await expect(
-      repository.findSession(randomUUID(), "a".repeat(64)),
+      repository.findSession(randomUUID(), tokenHash),
     ).resolves.toBeNull();
   });
 
   it("consumes a challenge once and applies persistent rate-limit thresholds", async () => {
-    const customer = await createCustomer(repository, organizationId);
+    const customer = await createCustomer(
+      repository,
+      organizationId,
+      {},
+      trackedUserIds,
+      testSuffix,
+    );
+    const secretHash = `c${testSuffix}`.padEnd(64, "c").slice(0, 64);
+    const keyHash = `d${testSuffix}`.padEnd(64, "d").slice(0, 64);
+
     const challenge = await repository.createChallenge({
       destination: customer.email,
       expiresAt: new Date(Date.now() + 60_000),
@@ -134,7 +193,7 @@ describeWithDatabase("Prisma customer authentication repository", () => {
       maxAttempts: 5,
       nextResendAt: new Date(),
       organizationId,
-      secretHash: "c".repeat(64),
+      secretHash,
       type: "EMAIL_VERIFICATION",
       userId: customer.userId,
     });
@@ -156,7 +215,7 @@ describeWithDatabase("Prisma customer authentication repository", () => {
     const input = {
       action: "PASSWORD_LOGIN",
       blockForMs: 60_000,
-      keyHash: "d".repeat(64),
+      keyHash,
       maximumAttempts: 2,
       now: new Date(),
       organizationId,
@@ -172,24 +231,173 @@ describeWithDatabase("Prisma customer authentication repository", () => {
       allowed: false,
     });
   });
+
+  it("preserves unrelated external organizations and categories across fixture lifecycle", async () => {
+    const externalSuffix = randomUUID().replace(/-/g, "").slice(0, 8);
+    const externalOrgId = randomUUID();
+    const externalOrg = await prisma.organization.create({
+      data: {
+        code: `EXT_${externalSuffix}`.toUpperCase(),
+        id: externalOrgId,
+        name: `External Unrelated Org ${externalSuffix}`,
+      },
+    });
+    const externalCategory = await prisma.category.create({
+      data: {
+        name: `External Category ${externalSuffix}`,
+        organizationId: externalOrgId,
+        slug: `external-cat-${externalSuffix.toLowerCase()}`,
+      },
+    });
+
+    try {
+      const customer = await createCustomer(
+        repository,
+        organizationId,
+        {},
+        trackedUserIds,
+        testSuffix,
+      );
+      expect(customer.organizationId).toBe(organizationId);
+
+      await cleanupCustomerAuthFixture(prisma, organizationId, trackedUserIds);
+
+      const survivingOrg = await prisma.organization.findUnique({
+        where: { id: externalOrgId },
+      });
+      expect(survivingOrg).not.toBeNull();
+      expect(survivingOrg?.id).toBe(externalOrg.id);
+
+      const survivingCategory = await prisma.category.findUnique({
+        where: { id: externalCategory.id },
+      });
+      expect(survivingCategory).not.toBeNull();
+      expect(survivingCategory?.id).toBe(externalCategory.id);
+      expect(survivingCategory?.organizationId).toBe(externalOrg.id);
+    } finally {
+      await prisma.category.deleteMany({
+        where: { organizationId: externalOrgId },
+      });
+      await prisma.organization.deleteMany({
+        where: { id: externalOrgId },
+      });
+    }
+  });
 });
+
+async function cleanupCustomerAuthFixture(
+  prisma: ReturnType<typeof createPrismaClient>,
+  organizationId: string,
+  trackedUserIds: Set<string>,
+) {
+  const [accounts, sessions, challenges] = await Promise.all([
+    prisma.customerAccount.findMany({
+      select: { userId: true },
+      where: { organizationId },
+    }),
+    prisma.authenticationSession.findMany({
+      select: { userId: true },
+      where: { organizationId },
+    }),
+    prisma.authenticationChallenge.findMany({
+      select: { userId: true },
+      where: { organizationId, userId: { not: null } },
+    }),
+  ]);
+
+  for (const record of accounts) {
+    trackedUserIds.add(record.userId);
+  }
+  for (const record of sessions) {
+    trackedUserIds.add(record.userId);
+  }
+  for (const record of challenges) {
+    if (record.userId) {
+      trackedUserIds.add(record.userId);
+    }
+  }
+
+  const userIds = Array.from(trackedUserIds);
+
+  await prisma.authenticationSession.deleteMany({
+    where: {
+      OR: [
+        { organizationId },
+        ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+      ],
+    },
+  });
+
+  await prisma.authenticationChallenge.deleteMany({
+    where: {
+      OR: [
+        { organizationId },
+        ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+      ],
+    },
+  });
+
+  await prisma.authenticationRateLimit.deleteMany({
+    where: { organizationId },
+  });
+
+  await prisma.customerAccount.deleteMany({
+    where: {
+      OR: [
+        { organizationId },
+        ...(userIds.length > 0 ? [{ userId: { in: userIds } }] : []),
+      ],
+    },
+  });
+
+  if (userIds.length > 0) {
+    await prisma.userCredential.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+
+    await prisma.organizationMembership.deleteMany({
+      where: {
+        OR: [{ organizationId }, { userId: { in: userIds } }],
+      },
+    });
+
+    await prisma.user.deleteMany({
+      where: { id: { in: userIds } },
+    });
+  }
+
+  await prisma.organization.deleteMany({
+    where: { id: organizationId },
+  });
+}
 
 async function createCustomer(
   repository: PrismaCustomerAuthenticationRepository,
   organizationId: string,
-  overrides: { email?: string; phone?: string | null } = {},
+  overrides: { email?: string; phone?: string | null; userId?: string } = {},
+  trackedUserIds?: Set<string>,
+  testSuffix?: string,
 ) {
+  const userId = overrides.userId ?? randomUUID();
+  if (trackedUserIds) {
+    trackedUserIds.add(userId);
+  }
+  const suffix = testSuffix ?? randomUUID().replace(/-/g, "").slice(0, 8);
+
   return repository.createPasswordCustomer({
     customerAccountId: randomUUID(),
-    email: overrides.email ?? "customer@example.com",
+    email: overrides.email ?? `customer-${suffix}@example.com`,
     firstName: "SENVO",
     lastName: "Customer",
     marketingConsent: false,
     organizationId,
     passwordCredentialId: randomUUID(),
     passwordHash: "scrypt$16384$8$1$salt$hash",
-    phone: overrides.phone === undefined ? "+8801712345678" : overrides.phone,
+    phone:
+      overrides.phone === undefined
+        ? `+88017${Math.floor(10000000 + Math.random() * 90000000)}`
+        : overrides.phone,
     termsAcceptedAt: new Date(),
-    userId: randomUUID(),
+    userId,
   });
 }
