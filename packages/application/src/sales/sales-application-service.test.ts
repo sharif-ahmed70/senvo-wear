@@ -11,6 +11,8 @@ import {
   type SalesCursorPageResult,
   type SalesOrder,
   type SalesOrderRepository,
+  type LegacyNullExpiryCandidateRecord,
+  type NormalizeLegacyStorefrontReservationResult,
 } from "@senvo/domain";
 import type { Logger, LogContext, LogMetadata } from "@senvo/logger";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -577,6 +579,21 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
 
   findDueStorefrontReservationOrderIds(): Promise<string[]> {
     return Promise.resolve([]);
+  }
+
+  findLegacyNullExpiryCandidates(): Promise<LegacyNullExpiryCandidateRecord[]> {
+    return Promise.resolve([]);
+  }
+
+  normalizeLegacyStorefrontReservation(record: {
+    salesOrderId: string;
+  }): Promise<NormalizeLegacyStorefrontReservationResult> {
+    return Promise.resolve({
+      orderId: record.salesOrderId,
+      previousExpiresAt: null,
+      reclaimed: false,
+      status: "SKIPPED",
+    });
   }
 
   reclaimExpiredStorefrontReservation(record: {

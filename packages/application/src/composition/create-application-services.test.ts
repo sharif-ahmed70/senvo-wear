@@ -189,8 +189,16 @@ const fakeSalesOrderRepository: SalesOrderRepository = {
   findByIdempotencyKey: () => Promise.resolve(null),
   findByOrderNumber: () => Promise.resolve(null),
   findDueStorefrontReservationOrderIds: () => Promise.resolve([]),
+  findLegacyNullExpiryCandidates: () => Promise.resolve([]),
   fulfill: () => Promise.reject(unreachableError()),
   list: () => Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
+  normalizeLegacyStorefrontReservation: (record) =>
+    Promise.resolve({
+      orderId: record.salesOrderId,
+      previousExpiresAt: null,
+      reclaimed: false,
+      status: "SKIPPED",
+    }),
   reclaimExpiredStorefrontReservation: (record) =>
     Promise.resolve({
       expiresAt: null,
