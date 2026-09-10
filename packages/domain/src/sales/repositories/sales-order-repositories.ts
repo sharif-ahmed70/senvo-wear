@@ -189,6 +189,8 @@ export type FindLegacyNullExpiryCandidatesFilter = {
 
 export type LegacyNullExpiryCandidateRecord = {
   createdAt: Date;
+  hasOnlinePaymentAttempts?: boolean;
+  hasPaymentBatches?: boolean;
   id: string;
   inventoryReservationId: string;
   orderNumber: string;

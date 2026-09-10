@@ -121,5 +121,61 @@ describe("normalize-storefront-reservations CLI", () => {
       expect(content.candidates).toEqual([]);
       expect(content.totalCandidates).toBe(0);
     });
+
+    it("fails with exit code 1 if manifest has unsupported policy version", async () => {
+      const manifestFile = path.join(tmpDir, "invalid-policy-manifest.json");
+      fs.writeFileSync(
+        manifestFile,
+        JSON.stringify({
+          candidates: [],
+          cutoff: "2026-09-10T12:00:00.000Z",
+          generatedAt: "2026-09-10T12:00:00.000Z",
+          organizationId: ORG_ID,
+          policyVersion: "phase-unknown",
+          totalCandidates: 0,
+        }),
+      );
+
+      const exitCode = await runNormalizationCli(
+        ["--execute", "--organization", ORG_ID, "--manifest", manifestFile],
+        {
+          salesOrders: {} as SalesOrderRepository,
+          transactionManager: {} as ApplicationTransactionManager,
+        },
+      );
+      expect(exitCode).toBe(1);
+    });
+
+    it("fails with exit code 1 if conflicting --cutoff override is provided with manifest", async () => {
+      const manifestFile = path.join(tmpDir, "manifest.json");
+      fs.writeFileSync(
+        manifestFile,
+        JSON.stringify({
+          candidates: [],
+          cutoff: "2026-09-10T10:00:00.000Z",
+          generatedAt: "2026-09-10T10:00:00.000Z",
+          organizationId: ORG_ID,
+          policyVersion: "phase-2b-v1",
+          totalCandidates: 0,
+        }),
+      );
+
+      const exitCode = await runNormalizationCli(
+        [
+          "--execute",
+          "--organization",
+          ORG_ID,
+          "--manifest",
+          manifestFile,
+          "--cutoff",
+          "2026-09-10T11:00:00.000Z",
+        ],
+        {
+          salesOrders: {} as SalesOrderRepository,
+          transactionManager: {} as ApplicationTransactionManager,
+        },
+      );
+      expect(exitCode).toBe(1);
+    });
   });
 });

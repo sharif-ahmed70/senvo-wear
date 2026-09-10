@@ -3,6 +3,8 @@ import fs from "node:fs";
 import {
   assertValidBatchSize,
   assertValidOrganizationId,
+  NORMALIZATION_POLICY_VERSION,
+  NormalizationExecutionStoppedError,
   StorefrontReservationNormalizationService,
   type CandidateManifest,
   type DryRunReport,
@@ -137,11 +139,32 @@ Options:
       return 1;
     }
 
+    const untrustedManifest = manifest as unknown as Record<string, unknown>;
+    if (untrustedManifest.policyVersion !== NORMALIZATION_POLICY_VERSION) {
+      console.error(
+        `ERROR: Manifest policy version (${String(untrustedManifest.policyVersion)}) is not supported. Expected: ${NORMALIZATION_POLICY_VERSION}.`,
+      );
+      return 1;
+    }
+
     if (manifest.organizationId !== cliArgs.organizationId) {
       console.error(
         `ERROR: Manifest organization ID (${manifest.organizationId}) does not match --organization (${cliArgs.organizationId}).`,
       );
       return 1;
+    }
+
+    if (cliArgs.cutoff && manifest.cutoff) {
+      const manifestCutoff = new Date(manifest.cutoff);
+      if (
+        !Number.isNaN(manifestCutoff.getTime()) &&
+        cliArgs.cutoff.getTime() !== manifestCutoff.getTime()
+      ) {
+        console.error(
+          `ERROR: Manifest cutoff (${manifest.cutoff}) does not match --cutoff (${cliArgs.cutoff.toISOString()}). Conflicting overrides are not permitted.`,
+        );
+        return 1;
+      }
     }
 
     console.log(
@@ -151,11 +174,42 @@ Options:
       "Starting transactional execution (1 order per transaction)...",
     );
 
-    const report: ExecutionReport = await service.executeApprovedManifest({
-      approvedManifest: manifest,
-      cutoff: cliArgs.cutoff,
-      organizationId: cliArgs.organizationId,
-    });
+    let report: ExecutionReport;
+    try {
+      report = await service.executeApprovedManifest({
+        approvedManifest: manifest,
+        cutoff: cliArgs.cutoff,
+        organizationId: cliArgs.organizationId,
+      });
+    } catch (err: unknown) {
+      if (err instanceof NormalizationExecutionStoppedError) {
+        console.error(
+          `ERROR: Execution stopped due to unexpected error: ${err.message}`,
+        );
+        const partial = err.partialReport;
+        console.log("\nPartial Execution Summary:");
+        console.log(`  Total Processed: ${partial.totalProcessed}`);
+        console.log(`  Committed:       ${partial.committedCount}`);
+        console.log(`  Reclaimed:       ${partial.reclaimedCount}`);
+        console.log(`  Skipped:         ${partial.skippedCount}`);
+        console.log(`  Deferred:        ${partial.deferredCount}`);
+        console.log(`  Failed:          ${partial.failedCount}`);
+
+        if (cliArgs.outputPath) {
+          fs.writeFileSync(
+            cliArgs.outputPath,
+            JSON.stringify(partial, null, 2),
+            "utf8",
+          );
+          console.log(
+            `Saved partial execution report to: ${cliArgs.outputPath}`,
+          );
+        }
+        return 1;
+      }
+      console.error(`ERROR: Execution failed: ${(err as Error).message}`);
+      return 1;
+    }
 
     console.log("\nExecution Summary:");
     console.log(`  Total Processed: ${report.totalProcessed}`);

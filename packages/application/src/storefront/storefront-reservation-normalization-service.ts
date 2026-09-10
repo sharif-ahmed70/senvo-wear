@@ -113,6 +113,25 @@ export type ExecutionReport = {
   totalProcessed: number;
 };
 
+export class NormalizationExecutionStoppedError extends Error {
+  readonly partialReport: ExecutionReport;
+  readonly failedSalesOrderId?: string;
+  override readonly cause?: unknown;
+
+  constructor(
+    message: string,
+    partialReport: ExecutionReport,
+    failedSalesOrderId?: string,
+    cause?: unknown,
+  ) {
+    super(message);
+    this.name = "NormalizationExecutionStoppedError";
+    this.partialReport = partialReport;
+    this.failedSalesOrderId = failedSalesOrderId;
+    this.cause = cause;
+  }
+}
+
 export type StorefrontReservationNormalizationDependencies = {
   clock?: Clock;
   requestIdGenerator?: () => string;
@@ -193,6 +212,16 @@ export class StorefrontReservationNormalizationService {
 
         if (!candidate.reservedAt) {
           exclusionCounts.INVALID_RESERVED_AT += 1;
+          continue;
+        }
+
+        if (candidate.hasOnlinePaymentAttempts) {
+          exclusionCounts.PAYMENT_EXPOSED += 1;
+          continue;
+        }
+
+        if (candidate.hasPaymentBatches) {
+          exclusionCounts.PAYMENT_BATCH_EXPOSED += 1;
           continue;
         }
 
@@ -285,22 +314,61 @@ export class StorefrontReservationNormalizationService {
     input: ExecuteApprovedManifestInput,
   ): Promise<ExecutionReport> {
     const organizationId = assertValidOrganizationId(input.organizationId);
-    const cutoff = assertValidReservationCutoff(
-      input.cutoff ?? this.clock.now(),
-    );
-
+    let effectiveCutoff: Date;
     let targetIds: string[] = [];
     const expectedVersions: Record<string, number> = {
       ...(input.expectedVersions ?? {}),
     };
 
     if (input.approvedManifest) {
-      if (input.approvedManifest.organizationId !== organizationId) {
+      const manifest = input.approvedManifest;
+      const manifestPolicy = (manifest as { policyVersion?: unknown })
+        .policyVersion;
+      if (manifestPolicy !== NORMALIZATION_POLICY_VERSION) {
         throw new Error(
-          `Manifest organization (${input.approvedManifest.organizationId}) does not match requested organization (${organizationId}).`,
+          `Unsupported policy version: "${String(manifestPolicy)}". Expected: "${NORMALIZATION_POLICY_VERSION}".`,
         );
       }
-      for (const entry of input.approvedManifest.candidates) {
+      if (manifest.organizationId !== organizationId) {
+        throw new Error(
+          `Manifest organization (${manifest.organizationId}) does not match requested organization (${organizationId}).`,
+        );
+      }
+      if (!Array.isArray(manifest.candidates)) {
+        throw new Error("Malformed manifest: candidates must be an array.");
+      }
+      if (manifest.totalCandidates !== manifest.candidates.length) {
+        throw new Error(
+          `Malformed manifest: candidate count mismatch (totalCandidates: ${manifest.totalCandidates}, array length: ${manifest.candidates.length}).`,
+        );
+      }
+
+      const manifestCutoff = new Date(manifest.cutoff);
+      if (Number.isNaN(manifestCutoff.getTime())) {
+        throw new Error("Manifest has invalid cutoff timestamp.");
+      }
+
+      if (input.cutoff && input.cutoff.getTime() !== manifestCutoff.getTime()) {
+        throw new Error(
+          "Conflicting cutoff override: requested cutoff does not match approved manifest cutoff.",
+        );
+      }
+
+      effectiveCutoff = manifestCutoff;
+
+      for (const entry of manifest.candidates) {
+        if (!entry.salesOrderId || typeof entry.salesOrderId !== "string") {
+          throw new Error(
+            "Malformed manifest: candidate entry is missing salesOrderId.",
+          );
+        }
+        const candidatePolicy = (entry as { policyVersion?: unknown })
+          .policyVersion;
+        if (candidatePolicy !== NORMALIZATION_POLICY_VERSION) {
+          throw new Error(
+            `Malformed manifest: candidate entry policy version "${String(candidatePolicy)}" is unsupported.`,
+          );
+        }
         targetIds.push(entry.salesOrderId);
         expectedVersions[entry.salesOrderId] = entry.baselineVersion;
       }
@@ -308,12 +376,23 @@ export class StorefrontReservationNormalizationService {
       input.approvedSalesOrderIds &&
       input.approvedSalesOrderIds.length > 0
     ) {
+      effectiveCutoff = assertValidReservationCutoff(
+        input.cutoff ?? this.clock.now(),
+      );
       targetIds = [...input.approvedSalesOrderIds];
     } else {
       throw new Error(
         "Execution requires an approved candidate manifest or explicit approved order IDs.",
       );
     }
+
+    // PRODUCTION SAFETY: Reject invalid/future cutoff BEFORE starting mutations.
+    // Future cutoff must produce zero mutations and zero audits.
+    if (effectiveCutoff.getTime() > this.clock.now().getTime()) {
+      throw new Error("Cutoff timestamp cannot be in the future.");
+    }
+
+    const applicationTime = input.applicationTime ?? this.clock.now();
 
     let committedCount = 0;
     let skippedCount = 0;
@@ -337,8 +416,8 @@ export class StorefrontReservationNormalizationService {
             }
 
             const outcome = await sales.normalizeLegacyStorefrontReservation({
-              applicationTime: input.applicationTime ?? cutoff,
-              cutoff,
+              applicationTime,
+              cutoff: effectiveCutoff,
               expectedReservationVersion: expectedVersions[salesOrderId],
               organizationId,
               salesOrderId,
@@ -352,7 +431,7 @@ export class StorefrontReservationNormalizationService {
                   calculatedExpiresAt: outcome.calculatedExpiresAt
                     ? outcome.calculatedExpiresAt.toISOString()
                     : null,
-                  cutoff: cutoff.toISOString(),
+                  cutoff: effectiveCutoff.toISOString(),
                   orderNumber: outcome.orderNumber ?? null,
                   paymentPreference: outcome.paymentPreference ?? null,
                   policyVersion: NORMALIZATION_POLICY_VERSION,
@@ -377,7 +456,7 @@ export class StorefrontReservationNormalizationService {
                   calculatedExpiresAt: outcome.calculatedExpiresAt
                     ? outcome.calculatedExpiresAt.toISOString()
                     : null,
-                  cutoff: cutoff.toISOString(),
+                  cutoff: effectiveCutoff.toISOString(),
                   orderNumber: outcome.orderNumber ?? null,
                   paymentPreference: outcome.paymentPreference ?? null,
                   policyVersion: NORMALIZATION_POLICY_VERSION,
@@ -402,7 +481,7 @@ export class StorefrontReservationNormalizationService {
                   expiresAt: outcome.calculatedExpiresAt
                     ? outcome.calculatedExpiresAt.toISOString()
                     : null,
-                  expiryCutoff: cutoff.toISOString(),
+                  expiryCutoff: effectiveCutoff.toISOString(),
                   orderNumber: outcome.orderNumber ?? null,
                   reservationId: outcome.reservationId ?? null,
                   reservationNumber: outcome.reservationNumber ?? null,
@@ -432,14 +511,31 @@ export class StorefrontReservationNormalizationService {
         } else if (result.status === "DEFERRED") {
           deferredCount += 1;
         }
-      } catch {
+      } catch (err: unknown) {
         failedCount += 1;
+        const partialReport: ExecutionReport = {
+          committedCount,
+          cutoff: effectiveCutoff,
+          deferredCount,
+          details,
+          failedCount,
+          organizationId,
+          reclaimedCount,
+          skippedCount,
+          totalProcessed: targetIds.length,
+        };
+        throw new NormalizationExecutionStoppedError(
+          `Normalization stopped due to unexpected error on order ${salesOrderId}: ${(err as Error).message}`,
+          partialReport,
+          salesOrderId,
+          err,
+        );
       }
     }
 
     return {
       committedCount,
-      cutoff,
+      cutoff: effectiveCutoff,
       deferredCount,
       details,
       failedCount,

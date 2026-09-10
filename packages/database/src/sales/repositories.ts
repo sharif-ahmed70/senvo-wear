@@ -622,6 +622,12 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
     const orders = await this.prisma.salesOrder.findMany({
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: {
+        _count: {
+          select: {
+            onlinePaymentAttempts: true,
+            paymentBatches: true,
+          },
+        },
         createdAt: true,
         id: true,
         orderNumber: true,
@@ -658,6 +664,8 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
 
     return orders.map((order) => ({
       createdAt: order.createdAt,
+      hasOnlinePaymentAttempts: (order._count?.onlinePaymentAttempts ?? 0) > 0,
+      hasPaymentBatches: (order._count?.paymentBatches ?? 0) > 0,
       id: order.id,
       inventoryReservationId: order.inventoryReservation!.id,
       orderNumber: order.orderNumber,
@@ -671,6 +679,10 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
   async normalizeLegacyStorefrontReservation(
     record: NormalizeLegacyStorefrontReservationRecord,
   ): Promise<NormalizeLegacyStorefrontReservationResult> {
+    const effectiveNow = record.applicationTime ?? new Date();
+    if (record.cutoff.getTime() > effectiveNow.getTime()) {
+      throw new Error("Cutoff timestamp cannot be in the future.");
+    }
     try {
       return await this.prisma.$transaction(async (transaction) => {
         await lockOrderRow(
