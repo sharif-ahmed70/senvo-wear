@@ -625,7 +625,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
         _count: {
           select: {
             onlinePaymentAttempts: true,
-            paymentBatches: true,
+          },
+        },
+        paymentBatch: {
+          select: {
+            id: true,
           },
         },
         createdAt: true,
@@ -665,7 +669,7 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
     return orders.map((order) => ({
       createdAt: order.createdAt,
       hasOnlinePaymentAttempts: (order._count?.onlinePaymentAttempts ?? 0) > 0,
-      hasPaymentBatches: (order._count?.paymentBatches ?? 0) > 0,
+      hasPaymentBatches: order.paymentBatch !== null,
       id: order.id,
       inventoryReservationId: order.inventoryReservation!.id,
       orderNumber: order.orderNumber,

@@ -591,7 +591,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
   // TEST 5: Payment attempt guard across statuses
   it("excludes rows with any online payment attempt across all statuses", async () => {
-    const fixture = await createFixture(prisma);
+    const fixture = await createFixture(prisma, { stockQuantity: 20 });
     const now = new Date("2026-09-10T12:00:00.000Z");
     const reservedAt = new Date("2026-09-10T11:00:00.000Z");
 
@@ -706,6 +706,23 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         reservedAt,
       });
 
+      const attempt = await prisma.onlinePaymentAttempt.create({
+        data: {
+          amountMinor: 259800,
+          currencyCode: "BDT",
+          expiresAt: new Date("2026-09-10T11:30:00.000Z"),
+          idempotencyKey: `pay-attempt-${randomUUID()}`,
+          organizationId: fixture.organization.id,
+          provider: "SSLCOMMERZ",
+          providerTransactionId: `TX-${randomUUID()}`,
+          publicToken: `token-${randomUUID()}`,
+          requestSignature: "sig",
+          salesOrderId: orderId,
+          status: "PENDING",
+          version: 1,
+        },
+      });
+
       await prisma.paymentBatch.create({
         data: {
           currencyCode: "BDT",
@@ -714,6 +731,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
           outstandingMinor: 259800,
           paidMinor: 0,
           payableMinor: 259800,
+          paymentAttemptId: attempt.id,
           requestSignature: "sig",
           salesOrderId: orderId,
           status: "UNPAID",
@@ -725,11 +743,30 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         prisma,
       ) as unknown as ApplicationTransactionManager;
 
+      // Assert repository candidate discovery maps both flags accurately
+      const candidates = await salesOrderRepo.findLegacyNullExpiryCandidates({
+        limit: 100,
+        organizationId: fixture.organization.id,
+      });
+      const candidate = candidates.find((c) => c.id === orderId);
+      expect(candidate).toBeDefined();
+      expect(candidate?.hasPaymentBatches).toBe(true);
+      expect(candidate?.hasOnlinePaymentAttempts).toBe(true);
+
       const service = new StorefrontReservationNormalizationService({
         clock: { now: () => now },
         salesOrderRepository: salesOrderRepo,
         transactionManager,
       });
+
+      const dryRun = await service.dryRun({
+        cutoff: now,
+        organizationId: fixture.organization.id,
+      });
+      const foundInDryRun = dryRun.manifest.candidates.some(
+        (c: CandidateManifestEntry) => c.salesOrderId === orderId,
+      );
+      expect(foundInDryRun).toBe(false);
 
       const report = await service.executeApprovedManifest({
         applicationTime: now,
@@ -742,9 +779,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       expect(report.deferredCount).toBe(1);
       expect(report.committedCount).toBe(0);
       expect(report.details[0]?.status).toBe("DEFERRED");
-      expect(report.details[0]?.skipOrDeferReason).toBe(
-        "PAYMENT_BATCH_EXPOSED",
-      );
+      expect(report.details[0]?.skipOrDeferReason).toBe("PAYMENT_EXPOSED");
 
       const rsv = await observerPrisma.inventoryReservation.findUniqueOrThrow({
         where: { id: reservationId },
@@ -772,7 +807,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
   // TEST 7: Keyset pagination without duplicates or skipped rows
   it("discovers candidates across multiple pages using keyset pagination without skips", async () => {
-    const fixture = await createFixture(prisma);
+    const fixture = await createFixture(prisma, { stockQuantity: 15 });
     const now = new Date("2026-09-10T12:00:00.000Z");
 
     try {
@@ -1241,24 +1276,39 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
           skipDeletePaymentAttempt: true,
         });
 
+      const attempt =
+        await observerPrisma.onlinePaymentAttempt.findFirstOrThrow({
+          where: { salesOrderId: orderId },
+        });
+
       // Winner: Payment settlement holds sales order FOR UPDATE on client2
       const settlementPromise = client2.$transaction(async (tx) => {
         const winnerPid = await getBackendPid(tx);
-        await tx.$executeRaw`
-          SELECT id
-          FROM sales_orders
-          WHERE id = ${orderId}::uuid
-            AND organization_id = ${fixture.organization.id}::uuid
-          FOR UPDATE
-        `;
+        const txPaymentRepo = new PrismaOnlinePaymentRepository(tx);
+        await txPaymentRepo.lockOrderLifecycle(
+          fixture.organization.id,
+          orderId,
+        );
         settlementHeld.resolve(winnerPid);
         await releaseSettlement.promise;
         const txSales = createTransactionScopedSalesOrderRepository(tx);
-        return confirmSalesOrder(txSales, {
+        const confirmedOrder = await confirmSalesOrder(txSales, {
           expectedVersion: order.version,
           organizationId: fixture.organization.id,
           salesOrderId: orderId,
         });
+        await txPaymentRepo.settleConfirmedPayment({
+          bankTransactionId: "BANK-PROOF-D",
+          confirmedAt: now,
+          organizationId: fixture.organization.id,
+          paymentAttemptId: attempt.id,
+          paymentBatchId: randomUUID(),
+          paymentLineId: randomUUID(),
+          requestSignature: "sig-proof-d",
+          resolutionStatus: "NORMAL",
+          validationId: "VAL-PROOF-D",
+        });
+        return confirmedOrder;
       });
 
       const winnerPid = await settlementHeld.promise;
@@ -1301,6 +1351,17 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         where: { id: orderId },
       });
       expect(dbOrder.status).toBe("CONFIRMED");
+
+      const dbAttempt =
+        await observerPrisma.onlinePaymentAttempt.findUniqueOrThrow({
+          where: { id: attempt.id },
+        });
+      expect(dbAttempt.status).toBe("SUCCEEDED");
+
+      const dbBatch = await observerPrisma.paymentBatch.findFirstOrThrow({
+        where: { salesOrderId: orderId },
+      });
+      expect(dbBatch.status).toBe("PAID");
 
       const dbRsv = await observerPrisma.inventoryReservation.findUniqueOrThrow(
         {
@@ -1948,6 +2009,24 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         paymentPreference: "CASH_ON_DELIVERY",
         reservedAt,
       });
+
+      const batchAttempt = await prisma.onlinePaymentAttempt.create({
+        data: {
+          amountMinor: 259800,
+          currencyCode: "BDT",
+          expiresAt: new Date("2026-09-10T11:30:00.000Z"),
+          idempotencyKey: `pay-batch-attempt-${randomUUID()}`,
+          organizationId: fixture.organization.id,
+          provider: "SSLCOMMERZ",
+          providerTransactionId: `TX-${randomUUID()}`,
+          publicToken: `token-${randomUUID()}`,
+          requestSignature: "sig",
+          salesOrderId: orderWithBatch,
+          status: "PENDING",
+          version: 1,
+        },
+      });
+
       await prisma.paymentBatch.create({
         data: {
           currencyCode: "BDT",
@@ -1956,6 +2035,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
           outstandingMinor: 259800,
           paidMinor: 0,
           payableMinor: 259800,
+          paymentAttemptId: batchAttempt.id,
           requestSignature: "sig",
           salesOrderId: orderWithBatch,
           status: "UNPAID",
@@ -1966,6 +2046,22 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       const transactionManager = new PrismaTransactionManager(
         prisma,
       ) as unknown as ApplicationTransactionManager;
+
+      // Assert repository candidate discovery maps both flags accurately
+      const candidates = await salesOrderRepo.findLegacyNullExpiryCandidates({
+        limit: 100,
+        organizationId: fixture.organization.id,
+      });
+      const batchCandidate = candidates.find((c) => c.id === orderWithBatch);
+      expect(batchCandidate).toBeDefined();
+      expect(batchCandidate?.hasPaymentBatches).toBe(true);
+      expect(batchCandidate?.hasOnlinePaymentAttempts).toBe(true);
+
+      const attemptCandidate = candidates.find(
+        (c) => c.id === orderWithAttempt,
+      );
+      expect(attemptCandidate).toBeDefined();
+      expect(attemptCandidate?.hasOnlinePaymentAttempts).toBe(true);
 
       const service = new StorefrontReservationNormalizationService({
         clock: { now: () => now },
@@ -1978,10 +2074,8 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         organizationId: fixture.organization.id,
       });
 
-      expect(report.exclusionCounts.PAYMENT_EXPOSED).toBeGreaterThanOrEqual(1);
-      expect(
-        report.exclusionCounts.PAYMENT_BATCH_EXPOSED,
-      ).toBeGreaterThanOrEqual(1);
+      // Both orders are payment-exposed; service classifies attempts first
+      expect(report.exclusionCounts.PAYMENT_EXPOSED).toBeGreaterThanOrEqual(2);
 
       const candidateIds = report.manifest.candidates.map(
         (c: CandidateManifestEntry) => c.salesOrderId,
@@ -1996,6 +2090,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
 async function createFixture(
   client: ReturnType<typeof createPrismaClient>,
+  options?: { stockQuantity?: number },
 ): Promise<StorefrontFixture> {
   const suffix = randomUUID().replace(/-/g, "").slice(0, 10);
   const organization = await client.organization.create({
@@ -2113,7 +2208,7 @@ async function createFixture(
       movementId: movement.id,
       organizationId: organization.id,
       productVariantId: variant.id,
-      quantity: 5,
+      quantity: options?.stockQuantity ?? 5,
     },
   });
 
