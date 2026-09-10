@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertValidReservationCutoff,
+  calculateHistoricalReservationExpiry,
   isStorefrontReservationDue,
   type DueStorefrontReservationCandidate,
 } from "../application/reservation-expiry-use-cases.js";
@@ -101,5 +102,92 @@ describe("reservation-expiry-use-cases", () => {
     expect(() => assertValidReservationCutoff(new Date("invalid"))).toThrow(
       BusinessRuleError,
     );
+  });
+
+  describe("calculateHistoricalReservationExpiry", () => {
+    const reservedAt = new Date("2026-09-07T10:00:00.000Z");
+
+    it("calculates ONLINE_PAYMENT expiry as reservedAt + 30 minutes", () => {
+      const result = calculateHistoricalReservationExpiry({
+        paymentPreference: "ONLINE_PAYMENT",
+        referenceTime: new Date("2026-09-07T10:15:00.000Z"),
+        reservedAt,
+      });
+
+      expect(result.calculatedExpiresAt).toEqual(
+        new Date("2026-09-07T10:30:00.000Z"),
+      );
+      expect(result.ttlMs).toBe(30 * 60 * 1000);
+      expect(result.isDue).toBe(false);
+    });
+
+    it("calculates CASH_ON_DELIVERY expiry as reservedAt + 24 hours", () => {
+      const result = calculateHistoricalReservationExpiry({
+        paymentPreference: "CASH_ON_DELIVERY",
+        referenceTime: new Date("2026-09-07T12:00:00.000Z"),
+        reservedAt,
+      });
+
+      expect(result.calculatedExpiresAt).toEqual(
+        new Date("2026-09-08T10:00:00.000Z"),
+      );
+      expect(result.ttlMs).toBe(24 * 60 * 60 * 1000);
+      expect(result.isDue).toBe(false);
+    });
+
+    it("identifies overdue holds when calculatedExpiresAt <= referenceTime", () => {
+      const result = calculateHistoricalReservationExpiry({
+        paymentPreference: "ONLINE_PAYMENT",
+        referenceTime: new Date("2026-09-07T11:00:00.000Z"),
+        reservedAt,
+      });
+
+      expect(result.calculatedExpiresAt).toEqual(
+        new Date("2026-09-07T10:30:00.000Z"),
+      );
+      expect(result.isDue).toBe(true);
+    });
+
+    it("rejects missing, null, or invalid reservedAt", () => {
+      expect(() =>
+        calculateHistoricalReservationExpiry({
+          paymentPreference: "ONLINE_PAYMENT",
+          reservedAt: null,
+        }),
+      ).toThrow(BusinessRuleError);
+
+      expect(() =>
+        calculateHistoricalReservationExpiry({
+          paymentPreference: "ONLINE_PAYMENT",
+          reservedAt: new Date("invalid"),
+        }),
+      ).toThrow(BusinessRuleError);
+    });
+
+    it("rejects future reservedAt relative to reference cutoff", () => {
+      expect(() =>
+        calculateHistoricalReservationExpiry({
+          paymentPreference: "ONLINE_PAYMENT",
+          referenceTime: new Date("2026-09-07T09:00:00.000Z"),
+          reservedAt,
+        }),
+      ).toThrow(BusinessRuleError);
+    });
+
+    it("rejects unsupported payment preferences", () => {
+      expect(() =>
+        calculateHistoricalReservationExpiry({
+          paymentPreference: "CREDIT_CARD",
+          reservedAt,
+        }),
+      ).toThrow(BusinessRuleError);
+
+      expect(() =>
+        calculateHistoricalReservationExpiry({
+          paymentPreference: null,
+          reservedAt,
+        }),
+      ).toThrow(BusinessRuleError);
+    });
   });
 });

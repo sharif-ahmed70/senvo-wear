@@ -647,7 +647,12 @@ export type {
   CursorPageRequest as SalesCursorPageRequest,
   CursorPageResult as SalesCursorPageResult,
   FindDueStorefrontReservationOrderIdsFilter,
+  FindLegacyNullExpiryCandidatesFilter,
   FulfillSalesOrderRecord,
+  LegacyNullExpiryCandidateRecord,
+  NormalizeLegacyStorefrontReservationRecord,
+  NormalizeLegacyStorefrontReservationResult,
+  NormalizeLegacyStorefrontReservationStatus,
   ReclaimExpiredStorefrontReservationRecord,
   ReclaimExpiredStorefrontReservationResult,
   ReserveSalesOrderRecord,
@@ -662,8 +667,14 @@ export type {
 } from "./sales/repositories/sales-order-repositories.js";
 export {
   assertValidReservationCutoff,
+  calculateHistoricalReservationExpiry,
   isStorefrontReservationDue,
+  STOREFRONT_COD_RESERVATION_TTL_MS,
+  STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS,
+  type CalculateHistoricalReservationExpiryInput,
+  type CalculateHistoricalReservationExpiryResult,
   type DueStorefrontReservationCandidate,
+  type LegacyReservationExclusionReason,
 } from "./sales/application/reservation-expiry-use-cases.js";
 export {
   getSalesOrderDetails,
