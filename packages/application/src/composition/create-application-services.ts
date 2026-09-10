@@ -92,6 +92,7 @@ import { OrganizationApplicationService } from "../organization/organization-app
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
+import { StorefrontReservationMaintenanceService } from "../storefront/storefront-reservation-maintenance-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
 import { WorkforceAuthenticationService } from "../workforce/workforce-authentication-service.js";
@@ -531,6 +532,13 @@ export function createApplicationServices(
       transactionManager,
     }),
     storefront: new StorefrontApplicationService({
+      clock,
+      maintenanceService: new StorefrontReservationMaintenanceService({
+        clock,
+        requestIdGenerator: options.requestIdGenerator,
+        salesOrders: salesOrderRepository,
+        transactionManager,
+      }),
       mediaService,
       onlinePayments,
       organizationCode:

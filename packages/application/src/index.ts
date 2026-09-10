@@ -7,6 +7,15 @@ export {
 } from "./authentication/customer-authentication-service.js";
 export { StorefrontApplicationService } from "./storefront/storefront-application-service.js";
 export {
+  StorefrontReservationMaintenanceService,
+  STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS,
+  STOREFRONT_COD_RESERVATION_TTL_MS,
+  DEFAULT_STOREFRONT_RESERVATION_MAINTENANCE_BATCH_SIZE,
+  type StorefrontReservationMaintenanceDependencies,
+  type ReclaimDueReservationsInput,
+  type ReclaimDueReservationsResult,
+} from "./storefront/storefront-reservation-maintenance-service.js";
+export {
   OnlinePaymentApplicationService,
   type OnlinePaymentApplicationServiceDependencies,
 } from "./payment/online-payment-application-service.js";

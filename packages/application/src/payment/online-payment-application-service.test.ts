@@ -1,12 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/require-await, @typescript-eslint/unbound-method */
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  OnlinePaymentAttempt,
-  OnlinePaymentOrderFacts,
-  OnlinePaymentProviderAdapter,
-  OnlinePaymentRepository,
-  ProviderRefund,
+import {
+  BusinessRuleError,
+  ConcurrencyError,
+  NotFoundError,
+  SalesOrderReservationExpiredError,
+  type OnlinePaymentAttempt,
+  type OnlinePaymentOrderFacts,
+  type OnlinePaymentProviderAdapter,
+  type OnlinePaymentRepository,
+  type ProviderRefund,
 } from "@senvo/domain";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import { OnlinePaymentApplicationService } from "./online-payment-application-service.js";
@@ -122,6 +127,143 @@ describe("OnlinePaymentApplicationService", () => {
       status: "SUCCEEDED",
     });
   });
+
+  it("locks order lifecycle before reading facts on successful provider observation", async () => {
+    const fixture = createFixture();
+    const attempt = await fixture.service.initiateForCheckout({
+      idempotencyKey: "checkout:payment-lifecycle-lock",
+      organizationId,
+      requestId: "request-1",
+      salesOrderId,
+    });
+    const callOrder: string[] = [];
+    vi.mocked(fixture.repository.lockAttempt).mockImplementation(async () => {
+      callOrder.push("lockAttempt");
+    });
+    vi.mocked(fixture.repository.lockOrderLifecycle).mockImplementation(
+      async () => {
+        callOrder.push("lockOrderLifecycle");
+      },
+    );
+    vi.mocked(fixture.repository.getOrderFacts).mockImplementation(async () => {
+      callOrder.push("getOrderFacts");
+      return fixture.facts;
+    });
+    fixture.confirmOrder.mockImplementation(async () => {
+      callOrder.push("confirm");
+      return { id: salesOrderId };
+    });
+
+    const result = await fixture.service.notification(
+      "request-ipn",
+      validNotification(attempt),
+    );
+    expect(result.ok).toBe(true);
+    expect(callOrder).toEqual([
+      "lockAttempt",
+      "lockOrderLifecycle",
+      "getOrderFacts",
+      "confirm",
+    ]);
+  });
+
+  it("handles deadline crossing safely when reservation expires during order confirmation", async () => {
+    const fixture = createFixture();
+    const attempt = await fixture.service.initiateForCheckout({
+      idempotencyKey: "checkout:payment-deadline-crossing",
+      organizationId,
+      requestId: "request-1",
+      salesOrderId,
+    });
+
+    expect(fixture.facts.salesOrderStatus).toBe("RESERVED");
+    expect(fixture.facts.reservationStatus).toBe("ACTIVE");
+    fixture.confirmOrder.mockRejectedValueOnce(
+      new SalesOrderReservationExpiredError(),
+    );
+
+    const result = await fixture.service.notification(
+      "request-ipn",
+      validNotification(attempt),
+    );
+    expect(result).toEqual({
+      data: { accepted: true, replayed: false },
+      ok: true,
+    });
+    expect(fixture.repository.settleConfirmedPayment).toHaveBeenCalledTimes(1);
+    expect(fixture.repository.settleConfirmedPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ resolutionStatus: "REFUND_REQUIRED" }),
+    );
+    expect(fixture.repository.createReconciliation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: "LATE_SUCCESS_RESERVATION_UNAVAILABLE",
+      }),
+    );
+    expect(fixture.attempts[0]).toMatchObject({
+      resolutionStatus: "REFUND_REQUIRED",
+      status: "SUCCEEDED",
+    });
+  });
+
+  it.each([
+    {
+      name: "ConcurrencyError",
+      error: new ConcurrencyError(),
+      expectedCode: "INTERNAL_ERROR",
+    },
+    {
+      name: "NotFoundError",
+      error: new NotFoundError("Sales order not found"),
+      expectedCode: "NOT_FOUND",
+    },
+    {
+      name: "generic BusinessRuleError",
+      error: new BusinessRuleError("Some business rule violation"),
+      expectedCode: "BUSINESS_RULE_VIOLATION",
+    },
+    {
+      name: "generic BusinessRuleError with identical message",
+      error: new BusinessRuleError("Sales order reservation has expired."),
+      expectedCode: "BUSINESS_RULE_VIOLATION",
+    },
+    {
+      name: "ordinary Error simulating database failure",
+      error: new Error("database connection timeout"),
+      expectedCode: "INTERNAL_ERROR",
+    },
+  ])(
+    "propagates unrelated error ($name) through service error handling without converting to REFUND_REQUIRED or settling",
+    async ({ error, expectedCode }) => {
+      const fixture = createFixture();
+      const attempt = await fixture.service.initiateForCheckout({
+        idempotencyKey: `checkout:payment-unrelated-${randomUUID()}`,
+        organizationId,
+        requestId: "request-1",
+        salesOrderId,
+      });
+
+      fixture.confirmOrder.mockImplementation(async () => {
+        fixture.facts.salesOrderStatus = "CANCELLED";
+        fixture.facts.reservationStatus = "EXPIRED";
+        throw error;
+      });
+
+      const result = await fixture.service.notification(
+        "request-ipn",
+        validNotification(attempt),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe(expectedCode);
+      }
+
+      expect(fixture.repository.settleConfirmedPayment).not.toHaveBeenCalled();
+      expect(fixture.repository.createReconciliation).not.toHaveBeenCalled();
+      expect(fixture.recordAudit).not.toHaveBeenCalled();
+      expect(fixture.attempts[0]?.resolutionStatus).not.toBe("REFUND_REQUIRED");
+      expect(fixture.attempts[0]?.status).not.toBe("SUCCEEDED");
+    },
+  );
 
   it("records an amount mismatch and never settles it", async () => {
     const fixture = createFixture();
@@ -458,6 +600,7 @@ function createRepository(
     ),
     getProjection: vi.fn(),
     lockAttempt: vi.fn(async () => undefined),
+    lockOrderLifecycle: vi.fn(async () => undefined),
     recordNotification: vi.fn(async (record) => {
       const existing = notifications.get(record.dedupeKey);
       if (existing)

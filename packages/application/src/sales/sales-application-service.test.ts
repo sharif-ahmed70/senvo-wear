@@ -575,6 +575,27 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
     );
   }
 
+  findDueStorefrontReservationOrderIds(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+
+  reclaimExpiredStorefrontReservation(record: {
+    salesOrderId: string;
+  }): Promise<{
+    expiresAt: Date | null;
+    orderId: string;
+    orderNumber?: string;
+    reclaimed: boolean;
+    reservationId?: string;
+    reservationNumber?: string;
+  }> {
+    return Promise.resolve({
+      expiresAt: null,
+      orderId: record.salesOrderId,
+      reclaimed: false,
+    });
+  }
+
   list(): Promise<SalesCursorPageResult<SalesOrder>> {
     if (this.listError) {
       return Promise.reject(this.listError);

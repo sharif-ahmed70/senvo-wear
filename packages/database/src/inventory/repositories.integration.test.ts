@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   allocateAndCreateInventoryReservation,
   changeInventoryAllocationPolicyStatus,
@@ -2176,6 +2177,172 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       "inventory_movements_posted_at_status_check",
     ]);
     expect(indexes).toHaveLength(5);
+  });
+
+  it("rejects direct inventory mutation (release, expire, confirm, consume) for SALES_ORDER-linked reservations", async () => {
+    const base = await createInventoryBase("SALES_LINKED_GUARD");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    // 1. Create real sales order as DRAFT
+    const salesOrder = await prisma.salesOrder.create({
+      data: {
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        customerName: "Real Customer",
+        customerPhone: "01712345678",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryAddressLine1: "Road 1",
+        idempotencyKey: `idem-so-${randomUUID()}`,
+        orderNumber: `SO-${randomUUID().slice(0, 8)}`,
+        organizationId: base.organization.id,
+        payloadSignature: "{}",
+        status: "DRAFT",
+        subtotalMinor: 1000,
+        totalMinor: 1000,
+        inventoryReservationId: null,
+        reservedAt: null,
+        confirmedAt: null,
+        cancelledAt: null,
+        fulfilledAt: null,
+      },
+    });
+    const salesOrderId = salesOrder.id;
+
+    // 2. Create the real inventory reservation with referenceType = "SALES_ORDER"
+    const reservation = await reserve(base, {
+      quantity: 4,
+      referenceId: salesOrderId,
+      referenceType: "SALES_ORDER",
+      reservationNumber: "RSV-SALES-GUARD",
+    });
+
+    // 3. Transition/link the order in ONE valid database update
+    await prisma.salesOrder.update({
+      where: { id: salesOrderId },
+      data: {
+        status: "RESERVED",
+        inventoryReservationId: reservation.id,
+        reservedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+
+    // 4. Re-read both rows
+    const initialOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: salesOrderId },
+    });
+    const initialReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+
+    // Assert BOTH relationship directions and statuses:
+    expect(initialOrder.inventoryReservationId).toBe(reservation.id);
+    expect(initialReservation.referenceType).toBe("SALES_ORDER");
+    expect(initialReservation.referenceId).toBe(initialOrder.id);
+    expect(initialOrder.status).toBe("RESERVED");
+    expect(initialReservation.status).toBe("ACTIVE");
+
+    // Capture initial state
+    const orderInitialVersion = initialOrder.version;
+    const reservationInitialVersion = initialReservation.version;
+    await expectAvailability(base, 10, 4, 6);
+
+    const initialIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
+    });
+    const initialMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
+
+    // 1. Direct release must reject
+    await expect(
+      releaseInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 2. Direct expire must reject
+    await expect(
+      expireInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 3. Direct confirm must reject
+    await expect(
+      confirmInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 4. Direct consume must reject
+    await expect(
+      consume(base, reservation, {
+        expectedReservationVersion: reservationInitialVersion,
+        idempotencyKey: "idem-direct-consume",
+        movementNumber: "MV-DIRECT-CONSUME",
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
+    );
+
+    // Real sales order remains RESERVED with version unchanged
+    const finalOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: salesOrderId },
+    });
+    expect(finalOrder.status).toBe("RESERVED");
+    expect(finalOrder.version).toBe(orderInitialVersion);
+
+    // Reservation remains ACTIVE with version unchanged and consumedByMovementId null
+    const finalReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+    expect(finalReservation.status).toBe("ACTIVE");
+    expect(finalReservation.version).toBe(reservationInitialVersion);
+    expect(finalReservation.consumedByMovementId).toBeNull();
+
+    // Availability remains unchanged (10 on hand, 4 reserved, 6 available)
+    await expectAvailability(base, 10, 4, 6);
+
+    // No new ISSUE movement created
+    const finalIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
+    });
+    expect(finalIssueMovementCount).toBe(initialIssueMovementCount);
+
+    // No new consumption ledger mutation
+    const finalMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
+    expect(finalMovementLineCount).toBe(initialMovementLineCount);
   });
 
   async function createPolicy(
