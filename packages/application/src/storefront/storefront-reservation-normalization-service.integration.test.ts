@@ -156,6 +156,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
     orderStatus?:
       "RESERVED" | "CONFIRMED" | "FULFILLED" | "CANCELLED" | "DRAFT";
     preserveExpiresAt?: boolean;
+    skipDeletePaymentAttempt?: boolean;
   }) {
     const client = params.prismaClient ?? prisma;
     const quantity = params.quantity ?? 2;
@@ -248,6 +249,17 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
     const updates: Promise<any>[] = [];
 
+    // Delete any online payment attempt created during checkout unless explicitly preserved,
+    // so eligible legacy online orders have 0 payment attempts.
+    if (
+      params.paymentPreference === "ONLINE_PAYMENT" &&
+      !params.skipDeletePaymentAttempt
+    ) {
+      await client.onlinePaymentAttempt.deleteMany({
+        where: { salesOrderId: orderId },
+      });
+    }
+
     // Make it a legacy null-expiry reservation unless requested otherwise
     if (!params.preserveExpiresAt) {
       updates.push(
@@ -333,6 +345,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       expect(report.committedCount).toBe(1);
       expect(report.reclaimedCount).toBe(0);
       expect(report.details[0]?.status).toBe("NORMALIZED_VALID");
+      expect(report.details[0]?.status).toBe("NORMALIZED_STILL_VALID");
 
       const updatedRsv =
         await observerPrisma.inventoryReservation.findUniqueOrThrow({
@@ -404,6 +417,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       expect(report.committedCount).toBe(1);
       expect(report.reclaimedCount).toBe(0);
       expect(report.details[0]?.status).toBe("NORMALIZED_VALID");
+      expect(report.details[0]?.status).toBe("NORMALIZED_STILL_VALID");
 
       const updatedRsv =
         await observerPrisma.inventoryReservation.findUniqueOrThrow({
@@ -623,6 +637,8 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         expect(report.deferredCount).toBe(1);
         expect(report.committedCount).toBe(0);
         expect(report.details[0]?.status).toBe("DEFERRED_PAYMENT_EXPOSED");
+        expect(report.details[0]?.status).toBe("DEFERRED");
+        expect(report.details[0]?.skipOrDeferReason).toBe("PAYMENT_EXPOSED");
 
         // Verify untouched
         const rsv = await observerPrisma.inventoryReservation.findUniqueOrThrow(
@@ -685,6 +701,10 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       expect(report.totalProcessed).toBe(1);
       expect(report.deferredCount).toBe(1);
       expect(report.details[0]?.status).toBe("DEFERRED_PAYMENT_BATCH_EXPOSED");
+      expect(report.details[0]?.status).toBe("DEFERRED");
+      expect(report.details[0]?.skipOrDeferReason).toBe(
+        "PAYMENT_BATCH_EXPOSED",
+      );
     } finally {
       await cleanupFixture(prisma, fixture);
     }
@@ -802,7 +822,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
     const fixture = await createFixture(prisma);
     const client2 = createPrismaClient();
     const now = new Date("2026-09-10T12:00:00.000Z");
-    const reservedAt = new Date("2026-09-10T10:00:00.000Z"); // overdue
+    const reservedAt = new Date("2026-09-09T10:00:00.000Z"); // 26h ago (overdue for COD 24h TTL)
 
     const normalizerHeld = createDeferred();
     const releaseNormalizer = createDeferred();
@@ -816,7 +836,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
       // Normalizer 1 holds row lock inside transaction
       const normalizer1Promise = prisma.$transaction(async (tx) => {
-        const repo = new PrismaSalesOrderRepository(tx);
+        const repo = createTransactionScopedSalesOrderRepository(tx);
         const result = await repo.normalizeLegacyStorefrontReservation({
           cutoff: now,
           organizationId: fixture.organization.id,
@@ -866,6 +886,8 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         where: { organizationId: fixture.organization.id, resourceId: orderId },
       });
       expect(audits.length).toBe(2);
+      expect(res2.status).toBe("SKIPPED");
+      expect(res2.skipOrDeferReason).toBe("ALREADY_NORMALIZED");
     } finally {
       releaseNormalizer.resolve();
       await Promise.all([
@@ -880,7 +902,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
     const fixture = await createFixture(prisma);
     const client2 = createPrismaClient();
     const now = new Date("2026-09-10T12:00:00.000Z");
-    const reservedAt = new Date("2026-09-10T10:00:00.000Z"); // overdue
+    const reservedAt = new Date("2026-09-09T10:00:00.000Z"); // 26h ago (overdue for COD 24h TTL)
 
     const normalizerHeld = createDeferred();
     const releaseNormalizer = createDeferred();
@@ -894,7 +916,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
 
       // Normalizer holds row lock
       const normalizerPromise = prisma.$transaction(async (tx) => {
-        const repo = new PrismaSalesOrderRepository(tx);
+        const repo = createTransactionScopedSalesOrderRepository(tx);
         const result = await repo.normalizeLegacyStorefrontReservation({
           cutoff: now,
           organizationId: fixture.organization.id,
@@ -954,7 +976,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
     const fixture = await createFixture(prisma);
     const client2 = createPrismaClient();
     const now = new Date("2026-09-10T12:00:00.000Z");
-    const reservedAt = new Date("2026-09-10T10:00:00.000Z");
+    const reservedAt = new Date("2026-09-09T10:00:00.000Z"); // 26h ago (overdue for COD 24h TTL)
 
     const normalizerHeld = createDeferred();
     const releaseNormalizer = createDeferred();
@@ -967,7 +989,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       });
 
       const normalizerPromise = prisma.$transaction(async (tx) => {
-        const repo = new PrismaSalesOrderRepository(tx);
+        const repo = createTransactionScopedSalesOrderRepository(tx);
         const result = await repo.normalizeLegacyStorefrontReservation({
           cutoff: now,
           organizationId: fixture.organization.id,
@@ -1053,6 +1075,8 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
       });
 
       expect(res.status).toBe("DEFERRED_PAYMENT_EXPOSED");
+      expect(res.status).toBe("DEFERRED");
+      expect(res.skipOrDeferReason).toBe("PAYMENT_EXPOSED");
       expect(res.reclaimed).toBe(false);
 
       const dbOrder = await observerPrisma.salesOrder.findUniqueOrThrow({
@@ -1071,7 +1095,7 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
   it("rolls back all normalization mutations and audits when an error occurs in transaction", async () => {
     const fixture = await createFixture(prisma);
     const now = new Date("2026-09-10T12:00:00.000Z");
-    const reservedAt = new Date("2026-09-10T10:00:00.000Z");
+    const reservedAt = new Date("2026-09-09T10:00:00.000Z"); // 26h ago (overdue for COD 24h TTL)
 
     try {
       const { orderId, reservationId, order } =
@@ -1091,7 +1115,8 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
                   throw new Error("SIMULATED_AUDIT_FAILURE");
                 },
               },
-              salesOrderLifecycleRepository: new PrismaSalesOrderRepository(tx),
+              salesOrderLifecycleRepository:
+                createTransactionScopedSalesOrderRepository(tx),
             };
             return op(txContext as never);
           });
@@ -1133,6 +1158,276 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         where: { organizationId: fixture.organization.id, resourceId: orderId },
       });
       expect(audits.length).toBe(0);
+    } finally {
+      await cleanupFixture(prisma, fixture);
+    }
+  });
+
+  // TEST: Future cutoff rejection produces zero mutations and zero audits
+  it("rejects future cutoff before starting mutations and leaves database completely untouched", async () => {
+    const fixture = await createFixture(prisma);
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    const futureCutoff = new Date("2026-09-10T13:00:00.000Z");
+    const reservedAt = new Date("2026-09-10T11:00:00.000Z");
+
+    try {
+      const { orderId, reservationId } = await createLegacyStorefrontOrder({
+        fixture,
+        paymentPreference: "ONLINE_PAYMENT",
+        reservedAt,
+      });
+
+      const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+      const transactionManager = new PrismaTransactionManager(
+        prisma,
+      ) as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: { now: () => now },
+        salesOrderRepository: salesOrderRepo,
+        transactionManager,
+      });
+
+      await expect(
+        service.executeApprovedManifest({
+          approvedSalesOrderIds: [orderId],
+          cutoff: futureCutoff,
+          organizationId: fixture.organization.id,
+        }),
+      ).rejects.toThrow("Cutoff timestamp cannot be in the future.");
+
+      // Database state must be 100% untouched
+      const untouchedOrder = await observerPrisma.salesOrder.findUniqueOrThrow({
+        where: { id: orderId },
+      });
+      expect(untouchedOrder.status).toBe("RESERVED");
+
+      const untouchedRsv =
+        await observerPrisma.inventoryReservation.findUniqueOrThrow({
+          where: { id: reservationId },
+        });
+      expect(untouchedRsv.expiresAt).toBeNull();
+      expect(untouchedRsv.status).toBe("ACTIVE");
+
+      const audits = await observerPrisma.auditEntry.findMany({
+        where: { organizationId: fixture.organization.id, resourceId: orderId },
+      });
+      expect(audits.length).toBe(0);
+    } finally {
+      await cleanupFixture(prisma, fixture);
+    }
+  });
+
+  // TEST: Manifest cutoff/policy binding rejection
+  it("rejects execution when manifest policy version is unsupported or cutoff conflicts", async () => {
+    const fixture = await createFixture(prisma);
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    const reservedAt = new Date("2026-09-10T11:00:00.000Z");
+
+    try {
+      const { orderId, reservationId } = await createLegacyStorefrontOrder({
+        fixture,
+        paymentPreference: "ONLINE_PAYMENT",
+        reservedAt,
+      });
+
+      const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+      const transactionManager = new PrismaTransactionManager(
+        prisma,
+      ) as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: { now: () => now },
+        salesOrderRepository: salesOrderRepo,
+        transactionManager,
+      });
+
+      // 1. Unsupported policy version
+      await expect(
+        service.executeApprovedManifest({
+          approvedManifest: {
+            candidates: [],
+            cutoff: now.toISOString(),
+            generatedAt: now.toISOString(),
+            organizationId: fixture.organization.id,
+            policyVersion: "phase-unknown" as unknown as "phase-2b-v1",
+            totalCandidates: 0,
+          },
+          organizationId: fixture.organization.id,
+        }),
+      ).rejects.toThrow("Unsupported policy version");
+
+      // 2. Conflicting cutoff override
+      await expect(
+        service.executeApprovedManifest({
+          approvedManifest: {
+            candidates: [],
+            cutoff: "2026-09-10T10:00:00.000Z",
+            generatedAt: now.toISOString(),
+            organizationId: fixture.organization.id,
+            policyVersion: "phase-2b-v1",
+            totalCandidates: 0,
+          },
+          cutoff: new Date("2026-09-10T11:00:00.000Z"),
+          organizationId: fixture.organization.id,
+        }),
+      ).rejects.toThrow("Conflicting cutoff override");
+
+      const untouched = await observerPrisma.salesOrder.findUniqueOrThrow({
+        where: { id: orderId },
+      });
+      expect(untouched.status).toBe("RESERVED");
+
+      const untouchedRsv =
+        await observerPrisma.inventoryReservation.findUniqueOrThrow({
+          where: { id: reservationId },
+        });
+      expect(untouchedRsv.expiresAt).toBeNull();
+    } finally {
+      await cleanupFixture(prisma, fixture);
+    }
+  });
+
+  // TEST: Rerun idempotency
+  it("proves rerun idempotency: second run skips already normalized order without duplicate reclaim", async () => {
+    const fixture = await createFixture(prisma);
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    const reservedAt = new Date("2026-09-09T10:00:00.000Z"); // 26h ago (overdue COD)
+
+    try {
+      const { orderId } = await createLegacyStorefrontOrder({
+        fixture,
+        paymentPreference: "CASH_ON_DELIVERY",
+        reservedAt,
+      });
+
+      const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+      const transactionManager = new PrismaTransactionManager(
+        prisma,
+      ) as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: { now: () => now },
+        salesOrderRepository: salesOrderRepo,
+        transactionManager,
+      });
+
+      // First run: normalizes and reclaims
+      const report1 = await service.executeApprovedManifest({
+        approvedSalesOrderIds: [orderId],
+        cutoff: now,
+        organizationId: fixture.organization.id,
+      });
+
+      expect(report1.totalProcessed).toBe(1);
+      expect(report1.committedCount).toBe(1);
+      expect(report1.reclaimedCount).toBe(1);
+      expect(report1.details[0]?.status).toBe("NORMALIZED_AND_RECLAIMED");
+
+      const availAfterFirstRun = await availabilityRepo.getAvailability({
+        organizationId: fixture.organization.id,
+        productVariantId: fixture.variant.id,
+        stockLocationId: fixture.location.id,
+      });
+
+      // Second run on same order: must skip
+      const report2 = await service.executeApprovedManifest({
+        approvedSalesOrderIds: [orderId],
+        cutoff: now,
+        organizationId: fixture.organization.id,
+      });
+
+      expect(report2.totalProcessed).toBe(1);
+      expect(report2.committedCount).toBe(0);
+      expect(report2.reclaimedCount).toBe(0);
+      expect(report2.skippedCount).toBe(1);
+      expect(report2.details[0]?.status).toBe("SKIPPED");
+      expect(report2.details[0]?.skipOrDeferReason).toBe("ALREADY_NORMALIZED");
+
+      // Availability must not change on rerun
+      const availAfterSecondRun = await availabilityRepo.getAvailability({
+        organizationId: fixture.organization.id,
+        productVariantId: fixture.variant.id,
+        stockLocationId: fixture.location.id,
+      });
+      expect(availAfterSecondRun.availableQuantity).toBe(
+        availAfterFirstRun.availableQuantity,
+      );
+      expect(availAfterSecondRun.reservedQuantity).toBe(
+        availAfterFirstRun.reservedQuantity,
+      );
+
+      // Audit entries count must remain 2 (no duplicate audits created on rerun)
+      const audits = await observerPrisma.auditEntry.findMany({
+        where: { organizationId: fixture.organization.id, resourceId: orderId },
+      });
+      expect(audits.length).toBe(2);
+    } finally {
+      await cleanupFixture(prisma, fixture);
+    }
+  });
+
+  // TEST: Dry-run payment attempt and batch classification
+  it("classifies payment exposed rows in dry-run exclusion counts", async () => {
+    const fixture = await createFixture(prisma);
+    const now = new Date("2026-09-10T12:00:00.000Z");
+    const reservedAt = new Date("2026-09-10T11:00:00.000Z");
+
+    try {
+      // 1. Order with payment attempt preserved
+      const { orderId: orderWithAttempt } = await createLegacyStorefrontOrder({
+        fixture,
+        paymentPreference: "ONLINE_PAYMENT",
+        reservedAt,
+        skipDeletePaymentAttempt: true,
+      });
+
+      // 2. Order with payment batch
+      const { orderId: orderWithBatch } = await createLegacyStorefrontOrder({
+        fixture,
+        paymentPreference: "CASH_ON_DELIVERY",
+        reservedAt,
+      });
+      await prisma.paymentBatch.create({
+        data: {
+          currencyCode: "BDT",
+          idempotencyKey: `batch-dry-${randomUUID()}`,
+          organizationId: fixture.organization.id,
+          outstandingMinor: 259800,
+          paidMinor: 0,
+          payableMinor: 259800,
+          requestSignature: "sig",
+          salesOrderId: orderWithBatch,
+          status: "UNPAID",
+        },
+      });
+
+      const salesOrderRepo = new PrismaSalesOrderRepository(prisma);
+      const transactionManager = new PrismaTransactionManager(
+        prisma,
+      ) as unknown as ApplicationTransactionManager;
+
+      const service = new StorefrontReservationNormalizationService({
+        clock: { now: () => now },
+        salesOrderRepository: salesOrderRepo,
+        transactionManager,
+      });
+
+      const report = await service.dryRun({
+        cutoff: now,
+        organizationId: fixture.organization.id,
+      });
+
+      expect(report.exclusionCounts.PAYMENT_EXPOSED).toBeGreaterThanOrEqual(1);
+      expect(
+        report.exclusionCounts.PAYMENT_BATCH_EXPOSED,
+      ).toBeGreaterThanOrEqual(1);
+
+      const candidateIds = report.manifest.candidates.map(
+        (c: CandidateManifestEntry) => c.salesOrderId,
+      );
+      expect(candidateIds).not.toContain(orderWithAttempt);
+      expect(candidateIds).not.toContain(orderWithBatch);
     } finally {
       await cleanupFixture(prisma, fixture);
     }
