@@ -155,7 +155,12 @@ function mapDetails(record: DetailsRecord): SalesOrderDetailsReadItem {
   return {
     boothId: record.boothId,
     channel: record.channel,
-    commerce: record.commerceProfile,
+    commerce: record.commerceProfile
+      ? {
+          paymentPreference: record.commerceProfile.paymentPreference,
+          source: record.commerceProfile.source,
+        }
+      : null,
     currencyCode: record.currencyCode,
     customer: {
       email: record.customerEmail,

@@ -808,7 +808,16 @@ function mapCollection(record: Collection): CollectionContract {
 }
 
 function mapColor(record: Color): ColorContract {
-  return colorContractSchema.parse(mapRecord(record));
+  return colorContractSchema.parse({
+    code: record.code,
+    createdAt: record.createdAt.toISOString(),
+    hexValue: record.hexValue ?? null,
+    id: record.id,
+    name: record.name,
+    organizationId: record.organizationId,
+    status: record.status,
+    updatedAt: record.updatedAt.toISOString(),
+  });
 }
 
 function mapSize(record: Size): SizeContract {
