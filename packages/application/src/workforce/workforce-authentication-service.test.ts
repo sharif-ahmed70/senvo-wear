@@ -123,7 +123,7 @@ describe("WorkforceAuthenticationService", () => {
       { action: "READ", resource: "ORGANIZATION" },
       { action: "READ", resource: "CATALOG" },
     ]);
-    expect(harness.createSession).toHaveBeenCalled();
+    expect(harness.createSessionForVerifiedCredential).toHaveBeenCalled();
   });
 
   it("resolves zero permissions when DB role has zero active grants", async () => {
@@ -293,6 +293,68 @@ describe("WorkforceAuthenticationService", () => {
       code: "UNAUTHORIZED",
     });
   });
+
+  it("passes captured credential version to issuance and clears rate limit after success", async () => {
+    const reset = vi.fn(() => Promise.resolve());
+    const harness = createHarness({
+      rateLimiter: {
+        consumeRateLimit: vi.fn(() =>
+          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
+        ),
+        reset,
+      },
+    });
+
+    const result = await harness.service.login({
+      email: "admin@senvo.test",
+      password: "CorrectPassword123!",
+    });
+
+    expect(result.sessionToken).toBeDefined();
+    expect(harness.createSessionForVerifiedCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialId: "cred-1",
+        expectedCredentialVersion: 1,
+        userId: "user-1",
+      }),
+    );
+    expect(reset).toHaveBeenCalled();
+  });
+
+  it("rejects login and returns no tokens when conditional issuance returns null", async () => {
+    const reset = vi.fn(() => Promise.resolve());
+    const harness = createHarness({
+      rateLimiter: {
+        consumeRateLimit: vi.fn(() =>
+          Promise.resolve({ allowed: true, retryAfterSeconds: 0 }),
+        ),
+        reset,
+      },
+      workforceSessions: {
+        createSession: vi.fn((input: WorkforceAuthenticationSession) =>
+          Promise.resolve(input),
+        ),
+        createSessionForVerifiedCredential: vi.fn(() => Promise.resolve(null)),
+        findSessionByTokenHash: vi.fn(() =>
+          Promise.resolve(validSessionRecord),
+        ),
+        revokeAllForUser: vi.fn(() => Promise.resolve(0)),
+        revokeAllWorkforceSessionsForUser: vi.fn(() => Promise.resolve(0)),
+        revokeSession: vi.fn(() => Promise.resolve(true)),
+      },
+    });
+
+    await expect(
+      harness.service.login({
+        email: "admin@senvo.test",
+        password: "CorrectPassword123!",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+
+    expect(reset).not.toHaveBeenCalled();
+  });
 });
 
 function createHarness(
@@ -339,6 +401,7 @@ function createHarness(
     create: vi.fn(() => Promise.resolve(validCredential)),
     findById: vi.fn(() => Promise.resolve(validCredential)),
     findByProviderIdentifier: vi.fn(() => Promise.resolve(validCredential)),
+    replacePassword: vi.fn(() => Promise.resolve(validCredential)),
     ...overrides.credentials,
   };
 
@@ -396,10 +459,21 @@ function createHarness(
     Promise.resolve(input),
   );
 
+  const createSessionForVerifiedCredential = vi.fn(
+    (input: {
+      credentialId: string;
+      expectedCredentialVersion: number;
+      session: WorkforceAuthenticationSession;
+      userId: string;
+    }) => Promise.resolve(input.session),
+  );
+
   const workforceSessions: WorkforceAuthenticationRepository = {
     createSession,
+    createSessionForVerifiedCredential,
     findSessionByTokenHash: vi.fn(() => Promise.resolve(validSessionRecord)),
     revokeAllForUser: vi.fn(() => Promise.resolve(0)),
+    revokeAllWorkforceSessionsForUser: vi.fn(() => Promise.resolve(0)),
     revokeSession: vi.fn(() => Promise.resolve(true)),
     ...overrides.workforceSessions,
   };
@@ -420,6 +494,7 @@ function createHarness(
 
   return {
     createSession,
+    createSessionForVerifiedCredential,
     credentials,
     memberships,
     passwords,

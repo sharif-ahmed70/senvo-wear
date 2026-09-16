@@ -78,3 +78,4 @@ export { PrismaOnlinePaymentRepository } from "./payment/online-payment-reposito
 export { PrismaReceiptRepository } from "./receipt/repository.js";
 export { PrismaStorefrontRepository } from "./storefront/repository.js";
 export { PrismaWorkforceAuthenticationRepository } from "./workforce/workforce-authentication-repository.js";
+export { PrismaWorkforcePasswordTransactionManager } from "./workforce/workforce-password-transaction.js";

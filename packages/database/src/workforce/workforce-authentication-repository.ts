@@ -11,7 +11,9 @@ type WorkforceSessionRecord = Prisma.WorkforceAuthenticationSessionGetPayload<{
 }>;
 
 export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthenticationRepository {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient | Prisma.TransactionClient,
+  ) {}
 
   async createSession(
     input: WorkforceAuthenticationSession,
@@ -103,6 +105,86 @@ export class PrismaWorkforceAuthenticationRepository implements WorkforceAuthent
       },
     });
     return result.count;
+  }
+
+  async revokeAllWorkforceSessionsForUser(input: {
+    revokedAt: Date;
+    userId: string;
+  }): Promise<number> {
+    const result = await this.prisma.workforceAuthenticationSession.updateMany({
+      data: { revokedAt: input.revokedAt, status: "REVOKED" },
+      where: {
+        status: "ACTIVE",
+        userId: input.userId,
+      },
+    });
+    return result.count;
+  }
+
+  async createSessionForVerifiedCredential(input: {
+    credentialId: string;
+    expectedCredentialVersion: number;
+    session: WorkforceAuthenticationSession;
+    userId: string;
+  }): Promise<WorkforceAuthenticationSession | null> {
+    const executeInTransaction = async (tx: Prisma.TransactionClient) => {
+      await tx.$queryRaw`SELECT id FROM "users" WHERE id = ${input.userId}::uuid FOR UPDATE`;
+
+      const rows = await tx.$queryRaw<
+        Array<{
+          id: string;
+          user_id: string;
+          version: number;
+          status: string;
+          provider: string;
+        }>
+      >`SELECT id, "user_id", version, status, provider FROM "user_credentials" WHERE id = ${input.credentialId}::uuid FOR UPDATE`;
+
+      if (rows.length === 0) {
+        return null;
+      }
+      const credential = rows[0];
+      if (
+        !credential ||
+        credential.user_id !== input.userId ||
+        credential.version !== input.expectedCredentialVersion ||
+        credential.status !== "ACTIVE" ||
+        credential.provider !== "PASSWORD"
+      ) {
+        return null;
+      }
+
+      const user = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { status: true },
+      });
+      if (!user || user.status !== "ACTIVE") {
+        return null;
+      }
+
+      const created = await tx.workforceAuthenticationSession.create({
+        data: {
+          csrfTokenHash: input.session.csrfTokenHash,
+          expiresAt: input.session.expiresAt,
+          id: input.session.id,
+          lastUsedAt: input.session.lastUsedAt,
+          organizationId: input.session.organizationId,
+          rememberMe: input.session.rememberMe,
+          status: toPersistedStatus(input.session.status),
+          tokenHash: input.session.tokenHash,
+          userId: input.session.userId,
+        },
+      });
+      return mapSession(created);
+    };
+
+    if (
+      "$transaction" in this.prisma &&
+      typeof (this.prisma as PrismaClient).$transaction === "function"
+    ) {
+      return (this.prisma as PrismaClient).$transaction(executeInTransaction);
+    }
+    return executeInTransaction(this.prisma);
   }
 }
 

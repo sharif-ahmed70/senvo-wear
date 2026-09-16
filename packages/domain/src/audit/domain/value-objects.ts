@@ -26,6 +26,7 @@ export const auditActions = [
   "STOREFRONT_ORDER_PLACED",
   "STOREFRONT_RESERVATION_EXPIRED",
   "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
+  "WORKFORCE_PASSWORD_SET",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
@@ -39,6 +40,7 @@ export const auditResources = [
   "POS_RETURN",
   "SALES_ORDER",
   "SALES_RECEIPT",
+  "USER_CREDENTIAL",
 ] as const satisfies readonly AuditResource[];
 
 export function assertAuditId(value: string, field: string): string {

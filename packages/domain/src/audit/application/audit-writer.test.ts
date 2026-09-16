@@ -91,6 +91,50 @@ describe("RepositoryAuditWriter", () => {
       userId: null,
     });
   });
+
+  it("accepts WORKFORCE_PASSWORD_SET with USER_CREDENTIAL resource, null user, and safe metadata", async () => {
+    const repository = new MemoryAuditEntryRepository();
+    const writer = new RepositoryAuditWriter(repository);
+
+    await writer.record({
+      action: "WORKFORCE_PASSWORD_SET",
+      actor: { userId: null },
+      metadata: {
+        actorType: "MAINTENANCE",
+        operation: "ADMINISTRATIVE_WORKFORCE_PASSWORD_SET",
+        operatorId: "op-1",
+        requestId: "req-1",
+        resultingVersion: 2,
+        revokedSessionCount: 1,
+        success: true,
+        targetUserId: "44444444-4444-4444-8444-444444444444",
+      },
+      organizationId,
+      resource: "USER_CREDENTIAL",
+      resourceId,
+    });
+
+    expect(repository.lastRecord).toMatchObject({
+      action: "WORKFORCE_PASSWORD_SET",
+      organizationId,
+      resource: "USER_CREDENTIAL",
+      resourceId,
+      userId: null,
+    });
+
+    await expect(
+      writer.record({
+        action: "WORKFORCE_PASSWORD_SET",
+        actor: { userId: null },
+        metadata: {
+          passwordHash: "secret-hash",
+        },
+        organizationId,
+        resource: "USER_CREDENTIAL",
+        resourceId,
+      }),
+    ).rejects.toBeInstanceOf(ValidationApplicationError);
+  });
 });
 
 class MemoryAuditEntryRepository implements AuditEntryRepository {

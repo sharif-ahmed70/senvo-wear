@@ -15,6 +15,12 @@ export type WorkforceAuthenticationRepository = {
   createSession(
     input: WorkforceAuthenticationSession,
   ): Promise<WorkforceAuthenticationSession>;
+  createSessionForVerifiedCredential(input: {
+    credentialId: string;
+    expectedCredentialVersion: number;
+    session: WorkforceAuthenticationSession;
+    userId: string;
+  }): Promise<WorkforceAuthenticationSession | null>;
   findSessionByTokenHash(
     tokenHash: string,
   ): Promise<WorkforceSessionWithPrincipal | null>;
@@ -24,6 +30,10 @@ export type WorkforceAuthenticationRepository = {
   }): Promise<boolean>;
   revokeAllForUser(input: {
     organizationId: string;
+    revokedAt: Date;
+    userId: string;
+  }): Promise<number>;
+  revokeAllWorkforceSessionsForUser(input: {
     revokedAt: Date;
     userId: string;
   }): Promise<number>;

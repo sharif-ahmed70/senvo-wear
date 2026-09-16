@@ -736,3 +736,8 @@ export type {
   AuditEntryRepository,
   CreateAuditEntryRecord,
 } from "./audit/repositories/audit-repositories.js";
+export type {
+  WorkforcePasswordTargetScope,
+  WorkforcePasswordTransactionContext,
+  WorkforcePasswordTransactionManager,
+} from "./workforce/repositories/workforce-password-transaction.js";

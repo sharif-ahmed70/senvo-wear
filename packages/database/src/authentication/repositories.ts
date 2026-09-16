@@ -62,6 +62,31 @@ export class PrismaUserCredentialRepository implements UserCredentialRepository 
     }
     return this.findById(record.id);
   }
+
+  async replacePassword(record: {
+    expectedVersion: number;
+    id: string;
+    passwordHash: string;
+    userId: string;
+  }): Promise<UserCredential | null> {
+    const update = await this.prisma.userCredential.updateMany({
+      data: {
+        passwordHash: record.passwordHash,
+        version: { increment: 1 },
+      },
+      where: {
+        id: record.id,
+        provider: "PASSWORD",
+        status: "ACTIVE",
+        userId: record.userId,
+        version: record.expectedVersion,
+      },
+    });
+    if (update.count === 0) {
+      return null;
+    }
+    return this.findById(record.id);
+  }
 }
 
 async function createWithIntegrityMapping<T>(

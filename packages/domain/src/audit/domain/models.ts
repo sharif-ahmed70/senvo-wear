@@ -12,7 +12,8 @@ export type AuditAction =
   | "SALES_ORDER_CREATED"
   | "STOREFRONT_ORDER_PLACED"
   | "STOREFRONT_RESERVATION_EXPIRED"
-  | "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED";
+  | "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED"
+  | "WORKFORCE_PASSWORD_SET";
 
 export type AuditResource =
   | "INVENTORY_MOVEMENT"
@@ -24,7 +25,8 @@ export type AuditResource =
   | "POS_CHECKOUT"
   | "POS_RETURN"
   | "SALES_ORDER"
-  | "SALES_RECEIPT";
+  | "SALES_RECEIPT"
+  | "USER_CREDENTIAL";
 
 export type AuditJsonValue =
   | boolean

@@ -24,4 +24,10 @@ export type UserCredentialRepository = {
     provider: IdentityProvider,
     identifier: string,
   ): Promise<UserCredential | null>;
+  replacePassword(record: {
+    expectedVersion: number;
+    id: string;
+    passwordHash: string;
+    userId: string;
+  }): Promise<UserCredential | null>;
 };

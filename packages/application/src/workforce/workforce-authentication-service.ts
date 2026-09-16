@@ -155,6 +155,7 @@ export class WorkforceAuthenticationService {
         "INVALID_CREDENTIALS",
         "Invalid credentials.",
       );
+    const expectedCredentialVersion = credential.version;
     if (credential.status !== "ACTIVE")
       throw new WorkforceAuthenticationError(
         "ACCOUNT_DISABLED",
@@ -191,6 +192,42 @@ export class WorkforceAuthenticationService {
         "Organization is inactive.",
       );
 
+    const now = this.clock();
+    const sessionToken = this.deps.secrets.generateToken();
+    const csrfToken = this.deps.secrets.generateToken();
+    const expiresAt = new Date(
+      now.getTime() +
+        (input.rememberMe ? 30 * 24 * 60 * 60_000 : 12 * 60 * 60_000),
+    );
+
+    const session =
+      await this.deps.workforceSessions.createSessionForVerifiedCredential({
+        credentialId: credential.id,
+        expectedCredentialVersion,
+        session: {
+          createdAt: now,
+          csrfTokenHash: this.deps.secrets.hashSecret(csrfToken),
+          expiresAt,
+          id: this.idGenerator(),
+          lastUsedAt: now,
+          organizationId: membership.organizationId,
+          rememberMe: Boolean(input.rememberMe),
+          revokedAt: null,
+          status: "ACTIVE",
+          tokenHash: this.deps.secrets.hashSecret(sessionToken),
+          updatedAt: now,
+          userId: user.id,
+        },
+        userId: user.id,
+      });
+
+    if (!session) {
+      throw new WorkforceAuthenticationError(
+        "INVALID_CREDENTIALS",
+        "Invalid credentials.",
+      );
+    }
+
     if (this.deps.rateLimiter?.reset && rateLimitOrgId) {
       void this.deps.rateLimiter
         .reset({
@@ -200,28 +237,6 @@ export class WorkforceAuthenticationService {
         })
         .catch(() => {});
     }
-
-    const now = this.clock();
-    const sessionToken = this.deps.secrets.generateToken();
-    const csrfToken = this.deps.secrets.generateToken();
-    const expiresAt = new Date(
-      now.getTime() +
-        (input.rememberMe ? 30 * 24 * 60 * 60_000 : 12 * 60 * 60_000),
-    );
-    await this.deps.workforceSessions.createSession({
-      createdAt: now,
-      csrfTokenHash: this.deps.secrets.hashSecret(csrfToken),
-      expiresAt,
-      id: this.idGenerator(),
-      lastUsedAt: now,
-      organizationId: membership.organizationId,
-      rememberMe: Boolean(input.rememberMe),
-      revokedAt: null,
-      status: "ACTIVE",
-      tokenHash: this.deps.secrets.hashSecret(sessionToken),
-      updatedAt: now,
-      userId: user.id,
-    });
 
     const permissions = await this.resolvePermissions(membership.role);
 
