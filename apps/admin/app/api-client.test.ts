@@ -353,6 +353,70 @@ describe("AdminApiClient", () => {
     expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "GET" });
   });
 
+  it("uses typed inventory movement draft and posting endpoints", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            id: "10000000-0000-4000-8000-000000000001",
+            movementNumber: "RC-001",
+            status: "DRAFT",
+          },
+          requestId: "req_draft_1",
+          success: true,
+        }),
+      ),
+    );
+    const client = new AdminApiClient({
+      baseUrl: "https://admin.example.test",
+      fetcher,
+    });
+
+    const draftInput = {
+      destinationLocationId: "10000000-0000-4000-8000-000000000002",
+      idempotencyKey: "admin-receive:receipt-1",
+      lines: [
+        {
+          productVariantId: "10000000-0000-4000-8000-000000000003",
+          quantity: 10,
+        },
+      ],
+      movementNumber: "RC-001",
+      note: "Stock arrival",
+      occurredAt: "2026-09-24T12:00:00.000Z",
+      referenceId: "receipt-1",
+      referenceType: "ADMIN_RECEIPT",
+      sourceLocationId: null,
+      type: "RECEIPT" as const,
+    };
+
+    await client.createInventoryMovementDraft(draftInput, {
+      requestId: "req_draft_1",
+    });
+    await client.postInventoryMovement(
+      { movementId: "10000000-0000-4000-8000-000000000001" },
+      { requestId: "req_post_1" },
+    );
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://admin.example.test/inventory/movement-drafts",
+    );
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify(draftInput),
+      method: "POST",
+    });
+
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "https://admin.example.test/inventory/movements",
+    );
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
+      body: JSON.stringify({
+        movementId: "10000000-0000-4000-8000-000000000001",
+      }),
+      method: "POST",
+    });
+  });
+
   it("uses typed sales read and lifecycle endpoints", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
       Promise.resolve(

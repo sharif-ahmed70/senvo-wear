@@ -18,12 +18,14 @@ export {
 } from "./online-payment-handlers.js";
 export {
   createCatalogApiHandlers,
+  createInventoryMovementDraftApiHandler,
   createInventoryReadApiHandlers,
   createPostInventoryMovementApiHandler,
   createSalesOrderApiHandler,
   createSalesOrderManagementApiHandlers,
   type CatalogApiHandlers,
   type CatalogManagementApplication,
+  type InventoryMovementDraftCreationApplication,
   type InventoryMovementPostingApplication,
   type InventoryReadApiHandlers,
   type InventoryReadApplication,

@@ -895,6 +895,17 @@ export const createInventoryMovementInputSchema = z
   })
   .strict();
 
+export const createInventoryMovementServiceInputSchema =
+  createInventoryMovementInputSchema
+    .omit({ organizationId: true })
+    .extend({
+      destinationLocationId: idSchema,
+      occurredAt: isoTimestampSchema,
+      sourceLocationId: z.null().optional(),
+      type: z.literal("RECEIPT"),
+    })
+    .strict();
+
 export const replaceDraftMovementLinesInputSchema = z
   .object({
     lines: z.array(inventoryMovementLineInputSchema).min(1).max(500),
@@ -1729,6 +1740,9 @@ export type CreatePosCounterInputContract = z.infer<
 >;
 export type CreateInventoryMovementInputContract = z.infer<
   typeof createInventoryMovementInputSchema
+>;
+export type CreateInventoryMovementServiceInputContract = z.infer<
+  typeof createInventoryMovementServiceInputSchema
 >;
 export type ReplaceDraftMovementLinesInputContract = z.infer<
   typeof replaceDraftMovementLinesInputSchema

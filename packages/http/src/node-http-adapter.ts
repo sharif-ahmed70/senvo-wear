@@ -60,6 +60,7 @@ export type SenvoHttpHandlers = {
   organizationManagement?: OrganizationManagementApiHandlers;
   onlinePayments?: OnlinePaymentApiHandlers;
   pos?: PosApiHandlers;
+  createInventoryMovementDraft?: ApiHandler<unknown>;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
@@ -178,6 +179,17 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       path: /^\/inventory\/movements$/u,
       successStatus: 200,
     },
+    ...(handlers.createInventoryMovementDraft
+      ? [
+          {
+            handler: handlers.createInventoryMovementDraft,
+            input: bodyInput,
+            method: "POST" as const,
+            path: /^\/inventory\/movement-drafts$/u,
+            successStatus: 201,
+          },
+        ]
+      : []),
   ];
   if (handlers.catalog) {
     routes.push(

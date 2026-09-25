@@ -18,8 +18,11 @@ import type {
   CreateSizeServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryAvailabilityReadContract,
+  InventoryMovementContract,
   InventoryMovementHistoryContract,
   InventoryReadPageContract,
+  CreateInventoryMovementServiceInputContract,
+  PostInventoryMovementServiceInputContract,
   ListInventoryAvailabilityServiceInputContract,
   ListInventoryMovementsServiceInputContract,
   ListStockLocationsServiceInputContract,
@@ -614,6 +617,31 @@ export class AdminApiClient {
     return this.request<
       InventoryReadPageContract<InventoryMovementHistoryContract>
     >(`/inventory/movements${queryString(input)}`, request);
+  }
+
+  createInventoryMovementDraft(
+    input: CreateInventoryMovementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<InventoryMovementContract>(
+      "/inventory/movement-drafts",
+      {
+        ...request,
+        body: input,
+        method: "POST",
+      },
+    );
+  }
+
+  postInventoryMovement(
+    input: PostInventoryMovementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<InventoryMovementContract>("/inventory/movements", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
   }
 
   getVariantAvailability(

@@ -98,6 +98,102 @@ describe("InventoryApplicationService", () => {
     expect(repository.lastPost).toBeNull();
   });
 
+  it("checks authorization and creates movement draft with INVENTORY.CREATE", async () => {
+    const payload = {
+      destinationLocationId: "55555555-5555-4555-8555-555555555555",
+      idempotencyKey: "admin-receive:1",
+      lines: [{ productVariantId, quantity: 5 }],
+      movementNumber: "REC-1001",
+      note: "Receiving batch 1",
+      occurredAt: "2026-07-03T00:00:00.000Z",
+      referenceId: "REC-ID-1",
+      referenceType: "ADMIN_RECEIPT",
+      sourceLocationId: null,
+      type: "RECEIPT" as const,
+    };
+
+    const result = await service.createMovementDraft(context, payload);
+
+    expect(result.ok).toBe(true);
+    expect(repository.lastCreateDraft).toMatchObject({
+      destinationLocationId: payload.destinationLocationId,
+      idempotencyKey: payload.idempotencyKey,
+      movementNumber: payload.movementNumber,
+      organizationId,
+      type: "RECEIPT",
+    });
+    expect(authorization.calls).toEqual([
+      {
+        organizationId,
+        permission: { action: "CREATE", resource: "INVENTORY" },
+        role: "MANAGER",
+        userId,
+      },
+    ]);
+  });
+
+  it("returns safe denial results without creating movement draft when unauthorized", async () => {
+    authorization.error = new AuthorizationError("Permission denied.");
+
+    const result = await service.createMovementDraft(context, {
+      destinationLocationId: "55555555-5555-4555-8555-555555555555",
+      idempotencyKey: "admin-receive:2",
+      lines: [{ productVariantId, quantity: 5 }],
+      movementNumber: "REC-1002",
+      occurredAt: "2026-07-03T00:00:00.000Z",
+      type: "RECEIPT",
+    });
+
+    expect(result).toMatchObject({
+      error: {
+        code: "FORBIDDEN",
+        message: "You are not allowed to perform this action.",
+      },
+      ok: false,
+    });
+    expect(repository.lastCreateDraft).toBeNull();
+  });
+
+  it("replays an identical receipt and rejects changed payloads without another draft", async () => {
+    const payload = {
+      destinationLocationId: "55555555-5555-4555-8555-555555555555",
+      idempotencyKey: "receipt-replay-1",
+      lines: [{ productVariantId, quantity: 5 }],
+      movementNumber: "REC-REPLAY",
+      occurredAt: "2026-07-03T00:00:00.000Z",
+      type: "RECEIPT",
+    };
+    const first = await service.createMovementDraft(context, payload);
+    expect(first.ok).toBe(true);
+    expect(await service.createMovementDraft(context, payload)).toEqual(first);
+    for (const patch of [
+      { occurredAt: "2026-07-03T00:00:01.000Z" },
+      { lines: [{ productVariantId, quantity: 6 }] },
+    ]) {
+      expect(
+        await service.createMovementDraft(context, { ...payload, ...patch }),
+      ).toMatchObject({ ok: false });
+    }
+    expect(repository.createCount).toBe(1);
+  });
+
+  it.each(["OPENING", "ISSUE", "TRANSFER", "ADJUSTMENT_IN", "ADJUSTMENT_OUT"])(
+    "rejects %s directly at the application boundary",
+    async (type) => {
+      expect(
+        await service.createMovementDraft(context, {
+          destinationLocationId: "55555555-5555-4555-8555-555555555555",
+          idempotencyKey: "receipt-scope-1",
+          lines: [{ productVariantId, quantity: 5 }],
+          movementNumber: "REC-SCOPE",
+          occurredAt: "2026-07-03T00:00:00.000Z",
+          type,
+        }),
+      ).toMatchObject({ ok: false });
+      expect(repository.lastCreateDraft).toBeNull();
+    },
+  );
+
   it("queries organization-scoped availability with INVENTORY.READ", async () => {
     const result = await service.listInventoryAvailability(context, {
       pageSize: 1,
@@ -177,10 +273,27 @@ class FakeInventoryReadRepository implements InventoryReadRepository {
 }
 
 class FakeInventoryMovementRepository implements InventoryMovementRepository {
+  created: InventoryMovement | null = null;
+  createCount = 0;
+  lastCreateDraft:
+    Parameters<InventoryMovementRepository["createDraft"]>[0] | null = null;
   lastPost: { movementId: string; organizationId: string } | null = null;
 
-  createDraft(): Promise<InventoryMovement> {
-    return Promise.reject(unreachableError());
+  createDraft(
+    record: Parameters<InventoryMovementRepository["createDraft"]>[0],
+  ): Promise<InventoryMovement> {
+    this.lastCreateDraft = record;
+    this.createCount++;
+    this.created = baseMovement({
+      ...record,
+      lines: record.lines.map((line, index) => ({
+        ...baseMovement().lines[0]!,
+        ...line,
+        lineNumber: index + 1,
+      })),
+      status: "DRAFT",
+    });
+    return Promise.resolve(this.created);
   }
 
   findById(id: string, orgId: string): Promise<InventoryMovement | null> {
@@ -189,8 +302,16 @@ class FakeInventoryMovementRepository implements InventoryMovementRepository {
     );
   }
 
-  findByIdempotencyKey(): Promise<InventoryMovement | null> {
-    return Promise.resolve(null);
+  findByIdempotencyKey(
+    orgId: string,
+    key: string,
+  ): Promise<InventoryMovement | null> {
+    return Promise.resolve(
+      this.created?.organizationId === orgId &&
+        this.created.idempotencyKey === key
+        ? this.created
+        : null,
+    );
   }
 
   getPayloadSignature(): Promise<string | null> {

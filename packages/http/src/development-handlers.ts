@@ -1,5 +1,6 @@
 import {
   createCatalogApiHandlers,
+  createInventoryMovementDraftApiHandler,
   createInventoryReadApiHandlers,
   createOnlinePaymentApiHandlers,
   createOrganizationManagementApiHandlers,
@@ -51,6 +52,11 @@ export function createDevelopmentApiHandlers(
       authenticationService: options.authenticationService,
       authorizationService: options.authorizationService,
       pos: options.services.pos,
+    }),
+    createInventoryMovementDraft: createInventoryMovementDraftApiHandler({
+      authenticationService: options.authenticationService,
+      authorizationService: options.authorizationService,
+      inventory: options.services.inventory,
     }),
     postInventoryMovement: createPostInventoryMovementApiHandler({
       authenticationService: options.authenticationService,

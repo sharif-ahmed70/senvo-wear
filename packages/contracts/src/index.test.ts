@@ -24,6 +24,7 @@ import {
   customerResetPasswordInputSchema,
   createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
+  createInventoryMovementServiceInputSchema,
   createColorInputSchema,
   createColorServiceInputSchema,
   createPosCounterInputSchema,
@@ -203,6 +204,60 @@ describe("customer authentication contracts", () => {
 });
 
 describe("API contracts", () => {
+  it("limits the new draft service boundary to complete receipt inputs", () => {
+    const receipt = {
+      destinationLocationId: "10000000-0000-4000-8000-000000000001",
+      idempotencyKey: "receipt-contract-1",
+      lines: [
+        {
+          productVariantId: "10000000-0000-4000-8000-000000000002",
+          quantity: 5,
+        },
+      ],
+      movementNumber: "REC-1",
+      occurredAt: "2026-09-25T12:00:00.000Z",
+      type: "RECEIPT",
+    };
+    expect(
+      createInventoryMovementServiceInputSchema.safeParse(receipt).success,
+    ).toBe(true);
+    for (const type of [
+      "OPENING",
+      "ISSUE",
+      "TRANSFER",
+      "ADJUSTMENT_IN",
+      "ADJUSTMENT_OUT",
+    ]) {
+      expect(
+        createInventoryMovementServiceInputSchema.safeParse({
+          ...receipt,
+          type,
+        }).success,
+      ).toBe(false);
+      expect(
+        createInventoryMovementInputSchema.safeParse({
+          ...receipt,
+          type,
+          organizationId: receipt.destinationLocationId,
+        }).success,
+      ).toBe(true);
+    }
+    for (const patch of [
+      { destinationLocationId: undefined },
+      { destinationLocationId: null },
+      { occurredAt: undefined },
+      { sourceLocationId: receipt.destinationLocationId },
+      { organizationId: receipt.destinationLocationId },
+    ]) {
+      expect(
+        createInventoryMovementServiceInputSchema.safeParse({
+          ...receipt,
+          ...patch,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts safe storefront discovery filters and valid product slugs", () => {
     expect(
       storefrontCatalogQuerySchema.parse({
@@ -916,6 +971,30 @@ describe("API contracts", () => {
         movementNumber: "OPEN-1",
         organizationId,
         type: "OPENING",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createInventoryMovementServiceInputSchema.parse({
+        destinationLocationId,
+        idempotencyKey: "admin-receive:123",
+        lines: [{ productVariantId, quantity: 10 }],
+        movementNumber: "REC-1",
+        note: "Incoming delivery",
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        referenceType: "ADMIN_RECEIPT",
+        type: "RECEIPT",
+      }),
+    ).toMatchObject({ movementNumber: "REC-1", type: "RECEIPT" });
+    expect(
+      createInventoryMovementServiceInputSchema.safeParse({
+        destinationLocationId,
+        idempotencyKey: "admin-receive:123",
+        lines: [{ productVariantId, quantity: 10 }],
+        movementNumber: "REC-1",
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        organizationId,
+        type: "RECEIPT",
       }).success,
     ).toBe(false);
 

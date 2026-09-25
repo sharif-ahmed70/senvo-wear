@@ -33,6 +33,7 @@ import {
   listProductVariantsServiceInputSchema,
   listVariantBarcodesServiceInputSchema,
   lookupBarcodeServiceInputSchema,
+  createInventoryMovementServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
   updateBarcodeStatusServiceInputSchema,
@@ -50,6 +51,7 @@ import {
   type CreateProductVariantServiceInputContract,
   type CreateSizeServiceInputContract,
   type CreateSalesOrderServiceInputContract,
+  type CreateInventoryMovementServiceInputContract,
   type InventoryMovementContract,
   type InventoryAvailabilityReadContract,
   type InventoryMovementHistoryContract,
@@ -140,6 +142,13 @@ export type SalesOrderManagementApiHandlers = {
   getDetails: ApiHandler<SalesOrderDetailsReadContract>;
   list: ApiHandler<SalesOrderListReadPageContract>;
   reserve: ApiHandler<SalesOrderServiceContract>;
+};
+
+export type InventoryMovementDraftCreationApplication = {
+  createMovementDraft(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<InventoryMovementContract>>;
 };
 
 export type InventoryMovementPostingApplication = {
@@ -743,6 +752,24 @@ export function createSalesOrderManagementApiHandlers(
       dependencies.sales.reserveManagedOrder(context, input),
     ),
   };
+}
+
+export function createInventoryMovementDraftApiHandler(
+  dependencies: SecurityDependencies & {
+    inventory: InventoryMovementDraftCreationApplication;
+  },
+): ApiHandler<InventoryMovementContract> {
+  return createProtectedApiHandler<
+    CreateInventoryMovementServiceInputContract,
+    InventoryMovementContract
+  >({
+    authenticationService: dependencies.authenticationService,
+    authorizationService: dependencies.authorizationService,
+    execute: (context, input) =>
+      dependencies.inventory.createMovementDraft(context, input),
+    inputSchema: createInventoryMovementServiceInputSchema,
+    permission: { action: "CREATE", resource: "INVENTORY" },
+  });
 }
 
 export function createPostInventoryMovementApiHandler(

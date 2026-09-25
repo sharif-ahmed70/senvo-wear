@@ -14,8 +14,10 @@ import type { ApplicationAuthorizationService } from "@senvo/application";
 import {
   createApiFailure,
   createApiSuccess,
+  createInventoryMovementServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   type ApiResponse,
+  type CreateInventoryMovementServiceInputContract,
   type InventoryAvailabilityReadContract,
   type InventoryMovementHistoryContract,
   type InventoryReadPageContract,
@@ -353,6 +355,99 @@ describe("Node HTTP runtime adapter", () => {
         userId,
       },
     ]);
+  });
+
+  it("maps a successful create inventory movement draft response to HTTP 201", async () => {
+    const authorization = new AllowAuthorizationService();
+    const runtime = await startProtectedInventoryRuntime(authorization);
+
+    const payload = {
+      destinationLocationId: "10000000-0000-4000-8000-000000000004",
+      idempotencyKey: "admin-receive:123",
+      lines: [
+        {
+          productVariantId: "10000000-0000-4000-8000-000000000005",
+          quantity: 10,
+        },
+      ],
+      movementNumber: "REC-1001",
+      note: "Receiving stock",
+      occurredAt: "2026-07-03T00:00:00.000Z",
+      referenceId: "REC-123",
+      referenceType: "ADMIN_RECEIPT",
+      sourceLocationId: null,
+      type: "RECEIPT",
+    };
+
+    const response = await fetch(`${runtime.url}/inventory/movement-drafts`, {
+      body: JSON.stringify(payload),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      data: { id: movementId },
+      requestId: suppliedRequestId,
+      success: true,
+    });
+    expect(authorization.calls).toEqual([
+      {
+        organizationId,
+        permission: { action: "CREATE", resource: "INVENTORY" },
+        requestId: suppliedRequestId,
+        userId,
+      },
+    ]);
+  });
+
+  it.each(["OPENING", "ISSUE", "TRANSFER", "ADJUSTMENT_IN", "ADJUSTMENT_OUT"])(
+    "returns HTTP 400 for unsupported draft type %s",
+    async (type) => {
+      const runtime = await startProtectedInventoryRuntime();
+      const response = await fetch(`${runtime.url}/inventory/movement-drafts`, {
+        body: JSON.stringify({
+          destinationLocationId: "10000000-0000-4000-8000-000000000004",
+          idempotencyKey: "receipt-scope-1",
+          lines: [
+            {
+              productVariantId: "10000000-0000-4000-8000-000000000005",
+              quantity: 5,
+            },
+          ],
+          movementNumber: "REC-SCOPE",
+          occurredAt: "2026-07-03T00:00:00.000Z",
+          type,
+        }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: { code: "VALIDATION.INVALID_INPUT" },
+      });
+    },
+  );
+
+  it("returns HTTP 400 when creating movement draft with invalid payload", async () => {
+    const runtime = await startProtectedInventoryRuntime();
+
+    const response = await fetch(`${runtime.url}/inventory/movement-drafts`, {
+      body: JSON.stringify({ lines: [] }),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "VALIDATION.INVALID_INPUT",
+        message: "Input is invalid.",
+      },
+      requestId: suppliedRequestId,
+      success: false,
+    });
   });
 
   it("routes inventory read query parameters and variant identifiers", async () => {
@@ -929,8 +1024,19 @@ async function startProtectedInventoryRuntime(
     inputSchema: postInventoryMovementServiceInputSchema,
     permission: { action: "UPDATE", resource: "INVENTORY" },
   });
+  const createDraft = createProtectedApiHandler<
+    CreateInventoryMovementServiceInputContract,
+    { id: string }
+  >({
+    authenticationService: new DevelopmentAuthenticationService("test"),
+    authorizationService,
+    execute: () => Promise.resolve({ data: { id: movementId }, ok: true }),
+    inputSchema: createInventoryMovementServiceInputSchema,
+    permission: { action: "CREATE", resource: "INVENTORY" },
+  });
   return startRuntime({
     handlers: {
+      createInventoryMovementDraft: createDraft,
       createSalesOrder: inventory,
       postInventoryMovement: inventory,
     },

@@ -36,6 +36,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -43,6 +44,7 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./receive-stock-workflow.module.css";
+import { canReceiveStock, ReceiptAttempt } from "../_lib/receipt-attempt";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -61,21 +63,6 @@ type ReceiptLine = {
   variantId: string;
 };
 
-type DraftCreateInput = {
-  destinationLocationId: string;
-  idempotencyKey: string;
-  lines: Array<{
-    productVariantId: string;
-    quantity: number;
-  }>;
-  movementNumber: string;
-  note?: string | null;
-  occurredAt: string;
-  referenceType: string;
-  sourceLocationId: null;
-  type: "RECEIPT";
-};
-
 export function ReceiveStockWorkflow({
   permissions: propsPermissions,
 }: {
@@ -84,7 +71,7 @@ export function ReceiveStockWorkflow({
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
   const canReadInventory = permissions.includes("INVENTORY:READ");
-  const canCreateInventory = permissions.includes("INVENTORY:CREATE");
+  const canReceive = canReceiveStock(permissions);
   const canReadCatalog = permissions.includes("CATALOG:READ");
 
   const [step, setStep] = useState<Step>(1);
@@ -112,9 +99,11 @@ export function ReceiveStockWorkflow({
   const [postedMovement, setPostedMovement] =
     useState<InventoryMovementContract | null>(null);
   const [receiptId, setReceiptId] = useState(() => crypto.randomUUID());
+  const attempt = useRef<ReceiptAttempt | null>(null);
+  const [attemptLocked, setAttemptLocked] = useState(false);
 
   const loadFoundation = useCallback(async () => {
-    if (!canReadInventory) return;
+    if (!canReceive) return;
     setLoading(true);
     setError("");
     try {
@@ -144,14 +133,14 @@ export function ReceiveStockWorkflow({
     } finally {
       setLoading(false);
     }
-  }, [canReadCatalog, canReadInventory]);
+  }, [canReadCatalog, canReceive]);
 
   useEffect(() => {
     void loadFoundation();
   }, [loadFoundation]);
 
   useEffect(() => {
-    if (!selectedProductId) {
+    if (!canReceive || !selectedProductId) {
       setProductDetails(null);
       return;
     }
@@ -162,7 +151,7 @@ export function ReceiveStockWorkflow({
       .then((result) => setProductDetails(result.data))
       .catch((caught) => setError(messageFor(caught)))
       .finally(() => setLoadingProduct(false));
-  }, [selectedProductId]);
+  }, [canReceive, selectedProductId]);
 
   const colorNames = useMemo(
     () => new Map(colors.map((color) => [color.id, color.name])),
@@ -199,13 +188,13 @@ export function ReceiveStockWorkflow({
     );
   }
 
-  if (!canCreateInventory) {
+  if (!canReceive) {
     return (
       <StatePanel
         action={<Link href="/inventory">Back to inventory</Link>}
         icon={<ShieldCheck size={28} />}
         title="Receiving stock requires permission"
-        text="Your role can view inventory, but it cannot create stock movements."
+        text="Receiving stock requires inventory read, create and update permissions, plus catalog read access."
       />
     );
   }
@@ -281,74 +270,75 @@ export function ReceiveStockWorkflow({
   }
 
   async function confirmReceipt() {
-    if (!selectedLocationId || lines.length === 0 || saving) return;
-    setSaving(true);
+    if (
+      !canReceive ||
+      !selectedLocationId ||
+      lines.length === 0 ||
+      attempt.current?.busy
+    )
+      return;
     setError("");
     setNotice("");
     setIntegrationPending(false);
-
     try {
-      let draft = draftMovement;
-      if (!draft) {
-        const payload: DraftCreateInput = {
-          destinationLocationId: selectedLocationId,
-          idempotencyKey: `admin-receive:${receiptId}`,
-          lines: lines.map((line) => ({
-            productVariantId: line.variantId,
-            quantity: line.quantity,
-          })),
-          movementNumber: movementNumber(receiptId),
-          note: note.trim() || null,
-          occurredAt: new Date().toISOString(),
-          referenceType: "ADMIN_RECEIPT",
-          sourceLocationId: null,
-          type: "RECEIPT",
-        };
-        try {
-          draft = (
-            await client.request<InventoryMovementContract>(
-              "/inventory/movement-drafts",
-              { body: payload, method: "POST" },
-            )
-          ).data;
-        } catch (caught) {
-          if (
-            caught instanceof AdminApiError &&
-            (caught.status === 404 || caught.status === 405)
-          ) {
-            setIntegrationPending(true);
-            throw new Error(
-              "The Receive Stock frontend is ready, but this environment has not wired the inventory draft-creation HTTP endpoint yet.",
-            );
-          }
-          throw caught;
-        }
-        setDraftMovement(draft);
-      }
-
-      const posted = (
-        await client.request<InventoryMovementContract>(
-          "/inventory/movements",
-          {
-            body: { movementId: draft.id },
-            method: "POST",
-          },
-        )
-      ).data;
+      attempt.current ??= new ReceiptAttempt({
+        destinationLocationId: selectedLocationId,
+        idempotencyKey: `admin-receive:${receiptId}`,
+        lines: lines.map((line) => ({
+          productVariantId: line.variantId,
+          quantity: line.quantity,
+        })),
+        movementNumber: movementNumber(receiptId),
+        note: note.trim() || null,
+        occurredAt: new Date().toISOString(),
+        referenceId: receiptId,
+        referenceType: "ADMIN_RECEIPT",
+        sourceLocationId: null,
+        type: "RECEIPT",
+      });
+      setSaving(true);
+      setAttemptLocked(true);
+      const posted = await attempt.current.submit(client);
+      if (!posted) return;
       setPostedMovement(posted);
-      setStep(4);
-      setNotice(
-        `${totalUnits} units were received into ${selectedLocation?.name ?? "the selected location"}.`,
+      setLines(
+        posted.lines.map((line) => ({
+          ...(lines.find(
+            (item) => item.variantId === line.productVariantId,
+          ) ?? {
+            color: "",
+            productName: "Received variant",
+            size: "",
+            sku: line.productVariantId,
+          }),
+          quantity: line.quantity,
+          variantId: line.productVariantId,
+        })),
       );
+      setSelectedLocationId(posted.destinationLocationId ?? "");
+      setStep(4);
+      setNotice("Receipt posted successfully.");
       window.scrollTo({ behavior: "smooth", top: 0 });
     } catch (caught) {
+      if (
+        caught instanceof AdminApiError &&
+        !attempt.current?.draft &&
+        (caught.status === 404 || caught.status === 405)
+      ) {
+        setIntegrationPending(true);
+      }
       setError(messageFor(caught));
     } finally {
+      setDraftMovement(attempt.current?.draft ?? null);
+      setAttemptLocked(attempt.current?.locked ?? false);
+      if (attempt.current && !attempt.current.locked) attempt.current = null;
       setSaving(false);
     }
   }
 
   function resetReceipt() {
+    attempt.current = null;
+    setAttemptLocked(false);
     setStep(1);
     setLines([]);
     setNote("");
@@ -465,6 +455,7 @@ export function ReceiveStockWorkflow({
 
       {step === 3 ? (
         <ReviewStep
+          locked={attemptLocked}
           draftMovement={draftMovement}
           lines={lines}
           locationName={selectedLocation?.name ?? "Selected location"}
@@ -848,7 +839,8 @@ function ReceiptLines({
   );
 }
 
-function ReviewStep({
+export function ReviewStep({
+  locked,
   draftMovement,
   lines,
   locationName,
@@ -859,6 +851,7 @@ function ReviewStep({
   setNote,
   totalUnits,
 }: {
+  locked: boolean;
   draftMovement: InventoryMovementContract | null;
   lines: ReceiptLine[];
   locationName: string;
@@ -914,6 +907,7 @@ function ReviewStep({
           Receipt note <small>optional</small>
         </span>
         <textarea
+          disabled={saving || locked}
           maxLength={1000}
           onChange={(event) => setNote(event.target.value)}
           placeholder="Supplier reference, delivery note, condition or receiving context…"
@@ -921,6 +915,12 @@ function ReviewStep({
           value={note}
         />
       </label>
+      {locked ? (
+        <p role="status">
+          This receipt is locked for safe retry. Keep this page open until it
+          completes; recovery after reload or closing the tab is not supported.
+        </p>
+      ) : null}
       {draftMovement ? (
         <div className={styles.draftNotice}>
           <ClipboardCheck size={17} />
@@ -944,7 +944,7 @@ function ReviewStep({
       <div className={styles.footerActions}>
         <button
           className={styles.textButton}
-          disabled={saving}
+          disabled={saving || locked}
           onClick={onBack}
           type="button"
         >
@@ -963,14 +963,16 @@ function ReviewStep({
           )}
           {draftMovement
             ? "Retry posting receipt"
-            : `Receive ${totalUnits} units`}
+            : locked
+              ? "Retry this receipt"
+              : `Receive ${totalUnits} units`}
         </button>
       </div>
     </section>
   );
 }
 
-function SuccessStep({
+export function SuccessStep({
   lines,
   locationName,
   movement,

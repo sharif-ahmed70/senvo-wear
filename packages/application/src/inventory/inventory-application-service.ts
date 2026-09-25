@@ -6,6 +6,7 @@ import {
   ConcurrencyError,
   NotFoundError,
   ValidationApplicationError,
+  createInventoryMovement,
   getVariantAvailability,
   listInventoryAvailability,
   listInventoryMovementHistory,
@@ -15,6 +16,7 @@ import {
   type InventoryMovementRepository,
 } from "@senvo/domain";
 import {
+  createInventoryMovementServiceInputSchema,
   getVariantAvailabilityServiceInputSchema,
   inventoryAvailabilityPageContractSchema,
   inventoryMovementHistoryPageContractSchema,
@@ -25,6 +27,7 @@ import {
   postInventoryMovementServiceInputSchema,
   inventoryStockLocationPageContractSchema,
   variantInventoryAvailabilityContractSchema,
+  type CreateInventoryMovementServiceInputContract,
   type GetVariantAvailabilityServiceInputContract,
   type InventoryAvailabilityReadContract,
   type InventoryMovementHistoryContract,
@@ -101,6 +104,46 @@ export class InventoryApplicationService {
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? defaultRequestIdGenerator;
     this.transactionManager = dependencies.transactionManager;
+  }
+
+  createMovementDraft(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<InventoryMovementContract>> {
+    return this.execute(
+      "inventory.createMovementDraft",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          createInventoryMovementServiceInputSchema,
+          payload,
+        );
+        return this.transactionManager.execute(
+          validated,
+          async (transactionContext) => {
+            const applicationContext = transactionContext.applicationContext;
+            await requireAuthorization(
+              this.authorizationService,
+              applicationContext,
+              {
+                action: "CREATE",
+                resource: "INVENTORY",
+              },
+            );
+            const movement = await createInventoryMovement(
+              transactionContext.inventoryMovementRepository,
+              {
+                ...input,
+                organizationId: applicationContext.organizationId,
+              },
+            );
+            return inventoryMovementContractSchema.parse(
+              mapInventoryMovement(movement),
+            );
+          },
+        );
+      },
+    );
   }
 
   postMovement(
@@ -431,6 +474,7 @@ const nullLogger: Logger = {
 export type {
   ApplicationServiceErrorShape,
   ApplicationServiceResult,
+  CreateInventoryMovementServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   ListInventoryAvailabilityServiceInputContract,
   ListInventoryMovementsServiceInputContract,
