@@ -63,7 +63,7 @@ export function AdminAppFrame({
               <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.8} />
               New sale
             </Link>
-            <Link className={styles.actionSecondary} href="/inventory">
+            <Link className={styles.actionSecondary} href="/inventory/receive">
               <PackagePlus aria-hidden="true" size={16} strokeWidth={1.8} />
               Receive stock
             </Link>

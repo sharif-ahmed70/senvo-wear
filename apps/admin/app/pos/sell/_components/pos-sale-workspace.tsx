@@ -83,6 +83,10 @@ function ActivePosSale({
   permissions: readonly AdminPermissionKey[];
 }) {
   const [contexts, setContexts] = useState<SellingContext[]>([]);
+  const [activeCounters, setActiveCounters] = useState<SalesCounterContract[]>(
+    [],
+  );
+  const [openingCounter, setOpeningCounter] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [cart, setCart] = useState<PosCartDetailsContract | null>(null);
   const [checkout, setCheckout] = useState<PosCheckoutContract | null>(null);
@@ -136,10 +140,12 @@ function ActivePosSale({
         client.listSalesCounters(),
         client.listCurrentSalesSessions(),
       ]);
+      const activeList = counterResult.data.filter(
+        (counter) => counter.status === "ACTIVE",
+      );
+      setActiveCounters(activeList);
       const counters = new Map<string, SalesCounterContract>(
-        counterResult.data
-          .filter((counter) => counter.status === "ACTIVE")
-          .map((counter) => [counter.id, counter]),
+        activeList.map((counter) => [counter.id, counter]),
       );
       const available = sessionResult.data.flatMap(
         (session: SalesSessionContract) => {
@@ -165,6 +171,21 @@ function ActivePosSale({
       setLoading(false);
     }
   }, []);
+
+  async function handleOpenCounter(counterId: string) {
+    setOpeningCounter(true);
+    setError(null);
+    try {
+      const opened = await client.openSalesSession({ counterId });
+      setNotice("Sales counter opened.");
+      await loadContexts();
+      setSelectedSessionId(opened.data.id);
+    } catch (reason) {
+      setError(friendlyPosError(reason, "session"));
+    } finally {
+      setOpeningCounter(false);
+    }
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadContexts(), 0);
@@ -364,8 +385,11 @@ function ActivePosSale({
       ) : (
         <>
           <SellingContextSelector
+            availableCounters={activeCounters}
             contexts={contexts}
+            onOpenCounter={(counterId) => void handleOpenCounter(counterId)}
             onSelect={setSelectedSessionId}
+            openingCounter={openingCounter}
             selectedId={selectedSessionId}
           />
           {selectedContext &&

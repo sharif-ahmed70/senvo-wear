@@ -20,12 +20,43 @@ import {
   validatePayments,
   type PaymentDraft,
 } from "../_lib/checkout-attempt";
-import { formatBdt, takaInput } from "../_lib/money";
+import { formatBdt, parseTaka, takaInput } from "../_lib/money";
+
+export function computeQuickCashAmounts(dueMinor: number): number[] {
+  if (dueMinor <= 0) return [];
+  const due = Math.round(dueMinor / 100);
+  const options = new Set<number>();
+  options.add(due);
+
+  const next50 = Math.ceil(due / 50) * 50;
+  if (next50 > due) options.add(next50);
+
+  const next100 = Math.ceil(due / 100) * 100;
+  if (next100 > due) options.add(next100);
+
+  const notes = [100, 200, 500, 1000, 2000, 5000];
+  for (const note of notes) {
+    if (note > due && options.size < 5) {
+      options.add(note);
+    }
+  }
+
+  if (due > 1000) {
+    const next500 = Math.ceil(due / 500) * 500;
+    if (next500 > due) options.add(next500);
+    const next1000 = Math.ceil(due / 1000) * 1000;
+    if (next1000 > due) options.add(next1000);
+  }
+
+  return Array.from(options)
+    .sort((a, b) => a - b)
+    .slice(0, 5);
+}
 
 const paymentMethods: Array<{ label: string; value: PaymentMethodContract }> = [
   { label: "Cash", value: "CASH" },
   { label: "Card", value: "CARD" },
-  { label: "Mobile banking", value: "MOBILE_BANKING" },
+  { label: "bKash / Nagad (MFS)", value: "MOBILE_BANKING" },
   { label: "Bank transfer", value: "BANK_TRANSFER" },
 ];
 
@@ -70,6 +101,7 @@ export function PaymentPanel({
   const [drafts, setDrafts] = useState<PaymentDraft[]>([
     newDraft(takaInput(totalMinor)),
   ]);
+  const [tenderedMap, setTenderedMap] = useState<Record<string, string>>({});
   const [allowOutstanding, setAllowOutstanding] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const enteredMinor = useMemo(() => paymentTotal(drafts), [drafts]);
@@ -86,6 +118,7 @@ export function PaymentPanel({
 
   function chooseFullPayment(method: PaymentMethodContract) {
     setDrafts([newDraft(takaInput(totalMinor), method)]);
+    setTenderedMap({});
     setAllowOutstanding(false);
     setErrors({});
   }
@@ -199,6 +232,15 @@ export function PaymentPanel({
           <div className="pos-payment-lines">
             {drafts.map((draft, index) => {
               const needsReference = draft.method !== "CASH";
+              const appliedMinor = parseTaka(draft.amount) ?? 0;
+              const tenderedStr = tenderedMap[draft.id] ?? "";
+              const tenderedMinor = parseTaka(tenderedStr);
+              const quickAmounts = computeQuickCashAmounts(appliedMinor);
+              const hasTendered =
+                tenderedMinor !== null && tenderedStr.trim() !== "";
+              const changeDueMinor = hasTendered
+                ? tenderedMinor - appliedMinor
+                : null;
               return (
                 <fieldset key={draft.id}>
                   <legend>Payment {index + 1}</legend>
@@ -241,7 +283,9 @@ export function PaymentPanel({
                   </label>
                   {needsReference ? (
                     <label>
-                      Transaction reference
+                      {draft.method === "MOBILE_BANKING"
+                        ? "bKash / Nagad Transaction ID (TrxID)"
+                        : "Transaction reference"}
                       <input
                         aria-invalid={Boolean(errors[`${index}.reference`])}
                         disabled={submitting}
@@ -249,18 +293,87 @@ export function PaymentPanel({
                         onChange={(event) =>
                           update(draft.id, { reference: event.target.value })
                         }
-                        placeholder="Transaction / approval reference"
+                        placeholder={
+                          draft.method === "MOBILE_BANKING"
+                            ? "e.g. BL4A7Q91XZ"
+                            : "Transaction / approval reference"
+                        }
                         value={draft.reference}
                       />
                       <small>
                         {errors[`${index}.reference`] ??
-                          "Use only the safe transaction or approval reference."}
+                          (draft.method === "MOBILE_BANKING"
+                            ? "Enter customer's bKash or Nagad TrxID."
+                            : "Use only the safe transaction or approval reference.")}
                       </small>
                     </label>
                   ) : (
-                    <div className="pos-payment-cash-note">
-                      <span>Cash payment</span>
-                      <small>No transaction reference is required.</small>
+                    <div className="pos-cash-calculator">
+                      <div className="pos-cash-calc-header">
+                        <span>Cash change calculator</span>
+                        <small>Local calculation</small>
+                      </div>
+                      <div className="pos-cash-calc-fields">
+                        <label>
+                          Cash received from customer
+                          <input
+                            disabled={submitting}
+                            inputMode="decimal"
+                            onChange={(event) =>
+                              setTenderedMap((current) => ({
+                                ...current,
+                                [draft.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="e.g. 1000"
+                            value={tenderedStr}
+                          />
+                        </label>
+                      </div>
+                      {quickAmounts.length > 0 ? (
+                        <div className="pos-quick-cash-row">
+                          <span>Quick cash:</span>
+                          <div className="pos-quick-cash-buttons">
+                            {quickAmounts.map((amt) => {
+                              const isExact = amt * 100 === appliedMinor;
+                              return (
+                                <button
+                                  className="pos-quick-cash-btn"
+                                  disabled={submitting}
+                                  key={amt}
+                                  onClick={() =>
+                                    setTenderedMap((current) => ({
+                                      ...current,
+                                      [draft.id]: amt.toString(),
+                                    }))
+                                  }
+                                  type="button"
+                                >
+                                  {isExact ? `Exact ৳ ${amt}` : `৳ ${amt}`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                      {changeDueMinor !== null ? (
+                        changeDueMinor >= 0 ? (
+                          <div className="pos-change-banner" role="status">
+                            <span>Change to return (ফেরত):</span>
+                            <strong>{formatBdt(changeDueMinor)}</strong>
+                          </div>
+                        ) : (
+                          <div
+                            className="pos-change-banner pos-change-banner--short"
+                            role="status"
+                          >
+                            <span>Received less than payment amount:</span>
+                            <strong>
+                              Short by {formatBdt(Math.abs(changeDueMinor))}
+                            </strong>
+                          </div>
+                        )
+                      ) : null}
                     </div>
                   )}
                   {drafts.length > 1 ? (

@@ -194,14 +194,10 @@ export function InventoryOverview({
             <ScanBarcode aria-hidden="true" size={16} />
             Scan Barcode
           </button>
-          <button
-            className={styles.primaryButton}
-            onClick={() => setActionNotice("receive")}
-            type="button"
-          >
+          <Link className={styles.primaryButton} href="/inventory/receive">
             <PackageCheck aria-hidden="true" size={16} />
             Receive Stock
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -339,6 +335,16 @@ export function InventoryOverview({
             </div>
           </div>
           <div className={styles.quickList}>
+            <Link className={styles.quickLink} href="/inventory/receive">
+              <span className={styles.quickIcon}>
+                <PackageCheck size={17} />
+              </span>
+              <span>
+                <strong>Receive Stock</strong>
+                <small>Add an incoming shipment to the stock ledger.</small>
+              </span>
+              <ArrowRight size={15} />
+            </Link>
             <QuickAction
               icon={<PackageCheck size={17} />}
               onClick={() => setActionNotice("receive")}

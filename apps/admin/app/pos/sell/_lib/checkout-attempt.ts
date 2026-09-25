@@ -43,7 +43,10 @@ export function validatePayments(
     }
     const reference = draft.reference.trim().replace(/\s+/gu, " ");
     if (draft.method !== "CASH" && !reference) {
-      errors[`${index}.reference`] = "Enter the transaction reference.";
+      errors[`${index}.reference`] =
+        draft.method === "MOBILE_BANKING"
+          ? "Enter the bKash/Nagad TrxID."
+          : "Enter the transaction reference.";
     }
     if (reference.length > 120) {
       errors[`${index}.reference`] = "Use 120 characters or fewer.";

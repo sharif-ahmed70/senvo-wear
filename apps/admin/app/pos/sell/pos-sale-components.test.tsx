@@ -84,6 +84,20 @@ describe("guided POS selling components", () => {
     expect(html).toContain("/pos/sessions");
   });
 
+  it("provides inline counter opening when available counters are present", () => {
+    const html = renderToStaticMarkup(
+      <SellingContextSelector
+        availableCounters={[counter]}
+        contexts={[]}
+        onOpenCounter={() => undefined}
+        onSelect={() => undefined}
+        selectedId=""
+      />,
+    );
+    expect(html).toContain("Open Counter &amp; Start Selling");
+    expect(html).toContain("Main counter");
+  });
+
   it("shows one session as the confirmed counter", () => {
     const html = renderToStaticMarkup(
       <SellingContextSelector
@@ -153,6 +167,9 @@ describe("guided POS selling components", () => {
     expect(html).toContain("Complete this sale");
     expect(html).toContain("Cash");
     expect(html).toContain('value="2500.00"');
+    expect(html).toContain("bKash / Nagad (MFS)");
+    expect(html).toContain("Cash change calculator");
+    expect(html).toContain("Cash received from customer");
     expect(html).not.toContain("Allow remaining balance");
   });
 

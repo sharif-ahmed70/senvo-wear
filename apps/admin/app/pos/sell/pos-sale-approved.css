@@ -566,6 +566,155 @@
   font-size: 0.65rem;
 }
 
+.pos-open-counter-form {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 10px 0;
+  max-width: 380px;
+  width: 100%;
+}
+
+.pos-open-counter-single {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d8dfda;
+  border-radius: 7px;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px 14px;
+  width: 100%;
+}
+
+.pos-open-counter-single span {
+  color: #66716b;
+  font-size: 0.75rem;
+}
+
+.pos-open-counter-single strong {
+  color: #1e2923;
+  font-size: 0.85rem;
+}
+
+.pos-open-counter-single small {
+  background: #eef2ef;
+  border: 1px solid #d9e0db;
+  border-radius: 4px;
+  color: #526159;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+}
+
+.pos-cash-calculator {
+  background: #f7f9f7;
+  border: 1px solid #d8dfda;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.pos-cash-calc-header {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pos-cash-calc-header span {
+  color: #27342d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.pos-cash-calc-header small {
+  color: #7b8780;
+  font-size: 0.64rem;
+}
+
+.pos-cash-calc-fields label {
+  color: #4e5d55;
+  display: grid;
+  font-size: 0.7rem;
+  font-weight: 600;
+  gap: 4px;
+}
+
+.pos-cash-calc-fields input {
+  background: #fff;
+  border: 1px solid #c8d3cc;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  padding: 6px 10px;
+}
+
+.pos-quick-cash-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pos-quick-cash-row > span {
+  color: #5f6e66;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.pos-quick-cash-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pos-quick-cash-btn {
+  background: #fff;
+  border: 1px solid #cbd6cf;
+  border-radius: 4px;
+  color: #1e2923;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  transition: all 0.15s ease;
+}
+
+.pos-quick-cash-btn:hover:not(:disabled) {
+  background: #eaf1ed;
+  border-color: #9cb5a5;
+  color: #17201b;
+}
+
+.pos-change-banner {
+  align-items: center;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 5px;
+  color: #1b4332;
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 10px;
+}
+
+.pos-change-banner span {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.pos-change-banner strong {
+  font-size: 0.92rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.pos-change-banner--short {
+  background: #fff3e0;
+  border-color: #ffcc80;
+  color: #e65100;
+}
+
 .pos-payment-entry-actions {
   align-items: center;
   display: flex;

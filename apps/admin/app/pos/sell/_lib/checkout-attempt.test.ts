@@ -56,6 +56,12 @@ describe("cashier payment preparation", () => {
       ok: false,
     });
     expect(
+      validatePayments([{ ...cash, method: "MOBILE_BANKING" }], 1000, false),
+    ).toMatchObject({
+      errors: { "0.reference": "Enter the bKash/Nagad TrxID." },
+      ok: false,
+    });
+    expect(
       validatePayments([{ ...cash, amount: "11" }], 1000, false),
     ).toMatchObject({
       errors: {
