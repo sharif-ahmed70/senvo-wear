@@ -990,4 +990,101 @@ describe("AdminApiClient", () => {
       globalThis.sessionStorage = originalSession;
     }
   });
+
+  describe("procurement supplier endpoints", () => {
+    it("calls listSuppliers with query params and extracts data", async () => {
+      const mockSupplier = {
+        address: "Dhaka",
+        code: "SUP-01",
+        contactPerson: "Rahim",
+        createdAt: "2026-09-20T10:00:00.000Z",
+        email: "rahim@supplier.test",
+        id: "10000000-0000-4000-8000-000000000001",
+        name: "Rahim Textile",
+        notes: null,
+        organizationId: "10000000-0000-4000-8000-000000000099",
+        phone: "01700000000",
+        status: "ACTIVE" as const,
+        updatedAt: "2026-09-20T10:00:00.000Z",
+      };
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          data: [mockSupplier],
+          requestId: "req_suppliers_list",
+          success: true,
+        }),
+      );
+      const client = new AdminApiClient({ fetcher });
+      const result = await client.listSuppliers({
+        search: "Rahim",
+        status: "ACTIVE",
+      });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.name).toBe("Rahim Textile");
+      expect(fetcher).toHaveBeenCalledWith(
+        "/procurement/suppliers?search=Rahim&status=ACTIVE",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    it("calls getSupplier, createSupplier, updateSupplier, and deactivateSupplier", async () => {
+      const mockSupplier = {
+        address: "Dhaka",
+        code: "SUP-01",
+        contactPerson: "Rahim",
+        createdAt: "2026-09-20T10:00:00.000Z",
+        email: "rahim@supplier.test",
+        id: "10000000-0000-4000-8000-000000000001",
+        name: "Rahim Textile",
+        notes: null,
+        organizationId: "10000000-0000-4000-8000-000000000099",
+        phone: "01700000000",
+        status: "ACTIVE" as const,
+        updatedAt: "2026-09-20T10:00:00.000Z",
+      };
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          Response.json({
+            data: mockSupplier,
+            requestId: "req_sup_action",
+            success: true,
+          }),
+        ),
+      );
+      const client = new AdminApiClient({ fetcher });
+
+      await client.getSupplier("10000000-0000-4000-8000-000000000001");
+      expect(fetcher).toHaveBeenLastCalledWith(
+        "/procurement/suppliers/10000000-0000-4000-8000-000000000001",
+        expect.objectContaining({ method: "GET" }),
+      );
+
+      await client.createSupplier({ code: "SUP-01", name: "Rahim Textile" });
+      expect(fetcher).toHaveBeenLastCalledWith(
+        "/procurement/suppliers",
+        expect.objectContaining({
+          body: JSON.stringify({ code: "SUP-01", name: "Rahim Textile" }),
+          method: "POST",
+        }),
+      );
+
+      await client.updateSupplier({
+        name: "Rahim Fabrics Updated",
+        supplierId: "10000000-0000-4000-8000-000000000001",
+      });
+      expect(fetcher).toHaveBeenLastCalledWith(
+        "/procurement/suppliers/10000000-0000-4000-8000-000000000001",
+        expect.objectContaining({
+          body: JSON.stringify({ name: "Rahim Fabrics Updated" }),
+          method: "PATCH",
+        }),
+      );
+
+      await client.deactivateSupplier("10000000-0000-4000-8000-000000000001");
+      expect(fetcher).toHaveBeenLastCalledWith(
+        "/procurement/suppliers/10000000-0000-4000-8000-000000000001/deactivate",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
 });

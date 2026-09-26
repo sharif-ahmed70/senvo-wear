@@ -48,6 +48,7 @@ import type {
   SalesOrderDetailsReadContract,
 } from "@senvo/contracts";
 import UsersPage from "./users/page";
+import SuppliersPage from "./procurement/suppliers/page";
 import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
 import PosCheckoutsPage from "./pos/checkouts/page";
@@ -304,6 +305,7 @@ describe("admin routes", () => {
     ["Team", TeamPage],
     ["Roles", RolesPage],
     ["Users & Roles", UsersPage],
+    ["Suppliers", SuppliersPage],
   ])("renders the %s route", (title, Page) => {
     const fullSession: AdminSession = {
       displayName: "Owner",
@@ -331,6 +333,9 @@ describe("admin routes", () => {
         "PAYMENT:CREATE",
         "PAYMENT:APPROVE",
         "RECEIPT:READ",
+        "PROCUREMENT:READ",
+        "PROCUREMENT:CREATE",
+        "PROCUREMENT:UPDATE",
       ],
       role: "OWNER",
       userId: "owner-1",

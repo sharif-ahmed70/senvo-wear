@@ -21,6 +21,9 @@ export const adminPermissionKeys = [
   "PAYMENT:CREATE",
   "PAYMENT:APPROVE",
   "RECEIPT:READ",
+  "PROCUREMENT:READ",
+  "PROCUREMENT:CREATE",
+  "PROCUREMENT:UPDATE",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];
@@ -50,7 +53,8 @@ export type AdminNavigationItem = {
     | "newSale"
     | "counter"
     | "sessions"
-    | "checkouts";
+    | "checkouts"
+    | "suppliers";
   label: string;
   permission?: AdminPermissionKey;
   permissions?: readonly AdminPermissionKey[];
@@ -75,6 +79,12 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     icon: "inventory",
     label: "Inventory",
     permission: "INVENTORY:READ",
+  },
+  {
+    href: "/procurement/suppliers",
+    icon: "suppliers",
+    label: "Suppliers",
+    permission: "PROCUREMENT:READ",
   },
   {
     href: "/sales/orders",

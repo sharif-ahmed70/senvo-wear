@@ -48,6 +48,10 @@ import type {
   SalesSourceSummaryContract,
   CreateSalesBoothServiceInputContract,
   StockLocationReadContract,
+  CreateSupplierServiceInputContract,
+  ListSuppliersServiceInputContract,
+  SupplierContract,
+  UpdateSupplierServiceInputContract,
   StoreManagementContract,
   TeamMemberContract,
   UpdateCategoryStatusServiceInputContract,
@@ -610,6 +614,59 @@ export class AdminApiClient {
     return this.request<
       InventoryReadPageContract<InventoryAvailabilityReadContract>
     >(`/inventory/availability${queryString(input)}`, request);
+  }
+
+  listSuppliers(
+    input: ListSuppliersServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierContract[]>(
+      `/procurement/suppliers${queryString(input)}`,
+      request,
+    );
+  }
+
+  getSupplier(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}`,
+      request,
+    );
+  }
+
+  createSupplier(
+    input: CreateSupplierServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierContract>("/procurement/suppliers", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateSupplier(
+    input: UpdateSupplierServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { supplierId, ...body } = input;
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}`,
+      {
+        ...request,
+        body,
+        method: "PATCH",
+      },
+    );
+  }
+
+  deactivateSupplier(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}/deactivate`,
+      {
+        ...request,
+        method: "POST",
+      },
+    );
   }
 
   listStockLocations(
