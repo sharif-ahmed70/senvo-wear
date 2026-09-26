@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {
+  AuthorizationError,
+  type CatalogProductVariantManagementRepository,
+  type ProductVariant,
+} from "@senvo/domain";
+import { describe, expect, it, vi } from "vitest";
 import { colorContractSchema } from "@senvo/contracts";
 import type {
   CatalogColorManagementRepository,
@@ -199,5 +204,93 @@ describe("CatalogApplicationService colors", () => {
 
     expect(result).toEqual({ ok: true, data: [] });
     expect(colorRepo.receivedFilter?.organizationId).toBe(organizationId);
+  });
+});
+
+describe("CatalogApplicationService variant pricing", () => {
+  const variantId = "10000000-0000-4000-8000-000000000001";
+  const input = {
+    variantId,
+    sellingPriceMinor: 12550,
+    expectedSellingPriceMinor: 0,
+  };
+  function setup(deny = false) {
+    const record: ProductVariant = {
+      id: variantId,
+      organizationId,
+      productId: variantId,
+      colorId: variantId,
+      sizeId: variantId,
+      sku: "PRICE-SKU",
+      sellingPriceMinor: 12550,
+      status: "ACTIVE",
+      createdAt: new Date("2026-09-26T00:00:00Z"),
+      updatedAt: new Date("2026-09-26T00:00:00Z"),
+    };
+    const updatePrice = vi.fn().mockResolvedValue(record);
+    const authorize = vi
+      .fn()
+      .mockImplementation(() =>
+        deny
+          ? Promise.reject(new AuthorizationError("Denied"))
+          : Promise.resolve(),
+      );
+    const service = new CatalogApplicationService({
+      authorizationService: { authorize },
+      barcodes: createFailFastStub("barcodes"),
+      categories: createFailFastStub("categories"),
+      collections: createFailFastStub("collections"),
+      colors: createFailFastStub("colors"),
+      organizations: createFailFastStub("organizations"),
+      products: createFailFastStub("products"),
+      sizes: createFailFastStub("sizes"),
+      productVariants: {
+        updatePrice,
+      } as unknown as CatalogProductVariantManagementRepository,
+    });
+    return { service, updatePrice, authorize };
+  }
+  it("authorizes UPDATE and maps the saved price using the authenticated organization", async () => {
+    const { service, updatePrice, authorize } = setup();
+    const result = await service.updateVariantPrice(context, input);
+    expect(result).toMatchObject({
+      ok: true,
+      data: { sellingPriceMinor: 12550 },
+    });
+    expect(updatePrice).toHaveBeenCalledWith({ ...input, organizationId });
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId }),
+      { action: "UPDATE", resource: "CATALOG" },
+    );
+  });
+  it("rejects authorization failure before persistence", async () => {
+    const { service, updatePrice } = setup(true);
+    expect((await service.updateVariantPrice(context, input)).ok).toBe(false);
+    expect(updatePrice).not.toHaveBeenCalled();
+  });
+  it("rejects a client organization override", async () => {
+    const { service, updatePrice } = setup();
+    expect(
+      (
+        await service.updateVariantPrice(context, {
+          ...input,
+          organizationId: variantId,
+        })
+      ).ok,
+    ).toBe(false);
+    expect(updatePrice).not.toHaveBeenCalled();
+  });
+  it("keeps other organizations scoped and returns a conflict on a failed comparison", async () => {
+    const { service, updatePrice } = setup();
+    updatePrice.mockResolvedValue(null);
+    const result = await service.updateVariantPrice(
+      { ...context, organizationId: variantId },
+      input,
+    );
+    expect(updatePrice).toHaveBeenCalledWith({
+      ...input,
+      organizationId: variantId,
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   });
 });

@@ -19,10 +19,11 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 
+import { parseVariantPrice } from "../_lib/variant-price";
 import { useAdminPermissions } from "../../admin-shell";
 
 type CatalogKind =
@@ -309,13 +310,17 @@ function CatalogForm({
 }) {
   const [formError, setFormError] = useState("");
 
+  const submissionPending = useRef(false);
+
   async function submit(formData: FormData) {
+    if (submissionPending.current) return;
     setFormError("");
     const name = stringValue(formData, "name");
     if (name.length < 2) {
       setFormError("Name must contain at least 2 characters.");
       return;
     }
+    submissionPending.current = true;
     setSaving(true);
     try {
       if (kind === "categories") {
@@ -353,6 +358,7 @@ function CatalogForm({
     } catch (caught) {
       setFormError(messageForError(caught));
     } finally {
+      submissionPending.current = false;
       setSaving(false);
     }
   }
@@ -433,7 +439,7 @@ function CatalogForm({
   );
 }
 
-function ProductFields({
+export function ProductFields({
   categories,
   collections,
   colors,
@@ -479,6 +485,11 @@ function ProductFields({
       <label>
         <span>SKU</span>
         <input name="sku" />
+      </label>
+      <label>
+        <span>Selling price (BDT)</span>
+        <input name="sellingPrice" inputMode="decimal" placeholder="125.50" />
+        <small>Required when adding an initial variant.</small>
       </label>
       <label>
         <span>Color</span>
@@ -560,7 +571,7 @@ function SizeFields() {
   );
 }
 
-async function submitProduct(
+export async function submitProduct(
   formData: FormData,
   name: string,
   onSaved: (record: CatalogRecord) => void,
@@ -577,11 +588,17 @@ async function submitProduct(
     sizeId: stringValue(formData, "sizeId"),
     sku: stringValue(formData, "sku"),
   };
-  if (
-    Object.values(variant).some(Boolean) &&
-    !Object.values(variant).every(Boolean)
-  ) {
+  const priceText = stringValue(formData, "sellingPrice");
+  const sellingPriceMinor = parseVariantPrice(priceText);
+  const hasVariant = Object.values(variant).some(Boolean) || Boolean(priceText);
+  if (hasVariant && !Object.values(variant).every(Boolean)) {
     setFormError("SKU, color, and size are required for a variant.");
+    return;
+  }
+  if (hasVariant && sellingPriceMinor === null) {
+    setFormError(
+      "Enter a positive selling price in BDT with at most two decimal places (maximum 21474836.47).",
+    );
     return;
   }
   const result = await client.createProduct({
@@ -593,7 +610,11 @@ async function submitProduct(
     slug: slugify(name),
   });
   if (variant.sku && variant.colorId && variant.sizeId) {
-    await client.createVariant({ ...variant, productId: result.data.id });
+    await client.createVariant({
+      ...variant,
+      sellingPriceMinor: sellingPriceMinor!,
+      productId: result.data.id,
+    });
   }
   onSaved(result.data);
 }

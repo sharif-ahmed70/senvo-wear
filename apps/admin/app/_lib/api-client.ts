@@ -15,6 +15,7 @@ import type {
   CreateColorServiceInputContract,
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
+  UpdateVariantPriceServiceInputContract,
   CreateSizeServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryAvailabilityReadContract,
@@ -535,6 +536,17 @@ export class AdminApiClient {
     return this.request<null>(
       `/catalog/collections/${collectionId}/products/reorder`,
       { ...request, body: { productIds }, method: "PATCH" },
+    );
+  }
+
+  updateVariantPrice(
+    input: UpdateVariantPriceServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { variantId, ...body } = input;
+    return this.request<ProductVariantContract>(
+      `/catalog/variants/${variantId}/price`,
+      { ...request, body, method: "PATCH" },
     );
   }
 

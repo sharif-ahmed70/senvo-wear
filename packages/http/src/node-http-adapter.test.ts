@@ -15,6 +15,7 @@ import {
   createApiFailure,
   createApiSuccess,
   createInventoryMovementServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   type ApiResponse,
   type CreateInventoryMovementServiceInputContract,
@@ -54,6 +55,64 @@ afterEach(async () => {
 });
 
 describe("Node HTTP runtime adapter", () => {
+  it("routes variant price PATCH with path ownership and validates its payload", async () => {
+    const requests: unknown[] = [];
+    const handler = createProtectedApiHandler({
+      authenticationService: new DevelopmentAuthenticationService("test"),
+      authorizationService: { authorize: () => Promise.resolve() },
+      permission: { action: "UPDATE", resource: "CATALOG" },
+      inputSchema: updateVariantPriceServiceInputSchema,
+      execute: (_context, input) => {
+        requests.push(input);
+        return Promise.resolve({ ok: true, data: input });
+      },
+    });
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        catalog: {
+          updateVariantPrice: handler,
+        } as unknown as CatalogApiHandlers,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    const response = await fetch(
+      `${runtime.url}/catalog/variants/${movementId}/price`,
+      {
+        method: "PATCH",
+        headers: developmentHeaders(suppliedRequestId),
+        body: JSON.stringify({
+          variantId: userId,
+          sellingPriceMinor: 12550,
+          expectedSellingPriceMinor: 0,
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(requests).toEqual([
+      {
+        variantId: movementId,
+        sellingPriceMinor: 12550,
+        expectedSellingPriceMinor: 0,
+      },
+    ]);
+    const invalid = await fetch(
+      `${runtime.url}/catalog/variants/${movementId}/price`,
+      {
+        method: "PATCH",
+        headers: developmentHeaders(suppliedRequestId),
+        body: JSON.stringify({
+          sellingPriceMinor: -1,
+          expectedSellingPriceMinor: 0,
+        }),
+      },
+    );
+    expect(invalid.status).toBe(400);
+    expect(requests).toHaveLength(1);
+  });
   it("routes all public storefront operations without employee headers", async () => {
     const listCatalog = new RecordingApiHandler(
       createApiSuccess(

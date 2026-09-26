@@ -741,3 +741,5 @@ export type {
   WorkforcePasswordTransactionContext,
   WorkforcePasswordTransactionManager,
 } from "./workforce/repositories/workforce-password-transaction.js";
+
+export { updateVariantPrice } from "./catalog/application/variant-pricing-use-cases.js";

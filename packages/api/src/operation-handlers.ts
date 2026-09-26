@@ -12,6 +12,8 @@ import {
   createSalesOrderServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
+  type UpdateVariantPriceServiceInputContract,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
   addProductMediaServiceInputSchema,
@@ -227,6 +229,10 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductContract>>;
+  updateVariantPrice(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>>;
   createVariant(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -338,6 +344,7 @@ export type CatalogApiHandlers = {
   createColor: ApiHandler<ColorContract>;
   createProduct: ApiHandler<ProductContract>;
   createVariant: ApiHandler<ProductVariantContract>;
+  updateVariantPrice: ApiHandler<ProductVariantContract>;
   createSize: ApiHandler<SizeContract>;
   getProduct: ApiHandler<ProductDetailsContract>;
   getPrimaryProductImage: ApiHandler<PrimaryProductImageContract | null>;
@@ -455,6 +462,15 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.createSize(context, input),
       inputSchema: createSizeServiceInputSchema,
+    }),
+    updateVariantPrice: protectedHandler<
+      UpdateVariantPriceServiceInputContract,
+      ProductVariantContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateVariantPrice(context, input),
+      inputSchema: updateVariantPriceServiceInputSchema,
     }),
     createVariant: protectedHandler<
       CreateProductVariantServiceInputContract,

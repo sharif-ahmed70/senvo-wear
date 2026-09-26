@@ -85,6 +85,7 @@ export type Product = {
 };
 
 export type ProductVariant = {
+  sellingPriceMinor: number;
   colorId: string;
   createdAt: Date;
   id: string;

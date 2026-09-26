@@ -2,6 +2,7 @@
 
 import type {
   ProductDetailsContract,
+  ProductVariantContract,
   VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import {
@@ -15,9 +16,13 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import {
+  parseVariantPrice,
+  formatVariantPrice,
+} from "../../_lib/variant-price";
 import { useAdminPermissions } from "../../../admin-shell";
 
 const client = new AdminApiClient({
@@ -165,6 +170,7 @@ export function ProductInventoryDetail({
               <tr>
                 <th>SKU</th>
                 <th>Barcode</th>
+                <th>Selling price (BDT)</th>
               </tr>
             </thead>
             <tbody>
@@ -185,6 +191,24 @@ export function ProductInventoryDetail({
                           ? "Inactive"
                           : "Not assigned"}
                     </span>
+                  </td>
+                  <td>
+                    <VariantPriceEditor
+                      variant={variant}
+                      canUpdate={permissions.includes("CATALOG:UPDATE")}
+                      onSaved={(updated) =>
+                        setProduct((current) =>
+                          current
+                            ? {
+                                ...current,
+                                variants: current.variants.map((item) =>
+                                  item.id === updated.id ? updated : item,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
                   </td>
                 </tr>
               ))}
@@ -256,6 +280,102 @@ export function ProductInventoryDetail({
         )}
       </section>
     </main>
+  );
+}
+
+export function VariantPriceEditor({
+  variant,
+  canUpdate,
+  onSaved,
+}: {
+  variant: ProductVariantContract;
+  canUpdate: boolean;
+  onSaved: (variant: ProductVariantContract) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [expectedPrice, setExpectedPrice] = useState(variant.sellingPriceMinor);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+
+  async function save() {
+    if (!canUpdate || pending.current) return;
+    const sellingPriceMinor = parseVariantPrice(draft);
+    if (sellingPriceMinor === null) {
+      setError(
+        "Enter a positive selling price in BDT with at most two decimal places (maximum 21474836.47).",
+      );
+      return;
+    }
+    pending.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await client.updateVariantPrice({
+        variantId: variant.id,
+        expectedSellingPriceMinor: expectedPrice,
+        sellingPriceMinor,
+      });
+      onSaved(result.data);
+      setEditing(false);
+    } catch (caught) {
+      setError(messageForError(caught));
+    } finally {
+      pending.current = false;
+      setSaving(false);
+    }
+  }
+
+  if (!editing || !canUpdate)
+    return (
+      <div>
+        <span>{formatVariantPrice(variant.sellingPriceMinor)}</span>{" "}
+        {canUpdate ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(
+                variant.sellingPriceMinor === 0
+                  ? ""
+                  : (variant.sellingPriceMinor / 100).toFixed(2),
+              );
+              setExpectedPrice(variant.sellingPriceMinor);
+              setError("");
+              setEditing(true);
+            }}
+          >
+            Edit price
+          </button>
+        ) : null}
+      </div>
+    );
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <label>
+        <span>Selling price for {variant.sku} (BDT)</span>
+        <input
+          inputMode="decimal"
+          required
+          value={draft}
+          disabled={saving}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      </label>
+      <button type="submit" disabled={saving}>
+        {saving ? "Saving price..." : "Save price"}
+      </button>
+      <button type="button" disabled={saving} onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
+    </form>
   );
 }
 

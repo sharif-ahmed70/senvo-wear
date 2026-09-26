@@ -29,8 +29,12 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminApiClient } from "../../../_lib/api-client";
+import {
+  parseVariantPrice,
+  formatVariantPrice,
+} from "../../_lib/variant-price";
 import styles from "./product-create-wizard.module.css";
 
 const client = new AdminApiClient({
@@ -50,6 +54,7 @@ type BasicsState = {
 };
 
 type VariantDraft = {
+  sellingPrice: string;
   colorId: string;
   id: string;
   sizeId: string;
@@ -190,7 +195,10 @@ export function ProductCreateWizard() {
     setStep(0);
   }
 
+  const submissionPending = useRef(false);
+
   async function saveProduct() {
+    if (submissionPending.current) return;
     const validation = validateStep(3, basics, variants, media);
     if (validation) {
       setError(validation);
@@ -198,6 +206,7 @@ export function ProductCreateWizard() {
     }
     if (!references) return;
 
+    submissionPending.current = true;
     setSaving(true);
     setError("");
     setPartialSave(null);
@@ -223,6 +232,7 @@ export function ProductCreateWizard() {
           productId: productResult.data.id,
           sizeId: draft.sizeId,
           sku: draft.sku.trim(),
+          sellingPriceMinor: parseVariantPrice(draft.sellingPrice)!,
         });
         createdVariants.push(variantResult.data);
         variantIdMap.set(draft.id, variantResult.data.id);
@@ -274,6 +284,7 @@ export function ProductCreateWizard() {
         setError(message);
       }
     } finally {
+      submissionPending.current = false;
       setSaving(false);
     }
   }
@@ -564,7 +575,7 @@ function BasicsStep({
   );
 }
 
-function VariantsStep({
+export function VariantsStep({
   references,
   setVariants,
   variants,
@@ -616,6 +627,7 @@ function VariantsStep({
               <th>Color</th>
               <th>Size</th>
               <th>SKU</th>
+              <th>Selling price (BDT)</th>
               <th />
             </tr>
           </thead>
@@ -662,6 +674,18 @@ function VariantsStep({
                     }
                     placeholder="SW-SH-OXF-BLK-M"
                     value={variant.sku}
+                  />
+                </td>
+                <td>
+                  <input
+                    aria-label={`Selling price for variant ${index + 1}`}
+                    inputMode="decimal"
+                    required
+                    placeholder="125.50"
+                    value={variant.sellingPrice}
+                    onChange={(event) =>
+                      update(variant.id, "sellingPrice", event.target.value)
+                    }
                   />
                 </td>
                 <td>
@@ -855,7 +879,7 @@ function MediaStep({
   );
 }
 
-function ReviewStep({
+export function ReviewStep({
   basics,
   categoryMap,
   collectionMap,
@@ -925,7 +949,7 @@ function ReviewStep({
             <ReviewLine
               key={variant.id}
               label={`${colorMap.get(variant.colorId) ?? "Color"} / ${sizeMap.get(variant.sizeId) ?? "Size"}`}
-              value={variant.sku || `Variant ${index + 1}`}
+              value={`${variant.sku || `Variant ${index + 1}`} / ${formatVariantPrice(parseVariantPrice(variant.sellingPrice) ?? 0)}`}
             />
           ))}
         </ReviewCard>
@@ -1092,7 +1116,7 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function validateStep(
+export function validateStep(
   step: Step,
   basics: BasicsState,
   variants: VariantDraft[],
@@ -1114,6 +1138,8 @@ function validateStep(
       )
     )
       return "Every variant needs a color, size and SKU of at least 3 characters.";
+    if (variants.some((item) => parseVariantPrice(item.sellingPrice) === null))
+      return "Every variant needs a positive selling price in BDT with at most two decimal places (maximum 21474836.47).";
     const skus = variants.map((item) => item.sku.trim().toUpperCase());
     if (new Set(skus).size !== skus.length)
       return "Variant SKUs must be unique in this product.";
@@ -1131,7 +1157,13 @@ function validateStep(
 }
 
 function createVariantDraft(): VariantDraft {
-  return { colorId: "", id: crypto.randomUUID(), sizeId: "", sku: "" };
+  return {
+    colorId: "",
+    id: crypto.randomUUID(),
+    sizeId: "",
+    sku: "",
+    sellingPrice: "",
+  };
 }
 
 function stepTitle(step: Step) {

@@ -12,6 +12,7 @@ import {
   createColor,
   createProduct,
   createProductVariant,
+  updateVariantPrice,
   createSize,
   listVariantBarcodes,
   lookupVariantByBarcode,
@@ -44,6 +45,7 @@ import {
   createColorServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
   reorderCollectionProductsServiceInputSchema,
@@ -452,6 +454,22 @@ export class CatalogApplicationService {
     });
   }
 
+  updateVariantPrice(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(updateVariantPriceServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+      return mapVariant(
+        await updateVariantPrice(this.productVariants, {
+          ...input,
+          organizationId: validated.organizationId,
+        }),
+      );
+    });
+  }
+
   listVariants(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -837,6 +855,7 @@ function mapVariant(record: ProductVariant): ProductVariantContract {
     productId: record.productId,
     sizeId: record.sizeId,
     sku: record.sku,
+    sellingPriceMinor: record.sellingPriceMinor,
     status: record.status,
     updatedAt: record.updatedAt.toISOString(),
   });

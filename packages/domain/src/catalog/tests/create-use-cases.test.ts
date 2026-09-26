@@ -175,13 +175,16 @@ describe("catalog create use cases", () => {
       sortOrder: 30,
     });
 
-    await createProductVariant(repositories, {
+    const pricedVariant = await createProductVariant(repositories, {
+      sellingPriceMinor: 12550,
       colorId: color.id,
       organizationId: organization.id,
       productId: product.id,
       sizeId: size.id,
       sku: "OXFORD-BLK-L",
     });
+
+    expect(pricedVariant.sellingPriceMinor).toBe(12550);
 
     await expect(
       createProductVariant(repositories, {
@@ -356,6 +359,7 @@ function createInMemoryRepositories(): {
       create: async (record: CreateProductVariantRecord) => {
         const variant = {
           ...record,
+          sellingPriceMinor: record.sellingPriceMinor ?? 0,
           createdAt: now(),
           id: id("variant"),
           updatedAt: now(),

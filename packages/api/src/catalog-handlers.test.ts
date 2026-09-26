@@ -36,6 +36,64 @@ const context: ApiRequestContext = {
 };
 
 describe("catalog API handlers", () => {
+  it("protects variant price updates and passes trusted context", async () => {
+    const authorization = new FakeAuthorization();
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: authorization,
+      catalog,
+    });
+    const input = {
+      variantId: "10000000-0000-4000-8000-000000000010",
+      sellingPriceMinor: 12550,
+      expectedSellingPriceMinor: 0,
+    };
+    expect(
+      (await handlers.updateVariantPrice.handle({ context, input })).success,
+    ).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "CATALOG",
+    });
+    expect(catalog.context?.organizationId).toBe(organizationId);
+    expect(catalog.payloads).toEqual([input]);
+    authorization.reject = true;
+    expect(
+      await handlers.updateVariantPrice.handle({ context, input }),
+    ).toMatchObject({
+      success: false,
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+    });
+    expect(catalog.payloads).toHaveLength(1);
+  });
+  it.each([
+    { sellingPriceMinor: -1 },
+    { sellingPriceMinor: 12.5 },
+    { organizationId },
+  ])("rejects invalid price payload %j", async (invalid) => {
+    const catalog = new FakeCatalog();
+    const handlers = createCatalogApiHandlers({
+      authenticationService,
+      authorizationService: new FakeAuthorization(),
+      catalog,
+    });
+    expect(
+      await handlers.updateVariantPrice.handle({
+        context,
+        input: {
+          variantId: "10000000-0000-4000-8000-000000000010",
+          sellingPriceMinor: 12550,
+          expectedSellingPriceMinor: 0,
+          ...invalid,
+        },
+      }),
+    ).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION.INVALID_INPUT" },
+    });
+    expect(catalog.payloads).toHaveLength(0);
+  });
   it("enforces barcode permissions and rejects trusted-field injection", async () => {
     const authorization = new FakeAuthorization();
     const catalog = new FakeCatalog();
@@ -549,6 +607,10 @@ class FakeCatalog implements CatalogManagementApplication {
   }
   createProduct(context: ApplicationExecutionContext) {
     return this.success(context, {} as ProductContract);
+  }
+  updateVariantPrice(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as ProductVariantContract);
   }
   createVariant(context: ApplicationExecutionContext) {
     return this.success(context, {} as ProductVariantContract);

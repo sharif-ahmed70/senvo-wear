@@ -379,6 +379,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         201,
         "productId",
       ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/price$/iu,
+        handlers.catalog.updateVariantPrice,
+        200,
+        "variantId",
+      ),
     );
   }
   if (handlers.storefront) {

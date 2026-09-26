@@ -145,6 +145,7 @@ const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
     existsBySku: () => Promise.resolve(false),
     existsVariantCombination: () => Promise.resolve(false),
     listByProduct: () => Promise.resolve([]),
+    updatePrice: () => Promise.resolve(null),
   };
 
 const fakeSizeRepository: CatalogSizeManagementRepository = {

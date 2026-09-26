@@ -1,3 +1,8 @@
+import {
+  createProductVariantServiceInputSchema,
+  productVariantContractSchema,
+  updateVariantPriceServiceInputSchema,
+} from "./index.js";
 import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
@@ -1973,5 +1978,64 @@ describe("API contracts", () => {
         }),
       ],
     });
+  });
+});
+
+describe("variant selling price contracts", () => {
+  const variantId = "10000000-0000-4000-8000-000000000001";
+  const create = {
+    colorId: variantId,
+    sizeId: variantId,
+    productId: variantId,
+    sku: "TEST-PRICE",
+  };
+  it("accepts positive minor units and omitted legacy creation prices", () => {
+    expect(
+      createProductVariantServiceInputSchema.parse({
+        ...create,
+        sellingPriceMinor: 12550,
+      }).sellingPriceMinor,
+    ).toBe(12550);
+    expect(
+      createProductVariantServiceInputSchema.safeParse(create).success,
+    ).toBe(true);
+    expect(
+      updateVariantPriceServiceInputSchema.safeParse({
+        variantId,
+        sellingPriceMinor: 1,
+        expectedSellingPriceMinor: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      productVariantContractSchema.shape.sellingPriceMinor.safeParse(0).success,
+    ).toBe(true);
+  });
+  it.each([0, -1, 125.5, 2_147_483_648, NaN, Infinity])(
+    "rejects invalid new prices: %s",
+    (sellingPriceMinor) => {
+      expect(
+        createProductVariantServiceInputSchema.safeParse({
+          ...create,
+          sellingPriceMinor,
+        }).success,
+      ).toBe(false);
+      expect(
+        updateVariantPriceServiceInputSchema.safeParse({
+          variantId,
+          sellingPriceMinor,
+          expectedSellingPriceMinor: 0,
+        }).success,
+      ).toBe(false);
+    },
+  );
+  it("rejects trusted organization injection", () => {
+    expect(
+      updateVariantPriceServiceInputSchema.safeParse({
+        variantId,
+        organizationId: variantId,
+        sellingPriceMinor: 12550,
+        expectedSellingPriceMinor: 0,
+      }).success,
+    ).toBe(false);
   });
 });

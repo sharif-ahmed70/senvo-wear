@@ -104,6 +104,57 @@ describeWithDatabase("Prisma catalog repositories", () => {
     process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it("persists prices, preserves legacy zero, scopes organizations and atomically rejects stale edits", async () => {
+    const base = await createBaseCatalog(prisma);
+    const other = await createBaseCatalog(prisma, "OTHER");
+    expect(
+      (
+        await repositories.productVariants.listByProduct(
+          base.organization.id,
+          base.product.id,
+        )
+      )[0]?.sellingPriceMinor,
+    ).toBe(0);
+    const created = await repositories.productVariants.create({
+      organizationId: base.organization.id,
+      productId: base.product.id,
+      colorId: base.color.id,
+      sizeId: base.otherSize.id,
+      sku: "PRICED-VARIANT",
+      status: "ACTIVE",
+      sellingPriceMinor: 12550,
+    });
+    expect(created.sellingPriceMinor).toBe(12550);
+    const input = {
+      organizationId: base.organization.id,
+      variantId: created.id,
+      expectedSellingPriceMinor: 12550,
+      sellingPriceMinor: 13000,
+    };
+    expect(
+      await repositories.productVariants.updatePrice({
+        ...input,
+        organizationId: other.organization.id,
+      }),
+    ).toBeNull();
+    const results = await Promise.all([
+      repositories.productVariants.updatePrice(input),
+      repositories.productVariants.updatePrice({
+        ...input,
+        sellingPriceMinor: 14000,
+      }),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(await repositories.productVariants.updatePrice(input)).toBeNull();
+    expect(
+      (
+        await prisma.productVariant.findUniqueOrThrow({
+          where: { id: base.variant.id },
+        })
+      ).sellingPriceMinor,
+    ).toBe(0);
+  });
+
   it("enforces organization, taxonomy, product and variant uniqueness", async () => {
     const organization = await createOrganization(repositories.organizations, {
       code: "SENVO",

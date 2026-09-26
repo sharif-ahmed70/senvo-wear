@@ -670,6 +670,7 @@ export const createProductInputSchema = z.object({
 });
 
 export const createProductVariantInputSchema = z.object({
+  sellingPriceMinor: z.number().int().positive().max(2_147_483_647).optional(),
   colorId: idSchema,
   organizationId: idSchema,
   productId: idSchema,
@@ -813,6 +814,21 @@ export const listCollectionProductsServiceInputSchema = z
 
 export const createProductVariantServiceInputSchema =
   createProductVariantInputSchema.omit({ organizationId: true }).strict();
+
+export const updateVariantPriceServiceInputSchema = z
+  .object({
+    variantId: idSchema,
+    sellingPriceMinor: z.number().int().positive().max(2_147_483_647),
+    expectedSellingPriceMinor: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(2_147_483_647),
+  })
+  .strict();
+export type UpdateVariantPriceServiceInputContract = z.infer<
+  typeof updateVariantPriceServiceInputSchema
+>;
 
 export const listProductVariantsServiceInputSchema = z
   .object({ productId: idSchema })
@@ -2016,6 +2032,7 @@ export type ProductContract = CatalogRecordContract & {
 };
 
 export type ProductVariantContract = CatalogRecordContract & {
+  sellingPriceMinor: number;
   colorId: string;
   organizationId: string;
   productId: string;
@@ -2380,6 +2397,7 @@ export const productContractSchema = z
 
 export const productVariantContractSchema = z
   .object({
+    sellingPriceMinor: z.number().int().nonnegative().max(2_147_483_647),
     colorId: idSchema,
     createdAt: isoTimestampSchema,
     id: idSchema,
