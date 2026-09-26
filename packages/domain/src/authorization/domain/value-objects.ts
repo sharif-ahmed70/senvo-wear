@@ -15,6 +15,7 @@ export const permissionResources = [
   "USER",
   "CATALOG",
   "INVENTORY",
+  "PROCUREMENT",
   "RESERVATION",
   "SALES_ORDER",
   "SALES",

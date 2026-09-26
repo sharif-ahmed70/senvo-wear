@@ -343,6 +343,7 @@ export const permissionResourceSchema = z.enum([
   "SALES_ORDER",
   "SALES",
   "REPORT",
+  "PROCUREMENT",
 ]);
 export const permissionActionSchema = z.enum([
   "CREATE",
@@ -4284,3 +4285,84 @@ function validateBoothSalesSource(
     });
   }
 }
+
+export const supplierStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export type SupplierStatusContract = z.infer<typeof supplierStatusSchema>;
+
+export const supplierContractSchema = z
+  .object({
+    address: z.string().nullable(),
+    code: z.string(),
+    contactPerson: z.string().nullable(),
+    createdAt: isoTimestampSchema,
+    email: z.string().nullable(),
+    id: idSchema,
+    name: z.string(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    phone: z.string().nullable(),
+    status: supplierStatusSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type SupplierContract = z.infer<typeof supplierContractSchema>;
+
+export const createSupplierServiceInputSchema = z
+  .object({
+    address: optionalTextSchema(500),
+    code: codeSchema,
+    contactPerson: optionalTextSchema(160),
+    email: emailSchema,
+    name: displayNameSchema,
+    notes: optionalTextSchema(1000),
+    phone: phoneSchema,
+  })
+  .strict();
+export type CreateSupplierServiceInputContract = z.infer<
+  typeof createSupplierServiceInputSchema
+>;
+
+export const getSupplierServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type GetSupplierServiceInputContract = z.infer<
+  typeof getSupplierServiceInputSchema
+>;
+
+export const listSuppliersServiceInputSchema = z
+  .object({
+    search: z.string().trim().max(160).optional(),
+    status: supplierStatusSchema.optional(),
+  })
+  .strict();
+export type ListSuppliersServiceInputContract = z.infer<
+  typeof listSuppliersServiceInputSchema
+>;
+
+export const updateSupplierServiceInputSchema = z
+  .object({
+    address: optionalTextSchema(500),
+    code: codeSchema.optional(),
+    contactPerson: optionalTextSchema(160),
+    email: emailSchema,
+    name: displayNameSchema.optional(),
+    notes: optionalTextSchema(1000),
+    phone: phoneSchema,
+    status: supplierStatusSchema.optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type UpdateSupplierServiceInputContract = z.infer<
+  typeof updateSupplierServiceInputSchema
+>;
+
+export const deactivateSupplierServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type DeactivateSupplierServiceInputContract = z.infer<
+  typeof deactivateSupplierServiceInputSchema
+>;

@@ -14,6 +14,7 @@ import type {
   ReceiptRepository,
   SalesOrderRepository,
   StorefrontRepository,
+  SupplierRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
@@ -46,6 +47,7 @@ describe("createApplicationServices", () => {
       storefrontRepository: fakeStorefrontRepository,
       transactionManager: fakeTransactionManager,
       sizeRepository: fakeSizeRepository,
+      supplierRepository: fakeSupplierRepository,
       userRepository: {} as never,
     });
 
@@ -225,6 +227,15 @@ const fakeStorefrontRepository: StorefrontRepository = {
   loadCheckoutFacts: () => Promise.reject(unreachableError()),
   lockCheckoutAttempt: () => Promise.reject(unreachableError()),
   resolveActiveOrganizationByCode: () => Promise.resolve(null),
+};
+
+const fakeSupplierRepository: SupplierRepository = {
+  create: () => Promise.reject(unreachableError()),
+  deactivate: () => Promise.resolve(null),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  update: () => Promise.resolve(null),
 };
 
 const nullLogger = {

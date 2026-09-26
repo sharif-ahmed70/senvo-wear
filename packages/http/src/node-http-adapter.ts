@@ -12,6 +12,7 @@ import type {
   OrganizationManagementApiHandlers,
   OnlinePaymentApiHandlers,
   PosApiHandlers,
+  ProcurementApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
   StorefrontApiHandlers,
@@ -60,6 +61,7 @@ export type SenvoHttpHandlers = {
   organizationManagement?: OrganizationManagementApiHandlers;
   onlinePayments?: OnlinePaymentApiHandlers;
   pos?: PosApiHandlers;
+  procurement?: ProcurementApiHandlers;
   createInventoryMovementDraft?: ApiHandler<unknown>;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
@@ -832,6 +834,53 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         }),
         method: "DELETE",
         path: /^\/pos\/carts\/(?<cartId>[0-9a-f-]+)\/items\/(?<itemId>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+    );
+  }
+  if (handlers.procurement) {
+    const procurement = handlers.procurement;
+    routes.push(
+      {
+        handler: procurement.listSuppliers,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/suppliers$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.createSupplier,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/suppliers$/u,
+        successStatus: 201,
+      },
+      {
+        handler: procurement.getSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.updateSupplier,
+        input: pathBodyInput("supplierId"),
+        method: "PATCH",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.deactivateSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "POST",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/deactivate$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.deactivateSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "DELETE",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
         successStatus: 200,
       },
     );

@@ -8,6 +8,7 @@ import {
   type CatalogApiHandlers,
   type OrganizationManagementApiHandlers,
   type PosApiHandlers,
+  type ProcurementApiHandlers,
   type StorefrontApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
@@ -1022,6 +1023,147 @@ describe("Node HTTP runtime adapter", () => {
           "production" as "development",
         ),
     ).toThrow("unavailable in production");
+  });
+
+  it("routes procurement supplier requests to supplier handlers", async () => {
+    const listRequests: unknown[] = [];
+    const createRequests: unknown[] = [];
+    const getRequests: unknown[] = [];
+    const updateRequests: unknown[] = [];
+    const deactivateRequests: unknown[] = [];
+
+    const mockSupplier = {
+      address: "Babubazar, Dhaka",
+      code: "SUP-001",
+      contactPerson: "Rahim",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      email: "rahim@supplier.test",
+      id: movementId,
+      name: "Babubazar Textiles",
+      notes: null,
+      organizationId,
+      phone: "+8801711000000",
+      status: "ACTIVE" as const,
+      updatedAt: "2026-09-01T00:00:00.000Z",
+    };
+
+    const procurementHandlers: ProcurementApiHandlers = {
+      createSupplier: {
+        handle: (req) => {
+          createRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockSupplier, suppliedRequestId),
+          );
+        },
+      },
+      deactivateSupplier: {
+        handle: (req) => {
+          deactivateRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(
+              { ...mockSupplier, status: "INACTIVE" as const },
+              suppliedRequestId,
+            ),
+          );
+        },
+      },
+      getSupplier: {
+        handle: (req) => {
+          getRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockSupplier, suppliedRequestId),
+          );
+        },
+      },
+      listSuppliers: {
+        handle: (req) => {
+          listRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess([mockSupplier], suppliedRequestId),
+          );
+        },
+      },
+      updateSupplier: {
+        handle: (req) => {
+          updateRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockSupplier, suppliedRequestId),
+          );
+        },
+      },
+    };
+
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        procurement: procurementHandlers,
+      },
+    });
+
+    const listRes = await fetch(
+      `${runtime.url}/procurement/suppliers?search=Babu&status=ACTIVE`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+      },
+    );
+    expect(listRes.status).toBe(200);
+    expect(listRequests).toEqual([{ search: "Babu", status: "ACTIVE" }]);
+
+    const createRes = await fetch(`${runtime.url}/procurement/suppliers`, {
+      body: JSON.stringify({ code: "SUP-001", name: "Babubazar Textiles" }),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+    expect(createRes.status).toBe(201);
+    expect(createRequests).toEqual([
+      { code: "SUP-001", name: "Babubazar Textiles" },
+    ]);
+
+    const getRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+      },
+    );
+    expect(getRes.status).toBe(200);
+    expect(getRequests).toEqual([{ supplierId: movementId }]);
+
+    const patchRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}`,
+      {
+        body: JSON.stringify({ name: "Updated Textiles" }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "PATCH",
+      },
+    );
+    expect(patchRes.status).toBe(200);
+    expect(updateRequests).toEqual([
+      { name: "Updated Textiles", supplierId: movementId },
+    ]);
+
+    const deactRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}/deactivate`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(deactRes.status).toBe(200);
+    expect(deactivateRequests).toEqual([{ supplierId: movementId }]);
+
+    const deleteRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+        method: "DELETE",
+      },
+    );
+    expect(deleteRes.status).toBe(200);
+    expect(deactivateRequests).toHaveLength(2);
   });
 });
 

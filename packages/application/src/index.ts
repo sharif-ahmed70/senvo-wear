@@ -127,3 +127,7 @@ export type {
   ReserveSalesOrderServiceInputContract,
   UpdateDraftSalesOrderMetadataServiceInputContract,
 } from "./sales/sales-application-service.js";
+export {
+  ProcurementApplicationService,
+  type ProcurementApplicationServiceDependencies,
+} from "./procurement/procurement-application-service.js";

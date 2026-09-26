@@ -49,6 +49,11 @@ export {
   type PosApplication,
 } from "./pos-handlers.js";
 export {
+  createProcurementApiHandlers,
+  type ProcurementApiHandlers,
+  type ProcurementApplication,
+} from "./procurement-handlers.js";
+export {
   createApplicationContext,
   type ApiAuthenticatedUser,
   type ApiRequestContext,

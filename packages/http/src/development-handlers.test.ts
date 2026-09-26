@@ -237,6 +237,13 @@ function createMockServices(): ApplicationServices {
       openSession: () => ok({} as never),
       updateCounterStatus: () => ok({} as never),
     } as unknown as ApplicationServices["pos"],
+    procurement: {
+      createSupplier: () => ok({} as never),
+      deactivateSupplier: () => ok({} as never),
+      getSupplier: () => ok({} as never),
+      listSuppliers: () => ok([]),
+      updateSupplier: () => ok({} as never),
+    } as unknown as ApplicationServices["procurement"],
     sales: {
       cancelManagedOrder: () => ok({} as never),
       confirmManagedOrder: () => ok({} as never),
