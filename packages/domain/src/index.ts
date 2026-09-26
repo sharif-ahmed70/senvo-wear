@@ -743,3 +743,11 @@ export type {
 } from "./workforce/repositories/workforce-password-transaction.js";
 
 export { updateVariantPrice } from "./catalog/application/variant-pricing-use-cases.js";
+
+export type { Supplier, SupplierStatus } from "./procurement/domain/models.js";
+export type {
+  CreateSupplierRecord,
+  SupplierListFilter,
+  SupplierRepository,
+  UpdateSupplierRecord,
+} from "./procurement/repositories/supplier-repository.js";

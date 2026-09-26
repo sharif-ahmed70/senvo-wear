@@ -54,6 +54,11 @@ enum CatalogItemStatus {
   INACTIVE
 }
 
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -406,6 +411,7 @@ model Organization {
   workforceAuthenticationSessions WorkforceAuthenticationSession[]
   authenticationRateLimits AuthenticationRateLimit[]
   auditEntries AuditEntry[]
+  suppliers    Supplier[]
 
   @@map("organizations")
 }
@@ -1956,4 +1962,27 @@ model SalesOrderLine {
   @@index([organizationId, productVariantId])
   @@index([salesOrderId])
   @@map("sales_order_lines")
+}
+
+model Supplier {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  name           String         @db.VarChar(160)
+  code           String         @db.VarChar(64)
+  contactPerson  String?        @map("contact_person") @db.VarChar(160)
+  phone          String?        @db.VarChar(40)
+  email          String?        @db.VarChar(254)
+  address        String?        @db.VarChar(255)
+  notes          String?        @db.Text
+  status         SupplierStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@index([organizationId, name])
+  @@map("suppliers")
 }
