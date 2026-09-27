@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { describe, expect, it, vi } from "vitest";
 import {
   BusinessRuleError,
@@ -29,7 +30,6 @@ describe("Purchase Domain Use Cases", () => {
   const supplierId = "33333333-3333-4333-8333-333333333333";
   const locationId = "44444444-4444-4444-8444-444444444444";
   const variantId1 = "55555555-5555-4555-8555-555555555555";
-  const variantId2 = "66666666-6666-4666-8666-666666666666";
   const purchaseId = "77777777-7777-4777-8777-777777777777";
   const movementId = "88888888-8888-4888-8888-888888888888";
 
@@ -210,7 +210,7 @@ describe("Purchase Domain Use Cases", () => {
 
       expect(purchaseRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          purchaseNumber: expect.stringMatching(/^PO-/),
+          purchaseNumber: expect.stringMatching(/^PO-/) as unknown as string,
         }),
       );
     });
@@ -449,7 +449,7 @@ describe("Purchase Domain Use Cases", () => {
       expect(confirmed.receiptMovementId).toBe(movementId);
     });
 
-    it("establishes unit cost baseline when opening cost was unknown", async () => {
+    it("preserves isCostKnown=false and costUnknownReason when opening stock cost is unknown", async () => {
       const { costRepo, inventoryRepo, purchaseRepo } =
         createMockRepositories();
       const draftPurchase = createMockPurchase({ status: "DRAFT" });
@@ -489,23 +489,89 @@ describe("Purchase Domain Use Cases", () => {
         { organizationId: orgId, purchaseId },
       );
 
-      // Receipt establishes unit cost baseline (50,000 poisha)
+      // Receipt does NOT make unknown opening stock known; adds only received cost (5,000,000 poisha)
       expect(costRepo.recordCostEntry).toHaveBeenCalledWith(
         expect.objectContaining({
-          afterAverageCostMinor: 50000,
+          afterAverageCostMinor: null,
           afterQuantity: 110,
-          afterValueMinor: 5500000n, // 110 * 50,000 poisha
+          afterValueMinor: 5000000n, // only received 100 * 50,000 poisha
           beforeAverageCostMinor: null,
           beforeQuantity: 10,
           beforeValueMinor: 0n,
           eventType: "PURCHASE_RECEIPT",
+          valueChangeMinor: 5000000n,
+        }),
+      );
+
+      expect(costRepo.upsertCostState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          averageCostMinor: null,
+          costUnknownReason: "OPENING_STOCK_UNKNOWN",
+          inventoryValueMinor: 5000000n,
+          isCostKnown: false,
+        }),
+      );
+    });
+
+    it("establishes known unit cost baseline when variant had zero existing stock on hand", async () => {
+      const { costRepo, inventoryRepo, purchaseRepo } =
+        createMockRepositories();
+      const draftPurchase = createMockPurchase({ status: "DRAFT" });
+
+      const mockMovement = createMockMovement({
+        movementNumber: `REC-${draftPurchase.purchaseNumber}`,
+      });
+
+      const draftMovement: InventoryMovement = {
+        ...mockMovement,
+        status: "DRAFT",
+      };
+
+      vi.mocked(purchaseRepo.findById)
+        .mockResolvedValueOnce(draftPurchase)
+        .mockResolvedValueOnce({
+          ...draftPurchase,
+          receiptMovementId: movementId,
+          status: "POSTED",
+        });
+
+      vi.mocked(inventoryRepo.createDraft).mockResolvedValue(draftMovement);
+      vi.mocked(inventoryRepo.findById).mockResolvedValue(draftMovement);
+      vi.mocked(inventoryRepo.post).mockResolvedValue(mockMovement);
+
+      // 0 units on hand prior to receipt; receive 100 units @ 500 taka (50000 poisha)
+      // Total on hand after receipt: 100 units
+      vi.mocked(costRepo.getVariantOnHandQuantity).mockResolvedValue(100);
+      vi.mocked(costRepo.getCostState).mockResolvedValue(null);
+
+      await confirmPurchaseOrder(
+        {
+          costRepository: costRepo,
+          inventoryMovementRepository: inventoryRepo,
+          purchaseRepository: purchaseRepo,
+        },
+        { organizationId: orgId, purchaseId },
+      );
+
+      // Receipt establishes known unit cost (50,000 poisha) since there was no unknown prior stock
+      expect(costRepo.recordCostEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          afterAverageCostMinor: 50000,
+          afterQuantity: 100,
+          afterValueMinor: 5000000n,
+          beforeAverageCostMinor: null,
+          beforeQuantity: 0,
+          beforeValueMinor: 0n,
+          eventType: "PURCHASE_RECEIPT",
+          valueChangeMinor: 5000000n,
         }),
       );
 
       expect(costRepo.upsertCostState).toHaveBeenCalledWith(
         expect.objectContaining({
           averageCostMinor: 50000,
-          inventoryValueMinor: 5500000n,
+          costUnknownReason: null,
+          inventoryValueMinor: 5000000n,
           isCostKnown: true,
         }),
       );

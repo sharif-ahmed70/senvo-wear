@@ -213,8 +213,8 @@ describe("Costing Domain Rules", () => {
   });
 
   describe("deriveCostStateAfterReceipt", () => {
-    it("derives cost state for initial purchase with zero on hand", () => {
-      // 100 pcs received @ 500 taka (50000 poisha)
+    it("Case 1 (Zero existing quantity): establishes known unit cost baseline for newly received stock", () => {
+      // 100 pcs received @ 500 taka (50000 poisha) with 0 prior on-hand
       const derived = deriveCostStateAfterReceipt({
         costState: null,
         existingOnHandQuantity: 0,
@@ -229,41 +229,12 @@ describe("Costing Domain Rules", () => {
       expect(derived.afterQuantity).toBe(100);
       expect(derived.afterAverageCostMinor).toBe(50000);
       expect(derived.afterValueMinor).toBe(5000000n);
+      expect(derived.costUnknownReason).toBeNull();
       expect(derived.isCostKnown).toBe(true);
     });
 
-    it("derives cost state when opening stock had unknown cost", () => {
-      // 10 pcs on hand with unknown cost; receive 100 pcs @ 500 taka
-      const derived = deriveCostStateAfterReceipt({
-        costState: {
-          averageCostMinor: null,
-          costUnknownReason: "OPENING_STOCK_UNKNOWN",
-          createdAt: new Date(),
-          id: "cs-1",
-          inventoryValueMinor: 0n,
-          isCostKnown: false,
-          lastCostEventAt: null,
-          organizationId: "org-1",
-          productVariantId: "var-1",
-          updatedAt: new Date(),
-          version: 1,
-        },
-        existingOnHandQuantity: 10,
-        receivedQuantity: 100,
-        unitCostMinor: 50000,
-      });
-
-      expect(derived.beforeQuantity).toBe(10);
-      expect(derived.beforeAverageCostMinor).toBeNull();
-      expect(derived.beforeValueMinor).toBe(0n);
-      expect(derived.afterQuantity).toBe(110);
-      expect(derived.afterAverageCostMinor).toBe(50000); // establishes unit baseline
-      expect(derived.afterValueMinor).toBe(5500000n); // 110 * 50,000 poisha
-      expect(derived.isCostKnown).toBe(true);
-    });
-
-    it("applies moving weighted average when previous cost was known", () => {
-      // Existing: 20 pcs on hand @ 500 taka (50,000 poisha) = 1,000,000 poisha
+    it("Case 2 (Existing known cost): applies moving weighted average using stored inventoryValueMinor", () => {
+      // Existing: 20 pcs on hand, stored inventory value 1,000,000 poisha @ 50,000 poisha avg
       // Received: 100 pcs @ 600 taka (60,000 poisha) = 6,000,000 poisha
       // Total: 7,000,000 poisha / 120 pcs = 58,333.333... poisha => 58333 poisha
       const derived = deriveCostStateAfterReceipt({
@@ -292,7 +263,40 @@ describe("Costing Domain Rules", () => {
       expect(derived.afterQuantity).toBe(120);
       expect(derived.afterAverageCostMinor).toBe(58333);
       expect(derived.afterValueMinor).toBe(7000000n);
+      expect(derived.costUnknownReason).toBeNull();
       expect(derived.isCostKnown).toBe(true);
+    });
+
+    it("Case 3 (Existing unknown cost): preserves isCostKnown=false, keeps costUnknownReason, leaves averageCostMinor null, and never imputes cost to existing unknown stock", () => {
+      // 10 pcs on hand with unknown cost; receive 100 pcs @ 500 taka (50000 poisha)
+      const derived = deriveCostStateAfterReceipt({
+        costState: {
+          averageCostMinor: null,
+          costUnknownReason: "OPENING_STOCK_UNKNOWN",
+          createdAt: new Date(),
+          id: "cs-1",
+          inventoryValueMinor: 0n,
+          isCostKnown: false,
+          lastCostEventAt: null,
+          organizationId: "org-1",
+          productVariantId: "var-1",
+          updatedAt: new Date(),
+          version: 1,
+        },
+        existingOnHandQuantity: 10,
+        receivedQuantity: 100,
+        unitCostMinor: 50000,
+      });
+
+      expect(derived.beforeQuantity).toBe(10);
+      expect(derived.beforeAverageCostMinor).toBeNull();
+      expect(derived.beforeValueMinor).toBe(0n);
+      expect(derived.valueChangeMinor).toBe(5000000n); // only received 100 * 50,000 poisha
+      expect(derived.afterQuantity).toBe(110);
+      expect(derived.afterAverageCostMinor).toBeNull(); // cannot determine blended cost when 10 units are uncosted
+      expect(derived.afterValueMinor).toBe(5000000n); // 0n + 5,000,000n (never imputes 500,000 poisha to the 10 unknown units)
+      expect(derived.costUnknownReason).toBe("OPENING_STOCK_UNKNOWN");
+      expect(derived.isCostKnown).toBe(false);
     });
   });
 });

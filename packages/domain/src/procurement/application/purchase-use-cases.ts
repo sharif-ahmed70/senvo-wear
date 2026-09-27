@@ -15,11 +15,7 @@ import {
   deriveCostStateAfterReceipt,
   validatePurchaseLineData,
 } from "../domain/costing-rules.js";
-import type {
-  Purchase,
-  PurchaseStatus,
-  PurchaseWithLines,
-} from "../domain/models.js";
+import type { Purchase, PurchaseWithLines } from "../domain/models.js";
 import type { CostRepository } from "../repositories/cost-repository.js";
 import type {
   PurchaseListFilter,
@@ -314,10 +310,10 @@ export async function confirmPurchaseOrder(
     // Upsert variant cost state
     await dependencies.costRepository.upsertCostState({
       averageCostMinor: derived.afterAverageCostMinor,
-      costUnknownReason: null,
+      costUnknownReason: derived.costUnknownReason,
       expectedVersion: costState?.version,
       inventoryValueMinor: derived.afterValueMinor,
-      isCostKnown: true,
+      isCostKnown: derived.isCostKnown,
       lastCostEventAt: new Date(),
       organizationId: purchase.organizationId,
       productVariantId: line.productVariantId,

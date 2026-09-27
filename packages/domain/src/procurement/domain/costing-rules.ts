@@ -190,12 +190,13 @@ export type DeriveCostStateAfterReceiptParams = {
 };
 
 export type DeriveCostStateAfterReceiptResult = {
-  afterAverageCostMinor: number;
+  afterAverageCostMinor: number | null;
   afterQuantity: number;
   afterValueMinor: bigint;
   beforeAverageCostMinor: number | null;
   beforeQuantity: number;
   beforeValueMinor: bigint;
+  costUnknownReason: CostUnknownReason | null;
   isCostKnown: boolean;
   valueChangeMinor: bigint;
 };
@@ -204,10 +205,12 @@ export type DeriveCostStateAfterReceiptResult = {
  * Derives new variant cost state and inventory cost entry values when receiving stock from a purchase.
  *
  * Rules:
- * - When existing cost is known, applies perpetual moving weighted average.
- * - When existing cost is unknown or null (e.g. uncosted opening stock or initial receipt),
- *   the purchase establishes the unit cost baseline for the variant.
- * - Uses physical on-hand quantity only (never available quantity).
+ * - Case 1 (Zero existing quantity): Establishes known unit cost baseline for the newly received stock.
+ * - Case 2 (Existing known cost): Applies perpetual moving weighted average using stored inventoryValueMinor
+ *   as authoritative source of truth (no rounding reconstruction drift).
+ * - Case 3 (Existing unknown cost): Preserves isCostKnown = false and costUnknownReason = "OPENING_STOCK_UNKNOWN".
+ *   averageCostMinor remains null. Never assigns purchase cost to existing unknown stock; only adds received
+ *   purchase cost to inventory value.
  */
 export function deriveCostStateAfterReceipt(
   params: DeriveCostStateAfterReceiptParams,
@@ -232,16 +235,29 @@ export function deriveCostStateAfterReceipt(
   const valueChangeMinor = BigInt(receivedQuantity) * BigInt(unitCostMinor);
   const afterQuantity = beforeQuantity + receivedQuantity;
 
+  // Case 1: Zero existing quantity on hand — establishes known cost for the received stock
+  if (beforeQuantity === 0) {
+    return {
+      afterAverageCostMinor: unitCostMinor,
+      afterQuantity,
+      afterValueMinor: valueChangeMinor,
+      beforeAverageCostMinor: null,
+      beforeQuantity: 0,
+      beforeValueMinor: 0n,
+      costUnknownReason: null,
+      isCostKnown: true,
+      valueChangeMinor,
+    };
+  }
+
+  // Case 2: Existing quantity with known cost — apply perpetual moving weighted average
   if (
     costState &&
     costState.isCostKnown &&
     costState.averageCostMinor !== null
   ) {
     const beforeAverageCostMinor = costState.averageCostMinor;
-    const beforeValueMinor =
-      beforeQuantity === 0
-        ? 0n
-        : BigInt(beforeQuantity) * BigInt(beforeAverageCostMinor);
+    const beforeValueMinor = costState.inventoryValueMinor;
 
     const moving = calculateMovingWeightedAverage({
       existingOnHandQuantity: beforeQuantity,
@@ -257,23 +273,26 @@ export function deriveCostStateAfterReceipt(
       beforeAverageCostMinor,
       beforeQuantity,
       beforeValueMinor,
+      costUnknownReason: null,
       isCostKnown: true,
       valueChangeMinor,
     };
   }
 
-  // Cost was not previously known; receipt establishes the unit cost baseline
-  const afterAverageCostMinor = unitCostMinor;
-  const afterValueMinor = BigInt(afterQuantity) * BigInt(unitCostMinor);
+  // Case 3: Existing quantity with unknown opening cost — remains unknown
+  const beforeAverageCostMinor = costState?.averageCostMinor ?? null;
+  const beforeValueMinor = costState?.inventoryValueMinor ?? 0n;
+  const afterValueMinor = beforeValueMinor + valueChangeMinor;
 
   return {
-    afterAverageCostMinor,
+    afterAverageCostMinor: null,
     afterQuantity,
     afterValueMinor,
-    beforeAverageCostMinor: null,
+    beforeAverageCostMinor,
     beforeQuantity,
-    beforeValueMinor: 0n,
-    isCostKnown: true,
+    beforeValueMinor,
+    costUnknownReason: costState?.costUnknownReason ?? "OPENING_STOCK_UNKNOWN",
+    isCostKnown: false,
     valueChangeMinor,
   };
 }
