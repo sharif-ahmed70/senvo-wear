@@ -1087,4 +1087,182 @@ describe("AdminApiClient", () => {
       );
     });
   });
+
+  describe("procurement purchase endpoints", () => {
+    const purchaseId = "20000000-0000-4000-8000-000000000001";
+    const supplierId = "10000000-0000-4000-8000-000000000001";
+    const destinationLocationId = "30000000-0000-4000-8000-000000000001";
+    const variantId = "40000000-0000-4000-8000-000000000001";
+
+    const mockPurchase = {
+      createdAt: "2026-09-27T10:00:00.000Z",
+      destinationLocationId,
+      expectedDeliveryDate: null,
+      id: purchaseId,
+      idempotencyKey: null,
+      lines: [
+        {
+          id: "line-1",
+          lineNumber: 1,
+          notes: null,
+          productName: "Signature Heavyweight Tee",
+          productVariantId: variantId,
+          purchaseId,
+          quantity: 20,
+          sku: "SHT-BLK-M",
+          totalCostMinor: "1000000",
+          unitCostMinor: 50000,
+          variantName: "Black / M",
+        },
+      ],
+      notes: null,
+      organizationId: "10000000-0000-4000-8000-000000000099",
+      purchaseDate: "2026-09-27T10:00:00.000Z",
+      purchaseNumber: "PO-20260927-001",
+      receiptMovementId: null,
+      status: "DRAFT" as const,
+      supplierId,
+      totalCostMinor: "1000000",
+      updatedAt: "2026-09-27T10:00:00.000Z",
+    };
+
+    it("calls listPurchases with query parameters and extracts data", async () => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          data: [mockPurchase],
+          requestId: "req_purchases_list",
+          success: true,
+        }),
+      );
+      const client = new AdminApiClient({ fetcher });
+      const result = await client.listPurchases({
+        limit: 15,
+        offset: 0,
+        status: "DRAFT",
+        supplierId,
+      });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.purchaseNumber).toBe("PO-20260927-001");
+      expect(fetcher).toHaveBeenCalledWith(
+        `/procurement/purchases?limit=15&offset=0&status=DRAFT&supplierId=${supplierId}`,
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    it("calls getPurchase with purchaseId and extracts record", async () => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          data: mockPurchase,
+          requestId: "req_purchase_get",
+          success: true,
+        }),
+      );
+      const client = new AdminApiClient({ fetcher });
+      const result = await client.getPurchase(purchaseId);
+
+      expect(result.data.id).toBe(purchaseId);
+      expect(fetcher).toHaveBeenCalledWith(
+        `/procurement/purchases/${purchaseId}`,
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    it("calls createPurchaseDraft with body payload, headers, and csrf", async () => {
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          data: mockPurchase,
+          requestId: "req_purchase_create",
+          success: true,
+        }),
+      );
+      const client = new AdminApiClient({
+        fetcher,
+        getCsrfToken: () => "csrf_secret_123",
+        sessionToken: "session_token_xyz",
+      });
+
+      const draftInput = {
+        destinationLocationId,
+        lines: [
+          {
+            lineNumber: 1,
+            productName: "Signature Heavyweight Tee",
+            productVariantId: variantId,
+            quantity: 20,
+            sku: "SHT-BLK-M",
+            unitCostMinor: 50000,
+          },
+        ],
+        supplierId,
+      };
+
+      const result = await client.createPurchaseDraft(draftInput);
+      expect(result.data.id).toBe(purchaseId);
+
+      expect(fetcher).toHaveBeenCalledWith(
+        "/procurement/purchases",
+        expect.objectContaining({
+          body: JSON.stringify(draftInput),
+          headers: expect.any(Headers),
+          method: "POST",
+        }),
+      );
+
+      const calledHeaders = fetcher.mock.calls[0]?.[1]?.headers as Headers;
+      expect(calledHeaders.get("authorization")).toBe(
+        "Bearer session_token_xyz",
+      );
+      expect(calledHeaders.get("x-csrf-token")).toBe("csrf_secret_123");
+      expect(calledHeaders.get("content-type")).toBe("application/json");
+      expect(calledHeaders.get("accept")).toBe("application/json");
+      expect(calledHeaders.get("x-request-id")).toBeTruthy();
+    });
+
+    it("calls confirmPurchase with purchaseId and optional idempotency key", async () => {
+      const confirmedPurchase = {
+        ...mockPurchase,
+        receiptMovementId: "mov-rcpt-001",
+        status: "POSTED" as const,
+      };
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          Response.json({
+            data: confirmedPurchase,
+            requestId: "req_purchase_confirm",
+            success: true,
+          }),
+        ),
+      );
+      const client = new AdminApiClient({
+        fetcher,
+        sessionToken: "session_token_xyz",
+      });
+
+      // 1. With idempotencyKey
+      const res1 = await client.confirmPurchase({
+        idempotencyKey: "idem_key_123",
+        purchaseId,
+      });
+      expect(res1.data.status).toBe("POSTED");
+      expect(res1.data.receiptMovementId).toBe("mov-rcpt-001");
+      expect(fetcher).toHaveBeenLastCalledWith(
+        `/procurement/purchases/${purchaseId}/confirm`,
+        expect.objectContaining({
+          body: JSON.stringify({ idempotencyKey: "idem_key_123" }),
+          method: "POST",
+        }),
+      );
+
+      // 2. Without idempotencyKey
+      await client.confirmPurchase({ purchaseId });
+      expect(fetcher).toHaveBeenLastCalledWith(
+        `/procurement/purchases/${purchaseId}/confirm`,
+        expect.objectContaining({
+          body: JSON.stringify({}),
+          method: "POST",
+        }),
+      );
+    });
+  });
 });

@@ -48,6 +48,10 @@ import type {
   SalesSourceSummaryContract,
   CreateSalesBoothServiceInputContract,
   StockLocationReadContract,
+  ConfirmPurchaseServiceInputContract,
+  CreatePurchaseDraftServiceInputContract,
+  ListPurchasesServiceInputContract,
+  PurchaseContract,
   CreateSupplierServiceInputContract,
   ListSuppliersServiceInputContract,
   SupplierContract,
@@ -664,6 +668,49 @@ export class AdminApiClient {
       `/procurement/suppliers/${supplierId}/deactivate`,
       {
         ...request,
+        method: "POST",
+      },
+    );
+  }
+
+  listPurchases(
+    input: ListPurchasesServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract[]>(
+      `/procurement/purchases${queryString(input)}`,
+      request,
+    );
+  }
+
+  getPurchase(purchaseId: string, request?: AdminApiRequest) {
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}`,
+      request,
+    );
+  }
+
+  createPurchaseDraft(
+    input: CreatePurchaseDraftServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract>("/procurement/purchases", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  confirmPurchase(
+    input: ConfirmPurchaseServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}/confirm`,
+      {
+        ...request,
+        body,
         method: "POST",
       },
     );
