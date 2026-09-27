@@ -22,6 +22,7 @@ const permissionResources = new Set<Permission["resource"]>([
   "USER",
   "CATALOG",
   "INVENTORY",
+  "PROCUREMENT",
   "RESERVATION",
   "SALES_ORDER",
   "REPORT",

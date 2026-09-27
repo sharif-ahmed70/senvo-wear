@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkforceAuthenticationService } from "@senvo/application";
 import {
+  DevelopmentHeaderRequestContextFactory,
   HttpRequestContextError,
   WorkforceSessionRequestContextFactory,
 } from "./request-context.js";
@@ -24,6 +25,9 @@ const authenticatedPrincipal = {
     { resource: "POS", action: "CREATE" },
     { resource: "PAYMENT", action: "APPROVE" },
     { resource: "RECEIPT", action: "READ" },
+    { resource: "PROCUREMENT", action: "READ" },
+    { resource: "PROCUREMENT", action: "CREATE" },
+    { resource: "PROCUREMENT", action: "UPDATE" },
     // Backend might send a future resource not yet in the allowlist
     { resource: "FUTURE_RESOURCE", action: "READ" },
   ],
@@ -115,6 +119,18 @@ describe("WorkforceSessionRequestContextFactory", () => {
       resource: "RECEIPT",
       action: "READ",
     });
+    expect(context.permissions).toContainEqual({
+      resource: "PROCUREMENT",
+      action: "READ",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "PROCUREMENT",
+      action: "CREATE",
+    });
+    expect(context.permissions).toContainEqual({
+      resource: "PROCUREMENT",
+      action: "UPDATE",
+    });
     // FUTURE_RESOURCE:READ must NOT appear
     expect(
       context.permissions.some(
@@ -177,6 +193,10 @@ describe("WorkforceSessionRequestContextFactory", () => {
     expect(context.authenticatedUser).toEqual({ userId: "user-1" });
     expect(context.organizationId).toBe("org-1");
     expect(context.requestId).toBe("req-cookie-1");
+    expect(context.permissions).toContainEqual({
+      resource: "PROCUREMENT",
+      action: "READ",
+    });
     expect(service.authenticateSession).toHaveBeenCalledWith(
       "cookie-session-token",
     );
@@ -202,5 +222,52 @@ describe("WorkforceSessionRequestContextFactory", () => {
       resource: "ORGANIZATION",
       action: "DELETE",
     });
+  });
+});
+
+describe("DevelopmentHeaderRequestContextFactory", () => {
+  it("accepts valid procurement permissions in dev headers", () => {
+    const factory = new DevelopmentHeaderRequestContextFactory("development");
+    const context = factory.create({
+      headers: {
+        "x-dev-organization-id": "org-dev-1",
+        "x-dev-permissions":
+          "PROCUREMENT:READ,PROCUREMENT:CREATE,PROCUREMENT:UPDATE",
+        "x-dev-user-id": "user-dev-1",
+      },
+      requestId: "req-dev-1",
+    });
+
+    expect(context.organizationId).toBe("org-dev-1");
+    expect(context.authenticatedUser).toEqual({ userId: "user-dev-1" });
+    expect(context.permissions).toEqual([
+      { resource: "PROCUREMENT", action: "READ" },
+      { resource: "PROCUREMENT", action: "CREATE" },
+      { resource: "PROCUREMENT", action: "UPDATE" },
+    ]);
+  });
+
+  it("rejects unknown resources in development permission header", () => {
+    const factory = new DevelopmentHeaderRequestContextFactory("development");
+    expect(() =>
+      factory.create({
+        headers: {
+          "x-dev-permissions": "UNKNOWN_RESOURCE:READ",
+        },
+        requestId: "req-dev-2",
+      }),
+    ).toThrow(HttpRequestContextError);
+  });
+
+  it("rejects unknown actions in development permission header", () => {
+    const factory = new DevelopmentHeaderRequestContextFactory("development");
+    expect(() =>
+      factory.create({
+        headers: {
+          "x-dev-permissions": "PROCUREMENT:DESTROY",
+        },
+        requestId: "req-dev-3",
+      }),
+    ).toThrow(HttpRequestContextError);
   });
 });

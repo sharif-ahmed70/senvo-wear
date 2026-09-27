@@ -165,6 +165,87 @@ describe("WorkforceAuthenticationService", () => {
     expect(afterRevocation.permissions).toEqual([]);
   });
 
+  it("provides owner default procurement permissions when rolePermissions repository is not configured", async () => {
+    const ownerMembership: OrganizationMembership = {
+      ...validMembership,
+      role: "OWNER",
+    };
+    const harness = createHarness({
+      memberships: {
+        findFirstActiveByUser: vi.fn(() => Promise.resolve(ownerMembership)),
+      },
+      rolePermissions: null,
+      workforceSessions: {
+        findSessionByTokenHash: vi.fn(() =>
+          Promise.resolve({
+            ...validSessionRecord,
+            membership: ownerMembership,
+          }),
+        ),
+      },
+    });
+
+    const session = await harness.service.authenticateSession(
+      "valid-session-token",
+    );
+    expect(session.role).toBe("OWNER");
+    expect(session.permissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resource: "PROCUREMENT", action: "READ" }),
+        expect.objectContaining({ resource: "PROCUREMENT", action: "CREATE" }),
+        expect.objectContaining({ resource: "PROCUREMENT", action: "UPDATE" }),
+      ]),
+    );
+  });
+
+  it("persisted role permissions keep precedence over owner fallback defaults", async () => {
+    const ownerMembership: OrganizationMembership = {
+      ...validMembership,
+      role: "OWNER",
+    };
+    const harness = createHarness({
+      memberships: {
+        findFirstActiveByUser: vi.fn(() => Promise.resolve(ownerMembership)),
+      },
+      rolePermissions: {
+        listActivePermissionsByRole: vi.fn(() =>
+          Promise.resolve([
+            {
+              action: "READ" as const,
+              createdAt: now,
+              description: null,
+              id: "perm-cat-1",
+              resource: "CATALOG" as const,
+              status: "ACTIVE" as const,
+              updatedAt: now,
+            },
+          ]),
+        ),
+      },
+      workforceSessions: {
+        findSessionByTokenHash: vi.fn(() =>
+          Promise.resolve({
+            ...validSessionRecord,
+            membership: ownerMembership,
+          }),
+        ),
+      },
+    });
+
+    const session = await harness.service.authenticateSession(
+      "valid-session-token",
+    );
+    expect(session.role).toBe("OWNER");
+    expect(session.permissions).toEqual([
+      { action: "READ", resource: "CATALOG" },
+    ]);
+    expect(session.permissions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resource: "PROCUREMENT", action: "READ" }),
+      ]),
+    );
+  });
+
   it("rejects login when organization is INACTIVE", async () => {
     const harness = createHarness({
       organizationResolver: {
@@ -370,7 +451,7 @@ function createHarness(
       } | null>;
     };
     rateLimiter?: WorkforceAuthenticationRateLimiter;
-    rolePermissions?: Partial<RolePermissionRepository>;
+    rolePermissions?: Partial<RolePermissionRepository> | null;
     secrets?: Partial<AuthenticationSecretService>;
     users?: Partial<UserRepository>;
     workforceSessions?: Partial<WorkforceAuthenticationRepository>;
@@ -438,12 +519,15 @@ function createHarness(
     listActivePermissionsByRole: vi.fn(() => Promise.resolve(permissions)),
   };
 
-  const rolePermissions: RolePermissionRepository = overrides.rolePermissions
-    ? {
-        ...defaultRolePermissionsRepository,
-        ...overrides.rolePermissions,
-      }
-    : defaultRolePermissionsRepository;
+  const rolePermissions: RolePermissionRepository | undefined =
+    overrides.rolePermissions === null
+      ? undefined
+      : overrides.rolePermissions
+        ? {
+            ...defaultRolePermissionsRepository,
+            ...overrides.rolePermissions,
+          }
+        : defaultRolePermissionsRepository;
 
   const organizationResolver = overrides.organizationResolver ?? {
     findOrganizationById: vi.fn(() =>

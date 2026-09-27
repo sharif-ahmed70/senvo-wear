@@ -43,6 +43,9 @@ const authenticatedPrincipal = {
     { resource: "POS", action: "CREATE" },
     { resource: "PAYMENT", action: "APPROVE" },
     { resource: "RECEIPT", action: "READ" },
+    { resource: "PROCUREMENT", action: "READ" },
+    { resource: "PROCUREMENT", action: "CREATE" },
+    { resource: "PROCUREMENT", action: "UPDATE" },
   ],
   role: "ADMIN" as const,
   sessionId: "session-integration-1",
@@ -100,7 +103,7 @@ async function startIntegratedServer(
     handle: vi.fn((request: ApiRequest) => {
       capturedContext.value = request.context;
       return Promise.resolve({
-        data: { captured: true },
+        data: {} as never,
         requestId: "req-test",
         success: true as const,
       });
@@ -112,6 +115,17 @@ async function startIntegratedServer(
     handlers: {
       createSalesOrder: captureHandler,
       postInventoryMovement: captureHandler,
+      procurement: {
+        confirmPurchase: captureHandler,
+        createPurchaseDraft: captureHandler,
+        createSupplier: captureHandler,
+        deactivateSupplier: captureHandler,
+        getPurchase: captureHandler,
+        getSupplier: captureHandler,
+        listPurchases: captureHandler,
+        listSuppliers: captureHandler,
+        updateSupplier: captureHandler,
+      },
     },
   });
 
@@ -222,5 +236,54 @@ describe("Bearer token → WorkforceSessionRequestContextFactory → ApiRequestC
     });
 
     expect(response.status).toBe(401);
+  });
+
+  it("delivers organization context and procurement permissions to protected procurement handlers via Bearer session", async () => {
+    const service = makeWorkforceService();
+    const capturedContext = { value: undefined as unknown };
+
+    const url = await startIntegratedServer(service, capturedContext);
+
+    const response = await fetch(url + "/procurement/purchases", {
+      headers: {
+        authorization: `Bearer ${sessionToken}`,
+        origin: publicOrigin,
+      },
+      method: "GET",
+    });
+
+    expect(response.status).not.toBe(401);
+    expect(service.authenticateSession).toHaveBeenCalledWith(sessionToken);
+    const ctx = capturedContext.value as {
+      authenticatedUser: { userId: string } | null;
+      organizationId: string;
+      permissions: { resource: string; action: string }[];
+    };
+    expect(ctx.authenticatedUser?.userId).toBe("user-integration-1");
+    expect(ctx.organizationId).toBe("org-integration-1");
+    expect(ctx.permissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resource: "PROCUREMENT", action: "READ" }),
+        expect.objectContaining({ resource: "PROCUREMENT", action: "CREATE" }),
+        expect.objectContaining({ resource: "PROCUREMENT", action: "UPDATE" }),
+      ]),
+    );
+  });
+
+  it("returns 401 when no auth is supplied to a procurement route", async () => {
+    const service = makeWorkforceService();
+    const capturedContext = { value: undefined as unknown };
+
+    const url = await startIntegratedServer(service, capturedContext);
+
+    const response = await fetch(url + "/procurement/purchases", {
+      headers: {
+        origin: publicOrigin,
+      },
+      method: "GET",
+    });
+
+    expect(response.status).toBe(401);
+    expect(service.authenticateSession).not.toHaveBeenCalled();
   });
 });

@@ -34,6 +34,7 @@ export const defaultRolePermissions: readonly (PermissionKey & {
   role: Role;
 })[] = [
   ...permissionsFor("OWNER", allResources, allActions),
+  ...permissionsFor("OWNER", ["PROCUREMENT"], ["READ", "CREATE", "UPDATE"]),
   ...permissionsFor(
     "ADMIN",
     ["ORGANIZATION", "USER"],

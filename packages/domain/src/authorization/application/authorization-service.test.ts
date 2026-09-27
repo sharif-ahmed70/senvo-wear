@@ -115,6 +115,94 @@ describe("authorization service", () => {
       }),
     ).rejects.toThrow("Permission is required");
   });
+
+  it("allows owners to perform procurement operations (READ, CREATE, UPDATE) by default", async () => {
+    const repositories = repositoriesFor({ role: "OWNER" });
+
+    await expect(
+      authorize(repositories, {
+        context: { organizationId, userId },
+        permission: { action: "READ", resource: "PROCUREMENT" },
+      }),
+    ).resolves.toMatchObject({ allowed: true, role: "OWNER" });
+
+    await expect(
+      authorize(repositories, {
+        context: { organizationId, userId },
+        permission: { action: "CREATE", resource: "PROCUREMENT" },
+      }),
+    ).resolves.toMatchObject({ allowed: true, role: "OWNER" });
+
+    await expect(
+      authorize(repositories, {
+        context: { organizationId, userId },
+        permission: { action: "UPDATE", resource: "PROCUREMENT" },
+      }),
+    ).resolves.toMatchObject({ allowed: true, role: "OWNER" });
+  });
+
+  it("denies staff and manager procurement access by default", async () => {
+    await expect(
+      authorize(repositoriesFor({ role: "STAFF" }), {
+        context: { organizationId, role: "STAFF", userId },
+        permission: { action: "READ", resource: "PROCUREMENT" },
+      }),
+    ).rejects.toThrow("Permission is required");
+
+    await expect(
+      authorize(repositoriesFor({ role: "MANAGER" }), {
+        context: { organizationId, role: "MANAGER", userId },
+        permission: { action: "CREATE", resource: "PROCUREMENT" },
+      }),
+    ).rejects.toThrow("Permission is required");
+  });
+
+  it("rejects when explicit context permissions lack required procurement permission", async () => {
+    const repositories = repositoriesFor({ role: "OWNER" });
+
+    await expect(
+      authorize(repositories, {
+        context: {
+          organizationId,
+          permissions: [{ action: "READ", resource: "CATALOG" }],
+          userId,
+        },
+        permission: { action: "READ", resource: "PROCUREMENT" },
+      }),
+    ).rejects.toThrow("Permission is required");
+  });
+
+  it("preserves persisted grants precedence over fallback defaults", async () => {
+    const now = new Date("2026-07-13T00:00:00.000Z");
+    const base = repositoriesFor({ role: "OWNER" });
+    const repositories = {
+      ...base,
+      rolePermissions: {
+        create: () => Promise.reject(new Error("not implemented")),
+        findByRoleAndPermission: () => Promise.resolve(null),
+        listActivePermissionsByRole: () =>
+          Promise.resolve([
+            {
+              action: "READ" as const,
+              createdAt: now,
+              description: null,
+              id: "perm-cat",
+              resource: "CATALOG" as const,
+              status: "ACTIVE" as const,
+              updatedAt: now,
+            },
+          ]),
+      },
+    };
+
+    // When rolePermissions returns only CATALOG:READ, OWNER is denied PROCUREMENT:READ
+    await expect(
+      authorize(repositories, {
+        context: { organizationId, userId },
+        permission: { action: "READ", resource: "PROCUREMENT" },
+      }),
+    ).rejects.toThrow("Permission is required");
+  });
 });
 
 function repositoriesFor(input: {
