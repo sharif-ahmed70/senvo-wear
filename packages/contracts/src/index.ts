@@ -4366,3 +4366,108 @@ export const deactivateSupplierServiceInputSchema = z
 export type DeactivateSupplierServiceInputContract = z.infer<
   typeof deactivateSupplierServiceInputSchema
 >;
+
+export const purchaseStatusSchema = z.enum(["DRAFT", "POSTED", "CANCELLED"]);
+export type PurchaseStatusContract = z.infer<typeof purchaseStatusSchema>;
+
+export const purchaseLineContractSchema = z
+  .object({
+    id: idSchema,
+    lineNumber: z.number().int().positive(),
+    notes: z.string().nullable(),
+    productName: z.string(),
+    productVariantId: idSchema,
+    purchaseId: idSchema,
+    quantity: z.number().int().positive(),
+    sku: z.string(),
+    totalCostMinor: z.string(),
+    unitCostMinor: z.number().int().nonnegative(),
+    variantName: z.string().nullable(),
+  })
+  .strict();
+export type PurchaseLineContract = z.infer<typeof purchaseLineContractSchema>;
+
+export const purchaseContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    destinationLocationId: idSchema,
+    expectedDeliveryDate: isoTimestampSchema.nullable(),
+    id: idSchema,
+    idempotencyKey: z.string().nullable(),
+    lines: z.array(purchaseLineContractSchema).optional(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    purchaseDate: isoTimestampSchema,
+    purchaseNumber: z.string(),
+    receiptMovementId: idSchema.nullable(),
+    status: purchaseStatusSchema,
+    supplierId: idSchema,
+    totalCostMinor: z.string(),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type PurchaseContract = z.infer<typeof purchaseContractSchema>;
+
+export const createPurchaseDraftLineServiceInputSchema = z
+  .object({
+    lineNumber: z.number().int().positive(),
+    notes: optionalTextSchema(500),
+    productName: displayNameSchema,
+    productVariantId: idSchema,
+    quantity: z.number().int().positive(),
+    sku: z.string().trim().min(1).max(80),
+    unitCostMinor: z.number().int().nonnegative(),
+    variantName: optionalTextSchema(160),
+  })
+  .strict();
+export type CreatePurchaseDraftLineServiceInputContract = z.infer<
+  typeof createPurchaseDraftLineServiceInputSchema
+>;
+
+export const createPurchaseDraftServiceInputSchema = z
+  .object({
+    destinationLocationId: idSchema,
+    expectedDeliveryDate: isoTimestampSchema.optional().nullable(),
+    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    lines: z.array(createPurchaseDraftLineServiceInputSchema).min(1),
+    notes: optionalTextSchema(1000),
+    purchaseDate: isoTimestampSchema.optional(),
+    purchaseNumber: z.string().trim().min(1).max(64).optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreatePurchaseDraftServiceInputContract = z.infer<
+  typeof createPurchaseDraftServiceInputSchema
+>;
+
+export const getPurchaseServiceInputSchema = z
+  .object({
+    purchaseId: idSchema,
+  })
+  .strict();
+export type GetPurchaseServiceInputContract = z.infer<
+  typeof getPurchaseServiceInputSchema
+>;
+
+export const listPurchasesServiceInputSchema = z
+  .object({
+    destinationLocationId: idSchema.optional(),
+    limit: z.number().int().positive().max(100).optional(),
+    offset: z.number().int().nonnegative().optional(),
+    status: purchaseStatusSchema.optional(),
+    supplierId: idSchema.optional(),
+  })
+  .strict();
+export type ListPurchasesServiceInputContract = z.infer<
+  typeof listPurchasesServiceInputSchema
+>;
+
+export const confirmPurchaseServiceInputSchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    purchaseId: idSchema,
+  })
+  .strict();
+export type ConfirmPurchaseServiceInputContract = z.infer<
+  typeof confirmPurchaseServiceInputSchema
+>;

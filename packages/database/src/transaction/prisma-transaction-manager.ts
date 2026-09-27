@@ -19,6 +19,8 @@ import { PrismaStorefrontRepository } from "../storefront/repository.js";
 import { PrismaCatalogMediaRepository } from "../catalog/media-repository.js";
 import { PrismaProductRepository } from "../catalog/repositories.js";
 import { PrismaOnlinePaymentRepository } from "../payment/online-payment-repository.js";
+import { PrismaPurchaseRepository } from "../procurement/purchase-repository.js";
+import { PrismaCostRepository } from "../procurement/cost-repository.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 type TransactionActorContext = {
@@ -48,6 +50,7 @@ export class PrismaTransactionManager<
         ),
         catalogMediaRepository: new PrismaCatalogMediaRepository(transaction),
         catalogProductRepository: new PrismaProductRepository(transaction),
+        costRepository: new PrismaCostRepository(transaction),
         inventoryMovementRepository:
           new PrismaTransactionalInventoryMovementPostingRepository(
             transaction,
@@ -64,6 +67,7 @@ export class PrismaTransactionManager<
         posReturnRepository: new PrismaPosReturnRepository(transaction),
         posCheckoutSalesOrderRepository:
           createTransactionScopedSalesOrderRepository(transaction),
+        purchaseRepository: new PrismaPurchaseRepository(transaction),
         salesOrderRepository:
           new PrismaTransactionalSalesOrderCreationRepository(transaction),
         salesOrderLifecycleRepository:

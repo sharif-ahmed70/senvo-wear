@@ -332,4 +332,323 @@ describe("ProcurementApplicationService", () => {
       }
     });
   });
+
+  describe("Purchase operations", () => {
+    const locationId = "44444444-4444-4444-8444-444444444444";
+    const variantId = "55555555-5555-4555-8555-555555555555";
+    const purchaseId = "77777777-7777-4777-8777-777777777777";
+    const movementId = "88888888-8888-4888-8888-888888888888";
+
+    const lineId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+    function createMockPurchaseRecord(overrides?: Partial<any>) {
+      return {
+        createdAt: new Date("2026-09-27T00:00:00.000Z"),
+        destinationLocationId: locationId,
+        expectedDeliveryDate: null,
+        id: purchaseId,
+        idempotencyKey: null,
+        lines: [
+          {
+            createdAt: new Date("2026-09-27T00:00:00.000Z"),
+            id: lineId,
+            lineNumber: 1,
+            notes: null,
+            organizationId: orgId,
+            productName: "Classic Shirt",
+            productVariantId: variantId,
+            purchaseId,
+            quantity: 50,
+            sku: "SHIRT-M",
+            totalCostMinor: 2500000n,
+            unitCostMinor: 50000,
+            updatedAt: new Date("2026-09-27T00:00:00.000Z"),
+            variantName: "Black / M",
+          },
+        ],
+        notes: "Test purchase",
+        organizationId: orgId,
+        purchaseDate: new Date("2026-09-27T00:00:00.000Z"),
+        purchaseNumber: "PO-20260927-001",
+        receiptMovementId: null,
+        status: "DRAFT",
+        supplierId,
+        totalCostMinor: 2500000n,
+        updatedAt: new Date("2026-09-27T00:00:00.000Z"),
+        ...overrides,
+      };
+    }
+
+    it("creates a purchase draft with valid permissions", async () => {
+      const repository = createMockRepository();
+      const mockPurchase = createMockPurchaseRecord();
+
+      const mockPurchaseRepo = {
+        create: vi.fn().mockResolvedValue(mockPurchase),
+        findById: vi.fn(),
+        findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+        findByPurchaseNumber: vi.fn(),
+        list: vi.fn(),
+        update: vi.fn(),
+      };
+
+      const service = new ProcurementApplicationService({
+        purchases: mockPurchaseRepo as any,
+        suppliers: repository as unknown as SupplierRepository,
+      });
+
+      const result = await service.createPurchaseDraft(validContext, {
+        destinationLocationId: locationId,
+        lines: [
+          {
+            lineNumber: 1,
+            productName: "Classic Shirt",
+            productVariantId: variantId,
+            quantity: 50,
+            sku: "SHIRT-M",
+            unitCostMinor: 50000,
+          },
+        ],
+        notes: "Test purchase",
+        purchaseNumber: "PO-20260927-001",
+        supplierId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.id).toBe(purchaseId);
+        expect(result.data.status).toBe("DRAFT");
+        expect(result.data.totalCostMinor).toBe("2500000");
+      }
+    });
+
+    it("rejects purchase draft creation without PROCUREMENT:CREATE permission", async () => {
+      const repository = createMockRepository();
+      const service = new ProcurementApplicationService({
+        authorizationService: {
+          authorize: vi
+            .fn()
+            .mockRejectedValue(new AuthorizationError("Denied")),
+        },
+        purchases: {} as any,
+        suppliers: repository as unknown as SupplierRepository,
+      });
+
+      const readOnlyContext: ApplicationExecutionContext = {
+        ...validContext,
+        permissions: [{ action: "READ", resource: "PROCUREMENT" }],
+      };
+
+      const result = await service.createPurchaseDraft(readOnlyContext, {
+        destinationLocationId: locationId,
+        lines: [
+          {
+            lineNumber: 1,
+            productName: "Classic Shirt",
+            productVariantId: variantId,
+            quantity: 50,
+            sku: "SHIRT-M",
+            unitCostMinor: 50000,
+          },
+        ],
+        supplierId,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("retrieves a purchase by id with valid permissions", async () => {
+      const repository = createMockRepository();
+      const mockPurchase = createMockPurchaseRecord();
+
+      const mockPurchaseRepo = {
+        create: vi.fn(),
+        findById: vi.fn().mockResolvedValue(mockPurchase),
+        findByIdempotencyKey: vi.fn(),
+        findByPurchaseNumber: vi.fn(),
+        list: vi.fn(),
+        update: vi.fn(),
+      };
+
+      const service = new ProcurementApplicationService({
+        purchases: mockPurchaseRepo as any,
+        suppliers: repository as unknown as SupplierRepository,
+      });
+
+      const result = await service.getPurchase(validContext, {
+        purchaseId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.id).toBe(purchaseId);
+        expect(result.data.lines).toHaveLength(1);
+      }
+    });
+
+    it("lists purchases with valid permissions", async () => {
+      const repository = createMockRepository();
+      const mockPurchase = createMockPurchaseRecord();
+
+      const mockPurchaseRepo = {
+        create: vi.fn(),
+        findById: vi.fn(),
+        findByIdempotencyKey: vi.fn(),
+        findByPurchaseNumber: vi.fn(),
+        list: vi.fn().mockResolvedValue([mockPurchase]),
+        update: vi.fn(),
+      };
+
+      const service = new ProcurementApplicationService({
+        purchases: mockPurchaseRepo as any,
+        suppliers: repository as unknown as SupplierRepository,
+      });
+
+      const result = await service.listPurchases(validContext, {
+        status: "DRAFT",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toHaveLength(1);
+      }
+    });
+
+    it("confirms a purchase atomically via transaction manager", async () => {
+      const repository = createMockRepository();
+      const draftPurchase = createMockPurchaseRecord({ status: "DRAFT" });
+      const postedPurchase = {
+        ...draftPurchase,
+        receiptMovementId: movementId,
+        status: "POSTED",
+      };
+
+      const mockPurchaseRepo = {
+        create: vi.fn(),
+        findById: vi
+          .fn()
+          .mockResolvedValueOnce(draftPurchase)
+          .mockResolvedValueOnce(postedPurchase),
+        findByIdempotencyKey: vi.fn(),
+        findByPurchaseNumber: vi.fn(),
+        list: vi.fn(),
+        update: vi.fn().mockResolvedValue(postedPurchase),
+      };
+
+      const mockCostRepo = {
+        getCostState: vi.fn().mockResolvedValue(null),
+        getSaleLineCostSnapshot: vi.fn(),
+        getVariantOnHandQuantity: vi.fn().mockResolvedValue(50),
+        listCostEntries: vi.fn(),
+        recordCostEntry: vi.fn().mockResolvedValue({}),
+        recordSaleLineCostSnapshot: vi.fn(),
+        upsertCostState: vi.fn().mockResolvedValue({}),
+      };
+
+      const mockMovement = {
+        consumedReservationId: null,
+        createdAt: new Date(),
+        destinationLocationId: locationId,
+        id: movementId,
+        idempotencyKey: `receipt:purchase:${purchaseId}`,
+        lines: [
+          {
+            createdAt: new Date(),
+            id: "mov-l-1",
+            lineNumber: 1,
+            movementId,
+            note: null,
+            organizationId: orgId,
+            productVariantId: variantId,
+            quantity: 50,
+            updatedAt: new Date(),
+          },
+        ],
+        movementNumber: `REC-${draftPurchase.purchaseNumber}`,
+        note: null,
+        occurredAt: new Date(),
+        organizationId: orgId,
+        referenceId: purchaseId,
+        referenceType: "PURCHASE",
+        reversalReason: null,
+        reversedByMovementId: null,
+        reversesMovementId: null,
+        sourceLocationId: null,
+        status: "POSTED",
+        type: "RECEIPT",
+        updatedAt: new Date(),
+      };
+
+      const mockInventoryRepo = {
+        createDraft: vi
+          .fn()
+          .mockResolvedValue({ ...mockMovement, status: "DRAFT" }),
+        findById: vi
+          .fn()
+          .mockResolvedValue({ ...mockMovement, status: "DRAFT" }),
+        findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+        post: vi.fn().mockResolvedValue(mockMovement),
+      };
+
+      const mockTxManager = {
+        execute: vi.fn().mockImplementation(async (_ctx, operation) => {
+          return operation({
+            applicationContext: _ctx,
+            auditWriter: {} as any,
+            costRepository: mockCostRepo,
+            inventoryMovementRepository: mockInventoryRepo,
+            purchaseRepository: mockPurchaseRepo,
+            salesOrderRepository: {} as any,
+          });
+        }),
+      };
+
+      const service = new ProcurementApplicationService({
+        costRepository: mockCostRepo as any,
+        purchases: mockPurchaseRepo as any,
+        suppliers: repository as unknown as SupplierRepository,
+        transactionManager: mockTxManager as any,
+      });
+
+      const result = await service.confirmPurchase(validContext, {
+        purchaseId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.status).toBe("POSTED");
+        expect(result.data.receiptMovementId).toBe(movementId);
+      }
+      expect(mockTxManager.execute).toHaveBeenCalled();
+    });
+
+    it("rejects purchase confirmation without PROCUREMENT:UPDATE permission", async () => {
+      const repository = createMockRepository();
+      const service = new ProcurementApplicationService({
+        authorizationService: {
+          authorize: vi
+            .fn()
+            .mockRejectedValue(new AuthorizationError("Denied")),
+        },
+        suppliers: repository as unknown as SupplierRepository,
+      });
+
+      const readOnlyContext: ApplicationExecutionContext = {
+        ...validContext,
+        permissions: [{ action: "READ", resource: "PROCUREMENT" }],
+      };
+
+      const result = await service.confirmPurchase(readOnlyContext, {
+        purchaseId,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("FORBIDDEN");
+      }
+    });
+  });
 });

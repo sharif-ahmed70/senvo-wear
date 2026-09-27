@@ -744,10 +744,61 @@ export type {
 
 export { updateVariantPrice } from "./catalog/application/variant-pricing-use-cases.js";
 
-export type { Supplier, SupplierStatus } from "./procurement/domain/models.js";
+export type {
+  CostUnknownReason,
+  CostingMethod,
+  InventoryCostEntry,
+  InventoryCostEventType,
+  Purchase,
+  PurchaseLine,
+  PurchaseStatus,
+  PurchaseWithLines,
+  SaleLineCostSnapshot,
+  Supplier,
+  SupplierStatus,
+  VariantCostState,
+} from "./procurement/domain/models.js";
 export type {
   CreateSupplierRecord,
   SupplierListFilter,
   SupplierRepository,
   UpdateSupplierRecord,
 } from "./procurement/repositories/supplier-repository.js";
+export type {
+  CreatePurchaseLineRecord,
+  CreatePurchaseRecord,
+  PurchaseListFilter,
+  PurchaseRepository,
+  UpdatePurchaseRecord,
+} from "./procurement/repositories/purchase-repository.js";
+export type {
+  CostRepository,
+  CreateInventoryCostEntryRecord,
+  CreateSaleLineCostSnapshotRecord,
+  UpsertVariantCostStateRecord,
+} from "./procurement/repositories/cost-repository.js";
+export {
+  calculateMovingWeightedAverage,
+  calculateSaleLineCostSnapshot,
+  deriveCostStateAfterReceipt,
+  validatePurchaseLineData,
+} from "./procurement/domain/costing-rules.js";
+export type {
+  DeriveCostStateAfterReceiptParams,
+  DeriveCostStateAfterReceiptResult,
+  MovingWeightedAverageResult,
+} from "./procurement/domain/costing-rules.js";
+export {
+  confirmPurchaseOrder,
+  createPurchaseDraftRecord,
+  getPurchaseById,
+  listPurchaseRecords,
+} from "./procurement/application/purchase-use-cases.js";
+export type {
+  ConfirmPurchaseOrderDependencies,
+  ConfirmPurchaseOrderInput,
+  CreatePurchaseDraftInput,
+  CreatePurchaseDraftLineInput,
+  GetPurchaseByIdInput,
+  ListPurchasesInput,
+} from "./procurement/application/purchase-use-cases.js";

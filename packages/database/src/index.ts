@@ -80,3 +80,5 @@ export { PrismaStorefrontRepository } from "./storefront/repository.js";
 export { PrismaWorkforceAuthenticationRepository } from "./workforce/workforce-authentication-repository.js";
 export { PrismaWorkforcePasswordTransactionManager } from "./workforce/workforce-password-transaction.js";
 export { PrismaSupplierRepository } from "./procurement/supplier-repository.js";
+export { PrismaPurchaseRepository } from "./procurement/purchase-repository.js";
+export { PrismaCostRepository } from "./procurement/cost-repository.js";

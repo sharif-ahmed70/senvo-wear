@@ -59,6 +59,32 @@ enum SupplierStatus {
   INACTIVE
 }
 
+enum PurchaseStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum CostUnknownReason {
+  OPENING_STOCK_UNKNOWN
+  PENDING_PURCHASE_RECEIPT
+  MANUAL_HOLD
+  LEGACY_UNSPECIFIED
+}
+
+enum InventoryCostEventType {
+  PURCHASE_RECEIPT
+  INVENTORY_ADJUSTMENT
+  OPENING_BALANCE
+  PURCHASE_REVERSAL
+  COST_CORRECTION
+}
+
+enum CostingMethod {
+  MOVING_WEIGHTED_AVERAGE
+}
+
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -285,6 +311,7 @@ enum PermissionResource {
   PAYMENT
   RECEIPT
   REPORT
+  PROCUREMENT
 }
 
 enum PermissionAction {
@@ -412,6 +439,11 @@ model Organization {
   authenticationRateLimits AuthenticationRateLimit[]
   auditEntries AuditEntry[]
   suppliers    Supplier[]
+  purchases    Purchase[]
+  purchaseLines PurchaseLine[]
+  variantCostStates VariantCostState[]
+  inventoryCostEntries InventoryCostEntry[]
+  saleLineCostSnapshots SaleLineCostSnapshot[]
 
   @@map("organizations")
 }
@@ -713,6 +745,7 @@ model StockLocation {
   inventoryReservations InventoryReservation[]
   inventoryAllocationPolicyLocations InventoryAllocationPolicyLocation[]
   posSaleReturns PosSaleReturn[]
+  purchases Purchase[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -926,6 +959,10 @@ model ProductVariant {
   posCartLines PosCartLine[]
   posSaleReturnLines PosSaleReturnLine[]
   mediaLinks CatalogMediaLink[]
+  purchaseLines PurchaseLine[]
+  costState VariantCostState?
+  costEntries InventoryCostEntry[]
+  saleCostSnapshots SaleLineCostSnapshot[]
 
   @@unique([id, organizationId])
   @@unique([id, productId, organizationId], map: "product_variants_id_product_org_key")
@@ -1710,6 +1747,8 @@ model InventoryMovement {
   fulfilledSalesOrder SalesOrder?               @relation("SalesOrderFulfillmentMovement")
   lines               InventoryMovementLine[]
   posSaleReturn       PosSaleReturn?
+  purchaseReceipt     Purchase?                 @relation("PurchaseReceiptMovement")
+  costEntries         InventoryCostEntry[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, movementNumber])
@@ -1955,6 +1994,7 @@ model SalesOrderLine {
   salesOrder     SalesOrder     @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   posSaleReturnLines PosSaleReturnLine[]
+  costSnapshot       SaleLineCostSnapshot?
 
   @@unique([id, organizationId], map: "sales_order_lines_id_org_key")
   @@unique([salesOrderId, productVariantId])
@@ -1979,10 +2019,147 @@ model Supplier {
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  purchases    Purchase[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([organizationId, name])
   @@map("suppliers")
+}
+
+model Purchase {
+  id                    String         @id @default(uuid()) @db.Uuid
+  organizationId        String         @map("organization_id") @db.Uuid
+  purchaseNumber        String         @map("purchase_number") @db.VarChar(64)
+  supplierId            String         @map("supplier_id") @db.Uuid
+  destinationLocationId String         @map("destination_location_id") @db.Uuid
+  status                PurchaseStatus @default(DRAFT)
+  purchaseDate          DateTime       @map("purchase_date") @db.Timestamptz(6)
+  expectedDeliveryDate  DateTime?      @map("expected_delivery_date") @db.Timestamptz(6)
+  notes                 String?        @db.Text
+  idempotencyKey        String?        @map("idempotency_key") @db.VarChar(128)
+  totalCostMinor        BigInt         @default(0) @map("total_cost_minor")
+  receiptMovementId     String?        @map("receipt_movement_id") @db.Uuid
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  supplier            Supplier           @relation(fields: [supplierId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  destinationLocation StockLocation      @relation(fields: [destinationLocationId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  receiptMovement     InventoryMovement? @relation("PurchaseReceiptMovement", fields: [receiptMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  lines               PurchaseLine[]
+  costEntries         InventoryCostEntry[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, purchaseNumber])
+  @@unique([organizationId, idempotencyKey])
+  @@unique([receiptMovementId, organizationId], map: "purchases_receipt_movement_org_key")
+  @@index([organizationId, status, purchaseDate])
+  @@index([organizationId, supplierId])
+  @@index([organizationId, destinationLocationId])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  purchaseId       String   @map("purchase_id") @db.Uuid
+  lineNumber       Int      @map("line_number")
+  productVariantId String   @map("product_variant_id") @db.Uuid
+  quantity         Int
+  unitCostMinor    Int      @map("unit_cost_minor")
+  totalCostMinor   BigInt   @map("total_cost_minor")
+  productName      String   @map("product_name") @db.VarChar(160)
+  variantName      String?  @map("variant_name") @db.VarChar(160)
+  sku              String   @db.VarChar(80)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  purchase       Purchase       @relation(fields: [purchaseId, organizationId], references: [id, organizationId], onDelete: Cascade, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([purchaseId, lineNumber])
+  @@unique([purchaseId, productVariantId])
+  @@index([organizationId, productVariantId])
+  @@map("purchase_lines")
+}
+
+model VariantCostState {
+  id                  String             @id @default(uuid()) @db.Uuid
+  organizationId      String             @map("organization_id") @db.Uuid
+  productVariantId    String             @map("product_variant_id") @db.Uuid
+  inventoryValueMinor BigInt             @default(0) @map("inventory_value_minor")
+  averageCostMinor    Int?               @map("average_cost_minor")
+  isCostKnown         Boolean            @default(false) @map("is_cost_known")
+  costUnknownReason   CostUnknownReason? @map("cost_unknown_reason")
+  version             Int                @default(1)
+  lastCostEventAt     DateTime?          @map("last_cost_event_at") @db.Timestamptz(6)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([productVariantId, organizationId], map: "variant_cost_states_variant_org_key")
+  @@index([organizationId, isCostKnown])
+  @@map("variant_cost_states")
+}
+
+model InventoryCostEntry {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  organizationId         String                 @map("organization_id") @db.Uuid
+  productVariantId       String                 @map("product_variant_id") @db.Uuid
+  eventType              InventoryCostEventType @map("event_type")
+  quantityChange         Int                    @map("quantity_change")
+  valueChangeMinor       BigInt                 @map("value_change_minor")
+  beforeQuantity         Int                    @map("before_quantity")
+  afterQuantity          Int                    @map("after_quantity")
+  beforeValueMinor       BigInt                 @map("before_value_minor")
+  afterValueMinor        BigInt                 @map("after_value_minor")
+  beforeAverageCostMinor Int?                   @map("before_average_cost_minor")
+  afterAverageCostMinor  Int?                   @map("after_average_cost_minor")
+  sourcePurchaseId       String?                @map("source_purchase_id") @db.Uuid
+  sourceMovementId       String?                @map("source_movement_id") @db.Uuid
+  reference              String?                @db.VarChar(500)
+  createdAt              DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant     @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  sourcePurchase Purchase?          @relation(fields: [sourcePurchaseId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  sourceMovement InventoryMovement? @relation(fields: [sourceMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@index([organizationId, productVariantId, createdAt])
+  @@index([organizationId, eventType, createdAt])
+  @@index([organizationId, sourcePurchaseId])
+  @@index([organizationId, sourceMovementId])
+  @@map("inventory_cost_entries")
+}
+
+model SaleLineCostSnapshot {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  salesOrderLineId  String             @map("sales_order_line_id") @db.Uuid
+  productVariantId  String             @map("product_variant_id") @db.Uuid
+  quantity          Int
+  unitCostMinor     Int?               @map("unit_cost_minor")
+  totalCostMinor    BigInt?            @map("total_cost_minor")
+  isCostKnown       Boolean            @default(false) @map("is_cost_known")
+  costUnknownReason CostUnknownReason? @map("cost_unknown_reason")
+  costingMethod     CostingMethod      @default(MOVING_WEIGHTED_AVERAGE) @map("costing_method")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrderLine SalesOrderLine @relation(fields: [salesOrderLineId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([salesOrderLineId, organizationId], map: "sale_line_cost_snapshots_order_line_org_key")
+  @@index([organizationId, productVariantId])
+  @@map("sale_line_cost_snapshots")
 }

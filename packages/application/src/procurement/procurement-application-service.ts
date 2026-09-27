@@ -4,20 +4,39 @@ import {
   ConflictError,
   NotFoundError,
   ValidationApplicationError,
+  confirmPurchaseOrder,
+  createPurchaseDraftRecord,
+  getPurchaseById,
+  listPurchaseRecords,
+  type CostRepository,
+  type Purchase,
+  type PurchaseRepository,
+  type PurchaseWithLines,
   type Supplier,
   type SupplierRepository,
 } from "@senvo/domain";
 import {
+  confirmPurchaseServiceInputSchema,
+  createPurchaseDraftServiceInputSchema,
   createSupplierServiceInputSchema,
   deactivateSupplierServiceInputSchema,
+  getPurchaseServiceInputSchema,
   getSupplierServiceInputSchema,
+  listPurchasesServiceInputSchema,
   listSuppliersServiceInputSchema,
+  purchaseContractSchema,
   supplierContractSchema,
   updateSupplierServiceInputSchema,
+  type ConfirmPurchaseServiceInputContract,
+  type CreatePurchaseDraftLineServiceInputContract,
+  type CreatePurchaseDraftServiceInputContract,
   type CreateSupplierServiceInputContract,
   type DeactivateSupplierServiceInputContract,
+  type GetPurchaseServiceInputContract,
   type GetSupplierServiceInputContract,
+  type ListPurchasesServiceInputContract,
   type ListSuppliersServiceInputContract,
+  type PurchaseContract,
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
 } from "@senvo/contracts";
@@ -30,6 +49,7 @@ import {
   type ApplicationExecutionContext,
   type ValidatedApplicationExecutionContext,
 } from "../context/execution-context.js";
+import type { ApplicationTransactionManager } from "../context/transaction.js";
 import {
   ApplicationServiceError,
   ValidationApplicationServiceError,
@@ -47,20 +67,29 @@ type SafeParseSchema<T> = {
 
 export type ProcurementApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
+  costRepository?: CostRepository;
+  purchases?: PurchaseRepository;
   requestIdGenerator?: () => string;
   suppliers: SupplierRepository;
+  transactionManager?: ApplicationTransactionManager;
 };
 
 export class ProcurementApplicationService {
   private readonly authorizationService?: ApplicationAuthorizationService;
+  private readonly costRepository?: CostRepository;
+  private readonly purchases?: PurchaseRepository;
   private readonly requestIdGenerator: () => string;
   private readonly suppliers: SupplierRepository;
+  private readonly transactionManager?: ApplicationTransactionManager;
 
   constructor(dependencies: ProcurementApplicationServiceDependencies) {
     this.authorizationService = dependencies.authorizationService;
+    this.costRepository = dependencies.costRepository;
+    this.purchases = dependencies.purchases;
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? (() => crypto.randomUUID());
     this.suppliers = dependencies.suppliers;
+    this.transactionManager = dependencies.transactionManager;
   }
 
   createSupplier(
@@ -174,6 +203,145 @@ export class ProcurementApplicationService {
     });
   }
 
+  createPurchaseDraft(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        createPurchaseDraftServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "CREATE");
+
+      const runCreation = async (purchaseRepo: PurchaseRepository) => {
+        const created = await createPurchaseDraftRecord(purchaseRepo, {
+          destinationLocationId: input.destinationLocationId,
+          expectedDeliveryDate: input.expectedDeliveryDate
+            ? new Date(input.expectedDeliveryDate)
+            : null,
+          idempotencyKey: input.idempotencyKey,
+          lines: input.lines,
+          notes: input.notes,
+          organizationId: validated.organizationId,
+          purchaseDate: input.purchaseDate
+            ? new Date(input.purchaseDate)
+            : undefined,
+          purchaseNumber: input.purchaseNumber,
+          supplierId: input.supplierId,
+        });
+
+        return mapPurchase(created);
+      };
+
+      if (this.transactionManager) {
+        return this.transactionManager.execute(validated, async (tx) => {
+          const purchaseRepo = tx.purchaseRepository ?? this.purchases;
+          if (!purchaseRepo) {
+            throw new BusinessRuleError("Purchase repository is required.");
+          }
+          return runCreation(purchaseRepo);
+        });
+      }
+
+      if (!this.purchases) {
+        throw new BusinessRuleError("Purchase repository is required.");
+      }
+
+      return runCreation(this.purchases);
+    });
+  }
+
+  getPurchase(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(getPurchaseServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+
+      if (!this.purchases) {
+        throw new BusinessRuleError("Purchase repository is required.");
+      }
+
+      const purchase = await getPurchaseById(this.purchases, {
+        organizationId: validated.organizationId,
+        purchaseId: input.purchaseId,
+      });
+
+      return mapPurchase(purchase);
+    });
+  }
+
+  listPurchases(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(listPurchasesServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+
+      if (!this.purchases) {
+        throw new BusinessRuleError("Purchase repository is required.");
+      }
+
+      const records = await listPurchaseRecords(this.purchases, {
+        destinationLocationId: input.destinationLocationId,
+        limit: input.limit,
+        offset: input.offset,
+        organizationId: validated.organizationId,
+        status: input.status,
+        supplierId: input.supplierId,
+      });
+
+      return records.map(mapPurchase);
+    });
+  }
+
+  confirmPurchase(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(confirmPurchaseServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+
+      if (!this.transactionManager) {
+        throw new BusinessRuleError(
+          "Transaction manager is required for purchase confirmation.",
+          "TRANSACTION_MANAGER_REQUIRED",
+        );
+      }
+
+      return this.transactionManager.execute(validated, async (tx) => {
+        const purchaseRepo = tx.purchaseRepository ?? this.purchases;
+        const costRepo = tx.costRepository ?? this.costRepository;
+
+        if (!purchaseRepo || !costRepo) {
+          throw new BusinessRuleError(
+            "Transactional repositories are required for purchase confirmation.",
+            "TRANSACTIONAL_REPOSITORIES_MISSING",
+          );
+        }
+
+        const confirmed = await confirmPurchaseOrder(
+          {
+            costRepository: costRepo,
+            inventoryMovementRepository: tx.inventoryMovementRepository,
+            purchaseRepository: purchaseRepo,
+          },
+          {
+            idempotencyKey: input.idempotencyKey,
+            organizationId: validated.organizationId,
+            purchaseId: input.purchaseId,
+          },
+        );
+
+        return mapPurchase(confirmed);
+      });
+    });
+  }
+
   private async authorize(
     context: ValidatedApplicationExecutionContext,
     action: "CREATE" | "READ" | "UPDATE",
@@ -244,7 +412,7 @@ function normalizeError(error: unknown): ApplicationServiceError {
   if (error instanceof BusinessRuleError)
     return new ApplicationServiceError({
       code: "BUSINESS_RULE_VIOLATION",
-      message: "The request cannot be completed.",
+      message: error.message || "The request cannot be completed.",
     });
   return new ApplicationServiceError({
     code: "INTERNAL_ERROR",
@@ -269,10 +437,52 @@ function mapSupplier(record: Supplier): SupplierContract {
   });
 }
 
+function mapPurchase(record: Purchase | PurchaseWithLines): PurchaseContract {
+  const hasLines = "lines" in record && Array.isArray(record.lines);
+  return purchaseContractSchema.parse({
+    createdAt: record.createdAt.toISOString(),
+    destinationLocationId: record.destinationLocationId,
+    expectedDeliveryDate: record.expectedDeliveryDate?.toISOString() ?? null,
+    id: record.id,
+    idempotencyKey: record.idempotencyKey ?? null,
+    lines: hasLines
+      ? (record as PurchaseWithLines).lines.map((line) => ({
+          id: line.id,
+          lineNumber: line.lineNumber,
+          notes: line.notes ?? null,
+          productName: line.productName,
+          productVariantId: line.productVariantId,
+          purchaseId: line.purchaseId,
+          quantity: line.quantity,
+          sku: line.sku,
+          totalCostMinor: line.totalCostMinor.toString(),
+          unitCostMinor: line.unitCostMinor,
+          variantName: line.variantName ?? null,
+        }))
+      : undefined,
+    notes: record.notes ?? null,
+    organizationId: record.organizationId,
+    purchaseDate: record.purchaseDate.toISOString(),
+    purchaseNumber: record.purchaseNumber,
+    receiptMovementId: record.receiptMovementId ?? null,
+    status: record.status,
+    supplierId: record.supplierId,
+    totalCostMinor: record.totalCostMinor.toString(),
+    updatedAt: record.updatedAt.toISOString(),
+  });
+}
+
 export type {
+  ConfirmPurchaseServiceInputContract,
+  CreatePurchaseDraftLineServiceInputContract,
+  CreatePurchaseDraftServiceInputContract,
   CreateSupplierServiceInputContract,
   DeactivateSupplierServiceInputContract,
+  GetPurchaseServiceInputContract,
   GetSupplierServiceInputContract,
+  ListPurchasesServiceInputContract,
   ListSuppliersServiceInputContract,
+  PurchaseContract,
+  SupplierContract,
   UpdateSupplierServiceInputContract,
 };

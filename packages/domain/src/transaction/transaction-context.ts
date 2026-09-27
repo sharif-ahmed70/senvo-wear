@@ -21,6 +21,8 @@ import type {
 import type { CatalogMediaRepository } from "../catalog/repositories/catalog-media-repository.js";
 import type { CatalogProductManagementRepository } from "../catalog/repositories/catalog-repositories.js";
 import type { OnlinePaymentRepository } from "../payment/repositories/online-payment-repository.js";
+import type { PurchaseRepository } from "../procurement/repositories/purchase-repository.js";
+import type { CostRepository } from "../procurement/repositories/cost-repository.js";
 
 type TransactionalInventoryMovementRepository =
   InventoryMovementPostingRepository &
@@ -31,18 +33,20 @@ export type TransactionContext<TApplicationContext> = {
   auditWriter: Pick<AuditWriter, "recordWithinTransaction">;
   catalogMediaRepository?: CatalogMediaRepository;
   catalogProductRepository?: CatalogProductManagementRepository;
+  costRepository?: CostRepository;
   inventoryMovementRepository: TransactionalInventoryMovementRepository;
   onlinePaymentRepository?: OnlinePaymentRepository;
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;
   paymentRefundRepository?: PaymentRefundRepository;
   paymentRefundReceiptRepository?: PaymentRefundReceiptRepository;
-  receiptRepository?: ReceiptRepository;
+  posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
   posReturnRepository?: PosReturnRepository;
-  posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
-  salesOrderRepository: SalesOrderCreationRepository;
+  purchaseRepository?: PurchaseRepository;
+  receiptRepository?: ReceiptRepository;
   salesOrderLifecycleRepository?: SalesOrderRepository;
+  salesOrderRepository: SalesOrderCreationRepository;
   storefrontRepository?: StorefrontRepository;
 };
 

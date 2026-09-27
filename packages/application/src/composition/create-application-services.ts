@@ -30,6 +30,8 @@ import {
   PrismaCustomerAuthenticationRepository,
   PrismaWorkforceAuthenticationRepository,
   PrismaSupplierRepository,
+  PrismaPurchaseRepository,
+  PrismaCostRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -71,6 +73,8 @@ import type {
   GoogleOAuthProvider,
   StorefrontRepository,
   SupplierRepository,
+  PurchaseRepository,
+  CostRepository,
   UserCredentialRepository,
   WorkforceAuthenticationRepository,
 } from "@senvo/domain";
@@ -143,6 +147,8 @@ export type CreateApplicationServicesOptions = {
   sizeRepository?: CatalogSizeManagementRepository;
   storageProvider?: ObjectStorageProvider;
   supplierRepository?: SupplierRepository;
+  purchaseRepository?: PurchaseRepository;
+  costRepository?: CostRepository;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
   customerAuthenticationRepository?: CustomerAuthenticationRepository;
@@ -208,6 +214,8 @@ export function createApplicationServices(
   let sizeRepository = options.sizeRepository;
   let storefrontRepository = options.storefrontRepository;
   let supplierRepository = options.supplierRepository;
+  let purchaseRepository = options.purchaseRepository;
+  let costRepository = options.costRepository;
   let customerAuthenticationRepository =
     options.customerAuthenticationRepository;
   let workforceAuthenticationRepository =
@@ -338,6 +346,12 @@ export function createApplicationServices(
   supplierRepository ??= new PrismaSupplierRepository(
     requirePrismaClient(prismaClient),
   );
+  if (!purchaseRepository && prismaClient) {
+    purchaseRepository = new PrismaPurchaseRepository(prismaClient);
+  }
+  if (!costRepository && prismaClient) {
+    costRepository = new PrismaCostRepository(prismaClient);
+  }
   posRepository ??= new PrismaPosRepository(requirePrismaClient(prismaClient));
   posCheckoutRepository ??= new PrismaPosCheckoutRepository(
     requirePrismaClient(prismaClient),
@@ -509,8 +523,11 @@ export function createApplicationServices(
     }),
     procurement: new ProcurementApplicationService({
       authorizationService: options.authorizationService,
+      costRepository,
+      purchases: purchaseRepository,
       requestIdGenerator: options.requestIdGenerator,
       suppliers: supplierRepository,
+      transactionManager,
     }),
     pos: new PosApplicationService({
       authenticationService: options.authenticationService,
