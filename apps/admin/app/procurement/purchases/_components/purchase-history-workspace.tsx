@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Clock,
   Package,
+  Plus,
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
@@ -229,6 +230,13 @@ function PurchaseListPanel({
           eyebrow="Procurement / ক্রয় ব্যবস্থাপনা"
           title="ক্রয় ইতিহাস (Purchase History)"
         />
+        <Link
+          className={styles.primaryButton}
+          href="/procurement/purchases/new"
+        >
+          <Plus size={16} />
+          নতুন ক্রয় এন্ট্রি
+        </Link>
       </div>
 
       <div className={styles.filterBar}>

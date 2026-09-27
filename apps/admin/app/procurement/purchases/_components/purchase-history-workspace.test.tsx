@@ -137,8 +137,10 @@ describe("PurchaseHistoryWorkspace List Rendering", () => {
       />,
     );
 
-    // Header
+    // Header and new purchase entry action
     expect(html).toContain("ক্রয় ইতিহাস (Purchase History)");
+    expect(html).toContain("নতুন ক্রয় এন্ট্রি");
+    expect(html).toContain("/procurement/purchases/new");
 
     // PO Numbers
     expect(html).toContain("PO-20260927-001");
