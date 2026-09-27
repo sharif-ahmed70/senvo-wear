@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createProcurementApiHandlers,
   createProtectedApiHandler,
   type ApiHandler,
   type ApiRequest,
@@ -9,9 +10,11 @@ import {
   type OrganizationManagementApiHandlers,
   type PosApiHandlers,
   type ProcurementApiHandlers,
+  type ProcurementApplication,
   type StorefrontApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
+import { AuthorizationError } from "@senvo/domain";
 import {
   createApiFailure,
   createApiSuccess,
@@ -1429,6 +1432,327 @@ describe("Node HTTP runtime adapter", () => {
     expect(retryRes.status).toBe(200);
     expect(confirmRequests).toHaveLength(2);
     expect(confirmRequests[1]).toEqual({ purchaseId: movementId });
+  });
+
+  it("enforces authentication, authorization, tenant isolation, and error mapping on purchase endpoints", async () => {
+    const notFoundPurchaseId = "30000000-0000-4000-8000-000000000001";
+    const postedPurchaseId = "20000000-0000-4000-8000-000000000001";
+    const cancelledPurchaseId = "20000000-0000-4000-8000-000000000002";
+
+    const procurementApp: ProcurementApplication = {
+      confirmPurchase: (context, payload: any) => {
+        if (payload?.purchaseId === postedPurchaseId) {
+          return Promise.resolve({
+            error: {
+              code: "CONFLICT",
+              message: "Cannot confirm a purchase that is already posted.",
+              requestId: context.requestId ?? suppliedRequestId,
+              retryable: false,
+            },
+            ok: false,
+          });
+        }
+        if (payload?.purchaseId === cancelledPurchaseId) {
+          return Promise.resolve({
+            error: {
+              code: "BUSINESS_RULE_VIOLATION",
+              message: "Cannot confirm a cancelled purchase.",
+              requestId: context.requestId ?? suppliedRequestId,
+              retryable: false,
+            },
+            ok: false,
+          });
+        }
+        return Promise.resolve({
+          data: {
+            id: payload?.purchaseId,
+            receiptMovementId: "mov-123",
+            status: "POSTED",
+          } as any,
+          ok: true,
+        });
+      },
+      createPurchaseDraft: (_context, payload: any) => {
+        return Promise.resolve({
+          data: {
+            id: movementId,
+            lines: payload.lines,
+            status: "DRAFT",
+          } as any,
+          ok: true,
+        });
+      },
+      createSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
+      deactivateSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
+      getPurchase: (context, payload: any) => {
+        if (payload?.purchaseId === notFoundPurchaseId) {
+          return Promise.resolve({
+            error: {
+              code: "NOT_FOUND",
+              message: "The requested purchase was not found.",
+              requestId: context.requestId ?? suppliedRequestId,
+              retryable: false,
+            },
+            ok: false,
+          });
+        }
+        return Promise.resolve({
+          data: {
+            id: payload?.purchaseId,
+            status: "DRAFT",
+          } as any,
+          ok: true,
+        });
+      },
+      getSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
+      listPurchases: () => Promise.resolve({ data: [], ok: true }),
+      listSuppliers: () => Promise.resolve({ data: [], ok: true }),
+      updateSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
+    };
+
+    const authorizationService: ApplicationAuthorizationService = {
+      authorize(context, permission) {
+        const hasPermission =
+          context.permissions?.some(
+            (p) =>
+              p.action === permission.action &&
+              p.resource === permission.resource,
+          ) ?? false;
+        if (!hasPermission) {
+          return Promise.reject(new AuthorizationError("Permission denied."));
+        }
+        return Promise.resolve();
+      },
+    };
+
+    const procurementHandlers = createProcurementApiHandlers({
+      authenticationService: new DevelopmentAuthenticationService("test"),
+      authorizationService,
+      procurement: procurementApp,
+    });
+
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        procurement: procurementHandlers,
+      },
+    });
+
+    const validDraftPayload = {
+      destinationLocationId: movementId,
+      lines: [
+        {
+          lineNumber: 1,
+          productName: "Signature Heavyweight Tee",
+          productVariantId: movementId,
+          quantity: 10,
+          sku: "SHT-BLK-M",
+          unitCostMinor: 50000,
+        },
+      ],
+      supplierId: movementId,
+    };
+
+    // 1. HTTP 401 — Missing authentication (no user identity)
+    const unauthenticatedHeaders = new Headers({
+      "content-type": "application/json",
+      "x-dev-organization-id": organizationId,
+      "x-dev-permissions":
+        "PROCUREMENT:CREATE,PROCUREMENT:READ,PROCUREMENT:UPDATE",
+      "x-request-id": suppliedRequestId,
+    });
+
+    const unauthPostRes = await fetch(`${runtime.url}/procurement/purchases`, {
+      body: JSON.stringify(validDraftPayload),
+      headers: unauthenticatedHeaders,
+      method: "POST",
+    });
+    expect(unauthPostRes.status).toBe(401);
+    expect(await unauthPostRes.json()).toMatchObject({
+      error: { code: "AUTHENTICATION.REQUIRED" },
+      success: false,
+    });
+
+    const unauthGetRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}`,
+      { headers: unauthenticatedHeaders },
+    );
+    expect(unauthGetRes.status).toBe(401);
+    expect(await unauthGetRes.json()).toMatchObject({
+      error: { code: "AUTHENTICATION.REQUIRED" },
+      success: false,
+    });
+
+    // 2. HTTP 403 — Authenticated staff without required permissions
+    const readOnlyHeaders = developmentHeaders(suppliedRequestId);
+    readOnlyHeaders.set("x-dev-permissions", "PROCUREMENT:READ");
+
+    const forbiddenCreateRes = await fetch(
+      `${runtime.url}/procurement/purchases`,
+      {
+        body: JSON.stringify(validDraftPayload),
+        headers: readOnlyHeaders,
+        method: "POST",
+      },
+    );
+    expect(forbiddenCreateRes.status).toBe(403);
+    expect(await forbiddenCreateRes.json()).toMatchObject({
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+      success: false,
+    });
+
+    const forbiddenConfirmRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}/confirm`,
+      {
+        body: JSON.stringify({ idempotencyKey: "idem_1" }),
+        headers: readOnlyHeaders,
+        method: "POST",
+      },
+    );
+    expect(forbiddenConfirmRes.status).toBe(403);
+    expect(await forbiddenConfirmRes.json()).toMatchObject({
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+      success: false,
+    });
+
+    const createOnlyHeaders = developmentHeaders(suppliedRequestId);
+    createOnlyHeaders.set("x-dev-permissions", "PROCUREMENT:CREATE");
+
+    const forbiddenGetRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}`,
+      { headers: createOnlyHeaders },
+    );
+    expect(forbiddenGetRes.status).toBe(403);
+    expect(await forbiddenGetRes.json()).toMatchObject({
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+      success: false,
+    });
+
+    // 3. HTTP 200/201 — Authenticated with correct permissions
+    const authorizedHeaders = developmentHeaders(suppliedRequestId);
+    authorizedHeaders.set(
+      "x-dev-permissions",
+      "PROCUREMENT:CREATE,PROCUREMENT:READ,PROCUREMENT:UPDATE",
+    );
+
+    const successfulCreate = await fetch(
+      `${runtime.url}/procurement/purchases`,
+      {
+        body: JSON.stringify(validDraftPayload),
+        headers: authorizedHeaders,
+        method: "POST",
+      },
+    );
+    expect(successfulCreate.status).toBe(201);
+    expect(await successfulCreate.json()).toMatchObject({
+      data: { id: movementId, status: "DRAFT" },
+      success: true,
+    });
+
+    // 4. HTTP 400 — Validation errors & injected organizationId
+    const injectedBodyRes = await fetch(
+      `${runtime.url}/procurement/purchases`,
+      {
+        body: JSON.stringify({
+          ...validDraftPayload,
+          organizationId: "99999999-9999-4999-a999-999999999999",
+        }),
+        headers: authorizedHeaders,
+        method: "POST",
+      },
+    );
+    expect(injectedBodyRes.status).toBe(400);
+    expect(await injectedBodyRes.json()).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+
+    const injectedQueryRes = await fetch(
+      `${runtime.url}/procurement/purchases?organizationId=99999999-9999-4999-a999-999999999999`,
+      { headers: authorizedHeaders },
+    );
+    expect(injectedQueryRes.status).toBe(400);
+    expect(await injectedQueryRes.json()).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+
+    const invalidUuidRes = await fetch(
+      `${runtime.url}/procurement/purchases/1234-abcd`,
+      { headers: authorizedHeaders },
+    );
+    expect(invalidUuidRes.status).toBe(400);
+    expect(await invalidUuidRes.json()).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+
+    const invalidValuesRes = await fetch(
+      `${runtime.url}/procurement/purchases`,
+      {
+        body: JSON.stringify({
+          ...validDraftPayload,
+          lines: [
+            {
+              ...validDraftPayload.lines[0],
+              quantity: 0,
+              unitCostMinor: -1,
+            },
+          ],
+        }),
+        headers: authorizedHeaders,
+        method: "POST",
+      },
+    );
+    expect(invalidValuesRes.status).toBe(400);
+    expect(await invalidValuesRes.json()).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+
+    // 5. HTTP 404 — Purchase not found / cross-tenant isolation
+    const notFoundRes = await fetch(
+      `${runtime.url}/procurement/purchases/${notFoundPurchaseId}`,
+      { headers: authorizedHeaders },
+    );
+    expect(notFoundRes.status).toBe(404);
+    expect(await notFoundRes.json()).toMatchObject({
+      error: { code: "NOT_FOUND.RESOURCE" },
+      success: false,
+    });
+
+    // 6. HTTP 409 — Conflict on invalid state transition (already POSTED / CANCELLED)
+    const conflictPostedRes = await fetch(
+      `${runtime.url}/procurement/purchases/${postedPurchaseId}/confirm`,
+      {
+        body: JSON.stringify({ idempotencyKey: "idem_posted" }),
+        headers: authorizedHeaders,
+        method: "POST",
+      },
+    );
+    expect(conflictPostedRes.status).toBe(409);
+    expect(await conflictPostedRes.json()).toMatchObject({
+      error: { code: "CONFLICT.STATE" },
+      success: false,
+    });
+
+    const conflictCancelledRes = await fetch(
+      `${runtime.url}/procurement/purchases/${cancelledPurchaseId}/confirm`,
+      {
+        body: JSON.stringify({ idempotencyKey: "idem_cancelled" }),
+        headers: authorizedHeaders,
+        method: "POST",
+      },
+    );
+    expect(conflictCancelledRes.status).toBe(409);
+    expect(await conflictCancelledRes.json()).toMatchObject({
+      error: { code: "BUSINESS_RULE.VIOLATION" },
+      success: false,
+    });
   });
 });
 
