@@ -1091,6 +1091,84 @@ describe("Node HTTP runtime adapter", () => {
           );
         },
       },
+      confirmPurchase: {
+        handle: () =>
+          Promise.resolve(
+            createApiSuccess(
+              {
+                createdAt: "2026-09-01T00:00:00.000Z",
+                destinationLocationId: movementId,
+                expectedDeliveryDate: null,
+                id: movementId,
+                idempotencyKey: null,
+                lines: [],
+                notes: null,
+                organizationId,
+                purchaseDate: "2026-09-01T00:00:00.000Z",
+                purchaseNumber: "PO-001",
+                receiptMovementId: "mov-1",
+                status: "POSTED",
+                supplierId: movementId,
+                totalCostMinor: "0",
+                updatedAt: "2026-09-01T00:00:00.000Z",
+              },
+              suppliedRequestId,
+            ),
+          ),
+      },
+      createPurchaseDraft: {
+        handle: () =>
+          Promise.resolve(
+            createApiSuccess(
+              {
+                createdAt: "2026-09-01T00:00:00.000Z",
+                destinationLocationId: movementId,
+                expectedDeliveryDate: null,
+                id: movementId,
+                idempotencyKey: null,
+                lines: [],
+                notes: null,
+                organizationId,
+                purchaseDate: "2026-09-01T00:00:00.000Z",
+                purchaseNumber: "PO-001",
+                receiptMovementId: null,
+                status: "DRAFT",
+                supplierId: movementId,
+                totalCostMinor: "0",
+                updatedAt: "2026-09-01T00:00:00.000Z",
+              },
+              suppliedRequestId,
+            ),
+          ),
+      },
+      getPurchase: {
+        handle: () =>
+          Promise.resolve(
+            createApiSuccess(
+              {
+                createdAt: "2026-09-01T00:00:00.000Z",
+                destinationLocationId: movementId,
+                expectedDeliveryDate: null,
+                id: movementId,
+                idempotencyKey: null,
+                lines: [],
+                notes: null,
+                organizationId,
+                purchaseDate: "2026-09-01T00:00:00.000Z",
+                purchaseNumber: "PO-001",
+                receiptMovementId: null,
+                status: "DRAFT",
+                supplierId: movementId,
+                totalCostMinor: "0",
+                updatedAt: "2026-09-01T00:00:00.000Z",
+              },
+              suppliedRequestId,
+            ),
+          ),
+      },
+      listPurchases: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
     };
 
     const fallback = new RecordingApiHandler(
@@ -1164,6 +1242,193 @@ describe("Node HTTP runtime adapter", () => {
     );
     expect(deleteRes.status).toBe(200);
     expect(deactivateRequests).toHaveLength(2);
+  });
+
+  it("routes procurement purchase requests to purchase handlers", async () => {
+    const listRequests: unknown[] = [];
+    const createRequests: unknown[] = [];
+    const getRequests: unknown[] = [];
+    const confirmRequests: unknown[] = [];
+
+    const mockPurchase = {
+      createdAt: "2026-09-27T00:00:00.000Z",
+      destinationLocationId: movementId,
+      expectedDeliveryDate: null,
+      id: movementId,
+      idempotencyKey: null,
+      lines: [
+        {
+          id: "line-1",
+          lineNumber: 1,
+          notes: null,
+          productName: "Signature Heavyweight Tee",
+          productVariantId: movementId,
+          purchaseId: movementId,
+          quantity: 10,
+          sku: "SHT-BLK-M",
+          totalCostMinor: "500000",
+          unitCostMinor: 50000,
+          variantName: "Black / M",
+        },
+      ],
+      notes: null,
+      organizationId,
+      purchaseDate: "2026-09-27T00:00:00.000Z",
+      purchaseNumber: "PO-20260927-001",
+      receiptMovementId: null,
+      status: "DRAFT" as const,
+      supplierId: movementId,
+      totalCostMinor: "500000",
+      updatedAt: "2026-09-27T00:00:00.000Z",
+    };
+
+    const procurementHandlers: ProcurementApiHandlers = {
+      confirmPurchase: {
+        handle: (req) => {
+          confirmRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(
+              {
+                ...mockPurchase,
+                receiptMovementId: "mov-rcpt-001",
+                status: "POSTED" as const,
+              },
+              suppliedRequestId,
+            ),
+          );
+        },
+      },
+      createPurchaseDraft: {
+        handle: (req) => {
+          createRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockPurchase, suppliedRequestId),
+          );
+        },
+      },
+      createSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      deactivateSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      getPurchase: {
+        handle: (req) => {
+          getRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockPurchase, suppliedRequestId),
+          );
+        },
+      },
+      getSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      listPurchases: {
+        handle: (req) => {
+          listRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess([mockPurchase], suppliedRequestId),
+          );
+        },
+      },
+      listSuppliers: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
+      updateSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+    };
+
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        procurement: procurementHandlers,
+      },
+    });
+
+    // 1. GET /procurement/purchases (with query params)
+    const listRes = await fetch(
+      `${runtime.url}/procurement/purchases?status=DRAFT&limit=25&offset=5`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+      },
+    );
+    expect(listRes.status).toBe(200);
+    expect(listRequests).toEqual([
+      { limit: "25", offset: "5", status: "DRAFT" },
+    ]);
+
+    // 2. POST /procurement/purchases (create draft)
+    const draftPayload = {
+      destinationLocationId: movementId,
+      lines: [
+        {
+          lineNumber: 1,
+          productName: "Signature Heavyweight Tee",
+          productVariantId: movementId,
+          quantity: 10,
+          sku: "SHT-BLK-M",
+          unitCostMinor: 50000,
+        },
+      ],
+      supplierId: movementId,
+    };
+    const createRes = await fetch(`${runtime.url}/procurement/purchases`, {
+      body: JSON.stringify(draftPayload),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+    expect(createRes.status).toBe(201);
+    expect(createRequests).toEqual([draftPayload]);
+
+    // 3. GET /procurement/purchases/:id (get details)
+    const getRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+      },
+    );
+    expect(getRes.status).toBe(200);
+    expect(getRequests).toEqual([{ purchaseId: movementId }]);
+
+    // 4. POST /procurement/purchases/:id/confirm (with idempotency key)
+    const confirmRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}/confirm`,
+      {
+        body: JSON.stringify({ idempotencyKey: "idem_confirm_123" }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(confirmRes.status).toBe(200);
+    const confirmBody = (await confirmRes.json()) as {
+      data: { status: string; receiptMovementId: string };
+    };
+    expect(confirmBody.data.status).toBe("POSTED");
+    expect(confirmBody.data.receiptMovementId).toBe("mov-rcpt-001");
+    expect(confirmRequests).toEqual([
+      { idempotencyKey: "idem_confirm_123", purchaseId: movementId },
+    ]);
+
+    // 5. POST /procurement/purchases/:id/confirm (safe retry without body)
+    const retryRes = await fetch(
+      `${runtime.url}/procurement/purchases/${movementId}/confirm`,
+      {
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(retryRes.status).toBe(200);
+    expect(confirmRequests).toHaveLength(2);
+    expect(confirmRequests[1]).toEqual({ purchaseId: movementId });
   });
 });
 

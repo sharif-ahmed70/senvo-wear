@@ -4452,8 +4452,8 @@ export type GetPurchaseServiceInputContract = z.infer<
 export const listPurchasesServiceInputSchema = z
   .object({
     destinationLocationId: idSchema.optional(),
-    limit: z.number().int().positive().max(100).optional(),
-    offset: z.number().int().nonnegative().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
     status: purchaseStatusSchema.optional(),
     supplierId: idSchema.optional(),
   })

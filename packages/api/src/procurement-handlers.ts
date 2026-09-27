@@ -5,15 +5,24 @@ import type {
   ApplicationServiceResult,
 } from "@senvo/application";
 import {
+  confirmPurchaseServiceInputSchema,
+  createPurchaseDraftServiceInputSchema,
   createSupplierServiceInputSchema,
   deactivateSupplierServiceInputSchema,
+  getPurchaseServiceInputSchema,
   getSupplierServiceInputSchema,
+  listPurchasesServiceInputSchema,
   listSuppliersServiceInputSchema,
   updateSupplierServiceInputSchema,
+  type ConfirmPurchaseServiceInputContract,
+  type CreatePurchaseDraftServiceInputContract,
   type CreateSupplierServiceInputContract,
   type DeactivateSupplierServiceInputContract,
+  type GetPurchaseServiceInputContract,
   type GetSupplierServiceInputContract,
+  type ListPurchasesServiceInputContract,
   type ListSuppliersServiceInputContract,
+  type PurchaseContract,
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
 } from "@senvo/contracts";
@@ -25,6 +34,14 @@ type SecurityDependencies = {
 };
 
 export type ProcurementApplication = {
+  confirmPurchase(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>>;
+  createPurchaseDraft(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>>;
   createSupplier(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -33,10 +50,18 @@ export type ProcurementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SupplierContract>>;
+  getPurchase(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>>;
   getSupplier(
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SupplierContract>>;
+  listPurchases(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract[]>>;
   listSuppliers(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -48,9 +73,13 @@ export type ProcurementApplication = {
 };
 
 export type ProcurementApiHandlers = {
+  confirmPurchase: ApiHandler<PurchaseContract>;
+  createPurchaseDraft: ApiHandler<PurchaseContract>;
   createSupplier: ApiHandler<SupplierContract>;
   deactivateSupplier: ApiHandler<SupplierContract>;
+  getPurchase: ApiHandler<PurchaseContract>;
   getSupplier: ApiHandler<SupplierContract>;
+  listPurchases: ApiHandler<PurchaseContract[]>;
   listSuppliers: ApiHandler<SupplierContract[]>;
   updateSupplier: ApiHandler<SupplierContract>;
 };
@@ -79,6 +108,24 @@ export function createProcurementApiHandlers(
     });
 
   return {
+    confirmPurchase: handler<
+      ConfirmPurchaseServiceInputContract,
+      PurchaseContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.procurement.confirmPurchase(context, input),
+      inputSchema: confirmPurchaseServiceInputSchema,
+    }),
+    createPurchaseDraft: handler<
+      CreatePurchaseDraftServiceInputContract,
+      PurchaseContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.procurement.createPurchaseDraft(context, input),
+      inputSchema: createPurchaseDraftServiceInputSchema,
+    }),
     createSupplier: handler<
       CreateSupplierServiceInputContract,
       SupplierContract
@@ -97,11 +144,26 @@ export function createProcurementApiHandlers(
         dependencies.procurement.deactivateSupplier(context, input),
       inputSchema: deactivateSupplierServiceInputSchema,
     }),
+    getPurchase: handler<GetPurchaseServiceInputContract, PurchaseContract>({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.getPurchase(context, input),
+      inputSchema: getPurchaseServiceInputSchema,
+    }),
     getSupplier: handler<GetSupplierServiceInputContract, SupplierContract>({
       action: "READ",
       execute: (context, input) =>
         dependencies.procurement.getSupplier(context, input),
       inputSchema: getSupplierServiceInputSchema,
+    }),
+    listPurchases: handler<
+      ListPurchasesServiceInputContract,
+      PurchaseContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.listPurchases(context, input),
+      inputSchema: listPurchasesServiceInputSchema,
     }),
     listSuppliers: handler<
       ListSuppliersServiceInputContract,

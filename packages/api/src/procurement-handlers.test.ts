@@ -4,7 +4,7 @@ import type {
   ApplicationExecutionContext,
   ApplicationServiceResult,
 } from "@senvo/application";
-import type { SupplierContract } from "@senvo/contracts";
+import type { PurchaseContract, SupplierContract } from "@senvo/contracts";
 import { describe, expect, it } from "vitest";
 import {
   createProcurementApiHandlers,
@@ -15,6 +15,9 @@ import {
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "10000000-0000-4000-8000-000000000002";
 const supplierId = "aaaaaaaa-aaaa-4aaa-baaa-aaaaaaaaaaaa";
+const destinationLocationId = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
+const variantId = "cccccccc-cccc-4ccc-bccc-cccccccccccc";
+const purchaseId = "dddddddd-dddd-4ddd-bddd-dddddddddddd";
 
 const context: ApiRequestContext = {
   authenticatedUser: { userId },
@@ -135,6 +138,135 @@ describe("procurement API handlers", () => {
       resource: "PROCUREMENT",
     });
   });
+
+  it("uses PROCUREMENT.CREATE for createPurchaseDraft", async () => {
+    const application = new FakeProcurement();
+    const authorization = new FakeAuthorization();
+
+    const response = await handlers(
+      application,
+      authorization,
+    ).createPurchaseDraft.handle({
+      context,
+      input: {
+        destinationLocationId,
+        lines: [
+          {
+            lineNumber: 1,
+            productName: "Signature Heavyweight Tee",
+            productVariantId: variantId,
+            quantity: 50,
+            sku: "SHT-BLK-XL",
+            unitCostMinor: 45000,
+            variantName: "Black / XL",
+          },
+        ],
+        supplierId,
+      },
+    });
+
+    expect(response).toMatchObject({ success: true });
+    expect(authorization.permission).toEqual({
+      action: "CREATE",
+      resource: "PROCUREMENT",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
+    expect(application.lastPayload).toMatchObject({
+      destinationLocationId,
+      supplierId,
+    });
+  });
+
+  it("rejects invalid input on createPurchaseDraft", async () => {
+    const application = new FakeProcurement();
+    const response = await handlers(application).createPurchaseDraft.handle({
+      context,
+      input: {
+        destinationLocationId,
+        lines: [
+          {
+            productName: "Tee",
+            productVariantId: variantId,
+            quantity: 0, // invalid: must be > 0
+            sku: "SKU-1",
+            unitCostMinor: -100, // invalid: must be >= 0
+          },
+        ],
+        supplierId,
+      },
+    });
+
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(application.context).toBeUndefined();
+  });
+
+  it("uses PROCUREMENT.READ for getPurchase and listPurchases", async () => {
+    const application = new FakeProcurement();
+    const authorization = new FakeAuthorization();
+
+    const getResponse = await handlers(
+      application,
+      authorization,
+    ).getPurchase.handle({
+      context,
+      input: { purchaseId },
+    });
+    expect(getResponse).toMatchObject({ success: true });
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "PROCUREMENT",
+    });
+    expect(application.lastPayload).toEqual({ purchaseId });
+
+    const listResponse = await handlers(
+      application,
+      authorization,
+    ).listPurchases.handle({
+      context,
+      input: { limit: 10, offset: 0, status: "DRAFT", supplierId },
+    });
+    expect(listResponse).toMatchObject({ success: true });
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "PROCUREMENT",
+    });
+    expect(application.lastPayload).toEqual({
+      limit: 10,
+      offset: 0,
+      status: "DRAFT",
+      supplierId,
+    });
+  });
+
+  it("uses PROCUREMENT.UPDATE for confirmPurchase", async () => {
+    const application = new FakeProcurement();
+    const authorization = new FakeAuthorization();
+
+    const response = await handlers(
+      application,
+      authorization,
+    ).confirmPurchase.handle({
+      context,
+      input: {
+        idempotencyKey: "idem_confirm_123",
+        purchaseId,
+      },
+    });
+
+    expect(response).toMatchObject({ success: true });
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "PROCUREMENT",
+    });
+    expect(application.context).toMatchObject({ organizationId, userId });
+    expect(application.lastPayload).toEqual({
+      idempotencyKey: "idem_confirm_123",
+      purchaseId,
+    });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -170,32 +302,117 @@ class FakeAuthorization implements ApplicationAuthorizationService {
 
 class FakeProcurement implements ProcurementApplication {
   context?: ApplicationExecutionContext;
+  lastPayload?: unknown;
 
-  private result<T>(context: ApplicationExecutionContext, data: T) {
+  private result<T>(
+    context: ApplicationExecutionContext,
+    data: T,
+    payload?: unknown,
+  ) {
     this.context = context;
+    this.lastPayload = payload;
     return Promise.resolve<ApplicationServiceResult<T>>({ data, ok: true });
   }
 
-  createSupplier(context: ApplicationExecutionContext) {
-    return this.result(context, { id: supplierId } as SupplierContract);
+  createSupplier(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      { id: supplierId } as SupplierContract,
+      payload,
+    );
   }
 
-  deactivateSupplier(context: ApplicationExecutionContext) {
-    return this.result(context, {
-      id: supplierId,
-      status: "INACTIVE",
-    } as SupplierContract);
+  deactivateSupplier(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      {
+        id: supplierId,
+        status: "INACTIVE",
+      } as SupplierContract,
+      payload,
+    );
   }
 
-  getSupplier(context: ApplicationExecutionContext) {
-    return this.result(context, { id: supplierId } as SupplierContract);
+  getSupplier(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      { id: supplierId } as SupplierContract,
+      payload,
+    );
   }
 
-  listSuppliers(context: ApplicationExecutionContext) {
-    return this.result(context, [{ id: supplierId }] as SupplierContract[]);
+  listSuppliers(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      [{ id: supplierId }] as SupplierContract[],
+      payload,
+    );
   }
 
-  updateSupplier(context: ApplicationExecutionContext) {
-    return this.result(context, { id: supplierId } as SupplierContract);
+  updateSupplier(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      { id: supplierId } as SupplierContract,
+      payload,
+    );
+  }
+
+  createPurchaseDraft(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      {
+        id: purchaseId,
+        lines: [],
+        organizationId,
+        status: "DRAFT",
+        supplierId,
+      } as unknown as PurchaseContract,
+      payload,
+    );
+  }
+
+  getPurchase(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      {
+        id: purchaseId,
+        lines: [],
+        organizationId,
+        status: "DRAFT",
+        supplierId,
+      } as unknown as PurchaseContract,
+      payload,
+    );
+  }
+
+  listPurchases(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      [
+        {
+          id: purchaseId,
+          lines: [],
+          organizationId,
+          status: "DRAFT",
+          supplierId,
+        } as unknown as PurchaseContract,
+      ],
+      payload,
+    );
+  }
+
+  confirmPurchase(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      {
+        id: purchaseId,
+        lines: [],
+        organizationId,
+        receiptMovementId: "mov-123",
+        status: "POSTED",
+        supplierId,
+      } as unknown as PurchaseContract,
+      payload,
+    );
   }
 }

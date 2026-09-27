@@ -883,6 +883,34 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
         successStatus: 200,
       },
+      {
+        handler: procurement.listPurchases,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/purchases$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.createPurchaseDraft,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/purchases$/u,
+        successStatus: 201,
+      },
+      {
+        handler: procurement.getPurchase,
+        input: (_body, match) => ({ purchaseId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.confirmPurchase,
+        input: pathBodyInput("purchaseId"),
+        method: "POST",
+        path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/confirm$/iu,
+        successStatus: 200,
+      },
     );
   }
   return routes;
