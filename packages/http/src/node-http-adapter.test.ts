@@ -1172,6 +1172,20 @@ describe("Node HTTP runtime adapter", () => {
       listPurchases: {
         handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
       },
+      recordSupplierPayment: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      getSupplierBalance: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      listSupplierLedger: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
+      listSupplierPayments: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
     };
 
     const fallback = new RecordingApiHandler(
@@ -1344,6 +1358,20 @@ describe("Node HTTP runtime adapter", () => {
         handle: () =>
           Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
       },
+      recordSupplierPayment: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      getSupplierBalance: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      listSupplierLedger: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
+      listSupplierPayments: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
     };
 
     const fallback = new RecordingApiHandler(
@@ -1508,6 +1536,12 @@ describe("Node HTTP runtime adapter", () => {
       listPurchases: () => Promise.resolve({ data: [], ok: true }),
       listSuppliers: () => Promise.resolve({ data: [], ok: true }),
       updateSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
+      recordSupplierPayment: () =>
+        Promise.resolve({ data: {} as any, ok: true }),
+      getSupplierBalance: () => Promise.resolve({ data: {} as any, ok: true }),
+      listSupplierLedger: () => Promise.resolve({ data: [] as any, ok: true }),
+      listSupplierPayments: () =>
+        Promise.resolve({ data: [] as any, ok: true }),
     };
 
     const authorizationService: ApplicationAuthorizationService = {
@@ -1753,6 +1787,177 @@ describe("Node HTTP runtime adapter", () => {
       error: { code: "BUSINESS_RULE.VIOLATION" },
       success: false,
     });
+  });
+
+  it("routes procurement payment and ledger requests to handlers", async () => {
+    const paymentRequests: unknown[] = [];
+    const listPaymentRequests: unknown[] = [];
+    const balanceRequests: unknown[] = [];
+    const ledgerRequests: unknown[] = [];
+
+    const mockPayment = {
+      amountMinor: "500000",
+      createdAt: "2026-09-28T00:00:00.000Z",
+      id: "33333333-3333-4333-8333-333333333333",
+      idempotencyKey: null,
+      notes: null,
+      organizationId,
+      paymentDate: "2026-09-28T00:00:00.000Z",
+      paymentMethod: "CASH" as const,
+      purchaseId: null,
+      reference: null,
+      supplierId: movementId,
+      updatedAt: "2026-09-28T00:00:00.000Z",
+    };
+
+    const mockBalance = {
+      lastBillDate: null,
+      lastPaymentDate: null,
+      organizationId,
+      outstandingBalanceMinor: "1500000",
+      supplierId: movementId,
+      totalAdjustedMinor: "0",
+      totalBilledMinor: "2000000",
+      totalPaidMinor: "500000",
+    };
+
+    const procurementHandlers: ProcurementApiHandlers = {
+      confirmPurchase: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      createPurchaseDraft: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      createSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      deactivateSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      getPurchase: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      getSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      listPurchases: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
+      listSuppliers: {
+        handle: () => Promise.resolve(createApiSuccess([], suppliedRequestId)),
+      },
+      updateSupplier: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
+      recordSupplierPayment: {
+        handle: (req) => {
+          paymentRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockPayment, suppliedRequestId),
+          );
+        },
+      },
+      getSupplierBalance: {
+        handle: (req) => {
+          balanceRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess(mockBalance, suppliedRequestId),
+          );
+        },
+      },
+      listSupplierLedger: {
+        handle: (req) => {
+          ledgerRequests.push(req.input);
+          return Promise.resolve(createApiSuccess([], suppliedRequestId));
+        },
+      },
+      listSupplierPayments: {
+        handle: (req) => {
+          listPaymentRequests.push(req.input);
+          return Promise.resolve(
+            createApiSuccess([mockPayment], suppliedRequestId),
+          );
+        },
+      },
+    };
+
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        procurement: procurementHandlers,
+      },
+    });
+
+    // 1. GET /procurement/suppliers/:id/balance
+    const balanceRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}/balance`,
+      {
+        headers: { authorization: "Bearer admin-token" },
+      },
+    );
+    expect(balanceRes.status).toBe(200);
+    expect(balanceRequests).toEqual([{ supplierId: movementId }]);
+
+    // 2. GET /procurement/suppliers/:id/ledger
+    const ledgerRes = await fetch(
+      `${runtime.url}/procurement/suppliers/${movementId}/ledger?limit=10&offset=0`,
+      {
+        headers: { authorization: "Bearer admin-token" },
+      },
+    );
+    expect(ledgerRes.status).toBe(200);
+    expect(ledgerRequests).toEqual([
+      expect.objectContaining({
+        limit: "10",
+        offset: "0",
+        supplierId: movementId,
+      }),
+    ]);
+
+    // 3. GET /procurement/payments
+    const listPayRes = await fetch(
+      `${runtime.url}/procurement/payments?limit=5`,
+      {
+        headers: { authorization: "Bearer admin-token" },
+      },
+    );
+    expect(listPayRes.status).toBe(200);
+    expect(listPaymentRequests).toEqual([
+      expect.objectContaining({ limit: "5" }),
+    ]);
+
+    // 4. POST /procurement/payments
+    const postPayRes = await fetch(`${runtime.url}/procurement/payments`, {
+      body: JSON.stringify({
+        amountMinor: "500000",
+        paymentMethod: "CASH",
+        supplierId: movementId,
+      }),
+      headers: {
+        authorization: "Bearer admin-token",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(postPayRes.status).toBe(201);
+    expect(paymentRequests).toEqual([
+      {
+        amountMinor: "500000",
+        paymentMethod: "CASH",
+        supplierId: movementId,
+      },
+    ]);
   });
 });
 

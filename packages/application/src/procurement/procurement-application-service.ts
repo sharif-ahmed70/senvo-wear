@@ -8,12 +8,21 @@ import {
   createPurchaseDraftRecord,
   getPurchaseById,
   listPurchaseRecords,
+  recordSupplierPayment,
+  getSupplierBalance,
+  listSupplierLedger,
+  listSupplierPayments,
   type CostRepository,
   type Purchase,
   type PurchaseRepository,
   type PurchaseWithLines,
   type Supplier,
   type SupplierRepository,
+  type SupplierPayment,
+  type SupplierLedgerEntry,
+  type SupplierBalanceSummary,
+  type SupplierPaymentRepository,
+  type SupplierLedgerRepository,
 } from "@senvo/domain";
 import {
   confirmPurchaseServiceInputSchema,
@@ -27,6 +36,13 @@ import {
   purchaseContractSchema,
   supplierContractSchema,
   updateSupplierServiceInputSchema,
+  createSupplierPaymentServiceInputSchema,
+  getSupplierBalanceServiceInputSchema,
+  getSupplierLedgerServiceInputSchema,
+  listSupplierPaymentsServiceInputSchema,
+  supplierPaymentContractSchema,
+  supplierLedgerEntryContractSchema,
+  supplierBalanceSummaryContractSchema,
   type ConfirmPurchaseServiceInputContract,
   type CreatePurchaseDraftLineServiceInputContract,
   type CreatePurchaseDraftServiceInputContract,
@@ -39,6 +55,13 @@ import {
   type PurchaseContract,
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
+  type CreateSupplierPaymentServiceInputContract,
+  type GetSupplierBalanceServiceInputContract,
+  type GetSupplierLedgerServiceInputContract,
+  type ListSupplierPaymentsServiceInputContract,
+  type SupplierPaymentContract,
+  type SupplierLedgerEntryContract,
+  type SupplierBalanceSummaryContract,
 } from "@senvo/contracts";
 import {
   requireAuthorization,
@@ -70,6 +93,8 @@ export type ProcurementApplicationServiceDependencies = {
   costRepository?: CostRepository;
   purchases?: PurchaseRepository;
   requestIdGenerator?: () => string;
+  supplierLedger?: SupplierLedgerRepository;
+  supplierPayments?: SupplierPaymentRepository;
   suppliers: SupplierRepository;
   transactionManager?: ApplicationTransactionManager;
 };
@@ -79,6 +104,8 @@ export class ProcurementApplicationService {
   private readonly costRepository?: CostRepository;
   private readonly purchases?: PurchaseRepository;
   private readonly requestIdGenerator: () => string;
+  private readonly supplierLedger?: SupplierLedgerRepository;
+  private readonly supplierPayments?: SupplierPaymentRepository;
   private readonly suppliers: SupplierRepository;
   private readonly transactionManager?: ApplicationTransactionManager;
 
@@ -88,6 +115,8 @@ export class ProcurementApplicationService {
     this.purchases = dependencies.purchases;
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? (() => crypto.randomUUID());
+    this.supplierLedger = dependencies.supplierLedger;
+    this.supplierPayments = dependencies.supplierPayments;
     this.suppliers = dependencies.suppliers;
     this.transactionManager = dependencies.transactionManager;
   }
@@ -316,6 +345,8 @@ export class ProcurementApplicationService {
       return this.transactionManager.execute(validated, async (tx) => {
         const purchaseRepo = tx.purchaseRepository ?? this.purchases;
         const costRepo = tx.costRepository ?? this.costRepository;
+        const supplierLedgerRepo =
+          tx.supplierLedgerRepository ?? this.supplierLedger;
 
         if (!purchaseRepo || !costRepo) {
           throw new BusinessRuleError(
@@ -329,6 +360,7 @@ export class ProcurementApplicationService {
             costRepository: costRepo,
             inventoryMovementRepository: tx.inventoryMovementRepository,
             purchaseRepository: purchaseRepo,
+            supplierLedgerRepository: supplierLedgerRepo,
           },
           {
             idempotencyKey: input.idempotencyKey,
@@ -339,6 +371,159 @@ export class ProcurementApplicationService {
 
         return mapPurchase(confirmed);
       });
+    });
+  }
+
+  recordSupplierPayment(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierPaymentContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        createSupplierPaymentServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "CREATE");
+
+      const executeRecord = async (
+        paymentRepo: SupplierPaymentRepository,
+        ledgerRepo: SupplierLedgerRepository,
+      ) => {
+        const result = await recordSupplierPayment(
+          {
+            purchaseRepository: this.purchases,
+            supplierLedgerRepository: ledgerRepo,
+            supplierPaymentRepository: paymentRepo,
+            supplierRepository: this.suppliers,
+          },
+          {
+            amountMinor: BigInt(input.amountMinor),
+            idempotencyKey: input.idempotencyKey,
+            notes: input.notes,
+            organizationId: validated.organizationId,
+            paymentDate: input.paymentDate
+              ? new Date(input.paymentDate)
+              : undefined,
+            paymentMethod: input.paymentMethod,
+            purchaseId: input.purchaseId ?? undefined,
+            reference: input.reference,
+            supplierId: input.supplierId,
+          },
+        );
+
+        return mapSupplierPayment(result.payment);
+      };
+
+      if (this.transactionManager) {
+        return this.transactionManager.execute(validated, async (tx) => {
+          const paymentRepo =
+            tx.supplierPaymentRepository ?? this.supplierPayments;
+          const ledgerRepo = tx.supplierLedgerRepository ?? this.supplierLedger;
+          if (!paymentRepo || !ledgerRepo) {
+            throw new BusinessRuleError(
+              "Transactional supplier payment repositories are required.",
+              "SUPPLIER_PAYMENT_REPOSITORIES_MISSING",
+            );
+          }
+          return executeRecord(paymentRepo, ledgerRepo);
+        });
+      }
+
+      if (!this.supplierPayments || !this.supplierLedger) {
+        throw new BusinessRuleError(
+          "Supplier payment repositories are required.",
+          "SUPPLIER_PAYMENT_REPOSITORIES_MISSING",
+        );
+      }
+
+      return executeRecord(this.supplierPayments, this.supplierLedger);
+    });
+  }
+
+  getSupplierBalance(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierBalanceSummaryContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(getSupplierBalanceServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+
+      if (!this.supplierLedger) {
+        throw new BusinessRuleError("Supplier ledger repository is required.");
+      }
+
+      const balance = await getSupplierBalance(
+        {
+          supplierLedgerRepository: this.supplierLedger,
+          supplierRepository: this.suppliers,
+        },
+        {
+          organizationId: validated.organizationId,
+          supplierId: input.supplierId,
+        },
+      );
+
+      return mapSupplierBalanceSummary(balance);
+    });
+  }
+
+  listSupplierLedger(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierLedgerEntryContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(getSupplierLedgerServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+
+      if (!this.supplierLedger) {
+        throw new BusinessRuleError("Supplier ledger repository is required.");
+      }
+
+      const entries = await listSupplierLedger(
+        {
+          supplierLedgerRepository: this.supplierLedger,
+          supplierRepository: this.suppliers,
+        },
+        {
+          from: input.from ? new Date(input.from) : undefined,
+          limit: input.limit,
+          offset: input.offset,
+          organizationId: validated.organizationId,
+          supplierId: input.supplierId,
+          to: input.to ? new Date(input.to) : undefined,
+        },
+      );
+
+      return entries.map(mapSupplierLedgerEntry);
+    });
+  }
+
+  listSupplierPayments(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierPaymentContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        listSupplierPaymentsServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "READ");
+
+      if (!this.supplierPayments) {
+        throw new BusinessRuleError("Supplier payment repository is required.");
+      }
+
+      const payments = await listSupplierPayments(this.supplierPayments, {
+        from: input.from ? new Date(input.from) : undefined,
+        limit: input.limit,
+        offset: input.offset,
+        organizationId: validated.organizationId,
+        purchaseId: input.purchaseId,
+        supplierId: input.supplierId,
+        to: input.to ? new Date(input.to) : undefined,
+      });
+
+      return payments.map(mapSupplierPayment);
     });
   }
 
@@ -472,6 +657,57 @@ function mapPurchase(record: Purchase | PurchaseWithLines): PurchaseContract {
   });
 }
 
+function mapSupplierPayment(record: SupplierPayment): SupplierPaymentContract {
+  return supplierPaymentContractSchema.parse({
+    amountMinor: record.amountMinor.toString(),
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    idempotencyKey: record.idempotencyKey ?? null,
+    notes: record.notes ?? null,
+    organizationId: record.organizationId,
+    paymentDate: record.paymentDate.toISOString(),
+    paymentMethod: record.paymentMethod,
+    purchaseId: record.purchaseId ?? null,
+    reference: record.reference ?? null,
+    supplierId: record.supplierId,
+    updatedAt: record.updatedAt.toISOString(),
+  });
+}
+
+function mapSupplierLedgerEntry(
+  record: SupplierLedgerEntry,
+): SupplierLedgerEntryContract {
+  return supplierLedgerEntryContractSchema.parse({
+    amountMinor: record.amountMinor.toString(),
+    balanceAfterMinor: record.balanceAfterMinor.toString(),
+    createdAt: record.createdAt.toISOString(),
+    direction: record.direction,
+    entryDate: record.entryDate.toISOString(),
+    entryType: record.entryType,
+    id: record.id,
+    notes: record.notes ?? null,
+    organizationId: record.organizationId,
+    referenceId: record.referenceId ?? null,
+    referenceType: record.referenceType ?? null,
+    supplierId: record.supplierId,
+  });
+}
+
+function mapSupplierBalanceSummary(
+  record: SupplierBalanceSummary,
+): SupplierBalanceSummaryContract {
+  return supplierBalanceSummaryContractSchema.parse({
+    lastBillDate: record.lastBillDate?.toISOString() ?? null,
+    lastPaymentDate: record.lastPaymentDate?.toISOString() ?? null,
+    organizationId: record.organizationId,
+    outstandingBalanceMinor: record.outstandingBalanceMinor.toString(),
+    supplierId: record.supplierId,
+    totalAdjustedMinor: record.totalAdjustedMinor.toString(),
+    totalBilledMinor: record.totalBilledMinor.toString(),
+    totalPaidMinor: record.totalPaidMinor.toString(),
+  });
+}
+
 export type {
   ConfirmPurchaseServiceInputContract,
   CreatePurchaseDraftLineServiceInputContract,
@@ -485,4 +721,11 @@ export type {
   PurchaseContract,
   SupplierContract,
   UpdateSupplierServiceInputContract,
+  CreateSupplierPaymentServiceInputContract,
+  GetSupplierBalanceServiceInputContract,
+  GetSupplierLedgerServiceInputContract,
+  ListSupplierPaymentsServiceInputContract,
+  SupplierPaymentContract,
+  SupplierLedgerEntryContract,
+  SupplierBalanceSummaryContract,
 };

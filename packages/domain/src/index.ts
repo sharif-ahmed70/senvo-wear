@@ -831,3 +831,19 @@ export type {
   SupplierPaymentListFilter,
   SupplierPaymentRepository,
 } from "./procurement/repositories/supplier-payment-repository.js";
+export {
+  getSupplierBalance,
+  listSupplierLedger,
+  listSupplierPayments,
+  recordSupplierPayment,
+} from "./procurement/application/supplier-payment-use-cases.js";
+export type {
+  GetSupplierBalanceDependencies,
+  GetSupplierBalanceInput,
+  ListSupplierLedgerDependencies,
+  ListSupplierLedgerInput,
+  ListSupplierPaymentsInput,
+  RecordSupplierPaymentDependencies,
+  RecordSupplierPaymentInput,
+  RecordSupplierPaymentResult,
+} from "./procurement/application/supplier-payment-use-cases.js";

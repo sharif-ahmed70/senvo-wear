@@ -125,6 +125,10 @@ async function startIntegratedServer(
         listPurchases: captureHandler,
         listSuppliers: captureHandler,
         updateSupplier: captureHandler,
+        recordSupplierPayment: captureHandler,
+        getSupplierBalance: captureHandler,
+        listSupplierLedger: captureHandler,
+        listSupplierPayments: captureHandler,
       },
     },
   });

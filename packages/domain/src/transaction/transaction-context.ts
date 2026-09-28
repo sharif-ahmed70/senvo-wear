@@ -23,6 +23,10 @@ import type { CatalogProductManagementRepository } from "../catalog/repositories
 import type { OnlinePaymentRepository } from "../payment/repositories/online-payment-repository.js";
 import type { PurchaseRepository } from "../procurement/repositories/purchase-repository.js";
 import type { CostRepository } from "../procurement/repositories/cost-repository.js";
+import type {
+  SupplierLedgerRepository,
+  SupplierPaymentRepository,
+} from "../procurement/repositories/supplier-payment-repository.js";
 
 type TransactionalInventoryMovementRepository =
   InventoryMovementPostingRepository &
@@ -48,6 +52,8 @@ export type TransactionContext<TApplicationContext> = {
   salesOrderLifecycleRepository?: SalesOrderRepository;
   salesOrderRepository: SalesOrderCreationRepository;
   storefrontRepository?: StorefrontRepository;
+  supplierLedgerRepository?: SupplierLedgerRepository;
+  supplierPaymentRepository?: SupplierPaymentRepository;
 };
 
 export type TransactionManager<TApplicationContext> = {

@@ -15,6 +15,8 @@ import {
   deriveCostStateAfterReceipt,
   validatePurchaseLineData,
 } from "../domain/costing-rules.js";
+import { createSupplierLedgerEntry } from "../domain/supplier-ledger-rules.js";
+import type { SupplierLedgerRepository } from "../repositories/supplier-payment-repository.js";
 import type { Purchase, PurchaseWithLines } from "../domain/models.js";
 import type { CostRepository } from "../repositories/cost-repository.js";
 import type {
@@ -174,6 +176,7 @@ export type ConfirmPurchaseOrderDependencies = {
   > &
     InventoryMovementPostingRepository;
   purchaseRepository: PurchaseRepository;
+  supplierLedgerRepository?: SupplierLedgerRepository;
 };
 
 export type ConfirmPurchaseOrderInput = {
@@ -327,6 +330,27 @@ export async function confirmPurchaseOrder(
     receiptMovementId: postedMovement.id,
     status: "POSTED",
   });
+
+  // 5. If supplier ledger repository is configured, record BILL entry
+  if (dependencies.supplierLedgerRepository) {
+    const currentBalance =
+      await dependencies.supplierLedgerRepository.getSupplierBalance(
+        purchase.supplierId,
+        purchase.organizationId,
+      );
+    const ledgerEntry = createSupplierLedgerEntry({
+      amountMinor: purchase.totalCostMinor,
+      currentBalanceMinor: currentBalance.outstandingBalanceMinor,
+      entryDate: new Date(),
+      entryType: "BILL",
+      notes: `Bill for purchase ${purchase.purchaseNumber}`,
+      organizationId: purchase.organizationId,
+      referenceId: purchase.id,
+      referenceType: "PURCHASE",
+      supplierId: purchase.supplierId,
+    });
+    await dependencies.supplierLedgerRepository.recordLedgerEntry(ledgerEntry);
+  }
 
   const updatedPurchase = await dependencies.purchaseRepository.findById(
     purchase.id,

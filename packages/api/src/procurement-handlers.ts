@@ -14,6 +14,10 @@ import {
   listPurchasesServiceInputSchema,
   listSuppliersServiceInputSchema,
   updateSupplierServiceInputSchema,
+  createSupplierPaymentServiceInputSchema,
+  getSupplierBalanceServiceInputSchema,
+  getSupplierLedgerServiceInputSchema,
+  listSupplierPaymentsServiceInputSchema,
   type ConfirmPurchaseServiceInputContract,
   type CreatePurchaseDraftServiceInputContract,
   type CreateSupplierServiceInputContract,
@@ -25,6 +29,13 @@ import {
   type PurchaseContract,
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
+  type CreateSupplierPaymentServiceInputContract,
+  type GetSupplierBalanceServiceInputContract,
+  type GetSupplierLedgerServiceInputContract,
+  type ListSupplierPaymentsServiceInputContract,
+  type SupplierPaymentContract,
+  type SupplierLedgerEntryContract,
+  type SupplierBalanceSummaryContract,
 } from "@senvo/contracts";
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
@@ -70,6 +81,22 @@ export type ProcurementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SupplierContract>>;
+  recordSupplierPayment(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierPaymentContract>>;
+  getSupplierBalance(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierBalanceSummaryContract>>;
+  listSupplierLedger(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierLedgerEntryContract[]>>;
+  listSupplierPayments(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierPaymentContract[]>>;
 };
 
 export type ProcurementApiHandlers = {
@@ -82,6 +109,10 @@ export type ProcurementApiHandlers = {
   listPurchases: ApiHandler<PurchaseContract[]>;
   listSuppliers: ApiHandler<SupplierContract[]>;
   updateSupplier: ApiHandler<SupplierContract>;
+  recordSupplierPayment: ApiHandler<SupplierPaymentContract>;
+  getSupplierBalance: ApiHandler<SupplierBalanceSummaryContract>;
+  listSupplierLedger: ApiHandler<SupplierLedgerEntryContract[]>;
+  listSupplierPayments: ApiHandler<SupplierPaymentContract[]>;
 };
 
 export function createProcurementApiHandlers(
@@ -182,6 +213,42 @@ export function createProcurementApiHandlers(
       execute: (context, input) =>
         dependencies.procurement.updateSupplier(context, input),
       inputSchema: updateSupplierServiceInputSchema,
+    }),
+    recordSupplierPayment: handler<
+      CreateSupplierPaymentServiceInputContract,
+      SupplierPaymentContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.procurement.recordSupplierPayment(context, input),
+      inputSchema: createSupplierPaymentServiceInputSchema,
+    }),
+    getSupplierBalance: handler<
+      GetSupplierBalanceServiceInputContract,
+      SupplierBalanceSummaryContract
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.getSupplierBalance(context, input),
+      inputSchema: getSupplierBalanceServiceInputSchema,
+    }),
+    listSupplierLedger: handler<
+      GetSupplierLedgerServiceInputContract,
+      SupplierLedgerEntryContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.listSupplierLedger(context, input),
+      inputSchema: getSupplierLedgerServiceInputSchema,
+    }),
+    listSupplierPayments: handler<
+      ListSupplierPaymentsServiceInputContract,
+      SupplierPaymentContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.listSupplierPayments(context, input),
+      inputSchema: listSupplierPaymentsServiceInputSchema,
     }),
   };
 }

@@ -4,7 +4,13 @@ import type {
   ApplicationExecutionContext,
   ApplicationServiceResult,
 } from "@senvo/application";
-import type { PurchaseContract, SupplierContract } from "@senvo/contracts";
+import type {
+  PurchaseContract,
+  SupplierContract,
+  SupplierPaymentContract,
+  SupplierLedgerEntryContract,
+  SupplierBalanceSummaryContract,
+} from "@senvo/contracts";
 import { AuthenticationError, AuthorizationError } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import {
@@ -541,6 +547,103 @@ describe("procurement API handlers", () => {
       success: false,
     });
   });
+
+  describe("supplier payment and ledger handlers", () => {
+    it("uses PROCUREMENT.CREATE for recordSupplierPayment", async () => {
+      const application = new FakeProcurement();
+      const authorization = new FakeAuthorization();
+
+      const response = await handlers(
+        application,
+        authorization,
+      ).recordSupplierPayment.handle({
+        context,
+        input: {
+          amountMinor: "500000",
+          notes: "Advance payment",
+          paymentMethod: "BANK_TRANSFER",
+          reference: "REF-001",
+          supplierId,
+        },
+      });
+
+      expect(response).toMatchObject({ success: true });
+      expect(authorization.permission).toEqual({
+        action: "CREATE",
+        resource: "PROCUREMENT",
+      });
+      expect(application.context).toMatchObject({ organizationId, userId });
+      expect(application.lastPayload).toMatchObject({
+        amountMinor: "500000",
+        paymentMethod: "BANK_TRANSFER",
+        supplierId,
+      });
+    });
+
+    it("rejects invalid input on recordSupplierPayment", async () => {
+      const application = new FakeProcurement();
+      const response = await handlers(application).recordSupplierPayment.handle(
+        {
+          context,
+          input: {
+            amountMinor: "-500", // invalid
+            paymentMethod: "INVALID_METHOD" as any,
+            supplierId: "not-a-uuid",
+          },
+        },
+      );
+
+      expect(response).toMatchObject({
+        error: { code: "VALIDATION.INVALID_INPUT" },
+        success: false,
+      });
+      expect(application.context).toBeUndefined();
+    });
+
+    it("uses PROCUREMENT.READ for getSupplierBalance, listSupplierLedger, and listSupplierPayments", async () => {
+      const application = new FakeProcurement();
+      const authorization = new FakeAuthorization();
+
+      const balanceRes = await handlers(
+        application,
+        authorization,
+      ).getSupplierBalance.handle({
+        context,
+        input: { supplierId },
+      });
+      expect(balanceRes).toMatchObject({ success: true });
+      expect(authorization.permission).toEqual({
+        action: "READ",
+        resource: "PROCUREMENT",
+      });
+
+      const ledgerRes = await handlers(
+        application,
+        authorization,
+      ).listSupplierLedger.handle({
+        context,
+        input: { limit: 10, offset: 0, supplierId },
+      });
+      expect(ledgerRes).toMatchObject({ success: true });
+      expect(authorization.permission).toEqual({
+        action: "READ",
+        resource: "PROCUREMENT",
+      });
+
+      const paymentsRes = await handlers(
+        application,
+        authorization,
+      ).listSupplierPayments.handle({
+        context,
+        input: { limit: 10, offset: 0, supplierId },
+      });
+      expect(paymentsRes).toMatchObject({ success: true });
+      expect(authorization.permission).toEqual({
+        action: "READ",
+        resource: "PROCUREMENT",
+      });
+    });
+  });
 });
 
 function validDraftInput() {
@@ -728,6 +831,73 @@ class FakeProcurement implements ProcurementApplication {
         status: "POSTED",
         supplierId,
       } as unknown as PurchaseContract,
+      payload,
+    );
+  }
+
+  recordSupplierPayment(
+    context: ApplicationExecutionContext,
+    payload?: unknown,
+  ) {
+    return this.result(
+      context,
+      {
+        amountMinor: "500000",
+        id: "33333333-3333-4333-8333-333333333333",
+        paymentMethod: "CASH",
+        supplierId,
+      } as unknown as SupplierPaymentContract,
+      payload,
+    );
+  }
+
+  getSupplierBalance(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      {
+        organizationId,
+        outstandingBalanceMinor: "1500000",
+        supplierId,
+        totalAdjustedMinor: "0",
+        totalBilledMinor: "2000000",
+        totalPaidMinor: "500000",
+      } as unknown as SupplierBalanceSummaryContract,
+      payload,
+    );
+  }
+
+  listSupplierLedger(context: ApplicationExecutionContext, payload?: unknown) {
+    return this.result(
+      context,
+      [
+        {
+          amountMinor: "500000",
+          balanceAfterMinor: "1500000",
+          direction: "DEBIT",
+          entryType: "PAYMENT",
+          id: "66666666-6666-4666-8666-666666666666",
+          organizationId,
+          supplierId,
+        } as unknown as SupplierLedgerEntryContract,
+      ],
+      payload,
+    );
+  }
+
+  listSupplierPayments(
+    context: ApplicationExecutionContext,
+    payload?: unknown,
+  ) {
+    return this.result(
+      context,
+      [
+        {
+          amountMinor: "500000",
+          id: "33333333-3333-4333-8333-333333333333",
+          paymentMethod: "CASH",
+          supplierId,
+        } as unknown as SupplierPaymentContract,
+      ],
       payload,
     );
   }

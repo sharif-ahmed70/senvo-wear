@@ -4579,6 +4579,15 @@ export type CreateSupplierPaymentServiceInputContract = z.infer<
   typeof createSupplierPaymentServiceInputSchema
 >;
 
+export const getSupplierBalanceServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type GetSupplierBalanceServiceInputContract = z.infer<
+  typeof getSupplierBalanceServiceInputSchema
+>;
+
 export const getSupplierLedgerServiceInputSchema = z
   .object({
     from: isoTimestampSchema.optional(),

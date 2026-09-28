@@ -911,6 +911,34 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/confirm$/iu,
         successStatus: 200,
       },
+      {
+        handler: procurement.getSupplierBalance,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/balance$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.listSupplierLedger,
+        input: supplierLedgerInput,
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/ledger$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.listSupplierPayments,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/payments$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.recordSupplierPayment,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/payments$/u,
+        successStatus: 201,
+      },
     );
   }
   return routes;
@@ -1019,6 +1047,17 @@ function variantAvailabilityInput(
   return {
     ...queryInput(body, match, request),
     variantId: match.groups?.id,
+  };
+}
+
+function supplierLedgerInput(
+  body: unknown,
+  match: RegExpMatchArray,
+  request: IncomingMessage,
+): Record<string, unknown> {
+  return {
+    ...queryInput(body, match, request),
+    supplierId: match.groups?.id,
   };
 }
 

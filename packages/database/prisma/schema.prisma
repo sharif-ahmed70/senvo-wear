@@ -84,6 +84,26 @@ enum CostingMethod {
   MOVING_WEIGHTED_AVERAGE
 }
 
+enum SupplierPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  MOBILE_BANKING
+}
+
+enum SupplierLedgerEntryType {
+  BILL
+  PAYMENT
+  RETURN_CREDIT
+  OPENING_BALANCE
+  ADJUSTMENT
+}
+
+enum SupplierLedgerDirection {
+  DEBIT
+  CREDIT
+}
+
 
 enum ProductStatus {
   DRAFT
@@ -444,6 +464,8 @@ model Organization {
   variantCostStates VariantCostState[]
   inventoryCostEntries InventoryCostEntry[]
   saleLineCostSnapshots SaleLineCostSnapshot[]
+  supplierPayments      SupplierPayment[]
+  supplierLedgerEntries SupplierLedgerEntry[]
 
   @@map("organizations")
 }
@@ -2019,7 +2041,9 @@ model Supplier {
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  purchases    Purchase[]
+  purchases     Purchase[]
+  payments      SupplierPayment[]
+  ledgerEntries SupplierLedgerEntry[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -2050,6 +2074,7 @@ model Purchase {
   receiptMovement     InventoryMovement? @relation("PurchaseReceiptMovement", fields: [receiptMovementId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   lines               PurchaseLine[]
   costEntries         InventoryCostEntry[]
+  payments            SupplierPayment[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, purchaseNumber])
@@ -2162,4 +2187,52 @@ model SaleLineCostSnapshot {
   @@unique([salesOrderLineId, organizationId], map: "sale_line_cost_snapshots_order_line_org_key")
   @@index([organizationId, productVariantId])
   @@map("sale_line_cost_snapshots")
+}
+
+model SupplierPayment {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  supplierId     String                @map("supplier_id") @db.Uuid
+  purchaseId     String?               @map("purchase_id") @db.Uuid
+  amountMinor    BigInt                @map("amount_minor")
+  paymentDate    DateTime              @map("payment_date") @db.Timestamptz(6)
+  paymentMethod  SupplierPaymentMethod @map("payment_method")
+  reference      String?               @db.VarChar(160)
+  notes          String?               @db.Text
+  idempotencyKey String?               @map("idempotency_key") @db.VarChar(128)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  supplier     Supplier     @relation(fields: [supplierId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+  purchase     Purchase?    @relation(fields: [purchaseId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, supplierId, paymentDate])
+  @@index([organizationId, purchaseId])
+  @@map("supplier_payments")
+}
+
+model SupplierLedgerEntry {
+  id                String                  @id @default(uuid()) @db.Uuid
+  organizationId    String                  @map("organization_id") @db.Uuid
+  supplierId        String                  @map("supplier_id") @db.Uuid
+  entryType         SupplierLedgerEntryType @map("entry_type")
+  direction         SupplierLedgerDirection
+  amountMinor       BigInt                  @map("amount_minor")
+  balanceAfterMinor BigInt                  @map("balance_after_minor")
+  referenceId       String?                 @map("reference_id") @db.VarChar(128)
+  referenceType     String?                 @map("reference_type") @db.VarChar(64)
+  entryDate         DateTime                @map("entry_date") @db.Timestamptz(6)
+  notes             String?                 @db.Text
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  supplier     Supplier     @relation(fields: [supplierId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@index([organizationId, supplierId, entryDate])
+  @@index([organizationId, entryType, entryDate])
+  @@map("supplier_ledger_entries")
 }

@@ -651,4 +651,249 @@ describe("ProcurementApplicationService", () => {
       }
     });
   });
+
+  describe("Supplier Payment & Ledger operations", () => {
+    const paymentId = "33333333-3333-4333-8333-333333333333";
+    const ledgerEntryId = "66666666-6666-4666-8666-666666666666";
+
+    function createMockPaymentRepo() {
+      return {
+        findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+        getPaymentById: vi.fn(),
+        listPayments: vi.fn(),
+        recordPayment: vi.fn().mockImplementation(async (data: any) => ({
+          amountMinor: data.amountMinor,
+          createdAt: new Date("2026-09-28T00:00:00.000Z"),
+          id: paymentId,
+          idempotencyKey: data.idempotencyKey ?? null,
+          notes: data.notes ?? null,
+          organizationId: data.organizationId,
+          paymentDate: data.paymentDate ?? new Date("2026-09-28T00:00:00.000Z"),
+          paymentMethod: data.paymentMethod,
+          purchaseId: data.purchaseId ?? null,
+          reference: data.reference ?? null,
+          supplierId: data.supplierId,
+          updatedAt: new Date("2026-09-28T00:00:00.000Z"),
+        })),
+      };
+    }
+
+    function createMockLedgerRepo() {
+      return {
+        getSupplierBalance: vi.fn().mockResolvedValue({
+          lastBillDate: new Date("2026-09-27T00:00:00.000Z"),
+          lastPaymentDate: new Date("2026-09-28T00:00:00.000Z"),
+          organizationId: orgId,
+          outstandingBalanceMinor: 1500000n,
+          supplierId,
+          totalAdjustedMinor: 0n,
+          totalBilledMinor: 2500000n,
+          totalPaidMinor: 1000000n,
+        }),
+        listLedgerEntries: vi.fn().mockResolvedValue([
+          {
+            amountMinor: 1000000n,
+            balanceAfterMinor: 1500000n,
+            createdAt: new Date("2026-09-28T00:00:00.000Z"),
+            direction: "DEBIT" as const,
+            entryDate: new Date("2026-09-28T00:00:00.000Z"),
+            entryType: "PAYMENT" as const,
+            id: ledgerEntryId,
+            notes: "Partial payment",
+            organizationId: orgId,
+            referenceId: paymentId,
+            referenceType: "SUPPLIER_PAYMENT",
+            supplierId,
+          },
+        ]),
+        recordLedgerEntry: vi.fn().mockImplementation(async (data: any) => ({
+          amountMinor: data.amountMinor,
+          balanceAfterMinor: data.balanceAfterMinor,
+          createdAt: new Date("2026-09-28T00:00:00.000Z"),
+          direction: data.direction,
+          entryDate: data.entryDate ?? new Date("2026-09-28T00:00:00.000Z"),
+          entryType: data.entryType,
+          id: ledgerEntryId,
+          notes: data.notes ?? null,
+          organizationId: data.organizationId,
+          referenceId: data.referenceId ?? null,
+          referenceType: data.referenceType ?? null,
+          supplierId: data.supplierId,
+        })),
+      };
+    }
+
+    it("records a supplier payment and writes ledger entry", async () => {
+      const mockSupplier = createMockSupplier();
+      const mockSupplierRepo = createMockRepository();
+      mockSupplierRepo.findById.mockResolvedValue(mockSupplier);
+
+      const mockPaymentRepo = createMockPaymentRepo();
+      const mockLedgerRepo = createMockLedgerRepo();
+
+      const service = new ProcurementApplicationService({
+        supplierLedger: mockLedgerRepo as any,
+        supplierPayments: mockPaymentRepo as any,
+        suppliers: mockSupplierRepo as any,
+      });
+
+      const result = await service.recordSupplierPayment(validContext, {
+        amountMinor: "1000000",
+        notes: "Advance payment",
+        paymentMethod: "BANK_TRANSFER",
+        reference: "TRX-998877",
+        supplierId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.id).toBe(paymentId);
+        expect(result.data.amountMinor).toBe("1000000");
+        expect(result.data.paymentMethod).toBe("BANK_TRANSFER");
+      }
+      expect(mockPaymentRepo.recordPayment).toHaveBeenCalled();
+      expect(mockLedgerRepo.recordLedgerEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amountMinor: 1000000n,
+          direction: "DEBIT",
+          entryType: "PAYMENT",
+          organizationId: orgId,
+          supplierId,
+        }),
+      );
+    });
+
+    it("rejects recording payment when user lacks PROCUREMENT:CREATE permission", async () => {
+      const mockSupplierRepo = createMockRepository();
+      const service = new ProcurementApplicationService({
+        authorizationService: {
+          authorize: vi
+            .fn()
+            .mockRejectedValue(new AuthorizationError("Denied")),
+        },
+        suppliers: mockSupplierRepo as any,
+      });
+
+      const readOnlyContext = {
+        ...validContext,
+        permissions: [
+          { action: "READ" as const, resource: "PROCUREMENT" as const },
+        ],
+      };
+
+      const result = await service.recordSupplierPayment(readOnlyContext, {
+        amountMinor: "500000",
+        paymentMethod: "CASH",
+        supplierId,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("gets supplier balance summary scoped to organization", async () => {
+      const mockSupplier = createMockSupplier();
+      const mockSupplierRepo = createMockRepository();
+      mockSupplierRepo.findById.mockResolvedValue(mockSupplier);
+
+      const mockLedgerRepo = createMockLedgerRepo();
+
+      const service = new ProcurementApplicationService({
+        supplierLedger: mockLedgerRepo as any,
+        suppliers: mockSupplierRepo as any,
+      });
+
+      const result = await service.getSupplierBalance(validContext, {
+        supplierId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.outstandingBalanceMinor).toBe("1500000");
+        expect(result.data.totalBilledMinor).toBe("2500000");
+        expect(result.data.totalPaidMinor).toBe("1000000");
+      }
+      expect(mockLedgerRepo.getSupplierBalance).toHaveBeenCalledWith(
+        supplierId,
+        orgId,
+      );
+    });
+
+    it("lists supplier ledger entries with date and pagination parameters", async () => {
+      const mockSupplier = createMockSupplier();
+      const mockSupplierRepo = createMockRepository();
+      mockSupplierRepo.findById.mockResolvedValue(mockSupplier);
+
+      const mockLedgerRepo = createMockLedgerRepo();
+
+      const service = new ProcurementApplicationService({
+        supplierLedger: mockLedgerRepo as any,
+        suppliers: mockSupplierRepo as any,
+      });
+
+      const result = await service.listSupplierLedger(validContext, {
+        limit: 20,
+        offset: 0,
+        supplierId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0]?.direction).toBe("DEBIT");
+        expect(result.data[0]?.entryType).toBe("PAYMENT");
+      }
+      expect(mockLedgerRepo.listLedgerEntries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          limit: 20,
+          offset: 0,
+          organizationId: orgId,
+          supplierId,
+        }),
+      );
+    });
+
+    it("lists supplier payments scoped to organization", async () => {
+      const mockPaymentRepo = createMockPaymentRepo();
+      mockPaymentRepo.listPayments.mockResolvedValue([
+        {
+          amountMinor: 1000000n,
+          createdAt: new Date("2026-09-28T00:00:00.000Z"),
+          id: paymentId,
+          idempotencyKey: null,
+          notes: null,
+          organizationId: orgId,
+          paymentDate: new Date("2026-09-28T00:00:00.000Z"),
+          paymentMethod: "CASH" as const,
+          purchaseId: null,
+          reference: null,
+          supplierId,
+          updatedAt: new Date("2026-09-28T00:00:00.000Z"),
+        },
+      ]);
+
+      const service = new ProcurementApplicationService({
+        supplierPayments: mockPaymentRepo as any,
+        suppliers: createMockRepository() as any,
+      });
+
+      const result = await service.listSupplierPayments(validContext, {
+        supplierId,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0]?.id).toBe(paymentId);
+      }
+      expect(mockPaymentRepo.listPayments).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: orgId,
+          supplierId,
+        }),
+      );
+    });
+  });
 });
