@@ -1,11 +1,15 @@
 "use client";
 
-import type { SupplierContract } from "@senvo/contracts";
+import type {
+  SupplierBalanceSummaryContract,
+  SupplierContract,
+  SupplierLedgerEntryContract,
+} from "@senvo/contracts";
+import { SupplierPayableSection } from "./supplier-payable-section";
 import {
   AlertCircle,
   Check,
   ChevronLeft,
-  Clock,
   MapPin,
   Pencil,
   Phone,
@@ -28,7 +32,9 @@ import styles from "./supplier-workspace.module.css";
 const client = new AdminApiClient();
 
 export type SupplierWorkspaceProps = {
+  initialBalance?: SupplierBalanceSummaryContract | null;
   initialError?: string;
+  initialLedger?: SupplierLedgerEntryContract[];
   initialSupplier?: SupplierContract | null;
   initialSuppliers?: SupplierContract[];
   permissions?: readonly AdminPermissionKey[];
@@ -37,7 +43,9 @@ export type SupplierWorkspaceProps = {
 };
 
 export function SupplierWorkspace({
+  initialBalance,
   initialError,
+  initialLedger,
   initialSupplier,
   initialSuppliers,
   permissions: propsPermissions,
@@ -58,8 +66,11 @@ export function SupplierWorkspace({
   if (view === "details" && supplierId) {
     return (
       <SupplierDetailsPanel
+        canCreate={canCreate}
         canUpdate={canUpdate}
+        initialBalance={initialBalance}
         initialError={initialError}
+        initialLedger={initialLedger}
         initialSupplier={initialSupplier}
         supplierId={supplierId}
       />
@@ -451,13 +462,19 @@ export function SupplierListPanel({
 // Supplier Details Panel
 // ---------------------------------------------------------------------------
 export function SupplierDetailsPanel({
+  canCreate = true,
   canUpdate,
+  initialBalance,
   initialError,
+  initialLedger,
   initialSupplier,
   supplierId,
 }: {
+  canCreate?: boolean;
   canUpdate: boolean;
+  initialBalance?: SupplierBalanceSummaryContract | null;
   initialError?: string;
+  initialLedger?: SupplierLedgerEntryContract[];
   initialSupplier?: SupplierContract | null;
   supplierId: string;
 }) {
@@ -689,16 +706,13 @@ export function SupplierDetailsPanel({
         </div>
       </div>
 
-      {/* Purchase History Placeholder Structure */}
-      <div className={styles.historyPlaceholder}>
-        <span className={styles.historyBadge}>পরবর্তী ফিচার (Phase C4)</span>
-        <Clock size={32} style={{ color: "#3b82f6", marginTop: "0.5rem" }} />
-        <h3 className={styles.stateTitle}>ক্রয় ইতিহাস (Purchase History)</h3>
-        <p className={styles.stateDescription}>
-          এই সরবরাহকারীর কাছ থেকে কোন তারিখে কত পিস মাল কেনা হয়েছে এবং খরচের
-          হিসাব শীঘ্রই এখানে দেখা যাবে।
-        </p>
-      </div>
+      {/* Supplier Payable & Ledger Section */}
+      <SupplierPayableSection
+        canCreatePayment={canCreate}
+        initialBalance={initialBalance}
+        initialLedger={initialLedger}
+        supplier={supplier}
+      />
 
       {/* Edit Modal */}
       {isEditing && (

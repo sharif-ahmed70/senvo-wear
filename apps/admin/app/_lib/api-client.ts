@@ -53,8 +53,13 @@ import type {
   ListPurchasesServiceInputContract,
   PurchaseContract,
   CreateSupplierServiceInputContract,
+  CreateSupplierPaymentServiceInputContract,
+  ListSupplierPaymentsServiceInputContract,
   ListSuppliersServiceInputContract,
+  SupplierBalanceSummaryContract,
   SupplierContract,
+  SupplierLedgerEntryContract,
+  SupplierPaymentContract,
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
   TeamMemberContract,
@@ -671,6 +676,45 @@ export class AdminApiClient {
         method: "POST",
       },
     );
+  }
+
+  getSupplierBalance(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierBalanceSummaryContract>(
+      `/procurement/suppliers/${supplierId}/balance`,
+      request,
+    );
+  }
+
+  getSupplierLedger(
+    supplierId: string,
+    input: { limit?: number; offset?: number } = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierLedgerEntryContract[]>(
+      `/procurement/suppliers/${supplierId}/ledger${queryString(input)}`,
+      request,
+    );
+  }
+
+  listSupplierPayments(
+    input: ListSupplierPaymentsServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierPaymentContract[]>(
+      `/procurement/payments${queryString(input)}`,
+      request,
+    );
+  }
+
+  recordSupplierPayment(
+    input: CreateSupplierPaymentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierPaymentContract>("/procurement/payments", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
   }
 
   listPurchases(

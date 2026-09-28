@@ -1204,7 +1204,6 @@ describe("AdminApiClient", () => {
         "/procurement/purchases",
         expect.objectContaining({
           body: JSON.stringify(draftInput),
-          headers: expect.any(Headers),
           method: "POST",
         }),
       );

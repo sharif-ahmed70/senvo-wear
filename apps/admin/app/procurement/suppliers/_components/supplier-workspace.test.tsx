@@ -1,7 +1,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { SupplierContract } from "@senvo/contracts";
+import type {
+  SupplierBalanceSummaryContract,
+  SupplierContract,
+} from "@senvo/contracts";
 import type { AdminSession } from "../../../_lib/admin-access";
 import { AdminSessionProvider } from "../../../admin-shell";
 import SuppliersPage from "../page";
@@ -55,6 +58,17 @@ const mockSupplierInactive: SupplierContract = {
   phone: "01811223344",
   status: "INACTIVE",
   updatedAt: "2026-09-21T10:00:00.000Z",
+};
+
+const mockSupplierBalance: SupplierBalanceSummaryContract = {
+  lastBillDate: "2026-09-22T10:00:00.000Z",
+  lastPaymentDate: "2026-09-23T10:00:00.000Z",
+  organizationId: "10000000-0000-4000-8000-000000000099",
+  outstandingBalanceMinor: "5000000",
+  supplierId: "10000000-0000-4000-8000-000000000001",
+  totalAdjustedMinor: "0",
+  totalBilledMinor: "15000000",
+  totalPaidMinor: "10000000",
 };
 
 describe("SupplierWorkspace Permission Gating", () => {
@@ -233,19 +247,20 @@ describe("SupplierDetailsPanel and Purchase History Placeholder", () => {
     expect(html).toContain("সক্রিয়");
   });
 
-  it("renders purchase history placeholder for Phase C4", () => {
+  it("renders supplier payable balance and ledger timeline for Phase C4.7", () => {
     const html = renderToStaticMarkup(
       <SupplierDetailsPanel
         canUpdate={true}
+        initialBalance={mockSupplierBalance}
         initialSupplier={mockSupplierActive}
         supplierId={mockSupplierActive.id}
       />,
     );
-    expect(html).toContain("ক্রয় ইতিহাস (Purchase History)");
-    expect(html).toContain("পরবর্তী ফিচার (Phase C4)");
     expect(html).toContain(
-      "এই সরবরাহকারীর কাছ থেকে কোন তারিখে কত পিস মাল কেনা হয়েছে এবং খরচের হিসাব শীঘ্রই এখানে দেখা যাবে।",
+      "সরবরাহকারী দেনা ও ব্যালেন্স (Payable &amp; Balance)",
     );
+    expect(html).toContain("লেজার লেনদেন ইতিহাস (Ledger Transactions)");
+    expect(html).toContain("৳50,000.00");
   });
 
   it("hides edit and deactivate buttons in details when canUpdate is false", () => {
