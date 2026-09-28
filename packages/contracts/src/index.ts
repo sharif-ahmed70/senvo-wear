@@ -582,12 +582,14 @@ export const auditActionSchema = z.enum([
   "INVENTORY_MOVEMENT_POSTED",
   "POS_SALE_RETURN_RECORDED",
   "SALES_ORDER_CREATED",
+  "POS_REGISTER_SETTLED",
 ]);
 
 export const auditResourceSchema = z.enum([
   "INVENTORY_MOVEMENT",
   "POS_RETURN",
   "SALES_ORDER",
+  "POS_SESSION",
 ]);
 
 const auditMetadataSchema = z
@@ -3404,6 +3406,9 @@ export const openSalesSessionServiceInputSchema = z
 export const closeSalesSessionServiceInputSchema = z
   .object({ expectedVersion: expectedVersionSchema, sessionId: idSchema })
   .strict();
+export const getSalesSessionReconciliationServiceInputSchema = z
+  .object({ sessionId: idSchema })
+  .strict();
 export const closeSalesSessionWithSettlementServiceInputSchema = z
   .object({
     actualBankTransferMinor: minorUnitAmountSchema,
@@ -4088,6 +4093,9 @@ export type OpenSalesSessionServiceInputContract = z.infer<
 >;
 export type CloseSalesSessionServiceInputContract = z.infer<
   typeof closeSalesSessionServiceInputSchema
+>;
+export type GetSalesSessionReconciliationServiceInputContract = z.infer<
+  typeof getSalesSessionReconciliationServiceInputSchema
 >;
 export type PosSettlementStatus = z.infer<typeof posSettlementStatusSchema>;
 export type PosSessionReconciliationSummaryContract = z.infer<

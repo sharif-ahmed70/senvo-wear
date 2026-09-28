@@ -300,6 +300,66 @@ describe("POS API handlers", () => {
       resource: "RECEIPT",
     });
   });
+
+  it("validates and authorizes getReconciliationSummary with READ on POS", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).getReconciliationSummary.handle({
+      context,
+      input: { sessionId: "10000000-0000-4000-8000-000000000050" },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "READ",
+      resource: "POS",
+    });
+    expect(application.context?.organizationId).toBe(organizationId);
+
+    const invalid = await handlers(application).getReconciliationSummary.handle({
+      context,
+      input: { sessionId: "invalid-uuid" },
+    });
+    expect(invalid).toMatchObject({ success: false });
+  });
+
+  it("validates and authorizes closeSessionWithSettlement with UPDATE on POS", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).closeSessionWithSettlement.handle({
+      context,
+      input: {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 0,
+        actualCashMinor: 50000,
+        actualMobileBankingMinor: 0,
+        closingNotes: "End of day settlement",
+        expectedVersion: 1,
+        sessionId: "10000000-0000-4000-8000-000000000050",
+      },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "POS",
+    });
+    expect(application.context?.organizationId).toBe(organizationId);
+
+    const invalid = await handlers(application).closeSessionWithSettlement.handle({
+      context,
+      input: {
+        actualCashMinor: -100, // Invalid minor unit
+        expectedVersion: 1,
+        sessionId: "10000000-0000-4000-8000-000000000050",
+      },
+    });
+    expect(invalid).toMatchObject({ success: false });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -350,6 +410,12 @@ class FakePos implements PosApplication {
   }
   closeSession(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesSessionContract);
+  }
+  getReconciliationSummary(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  closeSessionWithSettlement(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
   }
   checkoutCart(context: ApplicationExecutionContext) {
     return this.result(context, {} as PosCheckoutContract);

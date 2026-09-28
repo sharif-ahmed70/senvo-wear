@@ -15,6 +15,7 @@ import { PrismaPaymentRepository } from "../payment/repository.js";
 import { PrismaPaymentRefundRepository } from "../payment/refund-repository.js";
 import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaPosReturnRepository } from "../pos/return-repository.js";
+import { PrismaPosSettlementRepository } from "../pos/settlement-repository.js";
 import { PrismaStorefrontRepository } from "../storefront/repository.js";
 import { PrismaCatalogMediaRepository } from "../catalog/media-repository.js";
 import { PrismaProductRepository } from "../catalog/repositories.js";
@@ -69,6 +70,7 @@ export class PrismaTransactionManager<
         receiptRepository: new PrismaReceiptRepository(transaction),
         posReturnReceiptRepository: new PrismaReceiptRepository(transaction),
         posReturnRepository: new PrismaPosReturnRepository(transaction),
+        posSettlementRepository: new PrismaPosSettlementRepository(transaction),
         posCheckoutSalesOrderRepository:
           createTransactionScopedSalesOrderRepository(transaction),
         purchaseRepository: new PrismaPurchaseRepository(transaction),

@@ -702,6 +702,20 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 200,
       },
       {
+        handler: handlers.pos.getReconciliationSummary,
+        input: (_body, match) => ({ sessionId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/reconciliation$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.closeSessionWithSettlement,
+        input: pathBodyInput("sessionId"),
+        method: "POST",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/settlement$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.lookupSale,
         input: (_body, match) => ({
           value: decodeURIComponent(match.groups?.value ?? ""),

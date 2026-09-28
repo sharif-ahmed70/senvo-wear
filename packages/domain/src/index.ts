@@ -135,6 +135,7 @@ export {
   validateSettlementSubmission,
 } from "./pos/domain/reconciliation-rules.js";
 export type {
+  PaymentMethodType,
   SessionPaymentLine,
   SessionCollectionLine,
   SessionRefundLine,

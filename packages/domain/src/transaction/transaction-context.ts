@@ -14,6 +14,7 @@ import type { PaymentRepository } from "../payment/repositories/payment-reposito
 import type { ReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnRepository } from "../pos/repositories/pos-return-repository.js";
+import type { PosSettlementRepository } from "../pos/repositories/pos-settlement-repository.js";
 import type {
   PaymentRefundReceiptRepository,
   PaymentRefundRepository,
@@ -47,6 +48,7 @@ export type TransactionContext<TApplicationContext> = {
   posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
   posReturnRepository?: PosReturnRepository;
+  posSettlementRepository?: PosSettlementRepository;
   purchaseRepository?: PurchaseRepository;
   receiptRepository?: ReceiptRepository;
   salesOrderLifecycleRepository?: SalesOrderRepository;

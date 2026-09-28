@@ -1016,6 +1016,192 @@ describe("Node HTTP runtime adapter", () => {
     });
   });
 
+  it("routes POS session reconciliation and settlement requests with proper status codes", async () => {
+    const sessionId = "10000000-0000-4000-8000-000000000099";
+
+    const getReconciliation = new RecordingApiHandler(
+      createApiSuccess({ sessionId, expectedCashMinor: 50000 }, suppliedRequestId),
+    );
+    const closeSettlement = new RecordingApiHandler(
+      createApiSuccess({ id: "settle-1", status: "BALANCED" }, suppliedRequestId),
+    );
+
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          closeSessionWithSettlement: closeSettlement,
+          getReconciliationSummary: getReconciliation,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+
+    // 1. GET /pos/sessions/:sessionId/reconciliation - 200
+    const recRes = await fetch(
+      `${runtime.url}/pos/sessions/${sessionId}/reconciliation`,
+      { headers: developmentHeaders(suppliedRequestId) },
+    );
+    expect(recRes.status).toBe(200);
+    expect(getReconciliation.requests.at(0)?.input).toEqual({ sessionId });
+
+    // 2. POST /pos/sessions/:sessionId/settlement - 200
+    const settleRes = await fetch(
+      `${runtime.url}/pos/sessions/${sessionId}/settlement`,
+      {
+        body: JSON.stringify({
+          actualBankTransferMinor: 0,
+          actualCardMinor: 0,
+          actualCashMinor: 50000,
+          actualMobileBankingMinor: 0,
+          expectedVersion: 1,
+        }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(settleRes.status).toBe(200);
+    expect(closeSettlement.requests.at(0)?.input).toEqual({
+      actualBankTransferMinor: 0,
+      actualCardMinor: 0,
+      actualCashMinor: 50000,
+      actualMobileBankingMinor: 0,
+      expectedVersion: 1,
+      sessionId,
+    });
+
+    // 3. Error mapping: 400 validation
+    const fail400 = new RecordingApiHandler(
+      createApiFailure({
+        code: "VALIDATION.INPUT",
+        message: "actualCashMinor must be non-negative.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime400 = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          closeSessionWithSettlement: fail400,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const res400 = await fetch(
+      `${runtime400.url}/pos/sessions/${sessionId}/settlement`,
+      {
+        body: JSON.stringify({ actualCashMinor: -100 }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(res400.status).toBe(400);
+
+    // 4. Error mapping: 401 unauthenticated
+    const fail401 = new RecordingApiHandler(
+      createApiFailure({
+        code: "AUTHENTICATION.REQUIRED",
+        message: "Authentication is required.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime401 = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          getReconciliationSummary: fail401,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const res401 = await fetch(
+      `${runtime401.url}/pos/sessions/${sessionId}/reconciliation`,
+      { headers: developmentHeaders(suppliedRequestId) },
+    );
+    expect(res401.status).toBe(401);
+
+    // 5. Error mapping: 403 permission
+    const fail403 = new RecordingApiHandler(
+      createApiFailure({
+        code: "AUTHORIZATION.FORBIDDEN",
+        message: "You are not allowed to close this session.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime403 = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          closeSessionWithSettlement: fail403,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const res403 = await fetch(
+      `${runtime403.url}/pos/sessions/${sessionId}/settlement`,
+      {
+        body: JSON.stringify({ actualCashMinor: 50000, expectedVersion: 1 }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(res403.status).toBe(403);
+
+    // 6. Error mapping: 404 missing session
+    const fail404 = new RecordingApiHandler(
+      createApiFailure({
+        code: "NOT_FOUND.SESSION",
+        message: "Sales session was not found.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime404 = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          getReconciliationSummary: fail404,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const res404 = await fetch(
+      `${runtime404.url}/pos/sessions/${sessionId}/reconciliation`,
+      { headers: developmentHeaders(suppliedRequestId) },
+    );
+    expect(res404.status).toBe(404);
+
+    // 7. Error mapping: 409 duplicate / concurrency conflict
+    const fail409 = new RecordingApiHandler(
+      createApiFailure({
+        code: "CONCURRENCY.VERSION_CONFLICT",
+        message: "Open sales session was not found or changed.",
+        requestId: suppliedRequestId,
+      }),
+    );
+    const runtime409 = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        pos: {
+          closeSessionWithSettlement: fail409,
+        } as unknown as PosApiHandlers,
+        postInventoryMovement: fallback,
+      },
+    });
+    const res409 = await fetch(
+      `${runtime409.url}/pos/sessions/${sessionId}/settlement`,
+      {
+        body: JSON.stringify({ actualCashMinor: 50000, expectedVersion: 1 }),
+        headers: developmentHeaders(suppliedRequestId),
+        method: "POST",
+      },
+    );
+    expect(res409.status).toBe(409);
+  });
+
   it("does not allow development authentication adapters in production", () => {
     expect(
       () => new DevelopmentAuthenticationService("production" as "development"),

@@ -17,6 +17,7 @@ import {
   PrismaPosRepository,
   PrismaPosCheckoutRepository,
   PrismaPosReturnRepository,
+  PrismaPosSettlementRepository,
   PrismaPaymentRepository,
   PrismaPaymentRefundRepository,
   PrismaOnlinePaymentRepository,
@@ -57,6 +58,7 @@ import type {
   PosRepository,
   PosCheckoutRepository,
   PosReturnRepository,
+  PosSettlementRepository,
   PaymentRepository,
   PaymentRefundRepository,
   PaymentRefundReceiptRepository,
@@ -133,6 +135,7 @@ export type CreateApplicationServicesOptions = {
   receiptRepository?: ReceiptRepository;
   posReturnRepository?: PosReturnRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
+  posSettlementRepository?: PosSettlementRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
@@ -372,6 +375,9 @@ export function createApplicationServices(
     posReturnRepository = new PrismaPosReturnRepository(prismaClient);
   if (!posReturnReceiptRepository && prismaClient)
     posReturnReceiptRepository = new PrismaReceiptRepository(prismaClient);
+  let posSettlementRepository = options.posSettlementRepository;
+  if (!posSettlementRepository && prismaClient)
+    posSettlementRepository = new PrismaPosSettlementRepository(prismaClient);
 
   if (!workforceAuthenticationRepository && prismaClient)
     workforceAuthenticationRepository =
@@ -549,6 +555,7 @@ export function createApplicationServices(
       salesSources:
         salesSourceRepository ??
         new PrismaSalesSourceRepository(requirePrismaClient(prismaClient)),
+      settlements: posSettlementRepository,
       transactionManager,
       users: userRepository,
     }),

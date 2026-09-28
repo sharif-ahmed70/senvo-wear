@@ -105,7 +105,12 @@ export class PrismaPosRepository implements PosRepository {
   async openSession(record: Parameters<PosRepository["openSession"]>[0]) {
     try {
       const session = await this.prisma.$transaction(async (transaction) => {
-        const created = await transaction.salesSession.create({ data: record });
+        const created = await transaction.salesSession.create({
+          data: {
+            ...record,
+            openingFloatMinor: record.openingFloatMinor ?? 0,
+          },
+        });
         await transaction.posCart.create({
           data: {
             organizationId: record.organizationId,
@@ -278,6 +283,7 @@ function mapSession(record: SessionRecord): SalesSession {
     id: record.id,
     openedAt: record.openedAt,
     openedByUserId: record.openedByUserId,
+    openingFloatMinor: record.openingFloatMinor ?? 0,
     organizationId: record.organizationId,
     status: record.status,
     updatedAt: record.updatedAt,

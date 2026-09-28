@@ -11,7 +11,9 @@ import {
   createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
+  closeSalesSessionWithSettlementServiceInputSchema,
   createSalesCounterServiceInputSchema,
+  getSalesSessionReconciliationServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
@@ -32,10 +34,12 @@ import {
   type PaymentRefundAccountContract,
   type PaymentRefundReceiptContract,
   type PaymentRefundResultContract,
+  type PosRegisterSettlementContract,
   type PosReturnAccountContract,
   type PosReturnReceiptContract,
   type PosReturnResultContract,
   type PosSaleLookupContract,
+  type PosSessionReconciliationSummaryContract,
   type SalesReceiptContract,
   type SalesCounterContract,
   type SalesSessionContract,
@@ -79,6 +83,14 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesSessionContract>>;
+  getReconciliationSummary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosSessionReconciliationSummaryContract>>;
+  closeSessionWithSettlement(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosRegisterSettlementContract>>;
   checkoutCart(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -155,6 +167,8 @@ export type PosApiHandlers = {
   getReturnReceipt: ApiHandler<PosReturnReceiptContract>;
   addCartItem: ApiHandler<PosCartLineContract>;
   closeSession: ApiHandler<SalesSessionContract>;
+  getReconciliationSummary: ApiHandler<PosSessionReconciliationSummaryContract>;
+  closeSessionWithSettlement: ApiHandler<PosRegisterSettlementContract>;
   checkoutCart: ApiHandler<PosCheckoutContract>;
   createCounter: ApiHandler<SalesCounterContract>;
   listCounters: ApiHandler<SalesCounterContract[]>;
@@ -254,6 +268,18 @@ export function createPosApiHandlers(dependencies: {
       "UPDATE",
       closeSalesSessionServiceInputSchema,
       (context, input) => dependencies.pos.closeSession(context, input),
+    ),
+    getReconciliationSummary: handler(
+      "READ",
+      getSalesSessionReconciliationServiceInputSchema,
+      (context, input) =>
+        dependencies.pos.getReconciliationSummary(context, input),
+    ),
+    closeSessionWithSettlement: handler(
+      "UPDATE",
+      closeSalesSessionWithSettlementServiceInputSchema,
+      (context, input) =>
+        dependencies.pos.closeSessionWithSettlement(context, input),
     ),
     checkoutCart: handler(
       "UPDATE",
