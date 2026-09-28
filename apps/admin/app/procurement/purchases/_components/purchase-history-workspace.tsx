@@ -96,6 +96,7 @@ export function PurchaseHistoryWorkspace({
       <PurchaseDetailsPanel
         initialError={initialError}
         initialPurchase={initialPurchase}
+        permissions={permissions}
         purchaseId={purchaseId}
       />
     );
@@ -409,10 +410,12 @@ function StatusBadge({ status }: { status: PurchaseStatus }) {
 function PurchaseDetailsPanel({
   initialError,
   initialPurchase,
+  permissions = [],
   purchaseId,
 }: {
   initialError?: string;
   initialPurchase?: PurchaseContract | null;
+  permissions?: readonly AdminPermissionKey[];
   purchaseId: string;
 }) {
   const [purchase, setPurchase] = useState<PurchaseContract | null>(
@@ -420,6 +423,31 @@ function PurchaseDetailsPanel({
   );
   const [isLoading, setIsLoading] = useState(!initialPurchase);
   const [error, setError] = useState<string | null>(initialError ?? null);
+  const [isConfirming, setIsConfirming] = useState<boolean>(false);
+  const [confirmSuccess, setConfirmSuccess] = useState<boolean>(false);
+
+  const canConfirm = permissions.includes("PROCUREMENT:UPDATE");
+
+  const handleConfirmDraftPurchase = async () => {
+    if (isConfirming || !canConfirm || !purchase) return;
+    setIsConfirming(true);
+    setError(null);
+    try {
+      const res = await client.confirmPurchase({ purchaseId: purchase.id });
+      if (res.data) {
+        setPurchase(res.data);
+        setConfirmSuccess(true);
+      }
+    } catch (err) {
+      if (err instanceof AdminApiError) {
+        setError(err.message);
+      } else {
+        setError("ক্রয় আদেশ নিশ্চিতকরণ ও স্টক যুক্ত করতে ব্যর্থ হয়েছে।");
+      }
+    } finally {
+      setIsConfirming(false);
+    }
+  };
 
   useEffect(() => {
     if (!initialPurchase) {
@@ -487,6 +515,106 @@ function PurchaseDetailsPanel({
         </div>
       ) : (
         <div className={styles.detailCard}>
+          {confirmSuccess && (
+            <div
+              style={{
+                backgroundColor: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "0.5rem",
+                color: "#166534",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                marginBottom: "1.5rem",
+                padding: "0.875rem 1.25rem",
+              }}
+            >
+              ক্রয় আদেশ সফলভাবে নিশ্চিত করা হয়েছে এবং গোডাউনে সমস্ত স্টক যুক্ত
+              হয়েছে।
+            </div>
+          )}
+
+          {purchase.status === "DRAFT" && (
+            <div
+              style={{
+                backgroundColor: "#fefce8",
+                border: "1px solid #fef08a",
+                borderRadius: "0.5rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "1rem",
+                marginBottom: "1.5rem",
+                padding: "1rem 1.25rem",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    color: "#854d0e",
+                    fontSize: "0.9375rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  খসড়া অবস্থা — স্টক এখনও যোগ করা হয়নি (Draft Order — Stock Not
+                  Added)
+                </div>
+                <div
+                  style={{
+                    color: "#a16207",
+                    fontSize: "0.8125rem",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  সতর্কতা: Confirm করলে stock increase হবে এবং cost update হবে।
+                </div>
+              </div>
+              <div>
+                <button
+                  aria-busy={isConfirming}
+                  disabled={isConfirming || !canConfirm}
+                  onClick={() => void handleConfirmDraftPurchase()}
+                  style={{
+                    alignItems: "center",
+                    backgroundColor: canConfirm ? "#166534" : "#9ca3af",
+                    border: "none",
+                    borderRadius: "0.375rem",
+                    color: "#ffffff",
+                    cursor:
+                      canConfirm && !isConfirming ? "pointer" : "not-allowed",
+                    display: "flex",
+                    fontSize: "0.875rem",
+                    fontWeight: 600,
+                    gap: "0.5rem",
+                    padding: "0.5rem 1rem",
+                  }}
+                  type="button"
+                >
+                  {isConfirming ? (
+                    <Clock className={styles.spinning} size={16} />
+                  ) : (
+                    <ShieldCheck size={16} />
+                  )}
+                  {isConfirming
+                    ? "নিশ্চিত করা হচ্ছে..."
+                    : "স্টক নিশ্চিত করুন (Confirm & Add Stock)"}
+                </button>
+                {!canConfirm && (
+                  <div
+                    style={{
+                      color: "#b91c1c",
+                      fontSize: "0.75rem",
+                      marginTop: "0.25rem",
+                      textAlign: "right",
+                    }}
+                  >
+                    স্টক নিশ্চিত করতে PROCUREMENT:UPDATE অনুমতি প্রয়োজন।
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className={styles.infoGrid}>
             <div className={styles.infoItem}>
               <span className={styles.infoLabel}>ক্রয় নম্বর (PO #)</span>

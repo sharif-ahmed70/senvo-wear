@@ -209,7 +209,7 @@ describe("PurchaseHistoryWorkspace Detail View", () => {
     const html = renderToStaticMarkup(
       <PurchaseHistoryWorkspace
         initialPurchase={mockDraftPurchase}
-        permissions={["PROCUREMENT:READ"]}
+        permissions={["PROCUREMENT:READ", "PROCUREMENT:UPDATE"]}
         purchaseId={purchaseId1}
         view="details"
       />,
@@ -224,13 +224,39 @@ describe("PurchaseHistoryWorkspace Detail View", () => {
     expect(html).toContain("৳500.00"); // unit cost 50000 minor = 500.00
     expect(html).toContain("৳25,000.00"); // line total
     expect(html).toContain("Urgent restocking for winter collection"); // notes
+
+    // Draft resilience banner and confirm action
+    expect(html).toContain(
+      "খসড়া অবস্থা — স্টক এখনও যোগ করা হয়নি (Draft Order — Stock Not Added)",
+    );
+    expect(html).toContain(
+      "Confirm করলে stock increase হবে এবং cost update হবে",
+    );
+    expect(html).toContain("স্টক নিশ্চিত করুন");
+    expect(html).toContain("Confirm &amp; Add Stock");
   });
 
-  it("renders receipt movement id when purchase is POSTED", () => {
+  it("shows disabled notice in detail view when lacking PROCUREMENT:UPDATE to confirm draft", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseHistoryWorkspace
+        initialPurchase={mockDraftPurchase}
+        permissions={["PROCUREMENT:READ"]} // lacks PROCUREMENT:UPDATE
+        purchaseId={purchaseId1}
+        view="details"
+      />,
+    );
+
+    expect(html).toContain("disabled");
+    expect(html).toContain(
+      "স্টক নিশ্চিত করতে PROCUREMENT:UPDATE অনুমতি প্রয়োজন।",
+    );
+  });
+
+  it("renders receipt movement id when purchase is POSTED and hides draft banner", () => {
     const html = renderToStaticMarkup(
       <PurchaseHistoryWorkspace
         initialPurchase={mockPostedPurchase}
-        permissions={["PROCUREMENT:READ"]}
+        permissions={["PROCUREMENT:READ", "PROCUREMENT:UPDATE"]}
         purchaseId={purchaseId2}
         view="details"
       />,
@@ -238,6 +264,7 @@ describe("PurchaseHistoryWorkspace Detail View", () => {
 
     expect(html).toContain("mov-rcpt-002");
     expect(html).toContain("নিশ্চিত — Stock added");
+    expect(html).not.toContain("খসড়া অবস্থা — স্টক এখনও যোগ করা হয়নি");
   });
 });
 

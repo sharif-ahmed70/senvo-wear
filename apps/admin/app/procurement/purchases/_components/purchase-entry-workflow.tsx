@@ -30,6 +30,39 @@ import styles from "./purchase-entry-workflow.module.css";
 
 const client = new AdminApiClient();
 
+const DRAFT_STORAGE_KEY = "senvo_purchase_workflow_draft_v1";
+
+function safeGetDraftStorage(): string | null {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      return window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function safeSetDraftStorage(value: string): void {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.setItem(DRAFT_STORAGE_KEY, value);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function safeRemoveDraftStorage(): void {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export type PurchaseStagedLine = {
   colorName: string;
   id: string; // client temporary ID
@@ -72,6 +105,7 @@ export function calculatePurchaseTotals(stagedLines: PurchaseStagedLine[]) {
 export type PurchaseEntryWorkflowProps = {
   initialColors?: ColorContract[];
   initialDestinationLocationId?: string;
+  initialErrorMessage?: string;
   initialLocations?: StockLocationReadContract[];
   initialNotes?: string;
   initialProducts?: ProductContract[];
@@ -89,6 +123,7 @@ export type PurchaseEntryWorkflowProps = {
 export function PurchaseEntryWorkflow({
   initialColors,
   initialDestinationLocationId,
+  initialErrorMessage,
   initialLocations,
   initialNotes,
   initialProducts,
@@ -162,10 +197,120 @@ export function PurchaseEntryWorkflow({
     initialSavedPurchase ?? null,
   );
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMode, setSuccessMode] = useState<"DRAFT" | "POSTED" | null>(
-    null,
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    initialErrorMessage ?? null,
   );
+  const [successMode, setSuccessMode] = useState<"DRAFT" | "POSTED" | null>(
+    initialSavedPurchase
+      ? initialSavedPurchase.status === "POSTED"
+        ? "POSTED"
+        : "DRAFT"
+      : null,
+  );
+  const [draftRestored, setDraftRestored] = useState<boolean>(false);
+
+  // Recover uncommitted draft from session storage on mount
+  useEffect(() => {
+    if (initialStagedLines || initialSavedPurchase) return;
+    const saved = safeGetDraftStorage();
+    if (!saved) return;
+    try {
+      const parsed: unknown = JSON.parse(saved);
+      if (typeof parsed === "object" && parsed !== null) {
+        const draft = parsed as {
+          destinationLocationId?: string;
+          notes?: string;
+          purchaseDate?: string;
+          stagedLines?: PurchaseStagedLine[];
+          supplierId?: string;
+        };
+        let hasContent = false;
+        if (
+          typeof draft.supplierId === "string" &&
+          draft.supplierId &&
+          !supplierId
+        ) {
+          setSupplierId(draft.supplierId);
+          hasContent = true;
+        }
+        if (
+          typeof draft.destinationLocationId === "string" &&
+          draft.destinationLocationId &&
+          !destinationLocationId
+        ) {
+          setDestinationLocationId(draft.destinationLocationId);
+          hasContent = true;
+        }
+        if (typeof draft.purchaseDate === "string" && draft.purchaseDate) {
+          setPurchaseDate(draft.purchaseDate);
+        }
+        if (typeof draft.notes === "string" && draft.notes) {
+          setNotes(draft.notes);
+          hasContent = true;
+        }
+        if (Array.isArray(draft.stagedLines) && draft.stagedLines.length > 0) {
+          setStagedLines(draft.stagedLines);
+          hasContent = true;
+        }
+        if (hasContent) {
+          setDraftRestored(true);
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, [
+    destinationLocationId,
+    initialSavedPurchase,
+    initialStagedLines,
+    supplierId,
+  ]);
+
+  // Sync draft to session storage
+  useEffect(() => {
+    if (successMode) {
+      safeRemoveDraftStorage();
+      return;
+    }
+    if (
+      stagedLines.length > 0 ||
+      notes ||
+      (supplierId && supplierId !== suppliers[0]?.id)
+    ) {
+      safeSetDraftStorage(
+        JSON.stringify({
+          destinationLocationId,
+          notes,
+          purchaseDate,
+          stagedLines,
+          supplierId,
+        }),
+      );
+    }
+  }, [
+    supplierId,
+    destinationLocationId,
+    purchaseDate,
+    notes,
+    stagedLines,
+    successMode,
+    suppliers,
+  ]);
+
+  const handleResetForm = () => {
+    safeRemoveDraftStorage();
+    setStagedLines([]);
+    setSavedPurchase(null);
+    setSuccessMode(null);
+    setErrorMessage(null);
+    setNotes("");
+    setSelectedProductId("");
+    setProductDetails(null);
+    setVariantInputs({});
+    setCommonPriceInput("");
+    setCurrentStep(1);
+    setDraftRestored(false);
+  };
 
   // Load foundation reference data
   const loadFoundation = useCallback(async () => {
@@ -390,6 +535,7 @@ export function PurchaseEntryWorkflow({
 
   // Save Draft (খসড়া সংরক্ষণ)
   const handleSaveDraft = async () => {
+    if (isSubmitting) return;
     if (!supplierId || !destinationLocationId) {
       setErrorMessage("সরবরাহকারী এবং গন্তব্য লোকেশন নির্বাচন করুন।");
       return;
@@ -426,6 +572,7 @@ export function PurchaseEntryWorkflow({
       if (res.data) {
         setSavedPurchase(res.data);
         setSuccessMode("DRAFT");
+        safeRemoveDraftStorage();
         onComplete?.(res.data);
       }
     } catch (err) {
@@ -441,7 +588,7 @@ export function PurchaseEntryWorkflow({
 
   // Confirm Purchase (নিশ্চিত করুন ও স্টক যুক্ত করুন)
   const handleConfirmPurchase = async () => {
-    if (!canConfirm) return;
+    if (isSubmitting || !canConfirm) return;
 
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -486,6 +633,7 @@ export function PurchaseEntryWorkflow({
       if (confirmRes.data) {
         setSavedPurchase(confirmRes.data);
         setSuccessMode("POSTED");
+        safeRemoveDraftStorage();
         onComplete?.(confirmRes.data);
       }
     } catch (err) {
@@ -525,7 +673,14 @@ export function PurchaseEntryWorkflow({
               ? " সমস্ত পণ্যের স্টক গোডাউনে যুক্ত হয়েছে এবং মুভিং এভারেজ ক্রয়মূল্য হালনাগাদ করা হয়েছে।"
               : " এটি একটি খসড়া আদেশ। এতে কোনো ইনভেন্টরি স্টক বা ক্রয়মূল্য পরিবর্তন করা হয়নি।"}
           </p>
-          <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "1rem",
+              marginTop: "1rem",
+              flexWrap: "wrap",
+            }}
+          >
             <Link
               className={styles.primaryButton}
               href={`/procurement/purchases/${savedPurchase.id}`}
@@ -538,6 +693,13 @@ export function PurchaseEntryWorkflow({
             >
               ক্রয় তালিকায় ফিরে যান (Back to list)
             </Link>
+            <button
+              className={styles.secondaryButton}
+              onClick={handleResetForm}
+              type="button"
+            >
+              নতুন আরেকটি ক্রয় এন্ট্রি (Create another purchase)
+            </button>
           </div>
         </div>
       </div>
@@ -556,6 +718,59 @@ export function PurchaseEntryWorkflow({
         eyebrow="Procurement / নতুন ক্রয়"
         title="নতুন ক্রয় এন্ট্রি (New Purchase Entry)"
       />
+
+      {/* Draft Restored Banner */}
+      {draftRestored && (
+        <div
+          style={{
+            backgroundColor: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            borderRadius: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1rem",
+            marginBottom: "1rem",
+            padding: "0.75rem 1rem",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              color: "#166534",
+              fontSize: "0.875rem",
+            }}
+          >
+            <CheckCircle2 size={16} />
+            <span>
+              পূর্বের অসম্পূর্ণ ড্রাফটের তথ্য উদ্ধার করা হয়েছে (Draft restored
+              from browser session)।
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              safeRemoveDraftStorage();
+              setStagedLines([]);
+              setNotes("");
+              setDraftRestored(false);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#dc2626",
+              cursor: "pointer",
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              textDecoration: "underline",
+            }}
+            type="button"
+          >
+            ড্রাফট মুছে নতুন শুরু করুন (Discard)
+          </button>
+        </div>
+      )}
 
       {/* 3-Step Wizard Indicator */}
       <div className={styles.stepper}>
@@ -594,9 +809,44 @@ export function PurchaseEntryWorkflow({
       </div>
 
       {errorMessage && (
-        <div className={styles.errorBox} role="alert">
-          <AlertCircle size={20} />
-          <div>{errorMessage}</div>
+        <div
+          className={styles.errorBox}
+          role="alert"
+          style={{
+            alignItems: "center",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+          }}
+        >
+          <div style={{ alignItems: "center", display: "flex", gap: "0.5rem" }}>
+            <AlertCircle size={20} style={{ flexShrink: 0 }} />
+            <div>{errorMessage}</div>
+          </div>
+          {currentStep === 3 && (
+            <button
+              disabled={isSubmitting}
+              onClick={
+                savedPurchase
+                  ? () => void handleConfirmPurchase()
+                  : () => void handleSaveDraft()
+              }
+              style={{
+                backgroundColor: "#dc2626",
+                border: "none",
+                borderRadius: "0.25rem",
+                color: "#ffffff",
+                cursor: isSubmitting ? "not-allowed" : "pointer",
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                padding: "0.25rem 0.75rem",
+                whiteSpace: "nowrap",
+              }}
+              type="button"
+            >
+              পুনরায় চেষ্টা করুন (Retry)
+            </button>
+          )}
         </div>
       )}
 
@@ -1036,6 +1286,38 @@ export function PurchaseEntryWorkflow({
             </table>
           </div>
 
+          {/* Confirmation Safety Notice */}
+          <div
+            style={{
+              backgroundColor: "#fffbeb",
+              border: "1px solid #fef3c7",
+              borderRadius: "0.5rem",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "0.75rem",
+              marginTop: "1.5rem",
+              padding: "1rem",
+            }}
+          >
+            <AlertCircle
+              color="#d97706"
+              size={20}
+              style={{ flexShrink: 0, marginTop: "0.125rem" }}
+            />
+            <div
+              style={{
+                color: "#92400e",
+                fontSize: "0.875rem",
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>চূড়ান্ত স্টক ও দর সতর্কতা:</strong> Confirm করলে stock
+              increase হবে এবং cost update হবে। নিশ্চিত করার পর গোডাউনে সমস্ত
+              পণ্যের স্টক বৃদ্ধি পাবে এবং পণ্যের মুভিং এভারেজ ক্রয়মূল্য হালনাগাদ
+              হবে। নিশ্চিত করার পর এই আদেশ বাতিল বা পরিবর্তন করা যাবে না।
+            </div>
+          </div>
+
           <div className={styles.buttonRow}>
             <button
               className={styles.secondaryButton}
@@ -1051,6 +1333,7 @@ export function PurchaseEntryWorkflow({
             >
               {/* Save Draft */}
               <button
+                aria-busy={isSubmitting}
                 className={styles.secondaryButton}
                 disabled={isSubmitting || !!savedPurchase}
                 onClick={() => void handleSaveDraft()}
@@ -1059,14 +1342,17 @@ export function PurchaseEntryWorkflow({
                 {isSubmitting ? (
                   <Clock className={styles.spinning} size={16} />
                 ) : null}
-                {savedPurchase
-                  ? "খসড়া সংরক্ষিত (Draft Saved)"
-                  : "খসড়া সংরক্ষণ করুন (Save Draft)"}
+                {isSubmitting
+                  ? "সংরক্ষণ করা হচ্ছে..."
+                  : savedPurchase
+                    ? "খসড়া সংরক্ষিত (Draft Saved)"
+                    : "খসড়া সংরক্ষণ করুন (Save Draft)"}
               </button>
 
               {/* Confirm & Add Stock */}
               <div>
                 <button
+                  aria-busy={isSubmitting}
                   className={styles.confirmButton}
                   disabled={isSubmitting || !canConfirm}
                   onClick={() => void handleConfirmPurchase()}
@@ -1077,7 +1363,9 @@ export function PurchaseEntryWorkflow({
                   ) : (
                     <CheckCircle2 size={16} />
                   )}
-                  নিশ্চিত করুন ও স্টক যুক্ত করুন (Confirm & Add Stock)
+                  {isSubmitting
+                    ? "নিশ্চিত করা হচ্ছে..."
+                    : "নিশ্চিত করুন ও স্টক যুক্ত করুন (Confirm & Add Stock)"}
                 </button>
                 {!canConfirm && (
                   <div className={styles.disabledHint}>

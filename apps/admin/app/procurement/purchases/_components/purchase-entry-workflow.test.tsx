@@ -197,7 +197,7 @@ describe("PurchaseEntryWorkflow Step 2 (Products & Variants)", () => {
 });
 
 describe("PurchaseEntryWorkflow Step 3 (Review & Confirm)", () => {
-  it("renders review summary and staged lines table with Product, Color, Size", () => {
+  it("renders review summary, staged lines, and explicit confirmation safety notice", () => {
     const html = renderToStaticMarkup(
       <PurchaseEntryWorkflow
         initialColors={mockColors}
@@ -222,6 +222,12 @@ describe("PurchaseEntryWorkflow Step 3 (Review & Confirm)", () => {
     expect(html).toContain("Winter initial batch");
     expect(html).toContain("100 পিস");
     expect(html).toContain("৳50,000.00");
+
+    // Explicit confirmation safety notice
+    expect(html).toContain("চূড়ান্ত স্টক ও দর সতর্কতা");
+    expect(html).toContain(
+      "Confirm করলে stock increase হবে এবং cost update হবে",
+    );
 
     // Table
     expect(html).toContain("Slim Fit Chino Pant");
@@ -257,7 +263,32 @@ describe("PurchaseEntryWorkflow Step 3 (Review & Confirm)", () => {
     );
   });
 
-  it("renders success screen when savedPurchase is present", () => {
+  it("preserves staged lines and shows retry action when API error occurs", () => {
+    const html = renderToStaticMarkup(
+      <PurchaseEntryWorkflow
+        initialColors={mockColors}
+        initialDestinationLocationId="loc-wh-01"
+        initialErrorMessage="সার্ভারে সংযোগ ব্যর্থ হয়েছে।"
+        initialLocations={mockLocations}
+        initialProducts={mockProducts}
+        initialSizes={mockSizes}
+        initialStagedLines={mockStagedLines}
+        initialStep={3}
+        initialSupplierId="sup-islam-01"
+        initialSuppliers={mockSuppliers}
+        permissions={["PROCUREMENT:CREATE", "PROCUREMENT:UPDATE"]}
+      />,
+    );
+
+    expect(html).toContain("সার্ভারে সংযোগ ব্যর্থ হয়েছে।");
+    expect(html).toContain("পুনরায় চেষ্টা করুন (Retry)");
+    // Form state preserved
+    expect(html).toContain("Slim Fit Chino Pant");
+    expect(html).toContain("100 পিস");
+    expect(html).toContain("৳50,000.00");
+  });
+
+  it("renders success screen with clear next actions when savedPurchase is present", () => {
     const mockSaved: PurchaseContract = {
       createdAt: "2026-09-27T10:00:00.000Z",
       destinationLocationId: "loc-wh-01",
@@ -284,8 +315,13 @@ describe("PurchaseEntryWorkflow Step 3 (Review & Confirm)", () => {
       />,
     );
 
-    // Initial state successMode requires setting, but if successMode is triggered, it displays PO number
-    expect(html).toBeTruthy();
+    expect(html).toContain("PO-20260927-999");
+    expect(html).toContain("ক্রয় সফলভাবে নিশ্চিত হয়েছে ও স্টক যোগ হয়েছে!");
+    expect(html).toContain("আদেশের বিবরণ দেখুন (View Details)");
+    expect(html).toContain("ক্রয় তালিকায় ফিরে যান (Back to list)");
+    expect(html).toContain(
+      "নতুন আরেকটি ক্রয় এন্ট্রি (Create another purchase)",
+    );
   });
 });
 
