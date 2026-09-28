@@ -851,6 +851,25 @@ class FakeProcurement implements ProcurementApplication {
     );
   }
 
+  recordSupplierAdjustment(
+    context: ApplicationExecutionContext,
+    payload?: unknown,
+  ) {
+    return this.result(
+      context,
+      {
+        amountMinor: "100000",
+        balanceAfterMinor: "1400000",
+        direction: "DEBIT",
+        entryType: "RETURN_CREDIT",
+        id: "77777777-7777-4777-8777-777777777777",
+        organizationId,
+        supplierId,
+      } as unknown as SupplierLedgerEntryContract,
+      payload,
+    );
+  }
+
   getSupplierBalance(context: ApplicationExecutionContext, payload?: unknown) {
     return this.result(
       context,

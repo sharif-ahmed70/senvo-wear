@@ -15,6 +15,7 @@ import {
   listSuppliersServiceInputSchema,
   updateSupplierServiceInputSchema,
   createSupplierPaymentServiceInputSchema,
+  createSupplierAdjustmentServiceInputSchema,
   getSupplierBalanceServiceInputSchema,
   getSupplierLedgerServiceInputSchema,
   listSupplierPaymentsServiceInputSchema,
@@ -30,6 +31,7 @@ import {
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
   type CreateSupplierPaymentServiceInputContract,
+  type CreateSupplierAdjustmentServiceInputContract,
   type GetSupplierBalanceServiceInputContract,
   type GetSupplierLedgerServiceInputContract,
   type ListSupplierPaymentsServiceInputContract,
@@ -97,6 +99,10 @@ export type ProcurementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SupplierPaymentContract[]>>;
+  recordSupplierAdjustment(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierLedgerEntryContract>>;
 };
 
 export type ProcurementApiHandlers = {
@@ -110,6 +116,7 @@ export type ProcurementApiHandlers = {
   listSuppliers: ApiHandler<SupplierContract[]>;
   updateSupplier: ApiHandler<SupplierContract>;
   recordSupplierPayment: ApiHandler<SupplierPaymentContract>;
+  recordSupplierAdjustment: ApiHandler<SupplierLedgerEntryContract>;
   getSupplierBalance: ApiHandler<SupplierBalanceSummaryContract>;
   listSupplierLedger: ApiHandler<SupplierLedgerEntryContract[]>;
   listSupplierPayments: ApiHandler<SupplierPaymentContract[]>;
@@ -222,6 +229,15 @@ export function createProcurementApiHandlers(
       execute: (context, input) =>
         dependencies.procurement.recordSupplierPayment(context, input),
       inputSchema: createSupplierPaymentServiceInputSchema,
+    }),
+    recordSupplierAdjustment: handler<
+      CreateSupplierAdjustmentServiceInputContract,
+      SupplierLedgerEntryContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.procurement.recordSupplierAdjustment(context, input),
+      inputSchema: createSupplierAdjustmentServiceInputSchema,
     }),
     getSupplierBalance: handler<
       GetSupplierBalanceServiceInputContract,

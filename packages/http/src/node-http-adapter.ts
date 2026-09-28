@@ -939,6 +939,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/procurement\/payments$/u,
         successStatus: 201,
       },
+      {
+        handler: procurement.recordSupplierAdjustment,
+        input: pathBodyInput("supplierId"),
+        method: "POST",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/adjustments$/iu,
+        successStatus: 201,
+      },
     );
   }
   return routes;

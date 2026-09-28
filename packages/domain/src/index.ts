@@ -836,6 +836,7 @@ export {
   listSupplierLedger,
   listSupplierPayments,
   recordSupplierPayment,
+  recordSupplierAdjustment,
 } from "./procurement/application/supplier-payment-use-cases.js";
 export type {
   GetSupplierBalanceDependencies,
@@ -846,4 +847,8 @@ export type {
   RecordSupplierPaymentDependencies,
   RecordSupplierPaymentInput,
   RecordSupplierPaymentResult,
+  RecordSupplierAdjustmentDependencies,
+  RecordSupplierAdjustmentInput,
+  RecordSupplierAdjustmentResult,
 } from "./procurement/application/supplier-payment-use-cases.js";
+

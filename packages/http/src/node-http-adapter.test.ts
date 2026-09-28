@@ -1176,6 +1176,10 @@ describe("Node HTTP runtime adapter", () => {
         handle: () =>
           Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
       },
+      recordSupplierAdjustment: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
       getSupplierBalance: {
         handle: () =>
           Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
@@ -1362,6 +1366,10 @@ describe("Node HTTP runtime adapter", () => {
         handle: () =>
           Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
       },
+      recordSupplierAdjustment: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
+      },
       getSupplierBalance: {
         handle: () =>
           Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
@@ -1537,6 +1545,8 @@ describe("Node HTTP runtime adapter", () => {
       listSuppliers: () => Promise.resolve({ data: [], ok: true }),
       updateSupplier: () => Promise.resolve({ data: {} as any, ok: true }),
       recordSupplierPayment: () =>
+        Promise.resolve({ data: {} as any, ok: true }),
+      recordSupplierAdjustment: () =>
         Promise.resolve({ data: {} as any, ok: true }),
       getSupplierBalance: () => Promise.resolve({ data: {} as any, ok: true }),
       listSupplierLedger: () => Promise.resolve({ data: [] as any, ok: true }),
@@ -1885,6 +1895,10 @@ describe("Node HTTP runtime adapter", () => {
             createApiSuccess([mockPayment], suppliedRequestId),
           );
         },
+      },
+      recordSupplierAdjustment: {
+        handle: () =>
+          Promise.resolve(createApiSuccess({} as never, suppliedRequestId)),
       },
     };
 

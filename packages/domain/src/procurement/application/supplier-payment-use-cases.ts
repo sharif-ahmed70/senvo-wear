@@ -17,6 +17,7 @@ import type {
 } from "../repositories/supplier-payment-repository.js";
 import type { SupplierRepository } from "../repositories/supplier-repository.js";
 import type { PurchaseRepository } from "../repositories/purchase-repository.js";
+import { createSupplierLedgerEntry } from "../domain/supplier-ledger-rules.js";
 
 export type RecordSupplierPaymentDependencies = {
   purchaseRepository?: PurchaseRepository;
@@ -253,6 +254,101 @@ export async function listSupplierPayments(
     ...input,
     organizationId,
   });
+}
+
+export type RecordSupplierAdjustmentDependencies = {
+  supplierLedgerRepository: SupplierLedgerRepository;
+  supplierRepository: SupplierRepository;
+};
+
+export type RecordSupplierAdjustmentInput = {
+  adjustmentDate?: Date;
+  amountMinor: bigint | number | string;
+  direction?: "DEBIT" | "CREDIT";
+  entryType: "RETURN_CREDIT" | "ADJUSTMENT";
+  idempotencyKey?: string | null;
+  notes?: string | null;
+  organizationId: string;
+  purchaseId?: string | null;
+  referenceId?: string | null;
+  supplierId: string;
+};
+
+export type RecordSupplierAdjustmentResult = {
+  balance: SupplierBalanceSummary | null;
+  entry: SupplierLedgerEntry;
+};
+
+export async function recordSupplierAdjustment(
+  dependencies: RecordSupplierAdjustmentDependencies,
+  input: RecordSupplierAdjustmentInput,
+): Promise<RecordSupplierAdjustmentResult> {
+  const organizationId = assertEntityId(input.organizationId, "organizationId");
+  const supplierId = assertEntityId(input.supplierId, "supplierId");
+
+  const supplier = await dependencies.supplierRepository.findById(
+    supplierId,
+    organizationId,
+  );
+  if (!supplier) {
+    throw new NotFoundError("Supplier was not found in this organization.");
+  }
+
+  let amountMinor: bigint;
+  try {
+    amountMinor = BigInt(input.amountMinor);
+  } catch {
+    throw new ValidationApplicationError(
+      "amountMinor must be a valid integer representation.",
+      [{ field: "amountMinor", reason: "Invalid BigInt format" }],
+    );
+  }
+
+  if (amountMinor <= 0n) {
+    throw new ValidationApplicationError(
+      "Adjustment amount must be greater than zero.",
+      [{ field: "amountMinor", reason: "Must be > 0" }],
+    );
+  }
+
+  const currentBalance =
+    await dependencies.supplierLedgerRepository.getSupplierBalance(
+      supplierId,
+      organizationId,
+    );
+
+  const direction = input.direction ?? "DEBIT";
+
+  const ledgerEntry = createSupplierLedgerEntry({
+    amountMinor,
+    currentBalanceMinor: currentBalance?.outstandingBalanceMinor ?? 0n,
+    direction,
+    entryDate: input.adjustmentDate ?? new Date(),
+    entryType: input.entryType,
+    notes: input.notes,
+    organizationId,
+    referenceId: input.referenceId ?? input.purchaseId ?? null,
+    referenceType: input.purchaseId
+      ? "PURCHASE"
+      : input.referenceId
+        ? "ADJUSTMENT"
+        : null,
+    supplierId,
+  });
+
+  const createdEntry =
+    await dependencies.supplierLedgerRepository.recordLedgerEntry(ledgerEntry);
+
+  const updatedBalance =
+    await dependencies.supplierLedgerRepository.getSupplierBalance(
+      supplierId,
+      organizationId,
+    );
+
+  return {
+    balance: updatedBalance,
+    entry: createdEntry,
+  };
 }
 
 const uuidPattern =

@@ -1204,6 +1204,7 @@ describe("AdminApiClient", () => {
         "/procurement/purchases",
         expect.objectContaining({
           body: JSON.stringify(draftInput),
+          headers: expect.any(Headers),
           method: "POST",
         }),
       );
@@ -1259,6 +1260,76 @@ describe("AdminApiClient", () => {
         `/procurement/purchases/${purchaseId}/confirm`,
         expect.objectContaining({
           body: JSON.stringify({}),
+          method: "POST",
+        }),
+      );
+    });
+
+    it("calls supplier balance, payment, and adjustment endpoints correctly", async () => {
+      const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          Response.json({
+            data: {
+              organizationId: "10000000-0000-4000-8000-000000000001",
+              outstandingBalanceMinor: "50000",
+              supplierId,
+              totalAdjustedMinor: "0",
+              totalBilledMinor: "50000",
+              totalPaidMinor: "0",
+            },
+            requestId: "req_supplier_balance",
+            success: true,
+          }),
+        ),
+      );
+      const client = new AdminApiClient({
+        fetcher,
+        sessionToken: "session_token_xyz",
+      });
+
+      // 1. getSupplierBalance
+      const balanceRes = await client.getSupplierBalance(supplierId);
+      expect(balanceRes.data.outstandingBalanceMinor).toBe("50000");
+      expect(fetcher).toHaveBeenLastCalledWith(
+        `/procurement/suppliers/${supplierId}/balance`,
+        expect.objectContaining({ method: "GET" }),
+      );
+
+      // 2. recordSupplierPayment
+      await client.recordSupplierPayment({
+        amountMinor: "20000",
+        paymentMethod: "BANK_TRANSFER",
+        supplierId,
+      });
+      expect(fetcher).toHaveBeenLastCalledWith(
+        "/procurement/payments",
+        expect.objectContaining({
+          body: JSON.stringify({
+            amountMinor: "20000",
+            paymentMethod: "BANK_TRANSFER",
+            supplierId,
+          }),
+          method: "POST",
+        }),
+      );
+
+      // 3. recordSupplierAdjustment
+      await client.recordSupplierAdjustment({
+        amountMinor: "5000",
+        direction: "DEBIT",
+        entryType: "RETURN_CREDIT",
+        notes: "Damaged goods return",
+        supplierId,
+      });
+      expect(fetcher).toHaveBeenLastCalledWith(
+        `/procurement/suppliers/${supplierId}/adjustments`,
+        expect.objectContaining({
+          body: JSON.stringify({
+            amountMinor: "5000",
+            direction: "DEBIT",
+            entryType: "RETURN_CREDIT",
+            notes: "Damaged goods return",
+          }),
           method: "POST",
         }),
       );

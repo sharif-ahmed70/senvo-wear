@@ -54,6 +54,7 @@ import type {
   PurchaseContract,
   CreateSupplierServiceInputContract,
   CreateSupplierPaymentServiceInputContract,
+  CreateSupplierAdjustmentServiceInputContract,
   ListSupplierPaymentsServiceInputContract,
   ListSuppliersServiceInputContract,
   SupplierBalanceSummaryContract,
@@ -715,6 +716,21 @@ export class AdminApiClient {
       body: input,
       method: "POST",
     });
+  }
+
+  recordSupplierAdjustment(
+    input: CreateSupplierAdjustmentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { supplierId, ...body } = input;
+    return this.request<SupplierLedgerEntryContract>(
+      `/procurement/suppliers/${supplierId}/adjustments`,
+      {
+        ...request,
+        body,
+        method: "POST",
+      },
+    );
   }
 
   listPurchases(

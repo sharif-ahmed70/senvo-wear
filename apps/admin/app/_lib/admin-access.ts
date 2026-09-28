@@ -54,7 +54,9 @@ export type AdminNavigationItem = {
     | "counter"
     | "sessions"
     | "checkouts"
-    | "suppliers";
+    | "suppliers"
+    | "purchases"
+    | "payments";
   label: string;
   permission?: AdminPermissionKey;
   permissions?: readonly AdminPermissionKey[];
@@ -84,6 +86,18 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     href: "/procurement/suppliers",
     icon: "suppliers",
     label: "Suppliers",
+    permission: "PROCUREMENT:READ",
+  },
+  {
+    href: "/procurement/purchases",
+    icon: "purchases",
+    label: "Purchases",
+    permission: "PROCUREMENT:READ",
+  },
+  {
+    href: "/procurement/payments",
+    icon: "payments",
+    label: "Supplier Payments",
     permission: "PROCUREMENT:READ",
   },
   {

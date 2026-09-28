@@ -4614,3 +4614,23 @@ export const listSupplierPaymentsServiceInputSchema = z
 export type ListSupplierPaymentsServiceInputContract = z.infer<
   typeof listSupplierPaymentsServiceInputSchema
 >;
+
+export const createSupplierAdjustmentServiceInputSchema = z
+  .object({
+    adjustmentDate: isoTimestampSchema.optional(),
+    amountMinor: z
+      .string()
+      .regex(/^\d+$/u, "amountMinor must be a positive integer"),
+    direction: supplierLedgerDirectionSchema.default("DEBIT"),
+    entryType: z.enum(["RETURN_CREDIT", "ADJUSTMENT"]),
+    idempotencyKey: z.string().max(128).optional(),
+    notes: z.string().max(500).optional(),
+    purchaseId: idSchema.optional(),
+    referenceId: z.string().max(128).optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreateSupplierAdjustmentServiceInputContract = z.infer<
+  typeof createSupplierAdjustmentServiceInputSchema
+>;
+

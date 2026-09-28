@@ -20,6 +20,8 @@ describe("admin navigation", () => {
       "Barcodes",
       "Inventory",
       "Suppliers",
+      "Purchases",
+      "Supplier Payments",
       "Sales Orders",
       "Sales Sources",
       "Booth History",

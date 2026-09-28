@@ -332,7 +332,7 @@ export async function confirmPurchaseOrder(
   });
 
   // 5. If supplier ledger repository is configured, record BILL entry
-  if (dependencies.supplierLedgerRepository) {
+  if (dependencies.supplierLedgerRepository && purchase.totalCostMinor > 0n) {
     const currentBalance =
       await dependencies.supplierLedgerRepository.getSupplierBalance(
         purchase.supplierId,
@@ -340,7 +340,7 @@ export async function confirmPurchaseOrder(
       );
     const ledgerEntry = createSupplierLedgerEntry({
       amountMinor: purchase.totalCostMinor,
-      currentBalanceMinor: currentBalance.outstandingBalanceMinor,
+      currentBalanceMinor: currentBalance?.outstandingBalanceMinor ?? 0n,
       entryDate: new Date(),
       entryType: "BILL",
       notes: `Bill for purchase ${purchase.purchaseNumber}`,

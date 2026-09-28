@@ -4,6 +4,7 @@ import {
   listSupplierLedger,
   listSupplierPayments,
   recordSupplierPayment,
+  recordSupplierAdjustment,
 } from "./supplier-payment-use-cases.js";
 import { confirmPurchaseOrder } from "./purchase-use-cases.js";
 import type {
@@ -558,6 +559,96 @@ describe("supplier payment and ledger use cases", () => {
       );
       expect(payments).toHaveLength(1);
       expect(payments[0]?.amountMinor).toBe(30_000n);
+    });
+
+    it("records RETURN_CREDIT reducing payable balance after partial goods return", async () => {
+      const ctx = setupInMemoryRepositories();
+      const costRepository: CostRepository = {
+        getCostState: vi.fn(async () => null),
+        getSaleLineCostSnapshot: vi.fn(),
+        getVariantOnHandQuantity: vi.fn(async () => 0),
+        listCostEntries: vi.fn(),
+        recordCostEntry: vi.fn(),
+        recordSaleLineCostSnapshot: vi.fn(),
+        upsertCostState: vi.fn(),
+      };
+
+      const inventoryMovementRepository = {
+        createDraft: vi.fn(async (rec) => ({
+          ...rec,
+          createdAt: new Date(),
+          id: "88888888-8888-4888-8888-888888888888",
+          isReservationConsumption: false,
+          isReversal: false,
+          isReversed: false,
+          lines: [],
+          status: "DRAFT" as const,
+          updatedAt: new Date(),
+          version: 1,
+        })),
+        findById: vi.fn(async (id, oId) => ({
+          destinationLocationId: "40000000-0000-4000-8000-000000000004",
+          id,
+          lines: [
+            {
+              createdAt: new Date(),
+              id: "88888888-8888-4888-8888-888888888889",
+              lineNumber: 1,
+              movementId: id,
+              note: null,
+              organizationId: oId,
+              productVariantId: "60000000-0000-4000-8000-000000000006",
+              quantity: 100,
+            },
+          ],
+          organizationId: oId,
+          status: "DRAFT" as const,
+          type: "RECEIPT" as const,
+        })),
+        findByIdempotencyKey: vi.fn(async () => null),
+        post: vi.fn(async (rec) => ({
+          id: rec.movementId,
+          organizationId: rec.organizationId,
+          postedAt: new Date(),
+          status: "POSTED" as const,
+        })),
+      };
+
+      await confirmPurchaseOrder(
+        {
+          costRepository,
+          inventoryMovementRepository:
+            inventoryMovementRepository as unknown as InventoryMovementRepository &
+              InventoryMovementPostingRepository,
+          purchaseRepository: ctx.purchaseRepository,
+          supplierLedgerRepository: ctx.supplierLedgerRepository,
+        },
+        { organizationId: orgId, purchaseId },
+      );
+
+      // Return credit for defective goods (10,000 minor)
+      const adjResult = await recordSupplierAdjustment(
+        {
+          supplierLedgerRepository: ctx.supplierLedgerRepository,
+          supplierRepository: ctx.supplierRepository,
+        },
+        {
+          amountMinor: 10_000n,
+          entryType: "RETURN_CREDIT",
+          notes: "Defective fabric returned to supplier",
+          organizationId: orgId,
+          purchaseId,
+          referenceId: "RET-PO-001",
+          supplierId,
+        },
+      );
+
+      expect(adjResult.entry.entryType).toBe("RETURN_CREDIT");
+      expect(adjResult.entry.direction).toBe("DEBIT");
+      expect(adjResult.entry.amountMinor).toBe(10_000n);
+      expect(adjResult.balance?.totalBilledMinor).toBe(50_000n);
+      expect(adjResult.balance?.totalAdjustedMinor).toBe(10_000n);
+      expect(adjResult.balance?.outstandingBalanceMinor).toBe(40_000n);
     });
   });
 });

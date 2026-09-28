@@ -9,6 +9,7 @@ import {
   getPurchaseById,
   listPurchaseRecords,
   recordSupplierPayment,
+  recordSupplierAdjustment,
   getSupplierBalance,
   listSupplierLedger,
   listSupplierPayments,
@@ -43,6 +44,7 @@ import {
   supplierPaymentContractSchema,
   supplierLedgerEntryContractSchema,
   supplierBalanceSummaryContractSchema,
+  createSupplierAdjustmentServiceInputSchema,
   type ConfirmPurchaseServiceInputContract,
   type CreatePurchaseDraftLineServiceInputContract,
   type CreatePurchaseDraftServiceInputContract,
@@ -56,6 +58,7 @@ import {
   type SupplierContract,
   type UpdateSupplierServiceInputContract,
   type CreateSupplierPaymentServiceInputContract,
+  type CreateSupplierAdjustmentServiceInputContract,
   type GetSupplierBalanceServiceInputContract,
   type GetSupplierLedgerServiceInputContract,
   type ListSupplierPaymentsServiceInputContract,
@@ -440,6 +443,66 @@ export class ProcurementApplicationService {
     });
   }
 
+  recordSupplierAdjustment(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SupplierLedgerEntryContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        createSupplierAdjustmentServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "CREATE");
+
+      const executeRecord = async (ledgerRepo: SupplierLedgerRepository) => {
+        const result = await recordSupplierAdjustment(
+          {
+            supplierLedgerRepository: ledgerRepo,
+            supplierRepository: this.suppliers,
+          },
+          {
+            adjustmentDate: input.adjustmentDate
+              ? new Date(input.adjustmentDate)
+              : undefined,
+            amountMinor: BigInt(input.amountMinor),
+            direction: input.direction,
+            entryType: input.entryType,
+            idempotencyKey: input.idempotencyKey,
+            notes: input.notes,
+            organizationId: validated.organizationId,
+            purchaseId: input.purchaseId,
+            referenceId: input.referenceId,
+            supplierId: input.supplierId,
+          },
+        );
+
+        return mapSupplierLedgerEntry(result.entry);
+      };
+
+      if (this.transactionManager) {
+        return this.transactionManager.execute(validated, async (tx) => {
+          const ledgerRepo = tx.supplierLedgerRepository ?? this.supplierLedger;
+          if (!ledgerRepo) {
+            throw new BusinessRuleError(
+              "Transactional supplier ledger repository is required.",
+              "SUPPLIER_LEDGER_REPOSITORY_MISSING",
+            );
+          }
+          return executeRecord(ledgerRepo);
+        });
+      }
+
+      if (!this.supplierLedger) {
+        throw new BusinessRuleError(
+          "Supplier ledger repository is required.",
+          "SUPPLIER_LEDGER_REPOSITORY_MISSING",
+        );
+      }
+
+      return executeRecord(this.supplierLedger);
+    });
+  }
+
   getSupplierBalance(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -722,6 +785,7 @@ export type {
   SupplierContract,
   UpdateSupplierServiceInputContract,
   CreateSupplierPaymentServiceInputContract,
+  CreateSupplierAdjustmentServiceInputContract,
   GetSupplierBalanceServiceInputContract,
   GetSupplierLedgerServiceInputContract,
   ListSupplierPaymentsServiceInputContract,

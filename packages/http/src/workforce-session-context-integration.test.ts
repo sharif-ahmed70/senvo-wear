@@ -126,6 +126,7 @@ async function startIntegratedServer(
         listSuppliers: captureHandler,
         updateSupplier: captureHandler,
         recordSupplierPayment: captureHandler,
+        recordSupplierAdjustment: captureHandler,
         getSupplierBalance: captureHandler,
         listSupplierLedger: captureHandler,
         listSupplierPayments: captureHandler,
