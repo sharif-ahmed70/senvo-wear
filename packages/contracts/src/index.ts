@@ -4471,3 +4471,137 @@ export const confirmPurchaseServiceInputSchema = z
 export type ConfirmPurchaseServiceInputContract = z.infer<
   typeof confirmPurchaseServiceInputSchema
 >;
+
+export const supplierPaymentMethodSchema = z.enum([
+  "CASH",
+  "BANK_TRANSFER",
+  "CHEQUE",
+  "MOBILE_BANKING",
+]);
+export type SupplierPaymentMethodContract = z.infer<
+  typeof supplierPaymentMethodSchema
+>;
+
+export const supplierLedgerEntryTypeSchema = z.enum([
+  "BILL",
+  "PAYMENT",
+  "RETURN_CREDIT",
+  "OPENING_BALANCE",
+  "ADJUSTMENT",
+]);
+export type SupplierLedgerEntryTypeContract = z.infer<
+  typeof supplierLedgerEntryTypeSchema
+>;
+
+export const supplierLedgerDirectionSchema = z.enum(["DEBIT", "CREDIT"]);
+export type SupplierLedgerDirectionContract = z.infer<
+  typeof supplierLedgerDirectionSchema
+>;
+
+export const supplierPaymentContractSchema = z
+  .object({
+    amountMinor: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    idempotencyKey: z.string().nullable(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    paymentDate: isoTimestampSchema,
+    paymentMethod: supplierPaymentMethodSchema,
+    purchaseId: idSchema.nullable(),
+    reference: z.string().nullable(),
+    supplierId: idSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type SupplierPaymentContract = z.infer<
+  typeof supplierPaymentContractSchema
+>;
+
+export const supplierLedgerEntryContractSchema = z
+  .object({
+    amountMinor: z.string(),
+    balanceAfterMinor: z.string(),
+    createdAt: isoTimestampSchema,
+    direction: supplierLedgerDirectionSchema,
+    entryDate: isoTimestampSchema,
+    entryType: supplierLedgerEntryTypeSchema,
+    id: idSchema,
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    referenceId: z.string().nullable(),
+    referenceType: z.string().nullable(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type SupplierLedgerEntryContract = z.infer<
+  typeof supplierLedgerEntryContractSchema
+>;
+
+export const supplierBalanceSummaryContractSchema = z
+  .object({
+    lastBillDate: isoTimestampSchema.nullable(),
+    lastPaymentDate: isoTimestampSchema.nullable(),
+    organizationId: idSchema,
+    outstandingBalanceMinor: z.string(),
+    supplierId: idSchema,
+    totalAdjustedMinor: z.string(),
+    totalBilledMinor: z.string(),
+    totalPaidMinor: z.string(),
+  })
+  .strict();
+export type SupplierBalanceSummaryContract = z.infer<
+  typeof supplierBalanceSummaryContractSchema
+>;
+
+export const createSupplierPaymentServiceInputSchema = z
+  .object({
+    amountMinor: z.union([
+      z
+        .string()
+        .trim()
+        .regex(
+          /^[1-9]\d*$/,
+          "Amount must be a positive integer in minor units.",
+        ),
+      z.number().int().positive("Amount must be greater than zero."),
+    ]),
+    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    notes: optionalTextSchema(1000),
+    paymentDate: isoTimestampSchema.optional(),
+    paymentMethod: supplierPaymentMethodSchema,
+    purchaseId: idSchema.optional().nullable(),
+    reference: optionalTextSchema(160),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreateSupplierPaymentServiceInputContract = z.infer<
+  typeof createSupplierPaymentServiceInputSchema
+>;
+
+export const getSupplierLedgerServiceInputSchema = z
+  .object({
+    from: isoTimestampSchema.optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
+    supplierId: idSchema,
+    to: isoTimestampSchema.optional(),
+  })
+  .strict();
+export type GetSupplierLedgerServiceInputContract = z.infer<
+  typeof getSupplierLedgerServiceInputSchema
+>;
+
+export const listSupplierPaymentsServiceInputSchema = z
+  .object({
+    from: isoTimestampSchema.optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
+    purchaseId: idSchema.optional(),
+    supplierId: idSchema.optional(),
+    to: isoTimestampSchema.optional(),
+  })
+  .strict();
+export type ListSupplierPaymentsServiceInputContract = z.infer<
+  typeof listSupplierPaymentsServiceInputSchema
+>;

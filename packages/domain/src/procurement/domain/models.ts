@@ -116,3 +116,52 @@ export type SaleLineCostSnapshot = {
   totalCostMinor: bigint | null;
   unitCostMinor: number | null;
 };
+
+export type SupplierPaymentMethod =
+  "CASH" | "BANK_TRANSFER" | "CHEQUE" | "MOBILE_BANKING";
+
+export type SupplierLedgerEntryType =
+  "BILL" | "PAYMENT" | "RETURN_CREDIT" | "OPENING_BALANCE" | "ADJUSTMENT";
+
+export type SupplierLedgerDirection = "DEBIT" | "CREDIT";
+
+export type SupplierPayment = {
+  amountMinor: bigint;
+  createdAt: Date;
+  id: string;
+  idempotencyKey: string | null;
+  notes: string | null;
+  organizationId: string;
+  paymentDate: Date;
+  paymentMethod: SupplierPaymentMethod;
+  purchaseId: string | null;
+  reference: string | null;
+  supplierId: string;
+  updatedAt: Date;
+};
+
+export type SupplierLedgerEntry = {
+  amountMinor: bigint;
+  balanceAfterMinor: bigint;
+  createdAt: Date;
+  direction: SupplierLedgerDirection;
+  entryDate: Date;
+  entryType: SupplierLedgerEntryType;
+  id: string;
+  notes: string | null;
+  organizationId: string;
+  referenceId: string | null;
+  referenceType: string | null;
+  supplierId: string;
+};
+
+export type SupplierBalanceSummary = {
+  lastBillDate: Date | null;
+  lastPaymentDate: Date | null;
+  organizationId: string;
+  outstandingBalanceMinor: bigint;
+  supplierId: string;
+  totalAdjustedMinor: bigint;
+  totalBilledMinor: bigint;
+  totalPaidMinor: bigint;
+};

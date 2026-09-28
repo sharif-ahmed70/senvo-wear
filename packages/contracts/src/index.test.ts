@@ -114,6 +114,15 @@ import {
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
   updateStockLocationMetadataInputSchema,
+  createSupplierPaymentServiceInputSchema,
+  getSupplierLedgerServiceInputSchema,
+  listSupplierPaymentsServiceInputSchema,
+  supplierBalanceSummaryContractSchema,
+  supplierLedgerDirectionSchema,
+  supplierLedgerEntryContractSchema,
+  supplierLedgerEntryTypeSchema,
+  supplierPaymentContractSchema,
+  supplierPaymentMethodSchema,
 } from "./index.js";
 
 describe("catalog media contracts", () => {
@@ -2037,5 +2046,171 @@ describe("variant selling price contracts", () => {
         expectedSellingPriceMinor: 0,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("supplier payment and ledger contracts", () => {
+  const supplierId = "10000000-0000-4000-8000-000000000001";
+  const purchaseId = "20000000-0000-4000-8000-000000000002";
+  const orgId = "30000000-0000-4000-8000-000000000003";
+
+  it("validates payment methods and entry types", () => {
+    expect(supplierPaymentMethodSchema.safeParse("CASH").success).toBe(true);
+    expect(supplierPaymentMethodSchema.safeParse("BANK_TRANSFER").success).toBe(
+      true,
+    );
+    expect(supplierPaymentMethodSchema.safeParse("CHEQUE").success).toBe(true);
+    expect(
+      supplierPaymentMethodSchema.safeParse("MOBILE_BANKING").success,
+    ).toBe(true);
+    expect(supplierPaymentMethodSchema.safeParse("CRYPTO").success).toBe(false);
+
+    expect(supplierLedgerEntryTypeSchema.safeParse("BILL").success).toBe(true);
+    expect(supplierLedgerEntryTypeSchema.safeParse("PAYMENT").success).toBe(
+      true,
+    );
+    expect(
+      supplierLedgerEntryTypeSchema.safeParse("RETURN_CREDIT").success,
+    ).toBe(true);
+    expect(
+      supplierLedgerEntryTypeSchema.safeParse("OPENING_BALANCE").success,
+    ).toBe(true);
+    expect(supplierLedgerEntryTypeSchema.safeParse("ADJUSTMENT").success).toBe(
+      true,
+    );
+    expect(supplierLedgerEntryTypeSchema.safeParse("OTHER").success).toBe(
+      false,
+    );
+
+    expect(supplierLedgerDirectionSchema.safeParse("DEBIT").success).toBe(true);
+    expect(supplierLedgerDirectionSchema.safeParse("CREDIT").success).toBe(
+      true,
+    );
+    expect(supplierLedgerDirectionSchema.safeParse("NONE").success).toBe(false);
+  });
+
+  it("validates createSupplierPaymentServiceInputSchema accepts positive minor numbers or strings", () => {
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 25000,
+        paymentDate: "2026-09-15T10:00:00.000Z",
+        paymentMethod: "CASH",
+        purchaseId,
+        reference: "REC-123",
+        supplierId,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: "100000000000000000",
+        paymentMethod: "BANK_TRANSFER",
+        supplierId,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 0,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: -500,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: "0",
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 1000,
+        organizationId: orgId,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates supplier payment, ledger entry, and balance summary response contracts", () => {
+    const payment = {
+      amountMinor: "50000",
+      createdAt: "2026-09-15T12:00:00.000Z",
+      id: "40000000-0000-4000-8000-000000000004",
+      idempotencyKey: "pay-idem-001",
+      notes: "First payment",
+      organizationId: orgId,
+      paymentDate: "2026-09-15T12:00:00.000Z",
+      paymentMethod: "BANK_TRANSFER",
+      purchaseId,
+      reference: "TXN-001",
+      supplierId,
+      updatedAt: "2026-09-15T12:00:00.000Z",
+    };
+    expect(supplierPaymentContractSchema.safeParse(payment).success).toBe(true);
+
+    const ledgerEntry = {
+      amountMinor: "50000",
+      balanceAfterMinor: "25000",
+      createdAt: "2026-09-15T12:00:00.000Z",
+      direction: "DEBIT",
+      entryDate: "2026-09-15T12:00:00.000Z",
+      entryType: "PAYMENT",
+      id: "50000000-0000-4000-8000-000000000005",
+      notes: null,
+      organizationId: orgId,
+      referenceId: payment.id,
+      referenceType: "SUPPLIER_PAYMENT",
+      supplierId,
+    };
+    expect(
+      supplierLedgerEntryContractSchema.safeParse(ledgerEntry).success,
+    ).toBe(true);
+
+    const balanceSummary = {
+      lastBillDate: "2026-09-10T00:00:00.000Z",
+      lastPaymentDate: "2026-09-15T12:00:00.000Z",
+      organizationId: orgId,
+      outstandingBalanceMinor: "25000",
+      supplierId,
+      totalAdjustedMinor: "0",
+      totalBilledMinor: "75000",
+      totalPaidMinor: "50000",
+    };
+    expect(
+      supplierBalanceSummaryContractSchema.safeParse(balanceSummary).success,
+    ).toBe(true);
+  });
+
+  it("validates ledger and payment query schemas", () => {
+    expect(
+      getSupplierLedgerServiceInputSchema.safeParse({
+        from: "2026-09-01T00:00:00.000Z",
+        limit: 50,
+        offset: 0,
+        supplierId,
+        to: "2026-09-30T00:00:00.000Z",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      listSupplierPaymentsServiceInputSchema.safeParse({
+        limit: 20,
+        offset: 0,
+        purchaseId,
+        supplierId,
+      }).success,
+    ).toBe(true);
   });
 });

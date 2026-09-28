@@ -802,3 +802,32 @@ export type {
   GetPurchaseByIdInput,
   ListPurchasesInput,
 } from "./procurement/application/purchase-use-cases.js";
+
+export type {
+  SupplierBalanceSummary,
+  SupplierLedgerDirection,
+  SupplierLedgerEntry,
+  SupplierLedgerEntryType,
+  SupplierPayment,
+  SupplierPaymentMethod,
+} from "./procurement/domain/models.js";
+export {
+  calculateSupplierBalance,
+  calculateSupplierBalanceFromEntries,
+  createSupplierLedgerEntry,
+  createSupplierPayment,
+} from "./procurement/domain/supplier-ledger-rules.js";
+export type {
+  CalculateSupplierBalanceFromEntriesInput,
+  CalculateSupplierBalanceInput,
+  CreateSupplierLedgerEntryParams,
+  CreateSupplierPaymentParams,
+} from "./procurement/domain/supplier-ledger-rules.js";
+export type {
+  CreateSupplierLedgerEntryRecord,
+  CreateSupplierPaymentRecord,
+  SupplierLedgerListFilter,
+  SupplierLedgerRepository,
+  SupplierPaymentListFilter,
+  SupplierPaymentRepository,
+} from "./procurement/repositories/supplier-payment-repository.js";
