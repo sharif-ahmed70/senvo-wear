@@ -213,6 +213,12 @@ enum SalesSessionStatus {
   CLOSED
 }
 
+enum PosSettlementStatus {
+  BALANCED
+  SHORTAGE
+  OVERAGE
+}
+
 enum PosCheckoutStatus {
   COMPLETED
 }
@@ -466,6 +472,7 @@ model Organization {
   saleLineCostSnapshots SaleLineCostSnapshot[]
   supplierPayments      SupplierPayment[]
   supplierLedgerEntries SupplierLedgerEntry[]
+  posRegisterSettlements PosRegisterSettlement[]
 
   @@map("organizations")
 }
@@ -495,6 +502,8 @@ model User {
   resolvedPaymentReconciliations PaymentReconciliation[]
   requestedProviderRefunds ProviderRefund[]
   acceptedPosSaleReturns PosSaleReturn[]
+  closedPosSettlements PosRegisterSettlement[] @relation("SettlementClosedBy")
+  approvedPosSettlements PosRegisterSettlement[] @relation("SettlementApprovedBy")
 
   @@index([status])
   @@map("users")
@@ -1033,6 +1042,7 @@ model SalesCounter {
   sessions     SalesSession[]
   checkoutRecords PosCheckoutRecord[]
   paymentBatches PaymentBatch[]
+  settlements  PosRegisterSettlement[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, code])
@@ -1047,12 +1057,13 @@ model SalesSession {
   organizationId String             @map("organization_id") @db.Uuid
   counterId      String             @map("counter_id") @db.Uuid
   openedByUserId String             @map("opened_by_user_id") @db.Uuid
-  openedAt       DateTime           @default(now()) @map("opened_at") @db.Timestamptz(6)
-  closedAt       DateTime?          @map("closed_at") @db.Timestamptz(6)
-  status         SalesSessionStatus @default(OPEN)
-  version        Int                @default(1)
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  openedAt          DateTime           @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt          DateTime?          @map("closed_at") @db.Timestamptz(6)
+  openingFloatMinor Int                @default(0) @map("opening_float_minor")
+  status            SalesSessionStatus @default(OPEN)
+  version           Int                @default(1)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   counter          SalesCounter           @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
@@ -1061,12 +1072,56 @@ model SalesSession {
   cart             PosCart?
   checkoutRecords  PosCheckoutRecord[]
   paymentBatches   PaymentBatch[]
+  settlement       PosRegisterSettlement?
 
   @@unique([id, organizationId])
   @@unique([counterId], map: "sales_sessions_one_open_per_counter_key", where: { status: "OPEN" })
   @@index([organizationId, status, openedAt])
   @@index([organizationId, openedByUserId])
   @@map("sales_sessions")
+}
+
+model PosRegisterSettlement {
+  id                           String              @id @default(uuid()) @db.Uuid
+  organizationId               String              @map("organization_id") @db.Uuid
+  salesSessionId               String              @map("sales_session_id") @db.Uuid
+  counterId                    String              @map("counter_id") @db.Uuid
+  closedByUserId               String              @map("closed_by_user_id") @db.Uuid
+  approvedByUserId             String?             @map("approved_by_user_id") @db.Uuid
+  openingFloatMinor            Int                 @map("opening_float_minor")
+  expectedCashMinor            Int                 @map("expected_cash_minor")
+  actualCashMinor              Int                 @map("actual_cash_minor")
+  cashDiscrepancyMinor         Int                 @map("cash_discrepancy_minor")
+  expectedMobileBankingMinor   Int                 @map("expected_mobile_banking_minor")
+  actualMobileBankingMinor     Int                 @map("actual_mobile_banking_minor")
+  mobileBankingDiscrepancyMinor Int                @map("mobile_banking_discrepancy_minor")
+  expectedCardMinor            Int                 @map("expected_card_minor")
+  actualCardMinor              Int                 @map("actual_card_minor")
+  cardDiscrepancyMinor         Int                 @map("card_discrepancy_minor")
+  expectedBankTransferMinor    Int                 @map("expected_bank_transfer_minor")
+  actualBankTransferMinor      Int                 @map("actual_bank_transfer_minor")
+  bankTransferDiscrepancyMinor Int                 @map("bank_transfer_discrepancy_minor")
+  expectedTotalMinor           Int                 @map("expected_total_minor")
+  actualTotalMinor             Int                 @map("actual_total_minor")
+  totalDiscrepancyMinor        Int                 @map("total_discrepancy_minor")
+  denominationBreakdown        Json?               @map("denomination_breakdown")
+  discrepancyReason            String?             @map("discrepancy_reason") @db.VarChar(1000)
+  closingNotes                 String?             @map("closing_notes") @db.VarChar(1000)
+  status                       PosSettlementStatus
+  closedAt                     DateTime            @map("closed_at") @db.Timestamptz(6)
+  createdAt                    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesSession SalesSession @relation(fields: [salesSessionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_register_settlements_session_org_fkey")
+  counter      SalesCounter @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade, map: "pos_register_settlements_counter_org_fkey")
+  closedBy     User         @relation("SettlementClosedBy", fields: [closedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pos_register_settlements_closed_by_fkey")
+  approvedBy   User?        @relation("SettlementApprovedBy", fields: [approvedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pos_register_settlements_approved_by_fkey")
+
+  @@unique([id, organizationId], map: "pos_register_settlements_id_org_key")
+  @@unique([salesSessionId, organizationId], map: "pos_register_settlements_session_org_key")
+  @@index([organizationId, counterId, closedAt], map: "pos_register_settlements_org_counter_closed_idx")
+  @@index([organizationId, closedByUserId, closedAt], map: "pos_register_settlements_org_staff_closed_idx")
+  @@map("pos_register_settlements")
 }
 
 model PosCart {

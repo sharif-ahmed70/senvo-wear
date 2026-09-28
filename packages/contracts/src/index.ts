@@ -3296,6 +3296,11 @@ export type SalesSourceSummaryContract = z.infer<
 export const salesCounterTypeSchema = z.enum(["STORE", "EVENT_BOOTH"]);
 export const salesCounterStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 export const salesSessionStatusSchema = z.enum(["OPEN", "CLOSED"]);
+export const posSettlementStatusSchema = z.enum([
+  "BALANCED",
+  "SHORTAGE",
+  "OVERAGE",
+]);
 
 export const salesCounterContractSchema = z
   .object({
@@ -3321,6 +3326,7 @@ export const salesSessionContractSchema = z
     id: idSchema,
     openedAt: isoTimestampSchema,
     openedByUserId: idSchema,
+    openingFloatMinor: minorUnitAmountSchema.default(0),
     status: salesSessionStatusSchema,
     updatedAt: isoTimestampSchema,
     version: expectedVersionSchema,
@@ -3390,10 +3396,89 @@ export const updateSalesCounterStatusServiceInputSchema = z
   })
   .strict();
 export const openSalesSessionServiceInputSchema = z
-  .object({ counterId: idSchema })
+  .object({
+    counterId: idSchema,
+    openingFloatMinor: minorUnitAmountSchema.optional(),
+  })
   .strict();
 export const closeSalesSessionServiceInputSchema = z
   .object({ expectedVersion: expectedVersionSchema, sessionId: idSchema })
+  .strict();
+export const closeSalesSessionWithSettlementServiceInputSchema = z
+  .object({
+    actualBankTransferMinor: minorUnitAmountSchema,
+    actualCardMinor: minorUnitAmountSchema,
+    actualCashMinor: minorUnitAmountSchema,
+    actualMobileBankingMinor: minorUnitAmountSchema,
+    closingNotes: z.string().trim().max(1000).optional(),
+    denominationBreakdown: z
+      .record(z.string(), z.number().int().nonnegative())
+      .optional(),
+    discrepancyReason: z.string().trim().max(1000).optional(),
+    expectedVersion: expectedVersionSchema,
+    sessionId: idSchema,
+  })
+  .strict();
+export const posSessionReconciliationSummaryContractSchema = z
+  .object({
+    bankTransferSalesMinor: minorUnitAmountSchema,
+    cardSalesMinor: minorUnitAmountSchema,
+    cashCollectionsMinor: minorUnitAmountSchema,
+    cashRefundsMinor: minorUnitAmountSchema,
+    cashSalesMinor: minorUnitAmountSchema,
+    counterId: idSchema,
+    counterName: z.string().min(1).max(160),
+    digitalRefundsMinor: minorUnitAmountSchema,
+    expectedBankTransferMinor: minorUnitAmountSchema,
+    expectedCardMinor: minorUnitAmountSchema,
+    expectedCashMinor: minorUnitAmountSchema,
+    expectedMobileBankingMinor: minorUnitAmountSchema,
+    expectedTotalMinor: minorUnitAmountSchema,
+    grossSalesMinor: minorUnitAmountSchema,
+    mobileBankingSalesMinor: minorUnitAmountSchema,
+    openedAt: isoTimestampSchema,
+    openingFloatMinor: minorUnitAmountSchema,
+    salesCount: z.number().int().nonnegative(),
+    sessionId: idSchema,
+  })
+  .strict();
+export const posRegisterSettlementContractSchema = z
+  .object({
+    actualBankTransferMinor: minorUnitAmountSchema,
+    actualCardMinor: minorUnitAmountSchema,
+    actualCashMinor: minorUnitAmountSchema,
+    actualMobileBankingMinor: minorUnitAmountSchema,
+    actualTotalMinor: minorUnitAmountSchema,
+    approvedByUserId: idSchema.nullable().optional(),
+    approvedByUserName: z.string().min(1).max(160).nullable().optional(),
+    bankTransferDiscrepancyMinor: z.number().int(),
+    cardDiscrepancyMinor: z.number().int(),
+    cashDiscrepancyMinor: z.number().int(),
+    closedAt: isoTimestampSchema,
+    closedByUserId: idSchema,
+    closedByUserName: z.string().min(1).max(160).optional(),
+    closingNotes: z.string().nullable().optional(),
+    counterId: idSchema,
+    counterName: z.string().min(1).max(160).optional(),
+    createdAt: isoTimestampSchema,
+    denominationBreakdown: z
+      .record(z.string(), z.number().int().nonnegative())
+      .nullable()
+      .optional(),
+    discrepancyReason: z.string().nullable().optional(),
+    expectedBankTransferMinor: minorUnitAmountSchema,
+    expectedCardMinor: minorUnitAmountSchema,
+    expectedCashMinor: minorUnitAmountSchema,
+    expectedMobileBankingMinor: minorUnitAmountSchema,
+    expectedTotalMinor: minorUnitAmountSchema,
+    id: idSchema,
+    mobileBankingDiscrepancyMinor: z.number().int(),
+    openingFloatMinor: minorUnitAmountSchema,
+    organizationId: idSchema,
+    salesSessionId: idSchema,
+    status: posSettlementStatusSchema,
+    totalDiscrepancyMinor: z.number().int(),
+  })
   .strict();
 export const posEmptyInputSchema = z.object({}).strict();
 export const lookupPosSaleServiceInputSchema = z
@@ -4003,6 +4088,16 @@ export type OpenSalesSessionServiceInputContract = z.infer<
 >;
 export type CloseSalesSessionServiceInputContract = z.infer<
   typeof closeSalesSessionServiceInputSchema
+>;
+export type PosSettlementStatus = z.infer<typeof posSettlementStatusSchema>;
+export type PosSessionReconciliationSummaryContract = z.infer<
+  typeof posSessionReconciliationSummaryContractSchema
+>;
+export type CloseSalesSessionWithSettlementServiceInputContract = z.infer<
+  typeof closeSalesSessionWithSettlementServiceInputSchema
+>;
+export type PosRegisterSettlementContract = z.infer<
+  typeof posRegisterSettlementContractSchema
 >;
 export type LookupPosSaleServiceInputContract = z.infer<
   typeof lookupPosSaleServiceInputSchema

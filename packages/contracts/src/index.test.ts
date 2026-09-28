@@ -1,6 +1,11 @@
 import {
+  closeSalesSessionWithSettlementServiceInputSchema,
   createProductVariantServiceInputSchema,
+  openSalesSessionServiceInputSchema,
+  posRegisterSettlementContractSchema,
+  posSessionReconciliationSummaryContractSchema,
   productVariantContractSchema,
+  salesSessionContractSchema,
   updateVariantPriceServiceInputSchema,
 } from "./index.js";
 import { describe, expect, it } from "vitest";
@@ -2212,5 +2217,136 @@ describe("supplier payment and ledger contracts", () => {
         supplierId,
       }).success,
     ).toBe(true);
+  });
+
+  describe("POS register settlement and reconciliation contracts", () => {
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const counterId = "22222222-2222-4222-8222-222222222222";
+    const orgId = "33333333-3333-4333-8333-333333333333";
+    const userId = "44444444-4444-4444-8444-444444444444";
+    const settlementId = "55555555-5555-4555-8555-555555555555";
+    const now = "2026-09-28T12:00:00.000Z";
+
+    it("validates openSalesSession with optional openingFloatMinor", () => {
+      expect(
+        openSalesSessionServiceInputSchema.parse({
+          counterId,
+        }),
+      ).toEqual({ counterId });
+
+      expect(
+        openSalesSessionServiceInputSchema.parse({
+          counterId,
+          openingFloatMinor: 500000,
+        }),
+      ).toEqual({ counterId, openingFloatMinor: 500000 });
+
+      expect(
+        openSalesSessionServiceInputSchema.safeParse({
+          counterId,
+          openingFloatMinor: -10,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates salesSessionContractSchema with openingFloatMinor", () => {
+      const session = {
+        cartId: "66666666-6666-4666-8666-666666666666",
+        closedAt: null,
+        counterId,
+        createdAt: now,
+        id: sessionId,
+        openedAt: now,
+        openedByUserId: userId,
+        openingFloatMinor: 200000,
+        status: "OPEN" as const,
+        updatedAt: now,
+        version: 1,
+      };
+      expect(salesSessionContractSchema.parse(session).openingFloatMinor).toBe(
+        200000,
+      );
+    });
+
+    it("validates posSessionReconciliationSummaryContractSchema", () => {
+      const summary = {
+        bankTransferSalesMinor: 0,
+        cardSalesMinor: 150000,
+        cashCollectionsMinor: 50000,
+        cashRefundsMinor: 20000,
+        cashSalesMinor: 300000,
+        counterId,
+        counterName: "Main Counter 1",
+        digitalRefundsMinor: 0,
+        expectedBankTransferMinor: 0,
+        expectedCardMinor: 150000,
+        expectedCashMinor: 430000,
+        expectedMobileBankingMinor: 250000,
+        expectedTotalMinor: 830000,
+        grossSalesMinor: 700000,
+        mobileBankingSalesMinor: 250000,
+        openedAt: now,
+        openingFloatMinor: 100000,
+        salesCount: 12,
+        sessionId,
+      };
+      expect(
+        posSessionReconciliationSummaryContractSchema.safeParse(summary).success,
+      ).toBe(true);
+    });
+
+    it("validates closeSalesSessionWithSettlementServiceInputSchema", () => {
+      const input = {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 150000,
+        actualCashMinor: 425000,
+        actualMobileBankingMinor: 250000,
+        closingNotes: "End of day shift 1",
+        denominationBreakdown: { "100": 25, "1000": 4, "500": 0 },
+        discrepancyReason: "Minor cash difference ৳50 short",
+        expectedVersion: 1,
+        sessionId,
+      };
+      expect(
+        closeSalesSessionWithSettlementServiceInputSchema.safeParse(input).success,
+      ).toBe(true);
+    });
+
+    it("validates posRegisterSettlementContractSchema with negative/positive discrepancy", () => {
+      const settlement = {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 150000,
+        actualCashMinor: 425000,
+        actualMobileBankingMinor: 250000,
+        actualTotalMinor: 825000,
+        approvedByUserId: null,
+        bankTransferDiscrepancyMinor: 0,
+        cardDiscrepancyMinor: 0,
+        cashDiscrepancyMinor: -5000,
+        closedAt: now,
+        closedByUserId: userId,
+        closingNotes: "Closing confirmed",
+        counterId,
+        counterName: "Counter A",
+        createdAt: now,
+        denominationBreakdown: { "100": 25, "1000": 4 },
+        discrepancyReason: "Shortage of 50 BDT",
+        expectedBankTransferMinor: 0,
+        expectedCardMinor: 150000,
+        expectedCashMinor: 430000,
+        expectedMobileBankingMinor: 250000,
+        expectedTotalMinor: 830000,
+        id: settlementId,
+        mobileBankingDiscrepancyMinor: 0,
+        openingFloatMinor: 100000,
+        organizationId: orgId,
+        salesSessionId: sessionId,
+        status: "SHORTAGE" as const,
+        totalDiscrepancyMinor: -5000,
+      };
+      expect(
+        posRegisterSettlementContractSchema.safeParse(settlement).success,
+      ).toBe(true);
+    });
   });
 });
