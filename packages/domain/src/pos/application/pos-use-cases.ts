@@ -138,6 +138,7 @@ export async function openSalesSession(
   input: {
     counterId: string;
     openedAt: Date;
+    openingFloatMinor?: number;
     organizationId: string;
     userId: string;
   },
@@ -162,6 +163,7 @@ export async function openSalesSession(
     counterId: counter.id,
     openedAt: input.openedAt,
     openedByUserId: input.userId,
+    openingFloatMinor: normalizeOpeningFloat(input.openingFloatMinor),
     organizationId,
   });
 }
@@ -417,6 +419,15 @@ function normalizeVersion(value: number) {
     throw new ValidationApplicationError(
       "expectedVersion must be a positive integer.",
     );
+  return value;
+}
+function normalizeOpeningFloat(value?: number) {
+  if (value === undefined) return 0;
+  if (!Number.isInteger(value) || value < 0 || value > 2147483647) {
+    throw new ValidationApplicationError(
+      "openingFloatMinor must be a non-negative integer.",
+    );
+  }
   return value;
 }
 function subtotal(price: number, quantity: number) {

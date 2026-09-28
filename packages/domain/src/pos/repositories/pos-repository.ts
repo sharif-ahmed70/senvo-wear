@@ -72,6 +72,7 @@ export type PosRepository = {
     counterId: string;
     openedAt: Date;
     openedByUserId: string;
+    openingFloatMinor?: number;
     organizationId: string;
   }): Promise<SalesSession>;
   removeCartLine(

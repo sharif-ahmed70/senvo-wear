@@ -432,6 +432,7 @@ function session(
     id: userId,
     openedAt: now,
     openedByUserId: record.openedByUserId,
+    openingFloatMinor: record.openingFloatMinor ?? 0,
     organizationId: record.organizationId,
     status: "OPEN",
     updatedAt: now,

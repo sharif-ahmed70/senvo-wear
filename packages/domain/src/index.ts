@@ -122,7 +122,37 @@ export type {
   SalesSession,
   SalesSessionStatus,
   SellableVariant,
+  PosSettlementStatus,
+  PosRegisterSettlement,
+  PosSessionReconciliationSummary,
 } from "./pos/domain/models.js";
+export {
+  calculateSessionChannelTotals,
+  calculateExpectedRegisterTotals,
+  determineSettlementStatus,
+  calculateSettlementDiscrepancies,
+  calculateDenominationTotalMinor,
+  validateSettlementSubmission,
+} from "./pos/domain/reconciliation-rules.js";
+export type {
+  SessionPaymentLine,
+  SessionCollectionLine,
+  SessionRefundLine,
+  SessionChannelTotals,
+  ExpectedRegisterTotals,
+  SettlementDiscrepancies,
+} from "./pos/domain/reconciliation-rules.js";
+export {
+  getSalesSessionReconciliationSummary,
+  closeSalesSessionWithSettlement,
+} from "./pos/application/settlement-use-cases.js";
+export type {
+  PosSettlementRepository,
+  SessionReconciliationSource,
+  SessionPaymentLineData,
+  SessionCollectionLineData,
+  SessionRefundLineData,
+} from "./pos/repositories/pos-settlement-repository.js";
 export type {
   PosReturnAccount,
   PosReturnReasonCode,
