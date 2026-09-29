@@ -1,11 +1,19 @@
 import {
   closeSalesSessionWithSettlementServiceInputSchema,
+  courierConsignmentContractSchema,
+  courierProviderSchema,
   createProductVariantServiceInputSchema,
+  dispatchSalesOrderServiceInputSchema,
+  getShipmentsByOrderIdServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posRegisterSettlementContractSchema,
   posSessionReconciliationSummaryContractSchema,
   productVariantContractSchema,
   salesSessionContractSchema,
+  shipmentStatusSchema,
+  storefrontOrderTrackingContractSchema,
+  trackStorefrontOrderInputSchema,
+  updateShipmentStatusServiceInputSchema,
   updateVariantPriceServiceInputSchema,
 } from "./index.js";
 import { describe, expect, it } from "vitest";
@@ -2346,6 +2354,186 @@ describe("supplier payment and ledger contracts", () => {
       };
       expect(
         posRegisterSettlementContractSchema.safeParse(settlement).success,
+      ).toBe(true);
+    });
+  });
+
+  describe("shipping and courier consignment contracts", () => {
+    const orgId = "11111111-1111-4111-8111-111111111111";
+    const orderId = "22222222-2222-4222-8222-222222222222";
+    const consignmentId = "33333333-3333-4333-8333-333333333333";
+    const now = "2026-09-29T10:00:00.000Z";
+
+    it("validates courier provider enum options", () => {
+      expect(courierProviderSchema.parse("STEADFAST")).toBe("STEADFAST");
+      expect(courierProviderSchema.parse("PATHAO")).toBe("PATHAO");
+      expect(courierProviderSchema.parse("REDX")).toBe("REDX");
+      expect(courierProviderSchema.parse("PAPERFLY")).toBe("PAPERFLY");
+      expect(courierProviderSchema.parse("IN_HOUSE")).toBe("IN_HOUSE");
+      expect(courierProviderSchema.safeParse("FEDEX").success).toBe(false);
+    });
+
+    it("validates shipment status lifecycle enums", () => {
+      const validStatuses = [
+        "DRAFT",
+        "BOOKED",
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "DELIVERED",
+        "RETURNED_TO_ORIGIN",
+        "CANCELLED",
+      ];
+      for (const status of validStatuses) {
+        expect(shipmentStatusSchema.safeParse(status).success).toBe(true);
+      }
+      expect(shipmentStatusSchema.safeParse("UNKNOWN").success).toBe(false);
+    });
+
+    it("validates courierConsignmentContractSchema with complete snapshot", () => {
+      const consignment = {
+        cancelledAt: null,
+        codAmountMinor: "150000",
+        consignmentNumber: "CNS-2026-0001",
+        courierProvider: "STEADFAST" as const,
+        createdAt: now,
+        deliveredAt: null,
+        deliveryAddressLine1: "House 12, Road 4, Sector 3, Uttara",
+        deliveryAddressLine2: null,
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryFeeMinor: "6000",
+        deliveryPostalCode: "1230",
+        dispatchedAt: now,
+        id: consignmentId,
+        itemWeightGram: 500,
+        note: "Handle with care",
+        organizationId: orgId,
+        recipientEmail: "customer@example.com",
+        recipientName: "Ahmed Sharif",
+        recipientPhone: "+8801700000000",
+        returnedAt: null,
+        salesOrderId: orderId,
+        status: "IN_TRANSIT" as const,
+        trackingCode: "ST-887412",
+        trackingUrl: "https://steadfast.com.bd/t/ST-887412",
+        updatedAt: now,
+        version: 1,
+      };
+      expect(
+        courierConsignmentContractSchema.safeParse(consignment).success,
+      ).toBe(true);
+    });
+
+    it("validates dispatchSalesOrderServiceInputSchema with optional overrides", () => {
+      const input = {
+        codAmountMinor: 150000,
+        courierProvider: "PATHAO" as const,
+        deliveryAddressLine1: "Flat 4B, Dhanmondi 27",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryFeeMinor: 8000,
+        itemWeightGram: 350,
+        note: "Call before arriving",
+        recipientName: "Sultana Razia",
+        recipientPhone: "+8801800000000",
+        salesOrderId: orderId,
+        trackingCode: "PT-998811",
+      };
+      expect(
+        dispatchSalesOrderServiceInputSchema.safeParse(input).success,
+      ).toBe(true);
+
+      // Rejects non-numeric codAmountMinor
+      expect(
+        dispatchSalesOrderServiceInputSchema.safeParse({
+          ...input,
+          codAmountMinor: -50,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates updateShipmentStatusServiceInputSchema", () => {
+      const input = {
+        consignmentId,
+        expectedVersion: 1,
+        note: "Delivered to recipient",
+        status: "DELIVERED" as const,
+        trackingCode: "ST-887412",
+      };
+      expect(
+        updateShipmentStatusServiceInputSchema.safeParse(input).success,
+      ).toBe(true);
+
+      expect(
+        updateShipmentStatusServiceInputSchema.safeParse({
+          ...input,
+          status: "INVALID_STATUS",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates trackStorefrontOrderInputSchema and storefrontOrderTrackingContractSchema", () => {
+      const trackInput = {
+        orderNumber: "ORD-2026-0001",
+        phone: "+8801700000000",
+      };
+      expect(trackStorefrontOrderInputSchema.safeParse(trackInput).success).toBe(
+        true,
+      );
+
+      // Rejects invalid phone
+      expect(
+        trackStorefrontOrderInputSchema.safeParse({
+          orderNumber: "ORD-2026-0001",
+          phone: "abc",
+        }).success,
+      ).toBe(false);
+
+      const trackingResponse = {
+        createdAt: now,
+        currencyCode: "BDT" as const,
+        customerName: "Ahmed Sharif",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        orderNumber: "ORD-2026-0001",
+        paymentStatus: "PAID",
+        shipments: [
+          {
+            cancelledAt: null,
+            codAmountMinor: "0",
+            consignmentNumber: "CNS-2026-0001",
+            courierProvider: "STEADFAST" as const,
+            createdAt: now,
+            deliveredAt: null,
+            deliveryAddressLine1: "House 12, Uttara",
+            deliveryAddressLine2: null,
+            deliveryCity: "Dhaka",
+            deliveryDistrict: "Dhaka",
+            deliveryFeeMinor: "6000",
+            deliveryPostalCode: "1230",
+            dispatchedAt: now,
+            id: consignmentId,
+            itemWeightGram: null,
+            note: null,
+            organizationId: orgId,
+            recipientEmail: null,
+            recipientName: "Ahmed Sharif",
+            recipientPhone: "+8801700000000",
+            returnedAt: null,
+            salesOrderId: orderId,
+            status: "IN_TRANSIT" as const,
+            trackingCode: "ST-887412",
+            trackingUrl: null,
+            updatedAt: now,
+            version: 1,
+          },
+        ],
+        status: "CONFIRMED" as const,
+        totalMinor: "250000",
+      };
+      expect(
+        storefrontOrderTrackingContractSchema.safeParse(trackingResponse)
+          .success,
       ).toBe(true);
     });
   });

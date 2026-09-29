@@ -583,6 +583,8 @@ export const auditActionSchema = z.enum([
   "POS_SALE_RETURN_RECORDED",
   "SALES_ORDER_CREATED",
   "POS_REGISTER_SETTLED",
+  "ORDER_DISPATCHED",
+  "SHIPMENT_STATUS_UPDATED",
 ]);
 
 export const auditResourceSchema = z.enum([
@@ -590,6 +592,7 @@ export const auditResourceSchema = z.enum([
   "POS_RETURN",
   "SALES_ORDER",
   "POS_SESSION",
+  "COURIER_CONSIGNMENT",
 ]);
 
 const auditMetadataSchema = z
@@ -4737,3 +4740,169 @@ export type CreateSupplierAdjustmentServiceInputContract = z.infer<
   typeof createSupplierAdjustmentServiceInputSchema
 >;
 
+export const courierProviderSchema = z.enum([
+  "STEADFAST",
+  "PATHAO",
+  "REDX",
+  "PAPERFLY",
+  "IN_HOUSE",
+]);
+export type CourierProviderContract = z.infer<typeof courierProviderSchema>;
+
+export const shipmentStatusSchema = z.enum([
+  "DRAFT",
+  "BOOKED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "RETURNED_TO_ORIGIN",
+  "CANCELLED",
+]);
+export type ShipmentStatusContract = z.infer<typeof shipmentStatusSchema>;
+
+export const courierConsignmentContractSchema = z
+  .object({
+    cancelledAt: isoTimestampSchema.nullable(),
+    codAmountMinor: z.string(),
+    consignmentNumber: codeSchema,
+    courierProvider: courierProviderSchema,
+    createdAt: isoTimestampSchema,
+    deliveredAt: isoTimestampSchema.nullable(),
+    deliveryAddressLine1: z.string().trim().min(1).max(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryFeeMinor: z.string(),
+    deliveryPostalCode: optionalTextSchema(120),
+    dispatchedAt: isoTimestampSchema.nullable(),
+    id: idSchema,
+    itemWeightGram: z.number().int().nonnegative().nullable(),
+    note: optionalTextSchema(1000),
+    organizationId: idSchema,
+    recipientEmail: emailSchema,
+    recipientName: z.string().trim().min(1).max(160),
+    recipientPhone: z.string().trim().min(1).max(40),
+    returnedAt: isoTimestampSchema.nullable(),
+    salesOrderId: idSchema,
+    status: shipmentStatusSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+export type CourierConsignmentContract = z.infer<
+  typeof courierConsignmentContractSchema
+>;
+
+export const dispatchSalesOrderServiceInputSchema = z
+  .object({
+    codAmountMinor: z
+      .union([
+        z
+          .string()
+          .regex(
+            /^\d+$/u,
+            "codAmountMinor must be a non-negative integer in minor units.",
+          ),
+        z.number().int().nonnegative(),
+      ])
+      .optional(),
+    courierProvider: courierProviderSchema,
+    deliveryAddressLine1: optionalTextSchema(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryFeeMinor: z
+      .union([
+        z
+          .string()
+          .regex(
+            /^\d+$/u,
+            "deliveryFeeMinor must be a non-negative integer in minor units.",
+          ),
+        z.number().int().nonnegative(),
+      ])
+      .optional(),
+    deliveryPostalCode: optionalTextSchema(120),
+    itemWeightGram: z.number().int().positive().optional(),
+    note: optionalTextSchema(1000),
+    recipientEmail: emailSchema,
+    recipientName: optionalTextSchema(160),
+    recipientPhone: phoneSchema,
+    salesOrderId: idSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+  })
+  .strict();
+export type DispatchSalesOrderServiceInputContract = z.infer<
+  typeof dispatchSalesOrderServiceInputSchema
+>;
+
+export const updateShipmentStatusServiceInputSchema = z
+  .object({
+    consignmentId: idSchema,
+    expectedVersion: expectedVersionSchema.optional(),
+    note: optionalTextSchema(1000),
+    status: shipmentStatusSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+  })
+  .strict();
+export type UpdateShipmentStatusServiceInputContract = z.infer<
+  typeof updateShipmentStatusServiceInputSchema
+>;
+
+export const getShipmentsByOrderIdServiceInputSchema = z
+  .object({
+    salesOrderId: idSchema,
+  })
+  .strict();
+export type GetShipmentsByOrderIdServiceInputContract = z.infer<
+  typeof getShipmentsByOrderIdServiceInputSchema
+>;
+
+export const getConsignmentByIdServiceInputSchema = z
+  .object({
+    consignmentId: idSchema,
+  })
+  .strict();
+export type GetConsignmentByIdServiceInputContract = z.infer<
+  typeof getConsignmentByIdServiceInputSchema
+>;
+
+export const trackStorefrontOrderInputSchema = z
+  .object({
+    orderNumber: codeSchema,
+    phone: z
+      .string()
+      .trim()
+      .min(6)
+      .max(40)
+      .regex(
+        /^[+0-9() .-]+$/,
+        "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+      ),
+  })
+  .strict();
+export type TrackStorefrontOrderInputContract = z.infer<
+  typeof trackStorefrontOrderInputSchema
+>;
+
+export const storefrontOrderTrackingContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customerName: optionalTextSchema(160),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    orderNumber: codeSchema,
+    paymentStatus: z.string(),
+    shipments: z.array(courierConsignmentContractSchema),
+    status: salesOrderStatusSchema,
+    totalMinor: z.string(),
+  })
+  .strict();
+export type StorefrontOrderTrackingContract = z.infer<
+  typeof storefrontOrderTrackingContractSchema
+>;

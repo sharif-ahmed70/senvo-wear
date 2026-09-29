@@ -219,6 +219,24 @@ enum PosSettlementStatus {
   OVERAGE
 }
 
+enum CourierProvider {
+  STEADFAST
+  PATHAO
+  REDX
+  PAPERFLY
+  IN_HOUSE
+}
+
+enum ShipmentStatus {
+  DRAFT
+  BOOKED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  RETURNED_TO_ORIGIN
+  CANCELLED
+}
+
 enum PosCheckoutStatus {
   COMPLETED
 }
@@ -473,6 +491,7 @@ model Organization {
   supplierPayments      SupplierPayment[]
   supplierLedgerEntries SupplierLedgerEntry[]
   posRegisterSettlements PosRegisterSettlement[]
+  courierConsignments   CourierConsignment[]
 
   @@map("organizations")
 }
@@ -2011,6 +2030,7 @@ model SalesOrder {
   commerceProfile SalesOrderCommerceProfile?
   onlinePaymentAttempts OnlinePaymentAttempt[]
   providerRefunds ProviderRefund[]
+  shipments            CourierConsignment[]
 
   @@unique([id, organizationId])
   @@unique([organizationId, orderNumber])
@@ -2290,4 +2310,45 @@ model SupplierLedgerEntry {
   @@index([organizationId, supplierId, entryDate])
   @@index([organizationId, entryType, entryDate])
   @@map("supplier_ledger_entries")
+}
+
+model CourierConsignment {
+  id                   String          @id @default(uuid()) @db.Uuid
+  organizationId       String          @map("organization_id") @db.Uuid
+  salesOrderId         String          @map("sales_order_id") @db.Uuid
+  consignmentNumber    String          @map("consignment_number") @db.VarChar(64)
+  courierProvider      CourierProvider @map("courier_provider")
+  status               ShipmentStatus  @default(DRAFT)
+  trackingCode         String?         @map("tracking_code") @db.VarChar(128)
+  trackingUrl          String?         @map("tracking_url") @db.VarChar(500)
+  codAmountMinor       Int             @default(0) @map("cod_amount_minor")
+  deliveryFeeMinor     Int             @default(0) @map("delivery_fee_minor")
+  recipientName        String          @map("recipient_name") @db.VarChar(160)
+  recipientPhone       String          @map("recipient_phone") @db.VarChar(40)
+  recipientEmail       String?         @map("recipient_email") @db.VarChar(254)
+  deliveryAddressLine1 String          @map("delivery_address_line_1") @db.VarChar(240)
+  deliveryAddressLine2 String?         @map("delivery_address_line_2") @db.VarChar(240)
+  deliveryCity         String?         @map("delivery_city") @db.VarChar(120)
+  deliveryDistrict     String?         @map("delivery_district") @db.VarChar(120)
+  deliveryPostalCode   String?         @map("delivery_postal_code") @db.VarChar(120)
+  itemWeightGram       Int?            @map("item_weight_gram")
+  note                 String?         @db.VarChar(1000)
+  dispatchedAt         DateTime?       @map("dispatched_at") @db.Timestamptz(6)
+  deliveredAt          DateTime?       @map("delivered_at") @db.Timestamptz(6)
+  returnedAt           DateTime?       @map("returned_at") @db.Timestamptz(6)
+  cancelledAt          DateTime?       @map("cancelled_at") @db.Timestamptz(6)
+  version              Int             @default(1)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  salesOrder   SalesOrder   @relation(fields: [salesOrderId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, consignmentNumber])
+  @@index([organizationId, salesOrderId])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, courierProvider, status])
+  @@index([organizationId, trackingCode])
+  @@map("courier_consignments")
 }
