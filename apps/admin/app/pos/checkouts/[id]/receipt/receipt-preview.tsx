@@ -50,6 +50,23 @@ export function ReceiptPreview({
     return <ReceiptState title={error ?? "Receipt was not found."} />;
   }
 
+  return (
+    <main className="receipt-page">
+      <div className="receipt-actions">
+        <button type="button" onClick={() => window.print()}>
+          <Printer size={17} /> Print
+        </button>
+      </div>
+      <ReceiptDocument receipt={receipt} />
+    </main>
+  );
+}
+
+export function ReceiptDocument({
+  receipt,
+}: {
+  receipt: SalesReceiptContract;
+}) {
   const address = [
     receipt.organizationAddressLine1,
     receipt.organizationAddressLine2,
@@ -61,135 +78,140 @@ export function ReceiptPreview({
     .join(", ");
 
   return (
-    <main className="receipt-page">
-      <div className="receipt-actions">
-        <button type="button" onClick={() => window.print()}>
-          <Printer size={17} /> Print
-        </button>
-      </div>
-      <article className="receipt-document">
-        <header className="receipt-header">
-          <div>
-            <h1>{receipt.organizationName}</h1>
-            {address ? <p>{address}</p> : null}
-            <p>
-              {[receipt.organizationPhone, receipt.organizationEmail]
-                .filter(Boolean)
-                .join(" | ")}
-            </p>
-          </div>
-          <div className="receipt-number">
-            <span>Sales receipt</span>
-            <strong>{receipt.receiptNumber}</strong>
-          </div>
-        </header>
+    <article className="receipt-document">
+      <header className="receipt-header">
+        <div>
+          <h1>{receipt.organizationName}</h1>
+          {address ? <p>{address}</p> : null}
+          <p>
+            {[receipt.organizationPhone, receipt.organizationEmail]
+              .filter(Boolean)
+              .join(" | ")}
+          </p>
+        </div>
+        <div className="receipt-number">
+          <span>Sales receipt</span>
+          <strong>{receipt.receiptNumber}</strong>
+        </div>
+      </header>
 
-        <dl className="receipt-meta">
+      <dl className="receipt-meta">
+        <div>
+          <dt>Order</dt>
+          <dd>{receipt.orderNumber}</dd>
+        </div>
+        <div>
+          <dt>Issued</dt>
+          <dd>{formatDate(receipt.issuedAt)}</dd>
+        </div>
+        <div>
+          <dt>Sales source</dt>
+          <dd>{receipt.sourceName}</dd>
+        </div>
+        <div>
+          <dt>Counter</dt>
+          <dd>
+            {receipt.counterName} ({receipt.counterCode})
+          </dd>
+        </div>
+        <div>
+          <dt>Team member</dt>
+          <dd>{receipt.staffName}</dd>
+        </div>
+        <div>
+          <dt>Payment</dt>
+          <dd>{label(receipt.paymentStatus)}</dd>
+        </div>
+        {receipt.customerName ? (
           <div>
-            <dt>Order</dt>
-            <dd>{receipt.orderNumber}</dd>
+            <dt>Customer</dt>
+            <dd>{receipt.customerName}</dd>
+          </div>
+        ) : null}
+        {receipt.customerPhone ? (
+          <div>
+            <dt>Phone</dt>
+            <dd>{receipt.customerPhone}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <div className="receipt-table-wrap">
+        <table className="receipt-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Qty</th>
+              <th>Price</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipt.lines.map((line) => (
+              <tr key={line.lineNumber}>
+                <td>
+                  <strong>{line.productName}</strong>
+                  <span>
+                    {[line.sku, line.color, line.size]
+                      .filter(Boolean)
+                      .join(" | ")}
+                  </span>
+                </td>
+                <td>{line.quantity}</td>
+                <td>{money(line.unitPriceMinor)}</td>
+                <td>{money(line.lineTotalMinor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="receipt-summary">
+        <dl>
+          <div>
+            <dt>Subtotal</dt>
+            <dd>{money(receipt.subtotalMinor)}</dd>
           </div>
           <div>
-            <dt>Issued</dt>
-            <dd>{formatDate(receipt.issuedAt)}</dd>
+            <dt>Discount</dt>
+            <dd>{money(receipt.discountMinor)}</dd>
           </div>
           <div>
-            <dt>Sales source</dt>
-            <dd>{receipt.sourceName}</dd>
+            <dt>Delivery</dt>
+            <dd>{money(receipt.deliveryMinor)}</dd>
+          </div>
+          <div className="receipt-total">
+            <dt>Total</dt>
+            <dd>{money(receipt.totalMinor)}</dd>
           </div>
           <div>
-            <dt>Counter</dt>
-            <dd>
-              {receipt.counterName} ({receipt.counterCode})
-            </dd>
+            <dt>Paid</dt>
+            <dd>{money(receipt.paidMinor)}</dd>
           </div>
           <div>
-            <dt>Team member</dt>
-            <dd>{receipt.staffName}</dd>
-          </div>
-          <div>
-            <dt>Payment</dt>
-            <dd>{label(receipt.paymentStatus)}</dd>
+            <dt>Outstanding</dt>
+            <dd>{money(receipt.outstandingMinor)}</dd>
           </div>
         </dl>
+      </div>
 
-        <div className="receipt-table-wrap">
-          <table className="receipt-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Price</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receipt.lines.map((line) => (
-                <tr key={line.lineNumber}>
-                  <td>
-                    <strong>{line.productName}</strong>
-                    <span>
-                      {[line.sku, line.color, line.size]
-                        .filter(Boolean)
-                        .join(" | ")}
-                    </span>
-                  </td>
-                  <td>{line.quantity}</td>
-                  <td>{money(line.unitPriceMinor)}</td>
-                  <td>{money(line.lineTotalMinor)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="receipt-summary">
-          <dl>
-            <div>
-              <dt>Subtotal</dt>
-              <dd>{money(receipt.subtotalMinor)}</dd>
+      <section className="receipt-payments">
+        <h2>Payments</h2>
+        {receipt.payments.length ? (
+          receipt.payments.map((payment) => (
+            <div key={payment.lineNumber}>
+              <span>
+                {label(payment.method)}
+                {payment.reference ? ` | ${payment.reference}` : ""}
+              </span>
+              <strong>{money(payment.amountMinor)}</strong>
             </div>
-            <div>
-              <dt>Discount</dt>
-              <dd>{money(receipt.discountMinor)}</dd>
-            </div>
-            <div>
-              <dt>Delivery</dt>
-              <dd>{money(receipt.deliveryMinor)}</dd>
-            </div>
-            <div className="receipt-total">
-              <dt>Total</dt>
-              <dd>{money(receipt.totalMinor)}</dd>
-            </div>
-            <div>
-              <dt>Paid</dt>
-              <dd>{money(receipt.paidMinor)}</dd>
-            </div>
-            <div>
-              <dt>Outstanding</dt>
-              <dd>{money(receipt.outstandingMinor)}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <section className="receipt-payments">
-          <h2>Payments</h2>
-          {receipt.payments.length ? (
-            receipt.payments.map((payment) => (
-              <div key={payment.lineNumber}>
-                <span>
-                  {label(payment.method)}
-                  {payment.reference ? ` | ${payment.reference}` : ""}
-                </span>
-                <strong>{money(payment.amountMinor)}</strong>
-              </div>
-            ))
-          ) : (
-            <p>No payment recorded. This sale has an outstanding balance.</p>
-          )}
-        </section>
-      </article>
-    </main>
+          ))
+        ) : (
+          <p>No payment recorded. This sale has an outstanding balance.</p>
+        )}
+      </section>
+    </article>
   );
 }
 

@@ -113,4 +113,28 @@ describe("cashier payment preparation", () => {
     );
     expect(normalizedCheckoutSignature(input)).toContain('"reference":"A 1"');
   });
+
+  it("changes idempotency key when customer info changes", () => {
+    const payload = {
+      allowOutstanding: false,
+      customer: {
+        addressLine1: "12/A Dhanmondi",
+        name: "Rahim Uddin",
+        phone: "+8801700000000",
+      },
+      payments: [{ amountMinor: 1000, method: "CASH" as const }],
+    };
+    const first = prepareCheckoutAttempt(null, payload, () => "first");
+    const retry = prepareCheckoutAttempt(first, payload, () => "second");
+    const changed = prepareCheckoutAttempt(
+      first,
+      {
+        ...payload,
+        customer: { ...payload.customer, name: "Karim Mia" },
+      },
+      () => "changed",
+    );
+    expect(retry).toBe(first);
+    expect(changed.idempotencyKey).toBe("pos-changed");
+  });
 });

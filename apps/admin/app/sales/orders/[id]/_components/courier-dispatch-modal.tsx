@@ -6,7 +6,10 @@ import type {
 } from "@senvo/contracts";
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import {
+  type AdminApiClient,
+  AdminApiError,
+} from "../../../../_lib/api-client";
 import styles from "./courier-dispatch-modal.module.css";
 
 const COURIER_PROVIDERS = [
@@ -124,7 +127,10 @@ export function CourierDispatchModal({
           </button>
         </div>
 
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleSubmit(event)}
+        >
           {error ? (
             <div className={styles.errorBanner} role="alert">
               <AlertCircle size={16} />

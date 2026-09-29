@@ -101,6 +101,9 @@ export function PaymentPanel({
   const [drafts, setDrafts] = useState<PaymentDraft[]>([
     newDraft(takaInput(totalMinor)),
   ]);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [tenderedMap, setTenderedMap] = useState<Record<string, string>>({});
   const [allowOutstanding, setAllowOutstanding] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -133,13 +136,27 @@ export function PaymentPanel({
     const validation = validatePayments(drafts, totalMinor, allowOutstanding);
     if (!validation.ok) {
       setErrors(validation.errors);
+      const form = event.currentTarget;
       setTimeout(() =>
-        event.currentTarget
-          .querySelector<HTMLElement>("[aria-invalid='true']")
-          ?.focus(),
+        form?.querySelector<HTMLElement>("[aria-invalid='true']")?.focus(),
       );
       return;
     }
+
+    const trimmedPhone = customerPhone.trim();
+    if (trimmedPhone && !/^[+0-9() .-]+$/.test(trimmedPhone)) {
+      setErrors((current) => ({
+        ...current,
+        customerPhone:
+          "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+      }));
+      const form = event.currentTarget;
+      setTimeout(() =>
+        form?.querySelector<HTMLElement>("[name='customerPhone']")?.focus(),
+      );
+      return;
+    }
+
     if (
       validation.remainingMinor > 0 &&
       !window.confirm(
@@ -147,7 +164,23 @@ export function PaymentPanel({
       )
     )
       return;
-    onComplete({ allowOutstanding, payments: validation.payments });
+
+    const trimmedName = customerName.trim();
+    const trimmedAddress = customerAddress.trim();
+    const customer =
+      trimmedName || trimmedPhone || trimmedAddress
+        ? {
+            addressLine1: trimmedAddress || null,
+            name: trimmedName || null,
+            phone: trimmedPhone || null,
+          }
+        : undefined;
+
+    onComplete({
+      allowOutstanding,
+      ...(customer ? { customer } : {}),
+      payments: validation.payments,
+    });
   }
 
   return (
@@ -185,6 +218,73 @@ export function PaymentPanel({
           >
             <span>Remaining</span>
             <strong>{formatBdt(remainingMinor)}</strong>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="customer-info-title"
+          className="pos-customer-section"
+        >
+          <div className="pos-payment-section-heading">
+            <div>
+              <span>Customer</span>
+              <h3 id="customer-info-title">Customer information (Optional)</h3>
+            </div>
+            <small>
+              Attach customer details to receipt, or leave blank for walk-in
+              customer.
+            </small>
+          </div>
+          <div className="pos-customer-fields">
+            <label>
+              Customer name
+              <input
+                disabled={submitting}
+                maxLength={160}
+                name="customerName"
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="e.g. Rahim Uddin (Optional)"
+                value={customerName}
+              />
+            </label>
+            <label>
+              Phone number
+              <input
+                aria-invalid={Boolean(errors.customerPhone)}
+                disabled={submitting}
+                maxLength={40}
+                name="customerPhone"
+                onChange={(event) => {
+                  setCustomerPhone(event.target.value);
+                  if (errors.customerPhone) {
+                    setErrors((current) => {
+                      if (!current.customerPhone) return current;
+                      const next = { ...current };
+                      delete next.customerPhone;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="e.g. +8801700000000 (Optional)"
+                value={customerPhone}
+              />
+              {errors.customerPhone ? (
+                <small className="pos-field-error">
+                  {errors.customerPhone}
+                </small>
+              ) : null}
+            </label>
+            <label className="pos-customer-field-full">
+              Address
+              <input
+                disabled={submitting}
+                maxLength={240}
+                name="customerAddress"
+                onChange={(event) => setCustomerAddress(event.target.value)}
+                placeholder="e.g. House 12, Road 4, Banani, Dhaka (Optional)"
+                value={customerAddress}
+              />
+            </label>
           </div>
         </section>
 

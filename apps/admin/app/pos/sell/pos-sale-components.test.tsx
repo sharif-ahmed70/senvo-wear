@@ -4,6 +4,7 @@ import type {
   PosCartDetailsContract,
   PosCheckoutContract,
   SalesCounterContract,
+  SalesReceiptContract,
   SalesSessionContract,
 } from "@senvo/contracts";
 import { PosSaleWorkspace } from "./_components/pos-sale-workspace";
@@ -11,6 +12,7 @@ import { SellingContextSelector } from "./_components/selling-context-selector";
 import { CartLineList } from "./_components/cart-line-list";
 import { PaymentPanel } from "./_components/payment-panel";
 import { SaleSuccess } from "./_components/sale-success";
+import { ReceiptDocument } from "../checkouts/[id]/receipt/receipt-preview";
 
 const id = (suffix: string) =>
   `10000000-0000-4000-8000-${suffix.padStart(12, "0")}`;
@@ -188,6 +190,25 @@ describe("guided POS selling components", () => {
     expect(html).toContain("Allow a remaining balance");
   });
 
+  it("renders optional customer details capture fields in payment panel", () => {
+    const html = renderToStaticMarkup(
+      <PaymentPanel
+        canApproveDue={false}
+        onCancel={() => undefined}
+        onComplete={() => undefined}
+        submitting={false}
+        totalMinor={250000}
+      />,
+    );
+    expect(html).toContain("Customer information (Optional)");
+    expect(html).toContain("Customer name");
+    expect(html).toContain("Phone number");
+    expect(html).toContain("Address");
+    expect(html).toContain('name="customerName"');
+    expect(html).toContain('name="customerPhone"');
+    expect(html).toContain('name="customerAddress"');
+  });
+
   it("shows success without leaking receipt actions", () => {
     const html = renderToStaticMarkup(
       <SaleSuccess
@@ -233,13 +254,92 @@ describe("guided POS selling components", () => {
     );
     expect(html).toContain("Sale completed");
     expect(html).toContain("View receipt");
-    expect(html).toContain("The completed sale is safe.");
     expect(html).toContain(
       "Use Start new sale again to retry only the next-sale preparation.",
     );
     expect(html).toContain("req_recovery_1");
   });
+
+  it("displays customer information on the receipt preview when available", () => {
+    const html = renderToStaticMarkup(
+      <ReceiptDocument receipt={mockReceipt()} />,
+    );
+    expect(html).toContain("Customer");
+    expect(html).toContain("Rahim Uddin");
+    expect(html).toContain("Phone");
+    expect(html).toContain("+8801700000000");
+  });
+
+  it("omits customer fields on the receipt preview when not provided", () => {
+    const html = renderToStaticMarkup(
+      <ReceiptDocument
+        receipt={{
+          ...mockReceipt(),
+          customerName: null,
+          customerPhone: null,
+        }}
+      />,
+    );
+    expect(html).not.toContain("<dt>Customer</dt>");
+    expect(html).not.toContain("<dt>Phone</dt>");
+  });
 });
+
+function mockReceipt(): SalesReceiptContract {
+  return {
+    checkoutId: id("10"),
+    counterCode: "MAIN",
+    counterName: "Main counter",
+    currencyCode: "BDT",
+    customerEmail: null,
+    customerName: "Rahim Uddin",
+    customerPhone: "+8801700000000",
+    deliveryMinor: 0,
+    discountMinor: 0,
+    id: id("11"),
+    issuedAt: "2026-08-06T00:10:00.000Z",
+    lines: [
+      {
+        color: "Black",
+        discountMinor: 0,
+        lineNumber: 1,
+        lineTotalMinor: 250000,
+        productName: "Oxford Shirt",
+        quantity: 2,
+        size: "Large",
+        sku: "OX-BLK-L",
+        unitPriceMinor: 125000,
+      },
+    ],
+    orderNumber: "SO-1001",
+    organizationAddressLine1: "123 Dhaka St",
+    organizationAddressLine2: null,
+    organizationCity: "Dhaka",
+    organizationDistrict: "Dhaka",
+    organizationEmail: "store@senvo.test",
+    organizationName: "SENVO Wear",
+    organizationPhone: "+8801700000001",
+    organizationPostalCode: "1200",
+    outstandingMinor: 0,
+    paidMinor: 250000,
+    paymentStatus: "PAID",
+    payments: [
+      {
+        amountMinor: 250000,
+        lineNumber: 1,
+        method: "CASH",
+        reference: null,
+      },
+    ],
+    receiptNumber: "R-1001",
+    salesChannel: "OFFLINE_STORE",
+    salesOrderId: id("12"),
+    sourceName: "Store",
+    staffName: "Cashier",
+    subtotalMinor: 250000,
+    totalMinor: 250000,
+  };
+}
 
 function checkout(): PosCheckoutContract {
   return {

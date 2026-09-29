@@ -428,6 +428,46 @@
   color: #9a342f;
 }
 
+.pos-customer-section {
+  border-bottom: 1px solid #e5eae7;
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+}
+
+.pos-customer-fields {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.pos-customer-field-full {
+  grid-column: 1 / -1;
+}
+
+.pos-customer-fields label {
+  color: #3b4840;
+  display: grid;
+  font-size: 0.73rem;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.pos-customer-fields input {
+  background: #fff;
+  border: 1px solid #d4dcd6;
+  border-radius: 6px;
+  color: #1b2620;
+  font-size: 0.8rem;
+  height: 38px;
+  padding: 0 12px;
+}
+
+.pos-customer-fields input:focus {
+  border-color: #1a6f4e;
+  outline: 2px solid rgba(26, 111, 78, 0.15);
+}
+
 .pos-payment-choice,
 .pos-payment-entry {
   display: grid;
@@ -860,6 +900,7 @@
   }
 
   .pos-payment-header,
+  .pos-customer-section,
   .pos-payment-choice,
   .pos-payment-entry,
   .pos-payment-actions {
@@ -882,6 +923,7 @@
     border-bottom: 0;
   }
 
+  .pos-customer-fields,
   .pos-payment-methods,
   .pos-payment-lines fieldset {
     grid-template-columns: 1fr;

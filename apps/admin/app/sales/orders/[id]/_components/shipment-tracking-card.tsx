@@ -13,7 +13,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
+import {
+  type AdminApiClient,
+  AdminApiError,
+} from "../../../../_lib/api-client";
 import styles from "./shipment-tracking-card.module.css";
 
 const STANDARD_STEPS = [
