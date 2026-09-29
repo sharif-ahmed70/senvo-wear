@@ -11,6 +11,7 @@ import {
   type PosApiHandlers,
   type ProcurementApiHandlers,
   type ProcurementApplication,
+  type ShippingApiHandlers,
   type StorefrontApiHandlers,
 } from "@senvo/api";
 import type { ApplicationAuthorizationService } from "@senvo/application";
@@ -2158,6 +2159,115 @@ describe("Node HTTP runtime adapter", () => {
         supplierId: movementId,
       },
     ]);
+  });
+
+  it("routes shipping dispatch, tracking, and consignment requests to handlers", async () => {
+    const consignmentId = "30000000-0000-4000-8000-000000000001";
+    const salesOrderId = "20000000-0000-4000-8000-000000000001";
+
+    const dispatchHandler = new RecordingApiHandler(
+      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+    );
+    const getShipmentByOrderHandler = new RecordingApiHandler(
+      createApiSuccess([{ id: consignmentId, status: "BOOKED" }], suppliedRequestId),
+    );
+    const updateStatusHandler = new RecordingApiHandler(
+      createApiSuccess({ id: consignmentId, status: "IN_TRANSIT" }, suppliedRequestId),
+    );
+    const getConsignmentHandler = new RecordingApiHandler(
+      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+    );
+
+    const shippingHandlers: ShippingApiHandlers = {
+      dispatch: dispatchHandler as any,
+      getConsignment: getConsignmentHandler as any,
+      getShipmentByOrder: getShipmentByOrderHandler as any,
+      updateStatus: updateStatusHandler as any,
+    };
+
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: new RecordingApiHandler(
+          createApiSuccess({ id: "sales-order-id" }, suppliedRequestId),
+        ),
+        postInventoryMovement: new RecordingApiHandler(
+          createApiSuccess({ id: "movement-id" }, suppliedRequestId),
+        ),
+        shipping: shippingHandlers,
+      },
+    });
+
+    // 1. POST /sales/orders/:id/dispatch
+    const dispatchRes = await fetch(
+      `${runtime.url}/sales/orders/${salesOrderId}/dispatch`,
+      {
+        body: JSON.stringify({
+          courierProvider: "STEADFAST",
+          trackingCode: "ST-9988",
+        }),
+        headers: developmentHeaders(),
+        method: "POST",
+      },
+    );
+    expect(dispatchRes.status).toBe(200);
+    expect(dispatchHandler.requests).toHaveLength(1);
+    expect(dispatchHandler.requests[0]?.input).toEqual({
+      courierProvider: "STEADFAST",
+      salesOrderId,
+      trackingCode: "ST-9988",
+    });
+    expect(dispatchHandler.requests[0]?.context.organizationId).toBe(organizationId);
+
+    // 2. GET /sales/orders/:id/shipment
+    const getShipmentRes = await fetch(
+      `${runtime.url}/sales/orders/${salesOrderId}/shipment`,
+      {
+        headers: developmentHeaders(),
+        method: "GET",
+      },
+    );
+    expect(getShipmentRes.status).toBe(200);
+    expect(getShipmentByOrderHandler.requests).toHaveLength(1);
+    expect(getShipmentByOrderHandler.requests[0]?.input).toEqual({
+      salesOrderId,
+    });
+    expect(getShipmentByOrderHandler.requests[0]?.context.organizationId).toBe(organizationId);
+
+    // 3. PATCH /shipping/consignments/:id/status
+    const updateRes = await fetch(
+      `${runtime.url}/shipping/consignments/${consignmentId}/status`,
+      {
+        body: JSON.stringify({
+          note: "Departed hub",
+          status: "IN_TRANSIT",
+        }),
+        headers: developmentHeaders(),
+        method: "PATCH",
+      },
+    );
+    expect(updateRes.status).toBe(200);
+    expect(updateStatusHandler.requests).toHaveLength(1);
+    expect(updateStatusHandler.requests[0]?.input).toEqual({
+      consignmentId,
+      note: "Departed hub",
+      status: "IN_TRANSIT",
+    });
+    expect(updateStatusHandler.requests[0]?.context.organizationId).toBe(organizationId);
+
+    // 4. GET /shipping/consignments/:id
+    const getConsignmentRes = await fetch(
+      `${runtime.url}/shipping/consignments/${consignmentId}`,
+      {
+        headers: developmentHeaders(),
+        method: "GET",
+      },
+    );
+    expect(getConsignmentRes.status).toBe(200);
+    expect(getConsignmentHandler.requests).toHaveLength(1);
+    expect(getConsignmentHandler.requests[0]?.input).toEqual({
+      consignmentId,
+    });
+    expect(getConsignmentHandler.requests[0]?.context.organizationId).toBe(organizationId);
   });
 });
 

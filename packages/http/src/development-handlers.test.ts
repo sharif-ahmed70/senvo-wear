@@ -268,6 +268,12 @@ function createMockServices(): ApplicationServices {
       paymentStatus: () => ok({} as never),
       retryPayment: () => ok({} as never),
     } as unknown as ApplicationServices["storefront"],
+    shipping: {
+      dispatchSalesOrder: () => ok({} as never),
+      getConsignment: () => ok({} as never),
+      getShipmentByOrder: () => ok([] as never),
+      updateShipmentStatus: () => ok({} as never),
+    } as unknown as ApplicationServices["shipping"],
     workforceAuthentication: undefined,
   };
 }

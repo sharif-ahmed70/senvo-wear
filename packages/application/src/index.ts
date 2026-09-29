@@ -131,3 +131,9 @@ export {
   ProcurementApplicationService,
   type ProcurementApplicationServiceDependencies,
 } from "./procurement/procurement-application-service.js";
+export {
+  ShippingApplicationService,
+  type ShippingApplicationServiceDependencies,
+  type ShippingAuditWriter,
+} from "./shipping/shipping-application-service.js";
+export { mapCourierConsignment } from "./shipping/mappers.js";

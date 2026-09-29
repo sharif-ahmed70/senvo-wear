@@ -54,6 +54,12 @@ export {
   type ProcurementApplication,
 } from "./procurement-handlers.js";
 export {
+  createShippingApiHandlers,
+  type ShippingApiDependencies,
+  type ShippingApiHandlers,
+  type ShippingApplication,
+} from "./shipping-handlers.js";
+export {
   createApplicationContext,
   type ApiAuthenticatedUser,
   type ApiRequestContext,

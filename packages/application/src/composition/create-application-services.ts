@@ -33,6 +33,7 @@ import {
   PrismaSupplierRepository,
   PrismaPurchaseRepository,
   PrismaCostRepository,
+  PrismaCourierConsignmentRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -77,6 +78,7 @@ import type {
   SupplierRepository,
   PurchaseRepository,
   CostRepository,
+  CourierConsignmentRepository,
   UserCredentialRepository,
   WorkforceAuthenticationRepository,
 } from "@senvo/domain";
@@ -105,6 +107,7 @@ import { StorefrontReservationMaintenanceService } from "../storefront/storefron
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
 import { WorkforceAuthenticationService } from "../workforce/workforce-authentication-service.js";
+import { ShippingApplicationService } from "../shipping/shipping-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -152,6 +155,7 @@ export type CreateApplicationServicesOptions = {
   supplierRepository?: SupplierRepository;
   purchaseRepository?: PurchaseRepository;
   costRepository?: CostRepository;
+  courierConsignmentRepository?: CourierConsignmentRepository;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
   customerAuthenticationRepository?: CustomerAuthenticationRepository;
@@ -174,6 +178,7 @@ export type ApplicationServices = {
   procurement: ProcurementApplicationService;
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
+  shipping: ShippingApplicationService;
   storefront: StorefrontApplicationService;
   customerAuthentication?: CustomerAuthenticationService;
   workforceAuthentication?: WorkforceAuthenticationService;
@@ -379,6 +384,11 @@ export function createApplicationServices(
   if (!posSettlementRepository && prismaClient)
     posSettlementRepository = new PrismaPosSettlementRepository(prismaClient);
 
+  let courierConsignmentRepository = options.courierConsignmentRepository;
+  if (!courierConsignmentRepository && prismaClient)
+    courierConsignmentRepository =
+      new PrismaCourierConsignmentRepository(prismaClient);
+
   if (!workforceAuthenticationRepository && prismaClient)
     workforceAuthenticationRepository =
       new PrismaWorkforceAuthenticationRepository(prismaClient);
@@ -570,6 +580,17 @@ export function createApplicationServices(
       salesSourceRepository,
       transactionManager,
     }),
+    shipping: new ShippingApplicationService({
+      authorizationService: options.authorizationService,
+      consignments:
+        courierConsignmentRepository ??
+        (prismaClient
+          ? new PrismaCourierConsignmentRepository(prismaClient)
+          : fakeCourierConsignmentRepository),
+      requestIdGenerator: options.requestIdGenerator,
+      salesOrders: salesOrderRepository,
+      transactionManager,
+    }),
     storefront: new StorefrontApplicationService({
       clock,
       maintenanceService: new StorefrontReservationMaintenanceService({
@@ -615,3 +636,12 @@ function resolveStorageProvider(
     process.env.MEDIA_STORAGE_ROOT ?? ".senvo-media",
   );
 }
+
+const fakeCourierConsignmentRepository: CourierConsignmentRepository = {
+  create: () => Promise.reject(new Error("No courier consignment repository configured.")),
+  findActiveBySalesOrderId: () => Promise.resolve(null),
+  findByConsignmentNumber: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  listBySalesOrderId: () => Promise.resolve([]),
+  update: () => Promise.reject(new Error("No courier consignment repository configured.")),
+};

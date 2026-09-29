@@ -10,6 +10,7 @@ import {
   createSalesOrderApiHandler,
   createSalesOrderManagementApiHandlers,
   createSalesSourceApiHandlers,
+  createShippingApiHandlers,
   createStorefrontApiHandlers,
 } from "@senvo/api";
 import type {
@@ -86,6 +87,15 @@ export function createDevelopmentApiHandlers(
             application: options.services.onlinePayments,
             authenticationService: options.authenticationService,
             authorizationService: options.authorizationService,
+          }),
+        }
+      : {}),
+    ...(options.services.shipping
+      ? {
+          shipping: createShippingApiHandlers({
+            authenticationService: options.authenticationService,
+            authorizationService: options.authorizationService,
+            shipping: options.services.shipping,
           }),
         }
       : {}),

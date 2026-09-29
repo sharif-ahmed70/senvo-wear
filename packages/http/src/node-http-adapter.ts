@@ -15,6 +15,7 @@ import type {
   ProcurementApiHandlers,
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
+  ShippingApiHandlers,
   StorefrontApiHandlers,
 } from "@senvo/api";
 import {
@@ -66,6 +67,7 @@ export type SenvoHttpHandlers = {
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
+  shipping?: ShippingApiHandlers;
   storefront?: StorefrontApiHandlers;
 };
 
@@ -959,6 +961,45 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         method: "POST",
         path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/adjustments$/iu,
         successStatus: 201,
+      },
+    );
+  }
+  if (handlers.shipping) {
+    const shipping = handlers.shipping;
+    routes.push(
+      {
+        handler: shipping.dispatch,
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
+          salesOrderId: match.groups?.id,
+        }),
+        method: "POST",
+        path: /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/dispatch$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.getShipmentByOrder,
+        input: (_body, match) => ({ salesOrderId: match.groups?.id }),
+        method: "GET",
+        path: /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/shipment$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.updateStatus,
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
+          consignmentId: match.groups?.id,
+        }),
+        method: "PATCH",
+        path: /^\/shipping\/consignments\/(?<id>[0-9a-f-]+)\/status$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.getConsignment,
+        input: (_body, match) => ({ consignmentId: match.groups?.id }),
+        method: "GET",
+        path: /^\/shipping\/consignments\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
       },
     );
   }
