@@ -883,3 +883,40 @@ export type {
   RecordSupplierAdjustmentResult,
 } from "./procurement/application/supplier-payment-use-cases.js";
 
+export type {
+  CourierConsignment,
+  CourierProvider,
+  ShipmentReturnEvent,
+  ShipmentStatus,
+} from "./shipping/domain/models.js";
+export {
+  ACTIVE_SHIPMENT_STATUSES,
+  ALLOWED_SHIPMENT_TRANSITIONS,
+  TERMINAL_SHIPMENT_STATUSES,
+  assertNoActiveShipment,
+  assertOrderCanBeDispatched,
+  assertValidShipmentTransition,
+  canTransitionShipmentStatus,
+  normalizeCodAmount,
+} from "./shipping/domain/shipping-rules.js";
+export type {
+  CourierConsignmentRepository,
+  CreateCourierConsignmentRecord,
+  UpdateCourierConsignmentRecord,
+} from "./shipping/repositories/courier-consignment-repository.js";
+export {
+  dispatchSalesOrder,
+  getConsignmentById,
+  getShipmentsByOrderId,
+  updateShipmentStatus,
+} from "./shipping/application/shipping-use-cases.js";
+export type {
+  DispatchSalesOrderDependencies,
+  DispatchSalesOrderInput,
+  DispatchSalesOrderResult,
+  GetConsignmentByIdDependencies,
+  GetShipmentsByOrderIdDependencies,
+  UpdateShipmentStatusDependencies,
+  UpdateShipmentStatusInput,
+  UpdateShipmentStatusResult,
+} from "./shipping/application/shipping-use-cases.js";
