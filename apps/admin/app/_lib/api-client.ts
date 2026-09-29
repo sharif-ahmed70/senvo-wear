@@ -40,6 +40,9 @@ import type {
   PublicErrorDetails,
   SizeContract,
   RoleVisibilityContract,
+  CourierConsignmentContract,
+  DispatchSalesOrderServiceInputContract,
+  UpdateShipmentStatusServiceInputContract,
   SalesOrderDetailsReadContract,
   SalesOrderListReadPageContract,
   SalesOrderManagementActionInputContract,
@@ -947,6 +950,48 @@ export class AdminApiClient {
     request?: AdminApiRequest,
   ) {
     return this.salesOrderAction("cancel", input, request);
+  }
+
+  dispatchSalesOrder(
+    input: DispatchSalesOrderServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CourierConsignmentContract>(
+      `/sales/orders/${encodeURIComponent(input.salesOrderId)}/dispatch`,
+      {
+        ...request,
+        body: input,
+        method: "POST",
+      },
+    );
+  }
+
+  getOrderShipments(salesOrderId: string, request?: AdminApiRequest) {
+    return this.request<CourierConsignmentContract[]>(
+      `/sales/orders/${encodeURIComponent(salesOrderId)}/shipment`,
+      request,
+    );
+  }
+
+  getConsignment(consignmentId: string, request?: AdminApiRequest) {
+    return this.request<CourierConsignmentContract>(
+      `/shipping/consignments/${encodeURIComponent(consignmentId)}`,
+      request,
+    );
+  }
+
+  updateShipmentStatus(
+    input: UpdateShipmentStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CourierConsignmentContract>(
+      `/shipping/consignments/${encodeURIComponent(input.consignmentId)}/status`,
+      {
+        ...request,
+        body: input,
+        method: "PATCH",
+      },
+    );
   }
 
   getOrganizationProfile(request?: AdminApiRequest) {

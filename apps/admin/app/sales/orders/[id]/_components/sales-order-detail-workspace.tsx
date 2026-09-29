@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  CourierConsignmentContract,
   OnlinePaymentAdminResultContract,
   SalesOrderDetailsReadContract,
 } from "@senvo/contracts";
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   ShieldCheck,
   ShoppingBag,
+  Truck,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +34,8 @@ import {
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
+import { CourierDispatchModal } from "./courier-dispatch-modal";
+import { ShipmentTrackingCard } from "./shipment-tracking-card";
 import styles from "./sales-order-detail-workspace.module.css";
 
 const client = new AdminApiClient({
@@ -57,6 +61,8 @@ export function SalesOrderDetailWorkspace({
   const [order, setOrder] = useState<SalesOrderDetailsReadContract | null>(
     null,
   );
+  const [shipments, setShipments] = useState<CourierConsignmentContract[]>([]);
+  const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<SalesAction | "">("");
   const [error, setError] = useState("");
@@ -67,7 +73,14 @@ export function SalesOrderDetailWorkspace({
     setLoading(true);
     setError("");
     try {
-      setOrder((await client.getSalesOrder(orderId)).data);
+      const orderRes = await client.getSalesOrder(orderId);
+      setOrder(orderRes.data);
+      try {
+        const shipmentRes = await client.getOrderShipments(orderId);
+        setShipments(shipmentRes.data ?? []);
+      } catch {
+        setShipments([]);
+      }
     } catch (caught) {
       setError(safeMessage(caught));
       setOrder(null);
@@ -141,6 +154,14 @@ export function SalesOrderDetailWorkspace({
     [order.delivery.district, order.delivery.city].filter(Boolean).join(", ") ||
     "Not provided";
 
+  const hasActiveShipment = shipments.some((s) =>
+    ["BOOKED", "PICKED_UP", "IN_TRANSIT", "DELIVERED"].includes(s.status),
+  );
+  const canDispatch =
+    canUpdate &&
+    (order.status === "CONFIRMED" || order.status === "FULFILLED") &&
+    !hasActiveShipment;
+
   return (
     <main className={styles.page}>
       <header className={styles.pageHeader}>
@@ -169,6 +190,15 @@ export function SalesOrderDetailWorkspace({
           >
             <Printer size={16} /> Print order
           </button>
+          {canDispatch ? (
+            <button
+              className={styles.primaryButton}
+              onClick={() => setIsDispatchModalOpen(true)}
+              type="button"
+            >
+              <Truck size={15} /> Dispatch via Courier
+            </button>
+          ) : null}
           {canUpdate
             ? actions.map((action) => (
                 <button
@@ -341,6 +371,14 @@ export function SalesOrderDetailWorkspace({
               />
             </div>
           </section>
+
+          <ShipmentTrackingCard
+            canUpdate={canUpdate}
+            client={client}
+            onStatusUpdated={() => void load()}
+            order={order}
+            shipments={shipments}
+          />
         </div>
 
         <aside className={styles.sideColumn}>
@@ -418,6 +456,17 @@ export function SalesOrderDetailWorkspace({
           orderNumber={order.orderNumber}
         />
       ) : null}
+
+      <CourierDispatchModal
+        client={client}
+        isOpen={isDispatchModalOpen}
+        onClose={() => setIsDispatchModalOpen(false)}
+        onDispatched={() => {
+          setIsDispatchModalOpen(false);
+          void load();
+        }}
+        order={order}
+      />
     </main>
   );
 }
