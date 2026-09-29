@@ -30,6 +30,12 @@ export type PosCheckoutSalesOrderRepository = Pick<
   "confirm" | "createDraft" | "findByIdempotencyKey" | "fulfill" | "reserve"
 >;
 
+export type PosCheckoutCustomerInput = {
+  addressLine1?: string | null;
+  name?: string | null;
+  phone?: string | null;
+};
+
 export async function checkoutCart(
   repositories: {
     checkouts: PosCheckoutRepository;
@@ -43,6 +49,7 @@ export async function checkoutCart(
     cartId: string;
     checkoutId: string;
     completedAt: Date;
+    customer?: PosCheckoutCustomerInput | null;
     idempotencyKey: string;
     organizationId: string;
     paymentBatchId: string;
@@ -115,6 +122,9 @@ export async function checkoutCart(
         ? "EVENT_BOOTH"
         : "OFFLINE_STORE",
     currencyCode: "BDT",
+    customerName: input.customer?.name ?? null,
+    customerPhone: input.customer?.phone ?? null,
+    deliveryAddressLine1: input.customer?.addressLine1 ?? null,
     idempotencyKey: orderKey,
     lines,
     note: `POS checkout ${checkoutId}`,

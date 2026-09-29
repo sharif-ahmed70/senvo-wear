@@ -3549,33 +3549,40 @@ export const checkoutPaymentInstructionSchema = z
       });
     }
   });
-export const posCheckoutContractSchema = z
+export const posCheckoutContractSchema = z.object({
+  cartId: idSchema,
+  completedAt: isoTimestampSchema,
+  counterId: idSchema,
+  counterName: z.string(),
+  createdAt: isoTimestampSchema,
+  id: idSchema,
+  idempotencyKey: z.string(),
+  orderNumber: z.string(),
+  outstandingMinor: minorUnitAmountSchema.nullable(),
+  paidMinor: minorUnitAmountSchema.nullable(),
+  paymentStatus: checkoutPaymentStatusSchema,
+  receiptId: idSchema.nullable(),
+  receiptNumber: z.string().nullable(),
+  salesOrderId: idSchema,
+  salesSessionId: idSchema,
+  staffName: z.string(),
+  status: posCheckoutStatusSchema,
+  subtotalMinor: minorUnitAmountSchema,
+  totalMinor: minorUnitAmountSchema,
+  updatedAt: isoTimestampSchema,
+});
+export const posCheckoutCustomerInputSchema = z
   .object({
-    cartId: idSchema,
-    completedAt: isoTimestampSchema,
-    counterId: idSchema,
-    counterName: z.string(),
-    createdAt: isoTimestampSchema,
-    id: idSchema,
-    idempotencyKey: z.string(),
-    orderNumber: z.string(),
-    outstandingMinor: minorUnitAmountSchema.nullable(),
-    paidMinor: minorUnitAmountSchema.nullable(),
-    paymentStatus: checkoutPaymentStatusSchema,
-    receiptId: idSchema.nullable(),
-    receiptNumber: z.string().nullable(),
-    salesOrderId: idSchema,
-    salesSessionId: idSchema,
-    staffName: z.string(),
-    status: posCheckoutStatusSchema,
-    subtotalMinor: minorUnitAmountSchema,
-    totalMinor: minorUnitAmountSchema,
-    updatedAt: isoTimestampSchema,
+    addressLine1: optionalTextSchema(240),
+    name: optionalTextSchema(160),
+    phone: phoneSchema,
   })
   .strict();
+
 export const checkoutPosCartServiceInputSchema = z
   .object({
     cartId: idSchema,
+    customer: posCheckoutCustomerInputSchema.nullable().optional(),
     idempotencyKey: z
       .string()
       .trim()
@@ -4032,6 +4039,9 @@ export type PosCartDetailsContract = z.infer<
 >;
 export type PosSaleLookupContract = z.infer<typeof posSaleLookupContractSchema>;
 export type PosCheckoutContract = z.infer<typeof posCheckoutContractSchema>;
+export type PosCheckoutCustomerInputContract = z.infer<
+  typeof posCheckoutCustomerInputSchema
+>;
 export type CheckoutPosCartServiceInputContract = z.infer<
   typeof checkoutPosCartServiceInputSchema
 >;

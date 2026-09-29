@@ -169,6 +169,25 @@ describe("PosApplicationService checkout", () => {
     ]);
     expect(JSON.stringify(audits)).not.toContain("CARD-SECRET-REF");
   });
+
+  it("passes optional customer details through POS checkout", async () => {
+    const audits: Array<Record<string, unknown>> = [];
+    const service = serviceWith({
+      transactionManager: successfulTransaction(audits),
+    });
+    const result = await service.checkoutCart(context(), {
+      ...checkoutPayload(),
+      customer: {
+        addressLine1: "12/A Dhanmondi",
+        name: "Jane Doe",
+        phone: "+8801700000000",
+      },
+    });
+    expect(result).toMatchObject({
+      data: { paymentStatus: "PAID" },
+      ok: true,
+    });
+  });
 });
 
 describe("PosApplicationService cart reads", () => {

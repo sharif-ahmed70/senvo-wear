@@ -408,6 +408,40 @@ describe("API contracts", () => {
         payments: [],
       }).success,
     ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          addressLine1: "House 12, Road 4, Banani",
+          name: "Ahmed Sharif",
+          phone: "+8801711111111",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          addressLine1: null,
+          name: "Ahmed Sharif",
+          phone: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          phone: "invalid-phone",
+        },
+      }).success,
+    ).toBe(false);
   });
   it("creates a discriminated success response", () => {
     expect(createApiSuccess({ ready: true }, "req_contract_1")).toEqual({
@@ -2299,7 +2333,8 @@ describe("supplier payment and ledger contracts", () => {
         sessionId,
       };
       expect(
-        posSessionReconciliationSummaryContractSchema.safeParse(summary).success,
+        posSessionReconciliationSummaryContractSchema.safeParse(summary)
+          .success,
       ).toBe(true);
     });
 
@@ -2316,7 +2351,8 @@ describe("supplier payment and ledger contracts", () => {
         sessionId,
       };
       expect(
-        closeSalesSessionWithSettlementServiceInputSchema.safeParse(input).success,
+        closeSalesSessionWithSettlementServiceInputSchema.safeParse(input)
+          .success,
       ).toBe(true);
     });
 
@@ -2477,9 +2513,9 @@ describe("supplier payment and ledger contracts", () => {
         orderNumber: "ORD-2026-0001",
         phone: "+8801700000000",
       };
-      expect(trackStorefrontOrderInputSchema.safeParse(trackInput).success).toBe(
-        true,
-      );
+      expect(
+        trackStorefrontOrderInputSchema.safeParse(trackInput).success,
+      ).toBe(true);
 
       // Rejects invalid phone
       expect(

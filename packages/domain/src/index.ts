@@ -178,7 +178,10 @@ export {
   getCheckoutStatus,
   listCheckoutHistory,
 } from "./pos/application/checkout-use-cases.js";
-export type { PosCheckoutSalesOrderRepository } from "./pos/application/checkout-use-cases.js";
+export type {
+  PosCheckoutCustomerInput,
+  PosCheckoutSalesOrderRepository,
+} from "./pos/application/checkout-use-cases.js";
 export {
   addPosCartItem,
   addCartItem,
