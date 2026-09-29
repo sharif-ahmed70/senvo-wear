@@ -27,6 +27,8 @@ import Link from "next/link";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 import { useAdminPermissions } from "../../admin-shell";
+import { formatBdt, parseTaka } from "../sell/_lib/money";
+import { RegisterSettlementModal } from "../sessions/_components/register-settlement-modal";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -446,6 +448,8 @@ function SessionManagement({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [settlingSession, setSettlingSession] =
+    useState<SalesSessionContract | null>(null);
   const counterNames = useMemo(
     () => new Map(counters.map((counter) => [counter.id, counter.name])),
     [counters],
@@ -474,23 +478,13 @@ function SessionManagement({
     event.preventDefault();
     try {
       const form = new FormData(event.currentTarget);
+      const floatStr = formText(form, "openingFloat");
+      const openingFloatMinor = floatStr ? (parseTaka(floatStr) ?? 0) : 0;
       await client.openSalesSession({
         counterId: formText(form, "counterId"),
+        openingFloatMinor,
       });
       setSuccess("Sales session opened.");
-      setError(null);
-      await load();
-    } catch (reason) {
-      setError(messageFor(reason));
-    }
-  }
-  async function close(session: SalesSessionContract) {
-    try {
-      await client.closeSalesSession({
-        expectedVersion: session.version,
-        sessionId: session.id,
-      });
-      setSuccess("Sales session closed.");
       setError(null);
       await load();
     } catch (reason) {
@@ -529,6 +523,15 @@ function SessionManagement({
               ))}
             </select>
           </label>
+          <label>
+            Opening cash float (৳)
+            <input
+              name="openingFloat"
+              type="text"
+              placeholder="0.00"
+              style={{ width: "120px" }}
+            />
+          </label>
           <button
             className="catalog-primary-button"
             disabled={availableCounters.length === 0}
@@ -561,6 +564,7 @@ function SessionManagement({
                 <th>Counter</th>
                 <th>Opened</th>
                 <th>Closed</th>
+                <th>Opening Float</th>
                 <th>Status</th>
                 <th>
                   <span className="sr-only">Actions</span>
@@ -579,25 +583,68 @@ function SessionManagement({
                   <td data-label="Closed">
                     {session.closedAt ? formatDate(session.closedAt) : "-"}
                   </td>
+                  <td data-label="Opening Float">
+                    {formatBdt(session.openingFloatMinor ?? 0)}
+                  </td>
                   <td data-label="Status">
                     <Status value={session.status} />
                   </td>
                   <td data-label="Action">
-                    {canUpdate && session.status === "OPEN" ? (
-                      <button
-                        className="source-secondary"
-                        onClick={() => void close(session)}
-                        type="button"
+                    {session.status === "OPEN" ? (
+                      canUpdate ? (
+                        <button
+                          className="catalog-primary-button"
+                          style={{
+                            padding: "0.35rem 0.75rem",
+                            fontSize: "0.8125rem",
+                          }}
+                          onClick={() => setSettlingSession(session)}
+                          type="button"
+                          data-testid="reconcile-close-btn"
+                        >
+                          Reconcile & Close
+                        </button>
+                      ) : (
+                        <span className="pos-muted">Open</span>
+                      )
+                    ) : (
+                      <Link
+                        className="pos-receipt-link"
+                        href={`/pos/sessions/${session.id}/z-report`}
                       >
-                        Close session
-                      </button>
-                    ) : null}
+                        View Z-Report
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {settlingSession && (
+        <RegisterSettlementModal
+          sessionId={settlingSession.id}
+          sessionVersion={settlingSession.version}
+          counterName={counterNames.get(settlingSession.counterId)}
+          onClose={() => setSettlingSession(null)}
+          onSettled={(settlement) => {
+            try {
+              sessionStorage.setItem(
+                `senvo_settlement_${settlingSession.id}`,
+                JSON.stringify(settlement),
+              );
+            } catch {
+              // ignore
+            }
+            setSettlingSession(null);
+            setSuccess(
+              "Register settled and closed successfully. Day-End Z-Report is ready.",
+            );
+            void load();
+          }}
+        />
       )}
     </main>
   );

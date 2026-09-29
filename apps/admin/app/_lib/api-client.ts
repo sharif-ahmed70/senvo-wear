@@ -101,6 +101,9 @@ import type {
   OnlinePaymentAdminResultContract,
   ProviderRefundContract,
   CloseSalesSessionServiceInputContract,
+  CloseSalesSessionWithSettlementServiceInputContract,
+  PosSessionReconciliationSummaryContract,
+  PosRegisterSettlementContract,
   AddPosCartItemServiceInputContract,
   UpdatePosCartItemServiceInputContract,
   RemovePosCartItemServiceInputContract,
@@ -1104,6 +1107,27 @@ export class AdminApiClient {
     const { sessionId, ...body } = input;
     return this.request<SalesSessionContract>(
       `/pos/sessions/${sessionId}/close`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  getSessionReconciliationSummary(
+    sessionId: string,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PosSessionReconciliationSummaryContract>(
+      `/pos/sessions/${sessionId}/reconciliation`,
+      request,
+    );
+  }
+
+  closeSessionWithSettlement(
+    input: CloseSalesSessionWithSettlementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { sessionId, ...body } = input;
+    return this.request<PosRegisterSettlementContract>(
+      `/pos/sessions/${sessionId}/settlement`,
       { ...request, body, method: "POST" },
     );
   }

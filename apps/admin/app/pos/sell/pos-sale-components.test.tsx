@@ -34,6 +34,7 @@ const session: SalesSessionContract = {
   id: id("4"),
   openedAt: "2026-08-06T00:00:00.000Z",
   openedByUserId: id("5"),
+  openingFloatMinor: 0,
   status: "OPEN",
   updatedAt: "2026-08-06T00:00:00.000Z",
   version: 1,

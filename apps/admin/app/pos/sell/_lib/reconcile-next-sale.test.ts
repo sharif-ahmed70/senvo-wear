@@ -91,6 +91,7 @@ function session(suffix: string, version: number): SalesSessionContract {
     id: id(suffix),
     openedAt: timestamp,
     openedByUserId: id("9"),
+    openingFloatMinor: 0,
     status: "OPEN",
     updatedAt: timestamp,
     version,
