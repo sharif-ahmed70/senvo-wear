@@ -1,4 +1,9 @@
-import type { ProductVariantContract } from "@senvo/contracts";
+import type {
+  ProductContract,
+  ProductDetailsContract,
+  ProductVariantContract,
+} from "@senvo/contracts";
+import type * as React from "react";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +15,7 @@ import {
   validateStep,
 } from "./products/_components/product-create-wizard";
 import { ProductFields, submitProduct } from "./_components/catalog-workspace";
+import { ProductCard } from "./_components/catalog-overview";
 
 // Exercise the component's event handlers with persistent hook state, without a browser dependency.
 const hooks = vi.hoisted(() => ({
@@ -20,7 +26,7 @@ const hooks = vi.hoisted(() => ({
   refCursor: 0,
 }));
 vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>();
+  const actual = await importOriginal<typeof React>();
   return {
     ...actual,
     useState: (initial: unknown) => {
@@ -165,9 +171,7 @@ describe("catalog variant pricing UI", () => {
       >);
     const createVariant = vi
       .spyOn(AdminApiClient.prototype, "createVariant")
-      .mockResolvedValue({ data: variant, requestId: "test" } as Awaited<
-        ReturnType<AdminApiClient["createVariant"]>
-      >);
+      .mockResolvedValue({ data: variant, requestId: "test" });
     const error = vi.fn();
     await submitProduct(form, "Shirt", vi.fn(), error);
     expect(createProduct).not.toHaveBeenCalled();
@@ -221,7 +225,7 @@ describe("catalog variant pricing UI", () => {
     resolve({
       data: { ...variant, sellingPriceMinor: 12550 },
       requestId: "test",
-    } as Awaited<ReturnType<AdminApiClient["updateVariantPrice"]>>);
+    });
     await request;
     await Promise.resolve();
     expect(onSaved).toHaveBeenCalledWith(
@@ -246,5 +250,227 @@ describe("catalog variant pricing UI", () => {
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({ expectedSellingPriceMinor: 0 }),
     );
+  });
+});
+
+const mockProduct: ProductContract = {
+  categoryId: "cat-1",
+  createdAt: new Date().toISOString(),
+  description: "Test description",
+  id: "prod-1",
+  name: "Panjabi Special",
+  organizationId: "org-1",
+  productCode: "PANJ-001",
+  slug: "panjabi-special",
+  status: "ACTIVE",
+  updatedAt: new Date().toISOString(),
+};
+
+const mockColors = new Map([
+  ["col-1", { hexValue: "#000000", id: "col-1", name: "Black" }],
+  ["col-2", { hexValue: "#000080", id: "col-2", name: "Navy Blue" }],
+]);
+
+const mockSizes = new Map([
+  ["sz-1", { id: "sz-1", name: "M" }],
+  ["sz-2", { id: "sz-2", name: "L" }],
+]);
+
+function createCardDetail(overrides?: {
+  sellingPriceMinor1?: number;
+  sellingPriceMinor2?: number;
+  totalAvailableStock?: number;
+}) {
+  const variants: ProductVariantContract[] = [
+    {
+      colorId: "col-1",
+      createdAt: new Date().toISOString(),
+      id: "var-1",
+      organizationId: "org-1",
+      productId: "prod-1",
+      sellingPriceMinor: overrides?.sellingPriceMinor1 ?? 85000,
+      sizeId: "sz-1",
+      sku: "PANJ-BLK-M",
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      colorId: "col-2",
+      createdAt: new Date().toISOString(),
+      id: "var-2",
+      organizationId: "org-1",
+      productId: "prod-1",
+      sellingPriceMinor: overrides?.sellingPriceMinor2 ?? 95000,
+      sizeId: "sz-2",
+      sku: "PANJ-NAV-L",
+      status: "ACTIVE",
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+
+  const details: ProductDetailsContract = {
+    collectionIds: [],
+    primaryImage: {
+      altText: "Panjabi Front",
+      assetId: "asset-1",
+      byteSize: 1024,
+      contentType: "image/jpeg",
+      url: "https://example.com/panjabi.jpg",
+    },
+    product: mockProduct,
+    variants,
+  };
+
+  return {
+    barcodeVariantCount: 2,
+    details,
+    totalAvailableStock: overrides?.totalAvailableStock ?? 25,
+  };
+}
+
+describe("ProductCard", () => {
+  it("renders product name, category, and code", () => {
+    const detail = createCardDetail();
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi Collection"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("Panjabi Special");
+    expect(html).toContain("Panjabi Collection");
+    expect(html).toContain("PANJ-001");
+  });
+
+  it("renders formatted selling price range when prices differ", () => {
+    const detail = createCardDetail();
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("৳850");
+    expect(html).toContain("৳950");
+  });
+
+  it("renders single selling price when all variants share the same price", () => {
+    const detail = createCardDetail({ sellingPriceMinor2: 85000 });
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("৳850");
+    expect(html).not.toContain("৳950");
+  });
+
+  it("renders in-stock badge (>10 pcs)", () => {
+    const detail = createCardDetail({ totalAvailableStock: 50 });
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("50 পিস স্টকে");
+  });
+
+  it("renders low stock badge (1-10 pcs)", () => {
+    const detail = createCardDetail({ totalAvailableStock: 4 });
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("মাত্র 4 পিস বাকি");
+  });
+
+  it("renders out of stock badge (0 pcs)", () => {
+    const detail = createCardDetail({ totalAvailableStock: 0 });
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("স্টক খালি (0 পিস)");
+  });
+
+  it("renders colors and sizes", () => {
+    const detail = createCardDetail();
+    const html = renderToStaticMarkup(
+      <ProductCard
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("Black");
+    expect(html).toContain("Navy Blue");
+    expect(html).toContain("M");
+    expect(html).toContain("L");
+  });
+
+  it("shows Add Stock button when canAddStock is true", () => {
+    const detail = createCardDetail();
+    const html = renderToStaticMarkup(
+      <ProductCard
+        canAddStock={true}
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).toContain("+ মাল ঢুকান (Add Stock)");
+    expect(html).toContain("/inventory/receive?productId=prod-1");
+  });
+
+  it("hides Add Stock button when canAddStock is false", () => {
+    const detail = createCardDetail();
+    const html = renderToStaticMarkup(
+      <ProductCard
+        canAddStock={false}
+        category="Panjabi"
+        colorMap={mockColors}
+        detail={detail}
+        product={mockProduct}
+        sizeMap={mockSizes}
+      />,
+    );
+
+    expect(html).not.toContain("+ মাল ঢুকান (Add Stock)");
   });
 });

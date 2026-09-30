@@ -193,6 +193,357 @@
   text-align: right;
 }
 
+.viewToggle {
+  align-items: center;
+  background: #f0ebe1;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+}
+
+.viewToggle button {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--catalog-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  gap: 5px;
+  padding: 5px 10px;
+  transition: all 0.15s ease;
+}
+
+.viewToggle button:hover {
+  color: var(--catalog-ink);
+}
+
+.viewToggle button.viewActive {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  color: var(--catalog-burgundy);
+}
+
+.cardsGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  padding: 18px;
+}
+
+/* Product Card */
+.productCard {
+  background: #ffffff;
+  border: 1px solid var(--catalog-border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.productCard:hover {
+  border-color: #d1c5b4;
+  box-shadow: 0 10px 24px rgba(30, 33, 31, 0.08);
+  transform: translateY(-2px);
+}
+
+.cardMedia {
+  aspect-ratio: 4 / 3;
+  background: #f7f3ec;
+  border-bottom: 1px solid var(--catalog-border);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.cardImage {
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  transition: transform 0.3s ease;
+  width: 100%;
+}
+
+.productCard:hover .cardImage {
+  transform: scale(1.03);
+}
+
+.cardPlaceholder {
+  align-items: center;
+  color: #a49f97;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  justify-content: center;
+  user-select: none;
+}
+
+.cardPlaceholder span {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.cardStockBadgeWrapper {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 2;
+}
+
+.cardStockHealthy,
+.cardStockWarning,
+.cardStockEmpty,
+.cardStockLoading,
+.cardStockNeutral {
+  align-items: center;
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  font-size: 0.74rem;
+  font-weight: 700;
+  gap: 5px;
+  letter-spacing: 0.01em;
+  padding: 4px 10px;
+}
+
+.cardStockHealthy {
+  background: rgba(236, 253, 243, 0.95);
+  border: 1px solid #a6f4c5;
+  color: #027a48;
+}
+
+.cardStockWarning {
+  background: rgba(254, 247, 230, 0.95);
+  border: 1px solid #fecdca;
+  color: #b54708;
+}
+
+.cardStockEmpty {
+  background: rgba(254, 243, 242, 0.95);
+  border: 1px solid #fecdca;
+  color: #b42318;
+}
+
+.cardStockLoading,
+.cardStockNeutral {
+  background: rgba(248, 249, 250, 0.92);
+  border: 1px solid #e2e8f0;
+  color: #475467;
+}
+
+.cardBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardCategory {
+  color: var(--catalog-burgundy);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cardTitle {
+  color: var(--catalog-ink);
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.cardTitle a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cardTitle a:hover {
+  color: var(--catalog-burgundy);
+  text-decoration: underline;
+}
+
+.cardCode {
+  color: var(--catalog-muted);
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.cardPricing {
+  align-items: baseline;
+  border-bottom: 1px dashed var(--catalog-border);
+  display: flex;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+
+.cardPriceLabel {
+  color: var(--catalog-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cardPriceValue {
+  color: var(--catalog-ink);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.cardPriceUnset {
+  color: var(--catalog-muted);
+  font-size: 0.84rem;
+  font-style: italic;
+}
+
+.cardAttributes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardAttributeRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cardAttributeLabel {
+  color: var(--catalog-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  min-width: 50px;
+}
+
+.cardColorChips {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cardColorChip {
+  align-items: center;
+  background: #f4efe8;
+  border: 1px solid #ded6c9;
+  border-radius: 12px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 5px;
+  padding: 2px 7px;
+}
+
+.cardColorSwatch {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 10px;
+  height: 10px;
+  width: 10px;
+}
+
+.cardSizeChips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cardSizeChip {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+}
+
+.cardEmptyAttr {
+  color: var(--catalog-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.cardActions {
+  border-top: 1px solid var(--catalog-border);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: auto;
+  padding: 12px 16px;
+}
+
+.cardActionSecondary {
+  align-items: center;
+  background: #fbf9f6;
+  border: 1px solid var(--catalog-border);
+  border-radius: 7px;
+  color: var(--catalog-ink);
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  gap: 5px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 10px;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.cardActionSecondary:hover {
+  background: #ede6dc;
+  border-color: #cfc5b6;
+}
+
+.cardActionPrimary {
+  align-items: center;
+  background: var(--catalog-burgundy);
+  border: 1px solid var(--catalog-burgundy-dark);
+  border-radius: 7px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  gap: 5px;
+  grid-column: 1 / -1;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 12px;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.cardActionPrimary:hover {
+  background: var(--catalog-burgundy-dark);
+}
+
 .filters {
   align-items: center;
   border-bottom: 1px solid var(--catalog-border);

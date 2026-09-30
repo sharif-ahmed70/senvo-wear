@@ -2,8 +2,10 @@
 
 import type {
   CategoryContract,
+  ColorContract,
   ProductContract,
   ProductDetailsContract,
+  SizeContract,
 } from "@senvo/contracts";
 import {
   AlertCircle,
@@ -13,8 +15,11 @@ import {
   Boxes,
   CheckCircle2,
   CircleDashed,
+  CircleSlash2,
   Eye,
   ImageIcon,
+  LayoutGrid,
+  List,
   LoaderCircle,
   PackagePlus,
   Search,
@@ -24,7 +29,9 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient } from "../../_lib/api-client";
+import { useAdminPermissions } from "../../admin-shell";
 import styles from "./catalog-overview.module.css";
 
 const PAGE_SIZE = 8;
@@ -35,13 +42,27 @@ const client = new AdminApiClient({
 type ProductRowDetail = {
   barcodeVariantCount: number;
   details: ProductDetailsContract;
+  stockLoading?: boolean;
+  totalAvailableStock?: number;
 };
 
 type LoadState = "error" | "loading" | "ready";
 
-export function CatalogOverview() {
+export function CatalogOverview({
+  permissions: propsPermissions,
+}: {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
+  const canAddStock = permissions.includes("INVENTORY:CREATE");
+  const canReadInventory = permissions.includes("INVENTORY:READ");
+
   const [products, setProducts] = useState<ProductContract[]>([]);
   const [categories, setCategories] = useState<CategoryContract[]>([]);
+  const [colors, setColors] = useState<ColorContract[]>([]);
+  const [sizes, setSizes] = useState<SizeContract[]>([]);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [rowDetails, setRowDetails] = useState<
     Record<string, ProductRowDetail>
   >({});
@@ -57,12 +78,17 @@ export function CatalogOverview() {
     setState("loading");
     setError("");
     try {
-      const [productResult, categoryResult] = await Promise.all([
-        client.listProducts(),
-        client.listCategories(),
-      ]);
+      const [productResult, categoryResult, colorResult, sizeResult] =
+        await Promise.all([
+          client.listProducts(),
+          client.listCategories(),
+          client.listColors().catch(() => ({ data: [] })),
+          client.listSizes().catch(() => ({ data: [] })),
+        ]);
       setProducts(productResult.data);
       setCategories(categoryResult.data);
+      setColors(colorResult.data);
+      setSizes(sizeResult.data);
       setState("ready");
     } catch (caught) {
       setError(messageFor(caught));
@@ -77,6 +103,16 @@ export function CatalogOverview() {
   const categoryMap = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories],
+  );
+
+  const colorMap = useMemo(
+    () => new Map(colors.map((color) => [color.id, color])),
+    [colors],
+  );
+
+  const sizeMap = useMemo(
+    () => new Map(sizes.map((size) => [size.id, size])),
+    [sizes],
   );
 
   const filtered = useMemo(() => {
@@ -115,20 +151,50 @@ export function CatalogOverview() {
     void Promise.all(
       missing.map(async (product) => {
         const detailsResult = await client.getProduct(product.id);
-        const barcodeLists = await Promise.all(
-          detailsResult.data.variants.map((variant) =>
-            client
-              .listVariantBarcodes(variant.id)
-              .then((result) => result.data)
-              .catch(() => []),
+        const [barcodeLists, availabilityLists] = await Promise.all([
+          Promise.all(
+            detailsResult.data.variants.map((variant) =>
+              client
+                .listVariantBarcodes(variant.id)
+                .then((result) => result.data)
+                .catch(() => []),
+            ),
           ),
-        );
+          canReadInventory
+            ? Promise.all(
+                detailsResult.data.variants.map((variant) =>
+                  client
+                    .getVariantAvailability({ variantId: variant.id })
+                    .then((result) => result.data)
+                    .catch(() => null),
+                ),
+              )
+            : Promise.resolve([]),
+        ]);
         const barcodeVariantCount = barcodeLists.filter((barcodes) =>
           barcodes.some((barcode) => barcode.status === "ACTIVE"),
         ).length;
+
+        let totalAvailableStock: number | undefined = undefined;
+        if (canReadInventory) {
+          totalAvailableStock = availabilityLists.reduce((sum, item) => {
+            if (!item) return sum;
+            const variantAvailable = item.locations.reduce(
+              (locSum, loc) => locSum + loc.availableToSell,
+              0,
+            );
+            return sum + variantAvailable;
+          }, 0);
+        }
+
         return [
           product.id,
-          { barcodeVariantCount, details: detailsResult.data },
+          {
+            barcodeVariantCount,
+            details: detailsResult.data,
+            stockLoading: false,
+            totalAvailableStock,
+          },
         ] as const;
       }),
     )
@@ -146,7 +212,7 @@ export function CatalogOverview() {
     return () => {
       active = false;
     };
-  }, [rowDetails, visibleProducts]);
+  }, [canReadInventory, rowDetails, visibleProducts]);
 
   useEffect(() => {
     setPage(1);
@@ -221,19 +287,43 @@ export function CatalogOverview() {
         >
           <div className={styles.panelHeader}>
             <div>
-              <h2 id="catalog-products-heading">Products</h2>
-              <span>{filtered.length} matching products</span>
+              <h2 id="catalog-products-heading">Products (পণ্য তালিকা)</h2>
+              <span>
+                {filtered.length} matching products
+                {detailLoading ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className={styles.spin}
+                    size={13}
+                    style={{
+                      display: "inline-block",
+                      marginLeft: 6,
+                      verticalAlign: "middle",
+                    }}
+                  />
+                ) : null}
+              </span>
             </div>
-            <span className={styles.liveHint}>
-              {detailLoading ? (
-                <LoaderCircle
-                  aria-hidden="true"
-                  className={styles.spin}
-                  size={14}
-                />
-              ) : null}
-              Product detail hydrates from the real catalog API
-            </span>
+            <div className={styles.viewToggle}>
+              <button
+                aria-label="Cards view"
+                className={viewMode === "cards" ? styles.viewActive : ""}
+                onClick={() => setViewMode("cards")}
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" size={14} />
+                কার্ড ভিউ
+              </button>
+              <button
+                aria-label="Table view"
+                className={viewMode === "table" ? styles.viewActive : ""}
+                onClick={() => setViewMode("table")}
+                type="button"
+              >
+                <List aria-hidden="true" size={14} />
+                টেবিল ভিউ
+              </button>
+            </div>
           </div>
 
           <div className={styles.filters}>
@@ -287,33 +377,52 @@ export function CatalogOverview() {
             <EmptyState hasProducts={products.length > 0} />
           ) : (
             <>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Category</th>
-                      <th>Variants</th>
-                      <th>Barcodes</th>
-                      <th>Status</th>
-                      <th>Updated</th>
-                      <th aria-label="Actions" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleProducts.map((product) => (
-                      <ProductRow
-                        category={
-                          categoryMap.get(product.categoryId) ?? "Uncategorized"
-                        }
-                        detail={rowDetails[product.id]}
-                        key={product.id}
-                        product={product}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {viewMode === "cards" ? (
+                <div className={styles.cardsGrid}>
+                  {visibleProducts.map((product) => (
+                    <ProductCard
+                      canAddStock={canAddStock}
+                      category={
+                        categoryMap.get(product.categoryId) ?? "Uncategorized"
+                      }
+                      colorMap={colorMap}
+                      detail={rowDetails[product.id]}
+                      key={product.id}
+                      product={product}
+                      sizeMap={sizeMap}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Category</th>
+                        <th>Variants</th>
+                        <th>Barcodes</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleProducts.map((product) => (
+                        <ProductRow
+                          category={
+                            categoryMap.get(product.categoryId) ??
+                            "Uncategorized"
+                          }
+                          detail={rowDetails[product.id]}
+                          key={product.id}
+                          product={product}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               <footer className={styles.pagination}>
                 <span>
                   Showing {(safePage - 1) * PAGE_SIZE + 1}–
@@ -429,6 +538,244 @@ export function CatalogOverview() {
   );
 }
 
+export type ProductCardProps = {
+  canAddStock?: boolean;
+  category: string;
+  colorMap: Map<string, { hexValue?: string | null; id: string; name: string }>;
+  detail?: ProductRowDetail;
+  product: ProductContract;
+  sizeMap: Map<string, { id: string; name: string }>;
+};
+
+export function ProductCard({
+  canAddStock = false,
+  category,
+  colorMap,
+  detail,
+  product,
+  sizeMap,
+}: ProductCardProps) {
+  const primaryImage = detail?.details.primaryImage;
+  const variants = useMemo(
+    () => detail?.details.variants ?? [],
+    [detail?.details.variants],
+  );
+
+  const priceInfo = useMemo(() => {
+    if (!detail || variants.length === 0) {
+      return { isUnset: true, text: "ভেরিয়েন্ট নেই" };
+    }
+    const prices = variants
+      .map((v) => v.sellingPriceMinor)
+      .filter((p) => typeof p === "number" && p > 0);
+
+    if (prices.length === 0) {
+      return { isUnset: true, text: "৳০ (মূল্য নির্ধারণ বাকি)" };
+    }
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+
+    const minFormatted = (min / 100).toLocaleString("en-BD", {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    });
+    const maxFormatted = (max / 100).toLocaleString("en-BD", {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    });
+
+    if (min === max) {
+      return { isUnset: false, text: `৳${minFormatted}` };
+    }
+    return { isUnset: false, text: `৳${minFormatted} – ৳${maxFormatted}` };
+  }, [detail, variants]);
+
+  const uniqueColors = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ hexValue: string | null; id: string; name: string }> =
+      [];
+    for (const v of variants) {
+      if (!seen.has(v.colorId)) {
+        seen.add(v.colorId);
+        const resolved = colorMap.get(v.colorId);
+        if (resolved) {
+          list.push({
+            hexValue: resolved.hexValue ?? null,
+            id: resolved.id,
+            name: resolved.name,
+          });
+        } else {
+          list.push({ hexValue: null, id: v.colorId, name: "Color" });
+        }
+      }
+    }
+    return list;
+  }, [variants, colorMap]);
+
+  const uniqueSizes = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ id: string; name: string }> = [];
+    for (const v of variants) {
+      if (!seen.has(v.sizeId)) {
+        seen.add(v.sizeId);
+        const resolved = sizeMap.get(v.sizeId);
+        if (resolved) {
+          list.push({ id: v.sizeId, name: "Size" });
+        }
+      }
+    }
+    return list;
+  }, [variants, sizeMap]);
+
+  return (
+    <article className={styles.productCard} aria-label={product.name}>
+      <div className={styles.cardMedia}>
+        {primaryImage ? (
+          <Image
+            alt={primaryImage.altText || product.name}
+            className={styles.cardImage}
+            height={240}
+            src={primaryImage.url}
+            unoptimized
+            width={280}
+          />
+        ) : (
+          <div className={styles.cardPlaceholder}>
+            <ImageIcon aria-hidden="true" size={32} />
+            <span>ছবি যুক্ত করা হয়নি</span>
+          </div>
+        )}
+
+        <div className={styles.cardStockBadgeWrapper}>
+          {detail?.stockLoading ? (
+            <span className={styles.cardStockLoading}>
+              <LoaderCircle className={styles.spin} size={12} />
+              হিসাব হচ্ছে...
+            </span>
+          ) : typeof detail?.totalAvailableStock === "number" ? (
+            detail.totalAvailableStock > 10 ? (
+              <span className={styles.cardStockHealthy}>
+                <CheckCircle2 size={12} />
+                {detail.totalAvailableStock} পিস স্টকে
+              </span>
+            ) : detail.totalAvailableStock > 0 ? (
+              <span className={styles.cardStockWarning}>
+                <AlertCircle size={12} />
+                মাত্র {detail.totalAvailableStock} পিস বাকি
+              </span>
+            ) : (
+              <span className={styles.cardStockEmpty}>
+                <CircleSlash2 size={12} />
+                স্টক খালি (0 পিস)
+              </span>
+            )
+          ) : (
+            <span className={styles.cardStockNeutral}>স্টক অপরিবর্তিত</span>
+          )}
+        </div>
+      </div>
+
+      <div className={styles.cardBody}>
+        <div className={styles.cardHeader}>
+          <span className={styles.cardCategory}>{category}</span>
+          <h2 className={styles.cardTitle}>
+            <Link href={`/catalog/products/${product.id}`}>{product.name}</Link>
+          </h2>
+          <span className={styles.cardCode}>কোড: {product.productCode}</span>
+        </div>
+
+        <div className={styles.cardPricing}>
+          <span className={styles.cardPriceLabel}>বিক্রি মূল্য:</span>
+          <span
+            className={
+              priceInfo.isUnset ? styles.cardPriceUnset : styles.cardPriceValue
+            }
+          >
+            {priceInfo.text}
+          </span>
+        </div>
+
+        <div className={styles.cardAttributes}>
+          <div className={styles.cardAttributeRow}>
+            <span className={styles.cardAttributeLabel}>
+              রং ({uniqueColors.length}):
+            </span>
+            <div className={styles.cardColorChips}>
+              {uniqueColors.length > 0 ? (
+                uniqueColors.slice(0, 4).map((c) => (
+                  <span
+                    className={styles.cardColorChip}
+                    key={c.id}
+                    title={c.name}
+                  >
+                    {c.hexValue ? (
+                      <span
+                        className={styles.cardColorSwatch}
+                        style={{ backgroundColor: c.hexValue }}
+                      />
+                    ) : null}
+                    {c.name}
+                  </span>
+                ))
+              ) : (
+                <span className={styles.cardEmptyAttr}>কোন রং নেই</span>
+              )}
+              {uniqueColors.length > 4 ? (
+                <span className={styles.cardEmptyAttr}>
+                  +{uniqueColors.length - 4} আরো
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className={styles.cardAttributeRow}>
+            <span className={styles.cardAttributeLabel}>
+              সাইজ ({uniqueSizes.length}):
+            </span>
+            <div className={styles.cardSizeChips}>
+              {uniqueSizes.length > 0 ? (
+                uniqueSizes.map((s) => (
+                  <span className={styles.cardSizeChip} key={s.id}>
+                    {s.name}
+                  </span>
+                ))
+              ) : (
+                <span className={styles.cardEmptyAttr}>কোন সাইজ নেই</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.cardActions}>
+        <Link
+          className={styles.cardActionSecondary}
+          href={`/catalog/products/${product.id}`}
+        >
+          <Eye aria-hidden="true" size={13} />
+          দেখুন
+        </Link>
+        <Link
+          className={styles.cardActionSecondary}
+          href={`/catalog/products/${product.id}`}
+        >
+          <SlidersHorizontal aria-hidden="true" size={13} />
+          এডিট
+        </Link>
+        {canAddStock ? (
+          <Link
+            className={styles.cardActionPrimary}
+            href={`/inventory/receive?productId=${product.id}`}
+          >
+            <PackagePlus aria-hidden="true" size={14} />+ মাল ঢুকান (Add Stock)
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 function ProductRow({
   category,
   detail,
@@ -472,6 +819,22 @@ function ProductRow({
           <>
             <strong>{variantCount}</strong>
             <small>{variantCount === 1 ? " variant" : " variants"}</small>
+            {typeof detail?.totalAvailableStock === "number" ? (
+              <small
+                style={{
+                  color:
+                    detail.totalAvailableStock > 10
+                      ? "#027a48"
+                      : detail.totalAvailableStock > 0
+                        ? "#b54708"
+                        : "#b42318",
+                  display: "block",
+                  fontWeight: 700,
+                }}
+              >
+                {detail.totalAvailableStock} pcs in stock
+              </small>
+            ) : null}
           </>
         )}
       </td>
