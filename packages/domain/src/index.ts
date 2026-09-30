@@ -889,6 +889,30 @@ export type {
   RecordSupplierAdjustmentInput,
   RecordSupplierAdjustmentResult,
 } from "./procurement/application/supplier-payment-use-cases.js";
+export {
+  SELF_PURCHASE_SUPPLIER_CODE,
+  SELF_PURCHASE_SUPPLIER_NAME,
+  STOCK_INTAKE_IDEMPOTENCY_PREFIX,
+  StockIntakeIdempotencyConflictError,
+  recordStockIntake,
+} from "./procurement/application/stock-intake-use-cases.js";
+export type {
+  RecordStockIntakeDependencies,
+  RecordStockIntakeInput,
+  RecordStockIntakeOutcome,
+  StockIntakeLineInput,
+  StockIntakePaymentMethod,
+  StockIntakeProductInput,
+  StockIntakeProductStatus,
+  StockIntakeResult,
+  StockIntakeResultVariant,
+  StockIntakeSupplierInput,
+} from "./procurement/application/stock-intake-use-cases.js";
+export {
+  distributeTransportCost,
+  generateCode128BarcodeValue,
+} from "./procurement/domain/stock-intake-rules.js";
+export type { StockIntakeRepository } from "./procurement/repositories/stock-intake-repository.js";
 
 export type {
   CourierConsignment,
