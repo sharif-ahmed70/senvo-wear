@@ -2429,6 +2429,195 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     });
   }
 
+  it("summarizes whole products with zero stock, reservations, locations and product pagination", async () => {
+    const base = await createInventoryBase("SUMMARY");
+    const other = await createInventoryBase("OTHER-SUMMARY");
+    const size = await prisma.size.create({
+      data: {
+        organizationId: base.organization.id,
+        code: "SUMMARY-SIZE",
+        name: "Second size",
+        sortOrder: 2,
+      },
+    });
+    const secondVariant = await prisma.productVariant.create({
+      data: {
+        organizationId: base.organization.id,
+        productId: base.product.id,
+        colorId: base.variant.colorId,
+        sizeId: size.id,
+        sku: "SUMMARY-SECOND",
+      },
+    });
+    const zeroProduct = await prisma.product.create({
+      data: {
+        organizationId: base.organization.id,
+        categoryId: base.product.categoryId,
+        productCode: "ZERO-PRODUCT",
+        name: "Never stocked",
+        slug: "never-stocked",
+      },
+    });
+    const zeroVariant = await prisma.productVariant.create({
+      data: {
+        organizationId: base.organization.id,
+        productId: zeroProduct.id,
+        colorId: base.variant.colorId,
+        sizeId: base.variant.sizeId,
+        sku: "ZERO-SKU",
+      },
+    });
+    const emptyProduct = await prisma.product.create({
+      data: {
+        organizationId: base.organization.id,
+        categoryId: base.product.categoryId,
+        productCode: "ZZ-EMPTY",
+        name: "No variants",
+        slug: "no-variants",
+      },
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 20,
+    });
+    await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 7,
+      variantId: secondVariant.id,
+    });
+    await createAndPost("TRANSFER", base, {
+      sourceLocationId: base.primaryLocation.id,
+      destinationLocationId: base.secondaryLocation.id,
+      quantity: 4,
+    });
+    await reserve(base, { quantity: 5 });
+    const released = await reserve(base, {
+      quantity: 2,
+      idempotencyKey: "summary-released",
+      reservationNumber: "SUMMARY-RELEASED",
+    });
+    await releaseInventoryReservation(reservations, {
+      organizationId: base.organization.id,
+      reservationId: released.id,
+      expectedVersion: released.version,
+    });
+    await createInventoryMovement(movements, {
+      organizationId: base.organization.id,
+      destinationLocationId: base.primaryLocation.id,
+      type: "RECEIPT",
+      movementNumber: "DRAFT-SUMMARY",
+      idempotencyKey: "draft-summary",
+      lines: [{ productVariantId: base.variant.id, quantity: 999 }],
+    });
+    const filter = {
+      organizationId: base.organization.id,
+      pageSize: 1,
+      lowStockThreshold: 22,
+    };
+    const first = await inventoryRead.listProductSummaries(filter);
+    expect(first.hasMore).toBe(true);
+    expect(first.items).toHaveLength(1);
+    const summary = first.items[0]!;
+    expect(summary).toMatchObject({
+      product: { id: base.product.id },
+      onHand: 27,
+      reserved: 5,
+      availableToSell: 22,
+      isLowStock: true,
+    });
+    expect(summary.variants).toHaveLength(2);
+    expect(
+      summary.variants.find((item) => item.variant.id === base.variant.id),
+    ).toMatchObject({ onHand: 20, reserved: 5, availableToSell: 15 });
+    expect(
+      summary.locations.find(
+        (item) => item.location.id === base.primaryLocation.id,
+      ),
+    ).toMatchObject({ onHand: 23, reserved: 5, availableToSell: 18 });
+    expect(
+      summary.locations.find(
+        (item) => item.location.id === base.secondaryLocation.id,
+      ),
+    ).toMatchObject({ onHand: 4, reserved: 0, availableToSell: 4 });
+    const legacy = await inventoryRead.listAvailability({
+      ...filter,
+      pageSize: 100,
+    });
+    expect(
+      legacy.items.reduce((total, item) => total + item.availableToSell, 0),
+    ).toBe(summary.availableToSell);
+    const second = await inventoryRead.listProductSummaries({
+      ...filter,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items[0]).toMatchObject({
+      product: { id: zeroProduct.id },
+      onHand: 0,
+      reserved: 0,
+      availableToSell: 0,
+      isLowStock: true,
+      variants: [{ variant: { id: zeroVariant.id }, onHand: 0, locations: [] }],
+      locations: [],
+    });
+    const third = await inventoryRead.listProductSummaries({
+      ...filter,
+      cursor: second.nextCursor!,
+    });
+    expect(third).toMatchObject({
+      hasMore: false,
+      nextCursor: null,
+      items: [{ product: { id: emptyProduct.id }, variants: [], onHand: 0 }],
+    });
+    const scoped = await inventoryRead.listProductSummaries({
+      ...filter,
+      locationId: base.secondaryLocation.id,
+      lowStockThreshold: 3,
+    });
+    expect(scoped.items[0]).toMatchObject({
+      onHand: 4,
+      reserved: 0,
+      availableToSell: 4,
+      isLowStock: false,
+    });
+    expect(
+      scoped.items[0]!.variants.find(
+        (item) => item.variant.id === secondVariant.id,
+      ),
+    ).toMatchObject({ onHand: 0, locations: [] });
+    const searched = await inventoryRead.listProductSummaries({
+      organizationId: base.organization.id,
+      pageSize: 25,
+      search: secondVariant.sku,
+    });
+    expect(searched.items).toHaveLength(1);
+    expect(searched.items[0]).toMatchObject({
+      onHand: 27,
+      isLowStock: null,
+    });
+    expect(searched.items[0]!.variants).toHaveLength(2);
+    const foreignLocation = await inventoryRead.listProductSummaries({
+      ...filter,
+      locationId: other.primaryLocation.id,
+    });
+    expect(foreignLocation.items[0]).toMatchObject({
+      onHand: 0,
+      locations: [],
+    });
+    const foreign = await inventoryRead.listProductSummaries({
+      organizationId: other.organization.id,
+      pageSize: 25,
+    });
+    expect(foreign.items.map((item) => item.product.id)).toEqual([
+      other.product.id,
+    ]);
+    await expect(
+      inventoryRead.listProductSummaries({
+        ...filter,
+        cursor: "inventory-products-v1|%ZZ|" + base.product.id,
+      }),
+    ).rejects.toThrow("cursor is invalid");
+  });
+
   async function createAndPost(
     type: InventoryMovementType,
     base: Awaited<ReturnType<typeof createInventoryBase>>,

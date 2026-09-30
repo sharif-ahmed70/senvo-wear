@@ -425,6 +425,7 @@ export {
 export {
   getVariantAvailability,
   listInventoryAvailability,
+  listProductInventorySummaries,
   listInventoryMovementHistory,
   listStockLocations as listInventoryStockLocations,
 } from "./inventory/application/read-query-use-cases.js";
@@ -514,6 +515,7 @@ export type {
   GetVariantAvailabilityInput,
   InventoryReadPageInput,
   ListInventoryAvailabilityInput,
+  ListProductInventorySummariesInput,
   ListInventoryMovementHistoryInput,
   ListStockLocationsInput as ListInventoryStockLocationsInput,
 } from "./inventory/application/read-query-use-cases.js";
@@ -639,6 +641,8 @@ export type {
   InventoryReadPage,
   InventoryReadPageFilter,
   InventoryReadRepository,
+  ProductInventorySummary,
+  InventoryQuantitySummary,
   InventoryVariantReadItem,
   StockLocationReadItem,
   VariantInventoryAvailability,

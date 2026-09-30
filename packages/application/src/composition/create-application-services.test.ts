@@ -90,6 +90,12 @@ const fakeBarcodeRepository: BarcodeRepository = {
 };
 
 const fakeInventoryReadRepository: InventoryReadRepository = {
+  listProductSummaries: () =>
+    Promise.resolve({
+      hasMore: false,
+      items: [],
+      nextCursor: null,
+    }),
   getVariantAvailability: () => Promise.resolve(null),
   listAvailability: () =>
     Promise.resolve({ hasMore: false, items: [], nextCursor: null }),

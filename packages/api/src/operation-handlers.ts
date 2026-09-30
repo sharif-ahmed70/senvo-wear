@@ -35,6 +35,9 @@ import {
   listProductVariantsServiceInputSchema,
   listVariantBarcodesServiceInputSchema,
   lookupBarcodeServiceInputSchema,
+  listProductInventorySummariesServiceInputSchema,
+  type ListProductInventorySummariesServiceInputContract,
+  type ProductInventorySummaryContract,
   createInventoryMovementServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
@@ -161,6 +164,14 @@ export type InventoryMovementPostingApplication = {
 };
 
 export type InventoryReadApplication = {
+  listProductInventorySummaries(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >
+  >;
   getVariantAvailability(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -192,6 +203,9 @@ export type InventoryReadApplication = {
 };
 
 export type InventoryReadApiHandlers = {
+  listProductSummaries: ApiHandler<
+    InventoryReadPageContract<ProductInventorySummaryContract>
+  >;
   getVariantAvailability: ApiHandler<VariantInventoryAvailabilityContract>;
   listAvailability: ApiHandler<
     InventoryReadPageContract<InventoryAvailabilityReadContract>
@@ -829,6 +843,14 @@ export function createInventoryReadApiHandlers(
     });
 
   return {
+    listProductSummaries: protectedReadHandler<
+      ListProductInventorySummariesServiceInputContract,
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.listProductInventorySummaries(context, input),
+      inputSchema: listProductInventorySummariesServiceInputSchema,
+    }),
     getVariantAvailability: protectedReadHandler<
       GetVariantAvailabilityServiceInputContract,
       VariantInventoryAvailabilityContract

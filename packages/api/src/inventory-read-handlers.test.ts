@@ -31,6 +31,46 @@ const context: ApiRequestContext = {
 };
 
 describe("inventory read API handlers", () => {
+  it("protects product summaries and validates query thresholds and tenant scope", async () => {
+    const inventory = new FakeInventoryReadApplication();
+    const authorizationService = new FakeAuthorization();
+    const handlers = createInventoryReadApiHandlers({
+      authenticationService,
+      authorizationService,
+      inventory,
+    });
+    const response = await handlers.listProductSummaries.handle({
+      context,
+      input: { pageSize: "2", lowStockThreshold: "0" },
+    });
+    expect(response.success).toBe(true);
+    expect(inventory.payload).toEqual({ pageSize: 2, lowStockThreshold: 0 });
+    expect(inventory.context).toMatchObject({ organizationId });
+    expect(authorizationService.permission).toEqual({
+      action: "READ",
+      resource: "INVENTORY",
+    });
+    for (const input of [
+      { organizationId },
+      { lowStockThreshold: -1 },
+      { lowStockThreshold: "abc" },
+      { lowStockThreshold: 1.5 },
+    ]) {
+      expect(
+        await handlers.listProductSummaries.handle({ context, input }),
+      ).toMatchObject({
+        success: false,
+        error: { code: "VALIDATION.INVALID_INPUT" },
+      });
+    }
+    authorizationService.reject = true;
+    expect(
+      await handlers.listProductSummaries.handle({ context, input: {} }),
+    ).toMatchObject({
+      success: false,
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+    });
+  });
   it("enforces INVENTORY.READ and passes trusted organization context", async () => {
     const authorization = new FakeAuthorization();
     const inventory = new FakeInventoryReadApplication();
@@ -153,6 +193,18 @@ class FakeAuthorization implements ApplicationAuthorizationService {
 }
 
 class FakeInventoryReadApplication implements InventoryReadApplication {
+  listProductInventorySummaries(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    this.payload = payload;
+    return this.success(context, {
+      hasMore: false,
+      items: [],
+      nextCursor: null,
+    });
+  }
+
   context?: ApplicationExecutionContext;
   payload?: unknown;
 

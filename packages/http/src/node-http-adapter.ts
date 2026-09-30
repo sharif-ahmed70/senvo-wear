@@ -491,6 +491,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
   if (handlers.inventoryRead) {
     routes.push(
       {
+        handler: handlers.inventoryRead.listProductSummaries,
+        input: queryInput,
+        method: "GET",
+        path: /^\/inventory\/products$/u,
+        successStatus: 200,
+      },
+      {
         handler: handlers.inventoryRead.listAvailability,
         input: queryInput,
         method: "GET",

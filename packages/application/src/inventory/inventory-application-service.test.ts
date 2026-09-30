@@ -59,6 +59,31 @@ describe("InventoryApplicationService", () => {
     });
   });
 
+  it("authorizes product summaries and rejects tenant injection before reading", async () => {
+    const result = await service.listProductInventorySummaries(context, {
+      lowStockThreshold: 0,
+    });
+    expect(result).toMatchObject({ ok: true, data: { items: [] } });
+    expect(readRepository.productFilter).toMatchObject({
+      organizationId,
+      lowStockThreshold: 0,
+      pageSize: 25,
+    });
+    expect(authorization.calls[0]).toMatchObject({
+      permission: { action: "READ", resource: "INVENTORY" },
+    });
+    readRepository.productFilter = undefined;
+    expect(
+      await service.listProductInventorySummaries(context, { organizationId }),
+    ).toMatchObject({ ok: false });
+    expect(readRepository.productFilter).toBeUndefined();
+    authorization.error = new AuthorizationError("Denied");
+    expect(
+      await service.listProductInventorySummaries(context, {}),
+    ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    expect(readRepository.productFilter).toBeUndefined();
+  });
+
   it("checks authorization before posting inventory movement", async () => {
     const result = await service.postMovement(context, { movementId });
 
@@ -227,6 +252,15 @@ describe("InventoryApplicationService", () => {
 });
 
 class FakeInventoryReadRepository implements InventoryReadRepository {
+  productFilter:
+    Parameters<InventoryReadRepository["listProductSummaries"]>[0] | undefined;
+  listProductSummaries(
+    filter: Parameters<InventoryReadRepository["listProductSummaries"]>[0],
+  ) {
+    this.productFilter = filter;
+    return Promise.resolve({ hasMore: false, items: [], nextCursor: null });
+  }
+
   availabilityFilter:
     Parameters<InventoryReadRepository["listAvailability"]>[0] | undefined;
 

@@ -561,10 +561,17 @@ describe("Node HTTP runtime adapter", () => {
     );
     const headers = developmentHeaders(suppliedRequestId);
     headers.set("x-dev-permissions", "INVENTORY:READ");
+    const products = new RecordingApiHandler(
+      createApiSuccess(
+        { hasMore: false, items: [], nextCursor: null },
+        suppliedRequestId,
+      ),
+    );
     const runtime = await startRuntime({
       handlers: {
         createSalesOrder: fallback,
         inventoryRead: {
+          listProductSummaries: products,
           getVariantAvailability: variant,
           listAvailability: availability,
           listLocations: locations,
@@ -572,6 +579,16 @@ describe("Node HTTP runtime adapter", () => {
         },
         postInventoryMovement: fallback,
       },
+    });
+
+    const productResponse = await fetch(
+      `${runtime.url}/inventory/products?pageSize=2&lowStockThreshold=0`,
+      { headers },
+    );
+    expect(productResponse.status).toBe(200);
+    expect(products.requests[0]?.input).toEqual({
+      pageSize: "2",
+      lowStockThreshold: "0",
     });
 
     const response = await fetch(

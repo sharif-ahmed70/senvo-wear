@@ -4916,3 +4916,52 @@ export const storefrontOrderTrackingContractSchema = z
 export type StorefrontOrderTrackingContract = z.infer<
   typeof storefrontOrderTrackingContractSchema
 >;
+
+export const listProductInventorySummariesServiceInputSchema =
+  listInventoryAvailabilityServiceInputSchema.extend({
+    lowStockThreshold: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(2_147_483_647)
+      .optional(),
+  });
+
+export type ListProductInventorySummariesServiceInputContract = z.infer<
+  typeof listProductInventorySummariesServiceInputSchema
+>;
+
+const inventoryQuantitySummarySchema = z
+  .object({
+    onHand: z.number().int(),
+    reserved: z.number().int().nonnegative(),
+    availableToSell: z.number().int(),
+  })
+  .strict();
+
+const inventoryLocationSummarySchema = inventoryQuantitySummarySchema.extend({
+  location: inventoryLocationReadContractSchema,
+});
+
+export const productInventorySummaryContractSchema =
+  inventoryQuantitySummarySchema.extend({
+    product: z
+      .object({ id: idSchema, name: z.string(), productCode: z.string() })
+      .strict(),
+    lowStockThreshold: z.number().int().nonnegative().nullable(),
+    isLowStock: z.boolean().nullable(),
+    variants: z.array(
+      inventoryQuantitySummarySchema.extend({
+        variant: inventoryVariantReadContractSchema,
+        locations: z.array(inventoryLocationSummarySchema),
+      }),
+    ),
+    locations: z.array(inventoryLocationSummarySchema),
+  });
+
+export const productInventorySummaryPageContractSchema =
+  inventoryReadPageContractSchema(productInventorySummaryContractSchema);
+
+export type ProductInventorySummaryContract = z.infer<
+  typeof productInventorySummaryContractSchema
+>;

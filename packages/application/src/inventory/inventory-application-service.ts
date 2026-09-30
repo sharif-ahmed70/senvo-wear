@@ -9,6 +9,7 @@ import {
   createInventoryMovement,
   getVariantAvailability,
   listInventoryAvailability,
+  listProductInventorySummaries,
   listInventoryMovementHistory,
   listInventoryStockLocations,
   postInventoryMovement,
@@ -16,6 +17,9 @@ import {
   type InventoryMovementRepository,
 } from "@senvo/domain";
 import {
+  listProductInventorySummariesServiceInputSchema,
+  productInventorySummaryPageContractSchema,
+  type ProductInventorySummaryContract,
   createInventoryMovementServiceInputSchema,
   getVariantAvailabilityServiceInputSchema,
   inventoryAvailabilityPageContractSchema,
@@ -190,6 +194,35 @@ export class InventoryApplicationService {
             );
           },
         );
+      },
+    );
+  }
+
+  listProductInventorySummaries(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >
+  > {
+    return this.execute(
+      "inventory.listProductSummaries",
+      context,
+      async (validated) => {
+        const input = parsePayload(
+          listProductInventorySummariesServiceInputSchema,
+          payload,
+        );
+        await this.authorizeRead(validated);
+        const page = await listProductInventorySummaries(
+          this.inventoryReadRepository,
+          {
+            ...input,
+            organizationId: validated.organizationId,
+          },
+        );
+        return productInventorySummaryPageContractSchema.parse(page);
       },
     );
   }

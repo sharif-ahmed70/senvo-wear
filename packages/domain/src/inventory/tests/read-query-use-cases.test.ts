@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getVariantAvailability,
   listInventoryAvailability,
+  listProductInventorySummaries,
   listInventoryMovementHistory,
   listInventoryStockLocations,
   type InventoryReadRepository,
@@ -11,6 +12,28 @@ const organizationId = "11111111-1111-4111-8111-111111111111";
 const variantId = "22222222-2222-4222-8222-222222222222";
 
 describe("inventory read query use cases", () => {
+  it("normalizes product queries and validates optional thresholds", async () => {
+    const repository = new FakeInventoryReadRepository();
+    await listProductInventorySummaries(repository, {
+      organizationId,
+      search: "  Shirt  ",
+      lowStockThreshold: 0,
+    });
+    expect(repository.productFilter).toMatchObject({
+      organizationId,
+      pageSize: 25,
+      search: "Shirt",
+      lowStockThreshold: 0,
+    });
+    for (const lowStockThreshold of [-1, 1.5, NaN, Infinity, 2_147_483_648]) {
+      expect(() =>
+        listProductInventorySummaries(repository, {
+          organizationId,
+          lowStockThreshold,
+        }),
+      ).toThrow("lowStockThreshold");
+    }
+  });
   it("normalizes pagination and keeps organization scope", async () => {
     const repository = new FakeInventoryReadRepository();
 
@@ -54,6 +77,15 @@ describe("inventory read query use cases", () => {
 });
 
 class FakeInventoryReadRepository implements InventoryReadRepository {
+  productFilter:
+    Parameters<InventoryReadRepository["listProductSummaries"]>[0] | undefined;
+  listProductSummaries(
+    filter: Parameters<InventoryReadRepository["listProductSummaries"]>[0],
+  ) {
+    this.productFilter = filter;
+    return Promise.resolve({ hasMore: false, items: [], nextCursor: null });
+  }
+
   availabilityFilter:
     Parameters<InventoryReadRepository["listAvailability"]>[0] | undefined;
   variantInput:

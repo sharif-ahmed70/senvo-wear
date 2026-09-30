@@ -4,6 +4,8 @@ import {
   type InventoryMovementHistoryItem,
   type InventoryReadPage,
   type InventoryReadRepository,
+  type ProductInventorySummary,
+  type InventoryQuantitySummary,
   type InventoryVariantReadItem,
   type StockLocationReadItem,
   type VariantInventoryAvailability,
@@ -81,6 +83,146 @@ type MovementCursor = {
 
 export class PrismaInventoryReadRepository implements InventoryReadRepository {
   constructor(private readonly prisma: InventoryReadPrismaClient) {}
+
+  async listProductSummaries(
+    filter: Parameters<InventoryReadRepository["listProductSummaries"]>[0],
+  ): Promise<InventoryReadPage<ProductInventorySummary>> {
+    const cursor = filter.cursor
+      ? parseProductCursor(filter.cursor)
+      : undefined;
+    const afterCursor = cursor
+      ? Prisma.sql`AND (product.product_code, product.id) > (${cursor.code}, ${cursor.id}::uuid)`
+      : Prisma.empty;
+    const search = filter.search
+      ? Prisma.sql`AND (
+      product.name ILIKE ${`%${filter.search}%`}
+      OR product.product_code ILIKE ${`%${filter.search}%`}
+      OR EXISTS (
+        SELECT 1 FROM product_variants searched
+        WHERE searched.organization_id = product.organization_id
+          AND searched.product_id = product.id
+          AND searched.sku ILIKE ${`%${filter.search}%`}
+      )
+    )`
+      : Prisma.empty;
+    const locationFilter = filter.locationId
+      ? Prisma.sql`AND availability.location_id = ${filter.locationId}::uuid`
+      : Prisma.empty;
+    // Page products BEFORE joining their variants and balances. One statement
+    // gives every breakdown the same database snapshot, including zero stock.
+    const rows = await this.prisma.$queryRaw<
+      Array<AvailabilityRow & { product_code: string }>
+    >`
+      WITH product_page AS (
+        SELECT product.id, product.name, product.product_code, product.organization_id
+        FROM products product
+        WHERE product.organization_id = ${filter.organizationId}::uuid
+        ${search} ${afterCursor}
+        ORDER BY product.product_code, product.id
+        LIMIT ${filter.pageSize + 1}
+      ), requested_variants AS (
+        SELECT variant.* FROM product_variants variant
+        INNER JOIN product_page product
+          ON product.id = variant.product_id
+         AND product.organization_id = variant.organization_id
+      ), ${availabilityCtes(filter.organizationId, Prisma.sql`AND line.product_variant_id IN (SELECT id FROM requested_variants)`)}
+      SELECT product.id AS product_id, product.name AS product_name, product.product_code,
+        COALESCE(variant.id::text, '') AS variant_id,
+        COALESCE(variant.sku, '') AS sku,
+        COALESCE(color.name, '') AS color_name,
+        COALESCE(size.name, '') AS size_name,
+        COALESCE(location.id::text, '') AS location_id,
+        COALESCE(location.name, '') AS location_name,
+        COALESCE(location.code, '') AS location_code,
+        COALESCE(availability.on_hand, 0)::bigint AS on_hand,
+        COALESCE(availability.reserved, 0)::bigint AS reserved,
+        COALESCE(availability.available_to_sell, 0)::bigint AS available_to_sell
+      FROM product_page product
+      LEFT JOIN requested_variants variant
+        ON variant.product_id = product.id AND variant.organization_id = product.organization_id
+      LEFT JOIN colors color ON color.id = variant.color_id AND color.organization_id = variant.organization_id
+      LEFT JOIN sizes size ON size.id = variant.size_id AND size.organization_id = variant.organization_id
+      LEFT JOIN availability
+        ON availability.variant_id = variant.id AND availability.organization_id = product.organization_id
+        ${locationFilter}
+      LEFT JOIN stock_locations location
+        ON location.id = availability.location_id AND location.organization_id = product.organization_id
+      ORDER BY product.product_code, product.id, variant.sku, variant.id, location.code, location.id
+    `;
+    const products = new Map<string, ProductInventorySummary>();
+    const variants = new Map<
+      string,
+      ProductInventorySummary["variants"][number]
+    >();
+    const locations = new Map<
+      string,
+      ProductInventorySummary["locations"][number]
+    >();
+    for (const row of rows) {
+      let product = products.get(row.product_id);
+      if (!product) {
+        product = {
+          ...zeroQuantities(),
+          product: {
+            id: row.product_id,
+            name: row.product_name,
+            productCode: row.product_code,
+          },
+          variants: [],
+          locations: [],
+          lowStockThreshold: filter.lowStockThreshold ?? null,
+          isLowStock: null,
+        };
+        products.set(row.product_id, product);
+      }
+      if (!row.variant_id) continue;
+      let variant = variants.get(row.variant_id);
+      if (!variant) {
+        variant = {
+          ...zeroQuantities(),
+          variant: mapVariant(row),
+          locations: [],
+        };
+        variants.set(row.variant_id, variant);
+        product.variants.push(variant);
+      }
+      if (!row.location_id) continue;
+      const balance = mapLocationAvailability(row);
+      variant.locations.push(balance);
+      addQuantities(variant, balance);
+      addQuantities(product, balance);
+      const key = `${row.product_id}:${row.location_id}`;
+      let location = locations.get(key);
+      if (!location) {
+        location = { ...zeroQuantities(), location: balance.location };
+        locations.set(key, location);
+        product.locations.push(location);
+      }
+      addQuantities(location, balance);
+    }
+    const items = [...products.values()].slice(0, filter.pageSize);
+    for (const item of items) {
+      item.isLowStock =
+        filter.lowStockThreshold === undefined
+          ? null
+          : item.availableToSell <= filter.lowStockThreshold;
+      item.locations.sort((a, b) => a.location.id.localeCompare(b.location.id));
+    }
+    const hasMore = products.size > filter.pageSize;
+    const last = items.at(-1);
+    return {
+      items,
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? [
+              "inventory-products-v1",
+              encodeURIComponent(last.product.productCode),
+              last.product.id,
+            ].join("|")
+          : null,
+    };
+  }
 
   async listAvailability(
     filter: Parameters<InventoryReadRepository["listAvailability"]>[0],
@@ -342,71 +484,7 @@ async function queryAvailability(
     : Prisma.empty;
   const limit = input.limit ? Prisma.sql`LIMIT ${input.limit}` : Prisma.empty;
   return prisma.$queryRaw<AvailabilityRow[]>`
-    WITH on_hand AS (
-      SELECT
-        balance.organization_id,
-        balance.variant_id,
-        balance.location_id,
-        SUM(balance.quantity_delta)::bigint AS on_hand
-      FROM (
-        SELECT
-          line.organization_id,
-          line.product_variant_id AS variant_id,
-          movement.destination_location_id AS location_id,
-          line.quantity AS quantity_delta
-        FROM inventory_movement_lines line
-        INNER JOIN inventory_movements movement
-          ON movement.id = line.movement_id
-         AND movement.organization_id = line.organization_id
-        WHERE movement.status = 'POSTED'
-          AND line.organization_id = ${input.organizationId}::uuid
-          AND movement.destination_location_id IS NOT NULL
-        UNION ALL
-        SELECT
-          line.organization_id,
-          line.product_variant_id AS variant_id,
-          movement.source_location_id AS location_id,
-          -line.quantity AS quantity_delta
-        FROM inventory_movement_lines line
-        INNER JOIN inventory_movements movement
-          ON movement.id = line.movement_id
-         AND movement.organization_id = line.organization_id
-        WHERE movement.status = 'POSTED'
-          AND line.organization_id = ${input.organizationId}::uuid
-          AND movement.source_location_id IS NOT NULL
-      ) balance
-      GROUP BY balance.organization_id, balance.variant_id, balance.location_id
-    ),
-    reserved AS (
-      SELECT
-        line.organization_id,
-        line.product_variant_id AS variant_id,
-        reservation.stock_location_id AS location_id,
-        SUM(line.quantity)::bigint AS reserved
-      FROM inventory_reservation_lines line
-      INNER JOIN inventory_reservations reservation
-        ON reservation.id = line.reservation_id
-       AND reservation.organization_id = line.organization_id
-      WHERE reservation.status = 'ACTIVE'
-        AND line.organization_id = ${input.organizationId}::uuid
-      GROUP BY
-        line.organization_id,
-        line.product_variant_id,
-        reservation.stock_location_id
-    ),
-    availability AS (
-      SELECT
-        COALESCE(on_hand.organization_id, reserved.organization_id) AS organization_id,
-        COALESCE(on_hand.variant_id, reserved.variant_id) AS variant_id,
-        COALESCE(on_hand.location_id, reserved.location_id) AS location_id,
-        COALESCE(on_hand.on_hand, 0)::bigint AS on_hand,
-        COALESCE(reserved.reserved, 0)::bigint AS reserved
-      FROM on_hand
-      FULL OUTER JOIN reserved
-        ON reserved.organization_id = on_hand.organization_id
-       AND reserved.variant_id = on_hand.variant_id
-       AND reserved.location_id = on_hand.location_id
-    )
+    WITH ${availabilityCtes(input.organizationId)}
     SELECT
       variant.id AS variant_id,
       variant.sku,
@@ -419,7 +497,7 @@ async function queryAvailability(
       location.code AS location_code,
       availability.on_hand,
       availability.reserved,
-      (availability.on_hand - availability.reserved)::bigint AS available_to_sell
+      availability.available_to_sell
     FROM availability
     INNER JOIN product_variants variant
       ON variant.id = availability.variant_id
@@ -447,12 +525,15 @@ async function queryAvailability(
 }
 
 function mapAvailability(row: AvailabilityRow): InventoryAvailabilityReadItem {
+  return { ...mapLocationAvailability(row), variant: mapVariant(row) };
+}
+
+function mapLocationAvailability(row: AvailabilityRow) {
   return {
     availableToSell: Number(row.available_to_sell),
     location: { id: row.location_id, name: row.location_name },
     onHand: Number(row.on_hand),
     reserved: Number(row.reserved),
-    variant: mapVariant(row),
   };
 }
 
@@ -608,4 +689,111 @@ function isUuid(value: string | undefined): value is string {
 
 function invalidCursor(): ValidationApplicationError {
   return new ValidationApplicationError("cursor is invalid.");
+}
+
+// Shared by the existing variant/location read and the product summary. This is
+// read-only SQL; posting, reservation eligibility and movement logic stay separate.
+function availabilityCtes(
+  organizationId: string,
+  variantFilter = Prisma.empty,
+): Prisma.Sql {
+  return Prisma.sql`    on_hand AS (
+      SELECT
+        balance.organization_id,
+        balance.variant_id,
+        balance.location_id,
+        SUM(balance.quantity_delta)::bigint AS on_hand
+      FROM (
+        SELECT
+          line.organization_id,
+          line.product_variant_id AS variant_id,
+          movement.destination_location_id AS location_id,
+          line.quantity AS quantity_delta
+        FROM inventory_movement_lines line
+        INNER JOIN inventory_movements movement
+          ON movement.id = line.movement_id
+         AND movement.organization_id = line.organization_id
+        WHERE movement.status = 'POSTED'
+          AND line.organization_id = ${organizationId}::uuid
+          ${variantFilter}
+          AND movement.destination_location_id IS NOT NULL
+        UNION ALL
+        SELECT
+          line.organization_id,
+          line.product_variant_id AS variant_id,
+          movement.source_location_id AS location_id,
+          -line.quantity AS quantity_delta
+        FROM inventory_movement_lines line
+        INNER JOIN inventory_movements movement
+          ON movement.id = line.movement_id
+         AND movement.organization_id = line.organization_id
+        WHERE movement.status = 'POSTED'
+          AND line.organization_id = ${organizationId}::uuid
+          ${variantFilter}
+          AND movement.source_location_id IS NOT NULL
+      ) balance
+      GROUP BY balance.organization_id, balance.variant_id, balance.location_id
+    ),
+    reserved AS (
+      SELECT
+        line.organization_id,
+        line.product_variant_id AS variant_id,
+        reservation.stock_location_id AS location_id,
+        SUM(line.quantity)::bigint AS reserved
+      FROM inventory_reservation_lines line
+      INNER JOIN inventory_reservations reservation
+        ON reservation.id = line.reservation_id
+       AND reservation.organization_id = line.organization_id
+      WHERE reservation.status = 'ACTIVE'
+        AND line.organization_id = ${organizationId}::uuid
+          ${variantFilter}
+      GROUP BY
+        line.organization_id,
+        line.product_variant_id,
+        reservation.stock_location_id
+    ),
+    availability AS (
+      SELECT
+        COALESCE(on_hand.organization_id, reserved.organization_id) AS organization_id,
+        COALESCE(on_hand.variant_id, reserved.variant_id) AS variant_id,
+        COALESCE(on_hand.location_id, reserved.location_id) AS location_id,
+        COALESCE(on_hand.on_hand, 0)::bigint AS on_hand,
+        COALESCE(reserved.reserved, 0)::bigint AS reserved,
+        (COALESCE(on_hand.on_hand, 0) - COALESCE(reserved.reserved, 0))::bigint AS available_to_sell
+      FROM on_hand
+      FULL OUTER JOIN reserved
+        ON reserved.organization_id = on_hand.organization_id
+       AND reserved.variant_id = on_hand.variant_id
+       AND reserved.location_id = on_hand.location_id
+    )`;
+}
+
+function zeroQuantities(): InventoryQuantitySummary {
+  return { onHand: 0, reserved: 0, availableToSell: 0 };
+}
+
+function addQuantities(
+  target: InventoryQuantitySummary,
+  source: InventoryQuantitySummary,
+): void {
+  target.onHand += source.onHand;
+  target.reserved += source.reserved;
+  target.availableToSell += source.availableToSell;
+}
+
+function parseProductCursor(value: string): { code: string; id: string } {
+  const [version, code, id, extra] = value.split("|");
+  if (
+    version !== "inventory-products-v1" ||
+    !code ||
+    !isUuid(id) ||
+    extra !== undefined
+  ) {
+    throw invalidCursor();
+  }
+  try {
+    return { code: decodeURIComponent(code), id };
+  } catch {
+    throw invalidCursor();
+  }
 }
