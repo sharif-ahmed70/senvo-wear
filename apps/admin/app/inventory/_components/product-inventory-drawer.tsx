@@ -77,7 +77,7 @@ export function ProductInventoryDrawer({
 
     async function loadExtra() {
       try {
-        const detailRes = await client.getProductDetail(item.product.id);
+        const detailRes = await client.getProduct(item.product.id);
         if (!cancelled && detailRes.data) {
           setProductDetail(detailRes.data);
         }

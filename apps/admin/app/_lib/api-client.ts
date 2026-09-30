@@ -236,10 +236,10 @@ function defaultAdminApiBaseUrl(): string {
   if (configured) {
     return configured.replace(/\/$/u, "");
   }
-  if (process.env.NODE_ENV === "test") {
-    return "";
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:4000";
   }
-  return "http://localhost:4000";
+  return "";
 }
 
 export class AdminApiClient {
