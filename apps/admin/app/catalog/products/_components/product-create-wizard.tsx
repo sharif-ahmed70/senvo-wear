@@ -35,6 +35,8 @@ import {
   parseVariantPrice,
   formatVariantPrice,
 } from "../../_lib/variant-price";
+import { VariantMatrixSection } from "./variant-matrix-section";
+export { VariantMatrixSection } from "./variant-matrix-section";
 import styles from "./product-create-wizard.module.css";
 
 const client = new AdminApiClient({
@@ -406,6 +408,31 @@ export function ProductCreateWizard() {
             ) : null}
             {step === 1 ? (
               <VariantsStep
+                basics={basics}
+                onColorCreated={(newColor) => {
+                  setReferences((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          colors: prev.colors.some((c) => c.id === newColor.id)
+                            ? prev.colors
+                            : [...prev.colors, newColor],
+                        }
+                      : prev,
+                  );
+                }}
+                onSizeCreated={(newSize) => {
+                  setReferences((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          sizes: prev.sizes.some((s) => s.id === newSize.id)
+                            ? prev.sizes
+                            : [...prev.sizes, newSize],
+                        }
+                      : prev,
+                  );
+                }}
                 references={references}
                 setVariants={setVariants}
                 variants={variants}
@@ -576,10 +603,16 @@ function BasicsStep({
 }
 
 export function VariantsStep({
+  basics,
+  onColorCreated,
+  onSizeCreated,
   references,
   setVariants,
   variants,
 }: {
+  basics?: BasicsState;
+  onColorCreated?: (color: ColorContract) => void;
+  onSizeCreated?: (size: SizeContract) => void;
   references: ReferenceData;
   setVariants: (value: VariantDraft[]) => void;
   variants: VariantDraft[];
@@ -604,6 +637,14 @@ export function VariantsStep({
   }
   return (
     <div className={styles.variantStep}>
+      <VariantMatrixSection
+        basics={basics}
+        onColorCreated={onColorCreated}
+        onSizeCreated={onSizeCreated}
+        references={references}
+        setVariants={setVariants}
+        variants={variants}
+      />
       <div className={styles.sectionIntro}>
         <div>
           <strong>Sellable variants</strong>
