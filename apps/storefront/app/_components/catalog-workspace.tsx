@@ -24,15 +24,26 @@ const campaignImages = [
   "/senvo-hero-summer.png",
 ] as const;
 
-export function CatalogWorkspace() {
-  const [catalog, setCatalog] = useState<StorefrontCatalog | null>(null);
+export interface CatalogWorkspaceProps {
+  initialCatalog?: StorefrontCatalog | null;
+}
+
+export function CatalogWorkspace({
+  initialCatalog = null,
+}: CatalogWorkspaceProps = {}) {
+  const [catalog, setCatalog] = useState<StorefrontCatalog | null>(
+    initialCatalog,
+  );
   const [facets, setFacets] = useState<
     Pick<StorefrontCatalog, "categories" | "collections">
-  >({ categories: [], collections: [] });
+  >({
+    categories: initialCatalog?.categories ?? [],
+    collections: initialCatalog?.collections ?? [],
+  });
   const [category, setCategory] = useState("");
   const [collection, setCollection] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialCatalog);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -40,6 +51,7 @@ export function CatalogWorkspace() {
   const [toast, setToast] = useState("");
   const categoryRail = useRef<HTMLDivElement>(null);
   const requestSequence = useRef(0);
+  const isFirstMount = useRef(true);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setAppliedSearch(search.trim()), 280);
@@ -88,9 +100,15 @@ export function CatalogWorkspace() {
   );
 
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      if (initialCatalog) {
+        return;
+      }
+    }
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, initialCatalog]);
 
   useEffect(() => {
     if (!toast) return;

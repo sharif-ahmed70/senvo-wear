@@ -305,9 +305,9 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
       <motion.div
         animate={{ opacity: 1, y: 0 }}
         className="route-transition"
-        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+        initial={false}
         key={pathname}
-        transition={{ duration: 0.38 }}
+        transition={{ duration: reduceMotion ? 0 : 0.38 }}
       >
         {children}
       </motion.div>
