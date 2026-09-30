@@ -26,6 +26,8 @@ import type {
   PostInventoryMovementServiceInputContract,
   ListInventoryAvailabilityServiceInputContract,
   ListInventoryMovementsServiceInputContract,
+  ListProductInventorySummariesServiceInputContract,
+  ProductInventorySummaryContract,
   ListStockLocationsServiceInputContract,
   ProductContract,
   ProductDetailsContract,
@@ -630,6 +632,15 @@ export class AdminApiClient {
     return this.request<
       InventoryReadPageContract<InventoryAvailabilityReadContract>
     >(`/inventory/availability${queryString(input)}`, request);
+  }
+
+  listInventoryProducts(
+    input: ListProductInventorySummariesServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >(`/inventory/products${queryString(input)}`, request);
   }
 
   listSuppliers(

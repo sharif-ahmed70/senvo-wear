@@ -2,59 +2,42 @@
 
 import type {
   BarcodeLookupContract,
-  InventoryAvailabilityReadContract,
-  InventoryMovementHistoryContract,
+  ProductInventorySummaryContract,
   StockLocationReadContract,
 } from "@senvo/contracts";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Boxes,
   CheckCircle2,
-  ClipboardList,
-  LoaderCircle,
+  Layers,
+  Loader2,
   MapPin,
+  Package,
   PackageCheck,
+  PackagePlus,
   RefreshCw,
   ScanBarcode,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
   Truck,
   X,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 import { useAdminPermissions } from "../../admin-shell";
+import { InventoryScanDialog } from "./inventory-scan-dialog";
+import { ProductHistoryModal } from "./product-history-modal";
+import { ProductInventoryDrawer } from "./product-inventory-drawer";
 import styles from "./inventory-overview.module.css";
 
-const client = new AdminApiClient({
-  baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
-});
+const client = new AdminApiClient();
 
-const PAGE_SIZE = 100;
-
-type PageState<T> = {
-  hasMore: boolean;
-  items: T[];
-  nextCursor: string | null;
-};
-
-type LoadState = "error" | "loading" | "ready";
-
-type InventoryFilters = {
-  locationId: string;
-  search: string;
-};
+type StockStatusFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 
 export function InventoryOverview({
   permissions: propsPermissions,
@@ -64,927 +47,594 @@ export function InventoryOverview({
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
   const canRead = permissions.includes("INVENTORY:READ");
-
+  const canCreate = permissions.includes("INVENTORY:CREATE");
   const canUpdate = permissions.includes("INVENTORY:UPDATE");
-  const [state, setState] = useState<LoadState>("loading");
+
+  // State
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [filters, setFilters] = useState<InventoryFilters>({
-    locationId: "",
-    search: "",
-  });
-  const [draftSearch, setDraftSearch] = useState("");
-  const [draftLocationId, setDraftLocationId] = useState("");
-  const [availability, setAvailability] = useState<
-    PageState<InventoryAvailabilityReadContract>
-  >({ hasMore: false, items: [], nextCursor: null });
+  const [items, setItems] = useState<ProductInventorySummaryContract[]>([]);
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
-  const [movements, setMovements] = useState<
-    InventoryMovementHistoryContract[]
-  >([]);
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scanResult, setScanResult] = useState<BarcodeLookupContract | null>(
-    null,
-  );
-  const [actionNotice, setActionNotice] = useState<
-    null | "adjust" | "receive" | "transfer"
-  >(null);
 
-  const load = useCallback(async () => {
+  // Filters
+  const [search, setSearch] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StockStatusFilter>("ALL");
+
+  // Dialogs and Drawers
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] =
+    useState<ProductInventorySummaryContract | null>(null);
+  const [historyProduct, setHistoryProduct] =
+    useState<ProductInventorySummaryContract | null>(null);
+
+  // Fetch Inventory and Locations
+  const loadData = useCallback(async () => {
     if (!canRead) return;
-    setState("loading");
-    setError("");
-    try {
-      const [availabilityResult, locationResult, movementResult] =
-        await Promise.all([
-          client.listInventoryAvailability({
-            locationId: filters.locationId || undefined,
-            pageSize: PAGE_SIZE,
-            search: filters.search || undefined,
-          }),
-          client.listStockLocations({ pageSize: PAGE_SIZE }),
-          client.listInventoryMovements({ pageSize: 8 }),
-        ]);
-      setAvailability(availabilityResult.data);
-      setLocations(locationResult.data.items);
-      setMovements(movementResult.data.items);
-      setState("ready");
-    } catch (caught) {
-      setError(messageFor(caught));
-      setState("error");
-    }
-  }, [canRead, filters]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const metrics = useMemo(() => {
-    const rows = availability.items;
-    return {
-      available: rows.reduce((sum, item) => sum + item.availableToSell, 0),
-      fullyReserved: rows.filter(
-        (item) => item.onHand > 0 && item.availableToSell === 0,
-      ).length,
-      onHand: rows.reduce((sum, item) => sum + item.onHand, 0),
-      positions: rows.length,
-      reserved: rows.reduce((sum, item) => sum + item.reserved, 0),
-      zeroStock: rows.filter((item) => item.onHand === 0).length,
-    };
-  }, [availability.items]);
-
-  const selectedLocation = locations.find(
-    (location) => location.id === filters.locationId,
-  );
-
-  if (!canRead) {
-    return (
-      <StatePanel
-        icon={<ShieldCheck size={28} />}
-        title="Inventory access is restricted"
-        text="Your role does not have permission to view inventory availability or movement history."
-      />
-    );
-  }
-
-  function applyFilters(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFilters({
-      locationId: draftLocationId,
-      search: draftSearch.trim(),
-    });
-  }
-
-  function clearFilters() {
-    setDraftLocationId("");
-    setDraftSearch("");
-    setFilters({ locationId: "", search: "" });
-  }
-
-  function applyScan(result: BarcodeLookupContract) {
-    setScanResult(result);
-    setDraftSearch(result.sku);
-    setFilters((current) => ({ ...current, search: result.sku }));
-    setNotice(
-      `Showing inventory for ${result.productName} · ${result.color} / ${result.size}.`,
-    );
-    setScanOpen(false);
-  }
-
-  return (
-    <main className={styles.page}>
-      <header className={styles.pageHeader}>
-        <div>
-          <p className={styles.eyebrow}>Stock operations</p>
-          <h1>Inventory</h1>
-          <p>
-            See what is physically on hand, what is reserved, and what can
-            actually be sold across SENVO stock locations.
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          <button
-            className={styles.secondaryButton}
-            onClick={() => {
-              setScanResult(null);
-              setScanOpen(true);
-            }}
-            type="button"
-          >
-            <ScanBarcode aria-hidden="true" size={16} />
-            Scan Barcode
-          </button>
-          <Link className={styles.primaryButton} href="/inventory/receive">
-            <PackageCheck aria-hidden="true" size={16} />
-            Receive Stock
-          </Link>
-        </div>
-      </header>
-
-      {error ? (
-        <Feedback message={error} onClose={() => setError("")} tone="error" />
-      ) : null}
-      {notice ? (
-        <Feedback
-          message={notice}
-          onClose={() => setNotice("")}
-          tone="success"
-        />
-      ) : null}
-
-      <section className={styles.metrics} aria-label="Loaded inventory summary">
-        <Metric
-          icon={<Boxes size={18} />}
-          label="On hand"
-          meta={scopeText(availability.hasMore, selectedLocation?.name)}
-          value={number(metrics.onHand)}
-        />
-        <Metric
-          icon={<ClipboardList size={18} />}
-          label="Reserved"
-          meta="Committed to active demand"
-          value={number(metrics.reserved)}
-          tone="attention"
-        />
-        <Metric
-          icon={<PackageCheck size={18} />}
-          label="Available to sell"
-          meta="On hand minus reservations"
-          value={number(metrics.available)}
-          tone="success"
-        />
-        <Metric
-          icon={<AlertCircle size={18} />}
-          label="Zero-stock positions"
-          meta={`${metrics.fullyReserved} more fully reserved`}
-          value={number(metrics.zeroStock)}
-          tone={metrics.zeroStock ? "danger" : "success"}
-        />
-        <Metric
-          icon={<MapPin size={18} />}
-          label="Loaded locations"
-          meta={
-            locations.length === PAGE_SIZE
-              ? "First 100 locations"
-              : "Stock locations"
-          }
-          value={number(locations.length)}
-        />
-      </section>
-
-      <section className={styles.overviewGrid}>
-        <article className={styles.healthCard}>
-          <div className={styles.cardHeader}>
-            <div>
-              <p className={styles.eyebrow}>Availability health</p>
-              <h2>Current loaded positions</h2>
-            </div>
-            <span className={styles.scopeBadge}>
-              {availability.hasMore
-                ? `First ${PAGE_SIZE} rows`
-                : `${metrics.positions} rows`}
-            </span>
-          </div>
-          <div className={styles.healthBody}>
-            <HealthBar
-              label="Sellable now"
-              total={metrics.positions}
-              value={
-                availability.items.filter((item) => item.availableToSell > 0)
-                  .length
-              }
-              tone="success"
-            />
-            <HealthBar
-              label="Fully reserved"
-              total={metrics.positions}
-              value={metrics.fullyReserved}
-              tone="attention"
-            />
-            <HealthBar
-              label="Out of stock"
-              total={metrics.positions}
-              value={metrics.zeroStock}
-              tone="danger"
-            />
-          </div>
-          <p className={styles.truthNote}>
-            SENVO does not invent valuation or low-stock thresholds here. This
-            panel is derived only from the availability records returned by the
-            backend.
-          </p>
-        </article>
-
-        <article className={styles.activityCard}>
-          <div className={styles.cardHeader}>
-            <div>
-              <p className={styles.eyebrow}>Movement ledger</p>
-              <h2>Recent activity</h2>
-            </div>
-            <Link href="/inventory/movements">
-              View all
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-          <div className={styles.activityList}>
-            {state === "loading" ? (
-              <InlineLoading text="Loading movement history…" />
-            ) : movements.length ? (
-              movements
-                .slice(0, 6)
-                .map((movement, index) => (
-                  <MovementItem
-                    key={`${movement.id}:${movement.variant.id}:${index}`}
-                    movement={movement}
-                  />
-                ))
-            ) : (
-              <div className={styles.emptyCompact}>
-                <Truck size={20} />
-                <span>No inventory movements yet.</span>
-              </div>
-            )}
-          </div>
-        </article>
-
-        <article className={styles.quickCard}>
-          <div className={styles.cardHeader}>
-            <div>
-              <p className={styles.eyebrow}>Daily operations</p>
-              <h2>Quick actions</h2>
-            </div>
-          </div>
-          <div className={styles.quickList}>
-            <Link className={styles.quickLink} href="/inventory/receive">
-              <span className={styles.quickIcon}>
-                <PackageCheck size={17} />
-              </span>
-              <span>
-                <strong>Receive Stock</strong>
-                <small>Add an incoming shipment to the stock ledger.</small>
-              </span>
-              <ArrowRight size={15} />
-            </Link>
-            <QuickAction
-              icon={<PackageCheck size={17} />}
-              onClick={() => setActionNotice("receive")}
-              subtitle="Add an incoming shipment without overwriting stock."
-              title="Receive Stock"
-            />
-            <QuickAction
-              icon={<Truck size={17} />}
-              onClick={() => setActionNotice("transfer")}
-              subtitle="Move stock between real SENVO locations."
-              title="Transfer Stock"
-            />
-            <QuickAction
-              icon={<SlidersHorizontal size={17} />}
-              onClick={() => setActionNotice("adjust")}
-              subtitle="Correct physical differences through ledger movement."
-              title="Stock Adjustment"
-            />
-            <QuickAction
-              icon={<ScanBarcode size={17} />}
-              onClick={() => setScanOpen(true)}
-              subtitle="Resolve a variant first, then inspect its availability."
-              title="Scan to Find Stock"
-            />
-            <Link className={styles.quickLink} href="/inventory/locations">
-              <span className={styles.quickIcon}>
-                <MapPin size={17} />
-              </span>
-              <span>
-                <strong>Stock Locations</strong>
-                <small>Review warehouse, showroom and hold locations.</small>
-              </span>
-              <ArrowRight size={15} />
-            </Link>
-          </div>
-          {!canUpdate ? (
-            <p className={styles.permissionNote}>
-              Your role can inspect inventory but cannot perform stock changes.
-            </p>
-          ) : null}
-        </article>
-      </section>
-
-      <section className={styles.inventoryCard}>
-        <div className={styles.cardHeaderLarge}>
-          <div>
-            <p className={styles.eyebrow}>Inventory at a glance</p>
-            <h2>Real availability by variant and location</h2>
-            <p>
-              On hand comes from the movement ledger. Available to sell also
-              accounts for active reservations.
-            </p>
-          </div>
-          <button
-            aria-label="Refresh inventory"
-            className={styles.iconButton}
-            disabled={state === "loading"}
-            onClick={() => void load()}
-            type="button"
-          >
-            <RefreshCw
-              className={state === "loading" ? styles.spin : ""}
-              size={16}
-            />
-          </button>
-        </div>
-
-        <form className={styles.filters} onSubmit={applyFilters}>
-          <label className={styles.searchBox}>
-            <Search aria-hidden="true" size={16} />
-            <span className="sr-only">Search product or SKU</span>
-            <input
-              onChange={(event) => setDraftSearch(event.target.value)}
-              placeholder="Search product or SKU…"
-              value={draftSearch}
-            />
-          </label>
-          <label className={styles.selectShell}>
-            <MapPin aria-hidden="true" size={15} />
-            <span className="sr-only">Stock location</span>
-            <select
-              onChange={(event) => setDraftLocationId(event.target.value)}
-              value={draftLocationId}
-            >
-              <option value="">All locations</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className={styles.secondaryButton} type="submit">
-            <SlidersHorizontal size={15} />
-            Apply filters
-          </button>
-          {filters.locationId || filters.search ? (
-            <button
-              className={styles.textButton}
-              onClick={clearFilters}
-              type="button"
-            >
-              Clear
-            </button>
-          ) : null}
-        </form>
-
-        {state === "loading" ? (
-          <div className={styles.largeState}>
-            <LoaderCircle className={styles.spin} size={24} />
-            <span>Loading inventory availability…</span>
-          </div>
-        ) : state === "error" ? (
-          <div className={styles.largeState} role="alert">
-            <AlertCircle size={24} />
-            <strong>Inventory data is unavailable</strong>
-            <span>{error}</span>
-            <button
-              className={styles.secondaryButton}
-              onClick={() => void load()}
-              type="button"
-            >
-              Retry
-            </button>
-          </div>
-        ) : availability.items.length === 0 ? (
-          <div className={styles.largeState}>
-            <Boxes size={24} />
-            <strong>No inventory positions match this view</strong>
-            <span>Try another product/SKU or stock location.</span>
-          </div>
-        ) : (
-          <AvailabilityTable items={availability.items} />
-        )}
-
-        <footer className={styles.tableFooter}>
-          <span>
-            {availability.hasMore
-              ? `Showing the first ${availability.items.length} matching positions. Use filters to narrow the view.`
-              : `${availability.items.length} matching inventory positions.`}
-          </span>
-          <Link href="/inventory/movements">
-            Movement history
-            <ArrowRight size={14} />
-          </Link>
-        </footer>
-      </section>
-
-      {scanOpen ? (
-        <InventoryScanDialog
-          onApply={applyScan}
-          onClose={() => {
-            setScanOpen(false);
-            setScanResult(null);
-          }}
-          result={scanResult}
-          setResult={setScanResult}
-        />
-      ) : null}
-
-      {actionNotice ? (
-        <ActionGateDialog
-          action={actionNotice}
-          canUpdate={canUpdate}
-          onClose={() => setActionNotice(null)}
-        />
-      ) : null}
-    </main>
-  );
-}
-
-function AvailabilityTable({
-  items,
-}: {
-  items: InventoryAvailabilityReadContract[];
-}) {
-  return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Product / Variant</th>
-            <th>SKU</th>
-            <th>Location</th>
-            <th className={styles.numeric}>On hand</th>
-            <th className={styles.numeric}>Reserved</th>
-            <th className={styles.numeric}>Available</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => {
-            const status = availabilityStatus(item);
-            return (
-              <tr key={`${item.variant.id}:${item.location.id}`}>
-                <td>
-                  <div className={styles.productIdentity}>
-                    <span className={styles.productGlyph} aria-hidden="true">
-                      {item.variant.productName.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span>
-                      <Link
-                        href={`/catalog/products/${item.variant.productId}`}
-                      >
-                        {item.variant.productName}
-                      </Link>
-                      <small>
-                        {item.variant.color} / {item.variant.size}
-                      </small>
-                    </span>
-                  </div>
-                </td>
-                <td className={styles.mono}>{item.variant.sku}</td>
-                <td>{item.location.name}</td>
-                <td className={styles.numeric}>{number(item.onHand)}</td>
-                <td className={styles.numeric}>{number(item.reserved)}</td>
-                <td className={`${styles.numeric} ${styles.availableCell}`}>
-                  {number(item.availableToSell)}
-                </td>
-                <td>
-                  <span
-                    className={`${styles.statusPill} ${styles[`status_${status.tone}`]}`}
-                  >
-                    {status.label}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function MovementItem({
-  movement,
-}: {
-  movement: InventoryMovementHistoryContract;
-}) {
-  const direction = movement.destinationLocation?.name
-    ? `to ${movement.destinationLocation.name}`
-    : movement.sourceLocation?.name
-      ? `from ${movement.sourceLocation.name}`
-      : "external movement";
-  return (
-    <div className={styles.activityItem}>
-      <span className={styles.activityIcon}>
-        <Truck size={16} />
-      </span>
-      <span>
-        <strong>{humanize(movement.type)}</strong>
-        <small>
-          {movement.variant.sku} · {movement.quantity} units · {direction}
-        </small>
-      </span>
-      <time dateTime={movement.occurredAt}>
-        {formatRelative(movement.occurredAt)}
-      </time>
-    </div>
-  );
-}
-
-function Metric({
-  icon,
-  label,
-  meta,
-  tone = "default",
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  meta: string;
-  tone?: "attention" | "danger" | "default" | "success";
-  value: string;
-}) {
-  return (
-    <article className={styles.metricCard}>
-      <span className={`${styles.metricIcon} ${styles[`metricIcon_${tone}`]}`}>
-        {icon}
-      </span>
-      <span>
-        <small>{label}</small>
-        <strong>{value}</strong>
-        <em className={styles[`metricMeta_${tone}`]}>{meta}</em>
-      </span>
-    </article>
-  );
-}
-
-function HealthBar({
-  label,
-  tone,
-  total,
-  value,
-}: {
-  label: string;
-  tone: "attention" | "danger" | "success";
-  total: number;
-  value: number;
-}) {
-  const percentage = total ? Math.round((value / total) * 100) : 0;
-  return (
-    <div className={styles.healthRow}>
-      <div>
-        <span>{label}</span>
-        <strong>
-          {value} <small>({percentage}%)</small>
-        </strong>
-      </div>
-      <span className={styles.healthTrack}>
-        <span
-          className={styles[`healthFill_${tone}`]}
-          style={{ width: `${percentage}%` }}
-        />
-      </span>
-    </div>
-  );
-}
-
-function QuickAction({
-  icon,
-  onClick,
-  subtitle,
-  title,
-}: {
-  icon: ReactNode;
-  onClick: () => void;
-  subtitle: string;
-  title: string;
-}) {
-  return (
-    <button className={styles.quickAction} onClick={onClick} type="button">
-      <span className={styles.quickIcon}>{icon}</span>
-      <span>
-        <strong>{title}</strong>
-        <small>{subtitle}</small>
-      </span>
-      <ArrowRight size={15} />
-    </button>
-  );
-}
-
-function InventoryScanDialog({
-  onApply,
-  onClose,
-  result,
-  setResult,
-}: {
-  onApply: (result: BarcodeLookupContract) => void;
-  onClose: () => void;
-  result: BarcodeLookupContract | null;
-  setResult: (result: BarcodeLookupContract | null) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [localError, setLocalError] = useState("");
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const value = data.get("barcode");
-    if (typeof value !== "string" || !value.trim()) return;
     setLoading(true);
-    setLocalError("");
-    setResult(null);
+    setError("");
+
     try {
-      setResult((await client.lookupBarcode(value.trim())).data);
-    } catch (caught) {
-      if (caught instanceof AdminApiError && caught.status === 404) {
-        setLocalError("No active product variant matches this barcode.");
+      const [productsRes, locationsRes] = await Promise.all([
+        client.listInventoryProducts({
+          locationId: selectedLocationId || undefined,
+          lowStockThreshold: 5,
+          pageSize: 100,
+        }),
+        client.listStockLocations({ pageSize: 100 }),
+      ]);
+
+      setItems(productsRes.data.items);
+      setLocations(locationsRes.data.items);
+    } catch (caught: unknown) {
+      if (caught instanceof AdminApiError) {
+        setError(caught.message);
       } else {
-        setLocalError(messageFor(caught));
+        setError("Failed to connect to inventory service. Please check connection.");
       }
     } finally {
       setLoading(false);
     }
+  }, [canRead, selectedLocationId]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Client-side search and status filter
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return items.filter((item) => {
+      // 1. Stock Status Filter
+      if (statusFilter === "OUT_OF_STOCK" && item.availableToSell > 0) {
+        return false;
+      }
+      if (
+        statusFilter === "LOW_STOCK" &&
+        (item.availableToSell <= 0 || item.availableToSell > 5)
+      ) {
+        return false;
+      }
+      if (statusFilter === "IN_STOCK" && item.availableToSell <= 5) {
+        return false;
+      }
+
+      // 2. Search query (Product name, Product code, Variant SKU)
+      if (q) {
+        const matchName = item.product.name.toLowerCase().includes(q);
+        const matchCode = item.product.productCode.toLowerCase().includes(q);
+        const matchSku = item.variants.some((v) =>
+          v.variant.sku.toLowerCase().includes(q),
+        );
+        if (!matchName && !matchCode && !matchSku) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [items, search, statusFilter]);
+
+  // Overall Warehouse Metrics (from all fetched items)
+  const metrics = useMemo(() => {
+    const totalProducts = items.length;
+    let totalStockUnits = 0;
+    let needRestockCount = 0;
+    let outOfStockCount = 0;
+
+    for (const item of items) {
+      totalStockUnits += item.onHand;
+      if (item.availableToSell <= 0) {
+        outOfStockCount++;
+      } else if (item.availableToSell <= 5) {
+        needRestockCount++;
+      }
+    }
+
+    return {
+      needRestockCount,
+      outOfStockCount,
+      totalProducts,
+      totalStockUnits,
+    };
+  }, [items]);
+
+  // Handler for quick scanner resolution
+  function handleBarcodeResolved(
+    barcodeValue: string,
+    lookup: BarcodeLookupContract,
+  ) {
+    // Check if the product already exists in current loaded list
+    const matched = items.find(
+      (p) =>
+        p.product.name.toLowerCase() === lookup.productName.toLowerCase() ||
+        p.variants.some((v) => v.variant.sku === lookup.sku),
+    );
+
+    if (matched) {
+      setSelectedProduct(matched);
+    } else {
+      // Set the search field so the user can see any matching results
+      setSearch(lookup.sku);
+    }
+  }
+
+  if (!canRead) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.errorState} role="alert">
+          <AlertCircle size={32} />
+          <strong>Access Restricted / অনুমতি নেই</strong>
+          <p>You do not have permission to view inventory records.</p>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <div
-      className={styles.dialogBackdrop}
-      onMouseDown={onClose}
-      role="presentation"
-    >
-      <section
-        aria-labelledby="inventory-scan-title"
-        aria-modal="true"
-        className={styles.dialog}
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
-      >
-        <header>
-          <div>
-            <p className={styles.eyebrow}>Inventory scanner</p>
-            <h2 id="inventory-scan-title">Find stock by barcode</h2>
-            <p>Scan with a keyboard-style scanner or type the label value.</p>
-          </div>
+    <main className={styles.page}>
+      {/* ------------------------------------------------------------------
+          Top Section: Page Header
+          ------------------------------------------------------------------ */}
+      <header className={styles.pageHeader}>
+        <div>
+          <p className={styles.eyebrow}>
+            Warehouse & Storefront / ওয়্যারহাউস ও শোরুম
+          </p>
+          <h1 className={styles.pageTitle}>Inventory</h1>
+          <p className={styles.pageSubtitle}>
+            Real-time garment stock, warehouse positions, and availability
+            across all stores.
+          </p>
+        </div>
+
+        <div className={styles.headerActions}>
           <button
-            aria-label="Close"
+            aria-label="Refresh stock"
             className={styles.iconButton}
-            onClick={onClose}
+            disabled={loading}
+            onClick={() => void loadData()}
+            title="Refresh Stock"
             type="button"
           >
-            <X size={17} />
+            <RefreshCw className={loading ? styles.spin : ""} size={16} />
           </button>
-        </header>
-        <form
-          className={styles.scanForm}
-          onSubmit={(event) => void submit(event)}
-        >
-          <label>
-            <ScanBarcode size={18} />
+
+          <Link className={styles.secondaryButton} href="/inventory/locations">
+            <MapPin size={15} />
+            <span>Locations</span>
+          </Link>
+
+          {canCreate ? (
+            <>
+              <Link
+                className={styles.secondaryButton}
+                href="/inventory/transfer"
+              >
+                <Truck size={15} />
+                <span>Transfer Stock</span>
+              </Link>
+              <Link className={styles.primaryButton} href="/inventory/receive">
+                <PackagePlus size={16} />
+                <span>Receive Stock</span>
+              </Link>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      {/* ------------------------------------------------------------------
+          Screen 1: Summary Cards Strip
+          ------------------------------------------------------------------ */}
+      <section aria-label="Inventory summary" className={styles.summaryGrid}>
+        {/* Card 1: Total Products */}
+        <article className={styles.summaryCard}>
+          <div className={styles.summaryIconWrap}>
+            <Boxes size={22} />
+          </div>
+          <div className={styles.summaryContent}>
+            <span className={styles.summaryLabel}>Total Products</span>
+            <strong className={styles.summaryValue}>
+              {metrics.totalProducts}
+            </strong>
+            <span className={styles.summarySubtext}>
+              Active catalog styles
+            </span>
+          </div>
+        </article>
+
+        {/* Card 2: Total Stock Units */}
+        <article className={styles.summaryCard}>
+          <div
+            className={`${styles.summaryIconWrap} ${styles.summaryIconWrap_success}`}
+          >
+            <Layers size={22} />
+          </div>
+          <div className={styles.summaryContent}>
+            <span className={styles.summaryLabel}>Total Stock Units</span>
+            <strong className={styles.summaryValue}>
+              {metrics.totalStockUnits.toLocaleString()} pcs
+            </strong>
+            <span className={styles.summarySubtext}>
+              Physical units on hand
+            </span>
+          </div>
+        </article>
+
+        {/* Card 3: Need Restock (Shop-owner friendly!) */}
+        <article className={styles.summaryCard}>
+          <div
+            className={`${styles.summaryIconWrap} ${styles.summaryIconWrap_warning}`}
+          >
+            <AlertTriangle size={22} />
+          </div>
+          <div className={styles.summaryContent}>
+            <span className={styles.summaryLabel}>Need Restock</span>
+            <strong
+              className={`${styles.summaryValue} ${
+                metrics.needRestockCount > 0 ? styles.textAmber : ""
+              }`}
+            >
+              {metrics.needRestockCount}
+            </strong>
+            <span className={styles.summarySubtext}>
+              Available ≤ 5 pieces
+            </span>
+          </div>
+        </article>
+
+        {/* Card 4: Out of Stock */}
+        <article className={styles.summaryCard}>
+          <div
+            className={`${styles.summaryIconWrap} ${styles.summaryIconWrap_danger}`}
+          >
+            <XCircle size={22} />
+          </div>
+          <div className={styles.summaryContent}>
+            <span className={styles.summaryLabel}>Out of Stock</span>
+            <strong
+              className={`${styles.summaryValue} ${
+                metrics.outOfStockCount > 0 ? styles.textDanger : ""
+              }`}
+            >
+              {metrics.outOfStockCount}
+            </strong>
+            <span className={styles.summarySubtext}>
+              0 available to sell
+            </span>
+          </div>
+        </article>
+      </section>
+
+      {/* ------------------------------------------------------------------
+          Search & Filters Toolbar
+          ------------------------------------------------------------------ */}
+      <section aria-label="Inventory filters" className={styles.filterToolbar}>
+        <div className={styles.filterTopRow}>
+          {/* Search Box */}
+          <div className={styles.searchBoxWrap}>
+            <Search className={styles.searchIcon} size={18} />
             <input
-              autoFocus
-              autoComplete="off"
-              name="barcode"
-              placeholder="Scan barcode…"
-              required
+              className={styles.searchInput}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search product, SKU, barcode…"
+              type="text"
+              value={search}
             />
-          </label>
+            {search ? (
+              <button
+                aria-label="Clear search"
+                className={styles.clearSearchBtn}
+                onClick={() => setSearch("")}
+                type="button"
+              >
+                <X size={15} />
+              </button>
+            ) : null}
+          </div>
+
+          {/* Quick Barcode Scanner Button (Near Search as requested!) */}
+          <button
+            className={styles.scanQuickBtn}
+            onClick={() => setScannerOpen(true)}
+            title="Scan barcode with handheld scanner or camera"
+            type="button"
+          >
+            <ScanBarcode size={17} />
+            <span>Scan Barcode</span>
+          </button>
+
+          {/* Location Filter */}
+          <div className={styles.locationSelectWrap}>
+            <select
+              aria-label="Filter by stock location"
+              className={styles.locationSelect}
+              onChange={(e) => setSelectedLocationId(e.target.value)}
+              value={selectedLocationId}
+            >
+              <option value="">All Locations / সব লোকেশন</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Stock Status Pills */}
+        <div className={styles.filterPillsRow}>
+          <span className={styles.filterPillsLabel}>Stock Status:</span>
+
+          <button
+            className={`${styles.statusPill} ${
+              statusFilter === "ALL" ? styles.statusPill_active : ""
+            }`}
+            onClick={() => setStatusFilter("ALL")}
+            type="button"
+          >
+            All Products ({items.length})
+          </button>
+
+          <button
+            className={`${styles.statusPill} ${styles.statusPill_success} ${
+              statusFilter === "IN_STOCK" ? styles.statusPill_active : ""
+            }`}
+            onClick={() => setStatusFilter("IN_STOCK")}
+            type="button"
+          >
+            <CheckCircle2 size={13} />
+            <span>
+              In Stock (
+              {items.filter((i) => i.availableToSell > 5).length})
+            </span>
+          </button>
+
+          <button
+            className={`${styles.statusPill} ${styles.statusPill_warning} ${
+              statusFilter === "LOW_STOCK" ? styles.statusPill_active : ""
+            }`}
+            onClick={() => setStatusFilter("LOW_STOCK")}
+            type="button"
+          >
+            <AlertTriangle size={13} />
+            <span>Need Restock ({metrics.needRestockCount})</span>
+          </button>
+
+          <button
+            className={`${styles.statusPill} ${styles.statusPill_danger} ${
+              statusFilter === "OUT_OF_STOCK" ? styles.statusPill_active : ""
+            }`}
+            onClick={() => setStatusFilter("OUT_OF_STOCK")}
+            type="button"
+          >
+            <XCircle size={13} />
+            <span>Out of Stock ({metrics.outOfStockCount})</span>
+          </button>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------
+          Screen 2: Product Grid View
+          ------------------------------------------------------------------ */}
+      {loading ? (
+        <section aria-label="Loading products" className={styles.loadingGrid}>
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div className={styles.skeletonCard} key={idx}>
+              <div className={styles.skeletonHero} />
+              <div className={styles.skeletonLine} />
+              <div className={styles.skeletonLineShort} />
+            </div>
+          ))}
+        </section>
+      ) : error ? (
+        <div className={styles.errorState} role="alert">
+          <AlertCircle size={28} />
+          <strong>Failed to load inventory</strong>
+          <p>{error}</p>
           <button
             className={styles.primaryButton}
-            disabled={loading}
-            type="submit"
+            onClick={() => void loadData()}
+            type="button"
           >
-            {loading ? (
-              <LoaderCircle className={styles.spin} size={16} />
-            ) : (
-              <Search size={16} />
-            )}
-            Look up
+            Retry
           </button>
-        </form>
-        {localError ? (
-          <p className={styles.dialogError}>
-            <AlertCircle size={15} />
-            {localError}
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className={styles.emptyState}>
+          <Package size={36} />
+          <strong>No products found</strong>
+          <p>
+            No inventory items matched your active search or filter criteria.
           </p>
-        ) : null}
-        {result ? (
-          <div className={styles.scanResult}>
-            <span className={styles.scanSuccess}>
-              <CheckCircle2 size={18} />
-            </span>
-            <span>
-              <strong>{result.productName}</strong>
-              <small>
-                {result.color} / {result.size} · {result.sku}
-              </small>
-            </span>
+          {search || selectedLocationId || statusFilter !== "ALL" ? (
             <button
               className={styles.secondaryButton}
-              onClick={() => onApply(result)}
+              onClick={() => {
+                setSearch("");
+                setSelectedLocationId("");
+                setStatusFilter("ALL");
+              }}
               type="button"
             >
-              Show inventory
+              Clear Filters
             </button>
-          </div>
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
-function ActionGateDialog({
-  action,
-  canUpdate,
-  onClose,
-}: {
-  action: "adjust" | "receive" | "transfer";
-  canUpdate: boolean;
-  onClose: () => void;
-}) {
-  const copy = {
-    adjust: {
-      title: "Stock Adjustment",
-      text: "Adjustments must create a ledger movement instead of overwriting quantity.",
-    },
-    receive: {
-      title: "Receive Stock",
-      text: "A receipt must create and post a real inventory movement into the selected stock location.",
-    },
-    transfer: {
-      title: "Transfer Stock",
-      text: "Transfers must move stock from one real location to another through the movement ledger.",
-    },
-  }[action];
-  return (
-    <div
-      className={styles.dialogBackdrop}
-      onMouseDown={onClose}
-      role="presentation"
-    >
-      <section
-        className={styles.dialog}
-        onMouseDown={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <header>
-          <div>
-            <p className={styles.eyebrow}>Safe stock operation</p>
-            <h2>{copy.title}</h2>
-            <p>{copy.text}</p>
-          </div>
-          <button
-            aria-label="Close"
-            className={styles.iconButton}
-            onClick={onClose}
-            type="button"
-          >
-            <X size={17} />
-          </button>
-        </header>
-        <div className={styles.integrationGate}>
-          <ShieldCheck size={20} />
-          <div>
-            <strong>
-              {canUpdate
-                ? "Frontend is ready for the movement-create binding"
-                : "Your role is read-only"}
-            </strong>
-            <p>
-              {canUpdate
-                ? "The current Admin HTTP surface can read inventory and post an existing draft movement, but it does not yet expose creation of a new movement. SENVO will not fake a successful stock change."
-                : "Ask an Owner/Admin for inventory update permission before performing stock operations."}
-            </p>
-          </div>
+          ) : null}
         </div>
-        <div className={styles.dialogActions}>
-          <Link className={styles.secondaryButton} href="/inventory/movements">
-            View movement history
-          </Link>
-          <button
-            className={styles.primaryButton}
-            onClick={onClose}
-            type="button"
-          >
-            Got it
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Feedback({
-  message,
-  onClose,
-  tone,
-}: {
-  message: string;
-  onClose: () => void;
-  tone: "error" | "success";
-}) {
-  return (
-    <div
-      className={`${styles.feedback} ${styles[`feedback_${tone}`]}`}
-      role={tone === "error" ? "alert" : "status"}
-    >
-      {tone === "success" ? (
-        <CheckCircle2 size={16} />
       ) : (
-        <AlertCircle size={16} />
+        <section aria-label="Products inventory" className={styles.productGrid}>
+          {filteredProducts.map((item) => {
+            const isOutOfStock = item.availableToSell <= 0;
+            const isLowStock = !isOutOfStock && item.availableToSell <= 5;
+            const primarySku = item.variants[0]?.variant.sku || item.product.productCode;
+
+            // Unique colors and sizes count
+            const uniqueColors = new Set(
+              item.variants.map((v) => v.variant.color).filter(Boolean),
+            );
+            const uniqueSizes = new Set(
+              item.variants.map((v) => v.variant.size).filter(Boolean),
+            );
+
+            return (
+              <article
+                className={styles.productCard}
+                key={item.product.id}
+                onClick={() => setSelectedProduct(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedProduct(item);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                {/* Hero / Thumbnail */}
+                <div className={styles.cardHero}>
+                  <div className={styles.cardImageFallback}>
+                    <span>{item.product.name.charAt(0).toUpperCase()}</span>
+                  </div>
+
+                  <div className={styles.cardBadgePos}>
+                    {isOutOfStock ? (
+                      <span
+                        className={`${styles.badge} ${styles.badge_danger}`}
+                      >
+                        <XCircle size={12} />
+                        <span>Out of Stock</span>
+                      </span>
+                    ) : isLowStock ? (
+                      <span
+                        className={`${styles.badge} ${styles.badge_warning}`}
+                      >
+                        <AlertTriangle size={12} />
+                        <span>Need Restock</span>
+                      </span>
+                    ) : (
+                      <span
+                        className={`${styles.badge} ${styles.badge_success}`}
+                      >
+                        <CheckCircle2 size={12} />
+                        <span>In Stock</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card Body */}
+                <div className={styles.cardBody}>
+                  <div className={styles.cardMetaRow}>
+                    <span className={styles.codeBadge}>
+                      {item.product.productCode}
+                    </span>
+                    <span className={styles.skuMuted}>SKU: {primarySku}</span>
+                  </div>
+
+                  <h3 className={styles.cardTitle}>{item.product.name}</h3>
+
+                  {/* Stock Summary Strip */}
+                  <div className={styles.stockStrip}>
+                    <div className={styles.stockCol}>
+                      <small>Total</small>
+                      <strong>{item.onHand}</strong>
+                    </div>
+                    <div className={styles.stockCol}>
+                      <small>Reserved</small>
+                      <strong
+                        className={item.reserved > 0 ? styles.textAmber : ""}
+                      >
+                        {item.reserved}
+                      </strong>
+                    </div>
+                    <div className={styles.stockCol}>
+                      <small>Available</small>
+                      <strong
+                        className={
+                          isOutOfStock
+                            ? styles.textDanger
+                            : isLowStock
+                              ? styles.textAmber
+                              : styles.textSuccess
+                        }
+                      >
+                        {item.availableToSell}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Variant summary tag */}
+                  <div className={styles.cardVariantsSummary}>
+                    <Boxes size={13} />
+                    <span>
+                      {uniqueColors.size} color{uniqueColors.size !== 1 ? "s" : ""} ·{" "}
+                      {uniqueSizes.size} size{uniqueSizes.size !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       )}
-      <span>{message}</span>
-      <button aria-label="Dismiss" onClick={onClose} type="button">
-        <X size={15} />
-      </button>
-    </div>
+
+      {/* ------------------------------------------------------------------
+          Screen 3: Product Detail Drawer
+          ------------------------------------------------------------------ */}
+      {selectedProduct ? (
+        <ProductInventoryDrawer
+          canCreate={canCreate}
+          canUpdate={canUpdate}
+          item={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          onViewHistory={() => {
+            setHistoryProduct(selectedProduct);
+          }}
+        />
+      ) : null}
+
+      {/* ------------------------------------------------------------------
+          Screen 4: Product History Modal
+          ------------------------------------------------------------------ */}
+      {historyProduct ? (
+        <ProductHistoryModal
+          onClose={() => setHistoryProduct(null)}
+          productCode={historyProduct.product.productCode}
+          productId={historyProduct.product.id}
+          productName={historyProduct.product.name}
+        />
+      ) : null}
+
+      {/* ------------------------------------------------------------------
+          Quick Barcode Scanner Dialog
+          ------------------------------------------------------------------ */}
+      {scannerOpen ? (
+        <InventoryScanDialog
+          onApply={handleBarcodeResolved}
+          onClose={() => setScannerOpen(false)}
+        />
+      ) : null}
+    </main>
   );
-}
-
-function InlineLoading({ text }: { text: string }) {
-  return (
-    <div className={styles.inlineLoading}>
-      <LoaderCircle className={styles.spin} size={18} />
-      {text}
-    </div>
-  );
-}
-
-function StatePanel({
-  icon,
-  text,
-  title,
-}: {
-  icon: ReactNode;
-  text: string;
-  title: string;
-}) {
-  return (
-    <section className={styles.statePanel}>
-      {icon}
-      <h1>{title}</h1>
-      <p>{text}</p>
-    </section>
-  );
-}
-
-function availabilityStatus(item: InventoryAvailabilityReadContract) {
-  if (item.onHand === 0)
-    return { label: "Out of stock", tone: "danger" as const };
-  if (item.availableToSell === 0)
-    return { label: "Fully reserved", tone: "attention" as const };
-  return { label: "Available", tone: "success" as const };
-}
-
-function scopeText(hasMore: boolean, location?: string) {
-  if (location) return hasMore ? `${location} · first ${PAGE_SIZE}` : location;
-  return hasMore ? `First ${PAGE_SIZE} positions` : "Current filtered scope";
-}
-
-function number(value: number) {
-  return new Intl.NumberFormat("en-US").format(value);
-}
-
-function humanize(value: string) {
-  return value
-    .toLowerCase()
-    .replaceAll("_", " ")
-    .replace(/(^|\s)\S/gu, (letter) => letter.toUpperCase());
-}
-
-function formatRelative(value: string) {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "—";
-  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function messageFor(error: unknown) {
-  return error instanceof AdminApiError
-    ? `${error.message} Request ID: ${error.requestId}`
-    : error instanceof Error
-      ? error.message
-      : "Inventory data could not be loaded.";
 }
