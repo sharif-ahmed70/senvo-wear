@@ -231,6 +231,17 @@ function defaultGetCsrfToken(): string | undefined {
   return undefined;
 }
 
+function defaultAdminApiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_SENVO_API_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/$/u, "");
+  }
+  if (process.env.NODE_ENV === "test") {
+    return "";
+  }
+  return "http://localhost:4000";
+}
+
 export class AdminApiClient {
   private readonly baseUrl: string;
   private readonly createRequestId: () => string;
@@ -242,10 +253,9 @@ export class AdminApiClient {
   private readonly sessionToken: string | undefined;
 
   constructor(options: AdminApiClientOptions = {}) {
-    this.baseUrl =
-      options.baseUrl?.replace(/\/$/u, "") ??
-      process.env.NEXT_PUBLIC_SENVO_API_URL?.replace(/\/$/u, "") ??
-      "";
+    this.baseUrl = options.baseUrl?.trim()
+      ? options.baseUrl.trim().replace(/\/$/u, "")
+      : defaultAdminApiBaseUrl();
     this.createRequestId =
       options.createRequestId ?? (() => crypto.randomUUID());
     this.credentials = options.credentials ?? "include";
