@@ -71,7 +71,19 @@ describeWithDatabase("Stock intake transaction integration", () => {
         select: { amountMinor: true, entryType: true },
         where: { organizationId: base.organization.id },
       }),
-    ).resolves.toEqual([{ amountMinor: 751_500n, entryType: "BILL" }]);
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        { amountMinor: 751_500n, entryType: "BILL" },
+        { amountMinor: 1_500n, entryType: "ADJUSTMENT" },
+      ]) as unknown,
+    );
+    // Transport stays in inventory cost but is not owed to the supplier.
+    expect(first.result.dueMinor).toBe("750000");
+    await expect(
+      prisma.supplierLedgerEntry.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toBe(2);
     await expect(
       prisma.auditEntry.count({
         where: {

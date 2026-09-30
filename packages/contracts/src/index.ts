@@ -5077,18 +5077,9 @@ export const createStockIntakeServiceInputSchema = z
     purchase: z
       .object({
         destinationLocationId: idSchema,
-        // Becomes the purchase number and the receipt movement number
-        // (REC-<memo>), so it follows the movement-number character rules.
-        memoNumber: z
-          .string()
-          .trim()
-          .min(1)
-          .max(60)
-          .regex(
-            /^[A-Za-z0-9-]+$/,
-            "Memo number may contain only letters, numbers, and hyphen.",
-          )
-          .optional(),
+        // Supplier's memo/invoice reference, any script; stored in purchase
+        // notes as "Memo: <value>". It is not the purchase number.
+        memoNumber: z.string().trim().min(1).max(60).optional(),
         note: optionalTextSchema(1000),
         purchaseDate: z
           .union([isoTimestampSchema, calendarDateSchema])
@@ -5097,6 +5088,7 @@ export const createStockIntakeServiceInputSchema = z
       .strict(),
     supplier: stockIntakeSupplierInputSchema,
     transportCostMinor: stockIntakeMinorAmountSchema.optional(),
+    transportPaidToSupplier: z.boolean().optional(),
   })
   .strict();
 export type CreateStockIntakeServiceInputContract = z.infer<
@@ -5126,6 +5118,8 @@ export const stockIntakeContractSchema = z
       .strict(),
     replayed: z.boolean(),
     supplier: z.object({ id: idSchema, name: z.string() }).strict(),
+    transportAppliedMinor: z.number().int().nonnegative(),
+    transportRequestedMinor: z.number().int().nonnegative(),
     variants: z.array(
       z
         .object({

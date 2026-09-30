@@ -19,17 +19,13 @@ import type {
   VariantCostState,
 } from "../domain/models.js";
 import { describe, expect, it } from "vitest";
-import {
-  BusinessRuleError,
-  ConflictError,
-  NotFoundError,
-  ValidationApplicationError,
-} from "../../errors.js";
+import { NotFoundError, ValidationApplicationError } from "../../errors.js";
 import { distributeTransportCost } from "../domain/stock-intake-rules.js";
 import {
   SELF_PURCHASE_SUPPLIER_CODE,
   SELF_PURCHASE_SUPPLIER_NAME,
   StockIntakeIdempotencyConflictError,
+  TRANSPORT_NOT_PAYABLE_NOTE,
   recordStockIntake,
   type RecordStockIntakeDependencies,
   type RecordStockIntakeInput,
@@ -85,13 +81,23 @@ function createStockIntakeTestWorld() {
     const paid = entries
       .filter((entry) => entry.entryType === "PAYMENT")
       .reduce((sum, entry) => sum + entry.amountMinor, 0n);
+    // Mirrors PrismaSupplierLedgerRepository: DEBIT adjustments reduce debt.
+    const adjusted = entries
+      .filter((entry) => entry.entryType === "ADJUSTMENT")
+      .reduce(
+        (sum, entry) =>
+          entry.direction === "DEBIT"
+            ? sum + entry.amountMinor
+            : sum - entry.amountMinor,
+        0n,
+      );
     return {
       lastBillDate: null,
       lastPaymentDate: null,
       organizationId: testOrganizationId,
-      outstandingBalanceMinor: billed - paid,
+      outstandingBalanceMinor: billed - paid - adjusted,
       supplierId,
-      totalAdjustedMinor: 0n,
+      totalAdjustedMinor: adjusted,
       totalBilledMinor: billed,
       totalPaidMinor: paid,
     };
@@ -965,27 +971,27 @@ describe("recordStockIntake", () => {
   });
 
   describe("transport cost", () => {
+    const twoLines = [
+      {
+        colorName: "Black",
+        quantity: 3,
+        sellingPriceMinor: 90_000,
+        sizeName: "M",
+        unitCostMinor: 50_000,
+      },
+      {
+        colorName: "Black",
+        quantity: 1,
+        sellingPriceMinor: 90_000,
+        sizeName: "L",
+        unitCostMinor: 40_000,
+      },
+    ];
+
     it("folds transport into unit cost so the purchase total is exact", async () => {
       const world = createStockIntakeTestWorld();
       const { result } = await recordStockIntake(world.dependencies, {
-        ...newProductInput({
-          lines: [
-            {
-              colorName: "Black",
-              quantity: 3,
-              sellingPriceMinor: 90_000,
-              sizeName: "M",
-              unitCostMinor: 50_000,
-            },
-            {
-              colorName: "Black",
-              quantity: 1,
-              sellingPriceMinor: 90_000,
-              sizeName: "L",
-              unitCostMinor: 40_000,
-            },
-          ],
-        }),
+        ...newProductInput({ lines: twoLines }),
         transportCostMinor: 1_001,
       });
 
@@ -996,6 +1002,8 @@ describe("recordStockIntake", () => {
       expect(result.purchase.totalCostMinor).toBe(
         (3 * 50_000 + 40_000 + 1_001).toString(),
       );
+      expect(result.transportAppliedMinor).toBe(1_001);
+      expect(result.transportRequestedMinor).toBe(1_001);
     });
 
     it("distributes remainders across lines and keeps the sum exact", () => {
@@ -1005,11 +1013,15 @@ describe("recordStockIntake", () => {
         { quantity: 2, unitCostMinor: 300 },
       ];
       for (const transport of [0, 13, 999, 12_345]) {
-        const unitCosts = distributeTransportCost(lines, transport);
+        const { appliedMinor, unitCosts } = distributeTransportCost(
+          lines,
+          transport,
+        );
         const total = lines.reduce(
           (sum, line, index) => sum + line.quantity * (unitCosts[index] ?? 0),
           0,
         );
+        expect(appliedMinor).toBe(transport);
         expect(total).toBe(7 * 100 + 5 * 200 + 2 * 300 + transport);
         unitCosts.forEach((unitCost, index) => {
           expect(unitCost).toBeGreaterThanOrEqual(
@@ -1022,18 +1034,24 @@ describe("recordStockIntake", () => {
     it("lowers the even share when that makes an exact split possible", () => {
       // 6 / 5 pieces = 1 each with remainder 1, which 2 and 3 cannot absorb;
       // giving 3 to the 2-piece line and 0 to the 3-piece line is exact.
-      const unitCosts = distributeTransportCost(
+      const { appliedMinor, unitCosts } = distributeTransportCost(
         [
           { quantity: 2, unitCostMinor: 100 },
           { quantity: 3, unitCostMinor: 100 },
         ],
         6,
       );
+      expect(appliedMinor).toBe(6);
       expect(2 * (unitCosts[0] ?? 0) + 3 * (unitCosts[1] ?? 0)).toBe(506);
     });
 
-    it("rejects a transport cost that cannot be split exactly", async () => {
-      expect(() =>
+    it("applies the nearest lower amount when an exact split is impossible", () => {
+      // 5_000 over 12 pieces: 416 each = 4_992; nothing between is composable.
+      expect(
+        distributeTransportCost([{ quantity: 12, unitCostMinor: 100 }], 5_000),
+      ).toEqual({ appliedMinor: 4_992, unitCosts: [516] });
+      // 1 cannot be absorbed by lines of 7 and 5 pieces, so nothing is applied.
+      expect(
         distributeTransportCost(
           [
             { quantity: 7, unitCostMinor: 100 },
@@ -1041,32 +1059,94 @@ describe("recordStockIntake", () => {
           ],
           1,
         ),
-      ).toThrow(BusinessRuleError);
-      expect(() =>
-        distributeTransportCost([{ quantity: 12, unitCostMinor: 100 }], 5_000),
-      ).toThrow(BusinessRuleError);
+      ).toEqual({ appliedMinor: 0, unitCosts: [100, 200] });
+      // 13 over 7 + 5 pieces: 13 is not composable but 12 = 7 + 5 is.
       expect(
-        distributeTransportCost([{ quantity: 12, unitCostMinor: 100 }], 4_992),
-      ).toEqual([516]);
+        distributeTransportCost(
+          [
+            { quantity: 7, unitCostMinor: 100 },
+            { quantity: 5, unitCostMinor: 200 },
+          ],
+          13,
+        ),
+      ).toEqual({ appliedMinor: 12, unitCosts: [101, 201] });
+    });
 
+    it("records a non-exact transport at the applied amount without failing", async () => {
       const world = createStockIntakeTestWorld();
-      await expect(
-        recordStockIntake(world.dependencies, {
-          ...newProductInput({
-            lines: [
-              {
-                colorName: "Black",
-                quantity: 12,
-                sellingPriceMinor: 90_000,
-                sizeName: "M",
-                unitCostMinor: 100,
-              },
-            ],
-          }),
-          transportCostMinor: 5_000,
+      const { result } = await recordStockIntake(world.dependencies, {
+        ...newProductInput({
+          lines: [
+            {
+              colorName: "Black",
+              quantity: 12,
+              sellingPriceMinor: 90_000,
+              sizeName: "M",
+              unitCostMinor: 100,
+            },
+          ],
         }),
-      ).rejects.toBeInstanceOf(BusinessRuleError);
-      expect(world.state.products).toHaveLength(0);
+        transportCostMinor: 5_000,
+      });
+
+      expect(result.transportRequestedMinor).toBe(5_000);
+      expect(result.transportAppliedMinor).toBe(4_992);
+      expect(result.variants[0]?.unitCostMinor).toBe(516);
+      expect(result.purchase.totalCostMinor).toBe("6192");
+      // Supplier owes only the goods: 12 * 100.
+      expect(result.dueMinor).toBe("1200");
+      expect(world.state.ledger[1]?.amountMinor).toBe(4_992n);
+    });
+
+    it("keeps transport off the supplier balance by default", async () => {
+      const world = createStockIntakeTestWorld();
+      const { result } = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        transportCostMinor: 1_500,
+      });
+
+      expect(result.purchase.totalCostMinor).toBe("751500");
+      expect(result.dueMinor).toBe("750000");
+      expect(
+        world.state.ledger.map((entry) => [
+          entry.entryType,
+          entry.direction,
+          entry.amountMinor,
+          entry.referenceId,
+        ]),
+      ).toEqual([
+        ["BILL", "CREDIT", 751_500n, result.purchase.id],
+        ["ADJUSTMENT", "DEBIT", 1_500n, result.purchase.id],
+      ]);
+      expect(world.state.ledger[1]?.notes).toBe(TRANSPORT_NOT_PAYABLE_NOTE);
+      await expect(
+        world.dependencies.supplierLedger.getSupplierBalance(
+          result.supplier.id,
+          testOrganizationId,
+        ),
+      ).resolves.toMatchObject({ outstandingBalanceMinor: 750_000n });
+    });
+
+    it("bills transport to the supplier when it was paid to them", async () => {
+      const world = createStockIntakeTestWorld();
+      const { result } = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        transportCostMinor: 1_500,
+        transportPaidToSupplier: true,
+      });
+
+      expect(result.dueMinor).toBe("751500");
+      expect(world.state.ledger.map((entry) => entry.entryType)).toEqual([
+        "BILL",
+      ]);
+    });
+
+    it("does not adjust the ledger when there is no transport", async () => {
+      const world = createStockIntakeTestWorld();
+      await recordStockIntake(world.dependencies, newProductInput());
+      expect(world.state.ledger.map((entry) => entry.entryType)).toEqual([
+        "BILL",
+      ]);
     });
   });
 
@@ -1093,7 +1173,7 @@ describe("recordStockIntake", () => {
       ]);
     });
 
-    it("rejects a payment larger than the purchase total before any write", async () => {
+    it("rejects a payment larger than the goods total before any write", async () => {
       const world = createStockIntakeTestWorld();
       await expect(
         recordStockIntake(world.dependencies, {
@@ -1106,14 +1186,45 @@ describe("recordStockIntake", () => {
       expect(world.state.suppliers).toHaveLength(0);
     });
 
-    it("accepts a payment equal to the total including transport", async () => {
+    it("excludes transport from the payable amount by default", async () => {
+      const world = createStockIntakeTestWorld();
+      await expect(
+        recordStockIntake(world.dependencies, {
+          ...newProductInput(),
+          payment: { amountMinor: 751_500, method: "CASH" },
+          transportCostMinor: 1_500,
+        }),
+      ).rejects.toBeInstanceOf(ValidationApplicationError);
+
+      const { result } = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        payment: { amountMinor: 750_000, method: "CASH" },
+        transportCostMinor: 1_500,
+      });
+      expect(result.dueMinor).toBe("0");
+      await expect(
+        world.dependencies.supplierLedger.getSupplierBalance(
+          result.supplier.id,
+          testOrganizationId,
+        ),
+      ).resolves.toMatchObject({ outstandingBalanceMinor: 0n });
+    });
+
+    it("accepts a payment equal to goods plus transport paid to the supplier", async () => {
       const world = createStockIntakeTestWorld();
       const { result } = await recordStockIntake(world.dependencies, {
         ...newProductInput(),
         payment: { amountMinor: 751_500, method: "MOBILE_BANKING" },
         transportCostMinor: 1_500,
+        transportPaidToSupplier: true,
       });
       expect(result.dueMinor).toBe("0");
+      await expect(
+        world.dependencies.supplierLedger.getSupplierBalance(
+          result.supplier.id,
+          testOrganizationId,
+        ),
+      ).resolves.toMatchObject({ outstandingBalanceMinor: 0n });
     });
   });
 
@@ -1204,22 +1315,68 @@ describe("recordStockIntake", () => {
       ).rejects.toBeInstanceOf(NotFoundError);
     });
 
-    it("rejects a memo number already used by another purchase", async () => {
+    it("stores the memo in notes and allows the same memo for two suppliers", async () => {
+      const world = createStockIntakeTestWorld();
+      const first = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        purchase: {
+          destinationLocationId: testLocationId,
+          memoNumber: " 101/A ",
+          note: "First delivery",
+        },
+        supplier: { new: { name: "Rahim Textiles", phone: "01711000000" } },
+      });
+      const second = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        idempotencyKey: "intake-key-0009",
+        purchase: {
+          destinationLocationId: testLocationId,
+          memoNumber: "101/A",
+        },
+        supplier: { new: { name: "Karim Fabrics", phone: "01800000000" } },
+      });
+
+      expect(first.result.supplier.id).not.toBe(second.result.supplier.id);
+      expect(first.result.purchase.purchaseNumber).toMatch(/^PO-/);
+      expect(first.result.purchase.purchaseNumber).not.toBe(
+        second.result.purchase.purchaseNumber,
+      );
+      expect(world.state.purchases.map((purchase) => purchase.notes)).toEqual([
+        "Memo: 101/A\nFirst delivery",
+        "Memo: 101/A",
+      ]);
+      expect(
+        world.state.movements.map((movement) => movement.movementNumber),
+      ).toEqual(
+        world.state.purchases.map(
+          (purchase) => `REC-${purchase.purchaseNumber}`,
+        ),
+      );
+    });
+
+    it("accepts a Bangla memo with spaces", async () => {
       const world = createStockIntakeTestWorld();
       await recordStockIntake(world.dependencies, {
         ...newProductInput(),
-        purchase: { destinationLocationId: testLocationId, memoNumber: "M-1" },
+        purchase: {
+          destinationLocationId: testLocationId,
+          memoNumber: "মেমো ১২৩/৪",
+        },
       });
+      expect(world.state.purchases[0]?.notes).toBe("Memo: মেমো ১২৩/৪");
+    });
+
+    it("rejects a memo longer than 60 characters", async () => {
+      const world = createStockIntakeTestWorld();
       await expect(
         recordStockIntake(world.dependencies, {
           ...newProductInput(),
-          idempotencyKey: "intake-key-0009",
           purchase: {
             destinationLocationId: testLocationId,
-            memoNumber: "M-1",
+            memoNumber: "১".repeat(61),
           },
         }),
-      ).rejects.toBeInstanceOf(ConflictError);
+      ).rejects.toBeInstanceOf(ValidationApplicationError);
     });
   });
 

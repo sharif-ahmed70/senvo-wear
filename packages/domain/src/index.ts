@@ -894,6 +894,7 @@ export {
   SELF_PURCHASE_SUPPLIER_NAME,
   STOCK_INTAKE_IDEMPOTENCY_PREFIX,
   StockIntakeIdempotencyConflictError,
+  TRANSPORT_NOT_PAYABLE_NOTE,
   recordStockIntake,
 } from "./procurement/application/stock-intake-use-cases.js";
 export type {
@@ -911,6 +912,10 @@ export type {
 export {
   distributeTransportCost,
   generateCode128BarcodeValue,
+} from "./procurement/domain/stock-intake-rules.js";
+export type {
+  TransportDistribution,
+  TransportDistributionLine,
 } from "./procurement/domain/stock-intake-rules.js";
 export type { StockIntakeRepository } from "./procurement/repositories/stock-intake-repository.js";
 

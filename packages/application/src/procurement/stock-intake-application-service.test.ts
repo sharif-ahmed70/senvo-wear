@@ -67,6 +67,8 @@ const outcome: RecordStockIntakeOutcome = {
       totalCostMinor: "100000",
     },
     supplier: { id: supplierId, name: "নিজে কেনা" },
+    transportAppliedMinor: 0,
+    transportRequestedMinor: 0,
     variants: [
       {
         barcode: "SV-TEST-0001",

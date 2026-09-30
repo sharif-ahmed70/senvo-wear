@@ -10,26 +10,32 @@ export type TransportDistributionLine = {
   unitCostMinor: number;
 };
 
+export type TransportDistribution = {
+  /** Transport actually folded into unit costs; never above the request. */
+  appliedMinor: number;
+  unitCosts: number[];
+};
+
 /**
  * Spreads a transport cost over every received piece and folds it into the
- * per-line unit cost, in integer minor units.
+ * per-line unit cost, in integer minor units, so that
+ * SUM(quantity * unitCost) === goods + appliedMinor exactly.
  *
- * Every piece first receives floor(transport / totalPieces). The remainder is
- * then assigned in whole-line increments (a line of quantity q absorbs q minor
- * units per +1 on its unit cost), preferring the largest lines, so that
- * SUM(quantity * unitCost) === goods + transport exactly. When the remainder
- * cannot be composed from the line quantities, the even share is lowered
- * step by step so a larger remainder can be composed instead.
+ * Every piece receives an even share; the rest is assigned in whole-line
+ * increments (a line of quantity q absorbs q minor units per +1 on its unit
+ * cost), preferring the largest lines. Lowering the even share can make more
+ * totals composable (quantities 2 and 3 with transport 6).
  *
- * A purchase line carries a single unit cost, so an exact split is impossible
- * when the remainder cannot be composed from the line quantities (for example
- * one line of 12 pieces with a remainder of 8). That case is rejected instead
- * of silently rounding money.
+ * A purchase line carries a single unit cost, so some totals cannot be split
+ * exactly (one line of 12 pieces cannot absorb 5,000). In that case the
+ * nearest composable amount below the request is applied; it is never higher
+ * than the request, and the even-share total floor(T / pieces) * pieces is
+ * always composable.
  */
 export function distributeTransportCost(
   lines: readonly TransportDistributionLine[],
   transportCostMinor: number,
-): number[] {
+): TransportDistribution {
   if (!Number.isSafeInteger(transportCostMinor) || transportCostMinor < 0) {
     throw new ValidationApplicationError(
       "Transport cost must be a non-negative integer in minor units.",
@@ -40,84 +46,94 @@ export function distributeTransportCost(
       "Stock intake requires at least one line.",
     );
   }
-  const totalPieces = lines.reduce((sum, line) => sum + line.quantity, 0);
   if (transportCostMinor === 0) {
-    return lines.map((line) => line.unitCostMinor);
+    return {
+      appliedMinor: 0,
+      unitCosts: lines.map((line) => line.unitCostMinor),
+    };
   }
 
   const quantities = lines.map((line) => line.quantity);
+  const totalPieces = quantities.reduce((sum, quantity) => sum + quantity, 0);
   const evenShare = Math.floor(transportCostMinor / totalPieces);
   const evenRemainder = transportCostMinor - evenShare * totalPieces;
-  let perPiece = evenShare;
-  let extraUnits: number[] | null = null;
-  // Lowering the even share hands a larger remainder to the solver, which can
-  // make an exact split possible (quantities 2 and 3 with transport 6).
-  for (
-    let lowered = 0;
-    lowered <= Math.min(evenShare, maxShareReductions) && !extraUnits;
-    lowered += 1
-  ) {
-    perPiece = evenShare - lowered;
-    extraUnits = composeRemainder(
-      quantities,
-      evenRemainder + lowered * totalPieces,
-    );
-  }
-  if (!extraUnits) {
-    throw new BusinessRuleError(
-      `Transport cost cannot be split exactly into whole minor-unit costs for these quantities. Use ${transportCostMinor - evenRemainder} minor units or another amount that divides evenly.`,
-    );
-  }
 
-  const extra = extraUnits;
-  const unitCosts = lines.map(
-    (line, index) => line.unitCostMinor + perPiece + (extra[index] ?? 0),
-  );
-  if (unitCosts.some((unitCost) => unitCost > maxUnitCostMinor)) {
-    throw new ValidationApplicationError(
-      "Unit cost including transport exceeds the supported maximum.",
-    );
+  let maxLowered = Math.min(evenShare, maxShareReductions);
+  while (
+    maxLowered > 0 &&
+    (evenRemainder + maxLowered * totalPieces) * quantities.length >
+      maxDistributionWork
+  ) {
+    maxLowered -= 1;
   }
-  return unitCosts;
+  const limit =
+    (evenRemainder + maxLowered * totalPieces) * quantities.length >
+    maxDistributionWork
+      ? 0
+      : evenRemainder + maxLowered * totalPieces;
+  if (limit === 0) maxLowered = 0;
+  const table = buildReachability(quantities, limit);
+
+  // Largest applied total first; within a total, the most even share first.
+  for (
+    let applied = transportCostMinor;
+    applied >= transportCostMinor - evenRemainder;
+    applied -= 1
+  ) {
+    for (let lowered = 0; lowered <= maxLowered; lowered += 1) {
+      const share = evenShare - lowered;
+      const remainder = applied - share * totalPieces;
+      if (remainder < 0 || remainder > limit || !table.reachable[remainder]) {
+        continue;
+      }
+      const extra = reconstruct(quantities, table.via, remainder);
+      const unitCosts = lines.map(
+        (line, index) => line.unitCostMinor + share + (extra[index] ?? 0),
+      );
+      if (unitCosts.some((unitCost) => unitCost > maxUnitCostMinor)) {
+        throw new ValidationApplicationError(
+          "Unit cost including transport exceeds the supported maximum.",
+        );
+      }
+      return { appliedMinor: applied, unitCosts };
+    }
+  }
+  // Unreachable: remainder 0 at the even share is always composable.
+  throw new BusinessRuleError("Transport cost could not be distributed.");
 }
 
-function composeRemainder(
-  quantities: readonly number[],
-  remainder: number,
-): number[] | null {
-  const extra = quantities.map(() => 0);
-  if (remainder === 0) {
-    return extra;
-  }
-  if (remainder * quantities.length > maxDistributionWork) {
-    return null;
-  }
-
+function buildReachability(quantities: readonly number[], limit: number) {
   // Unbounded coin-change reachability; larger lines are tried first so the
   // remainder lands on as many pieces as possible.
   const order = quantities
     .map((quantity, index) => ({ index, quantity }))
     .sort((left, right) => right.quantity - left.quantity);
-  const via = new Int32Array(remainder + 1).fill(-1);
-  const reachable = new Uint8Array(remainder + 1);
+  const via = new Int32Array(limit + 1).fill(-1);
+  const reachable = new Uint8Array(limit + 1);
   reachable[0] = 1;
   for (const { index, quantity } of order) {
-    for (let sum = quantity; sum <= remainder; sum += 1) {
+    for (let sum = quantity; sum <= limit; sum += 1) {
       if (!reachable[sum] && reachable[sum - quantity]) {
         reachable[sum] = 1;
         via[sum] = index;
       }
     }
   }
-  if (!reachable[remainder]) {
-    return null;
-  }
+  return { reachable, via };
+}
+
+function reconstruct(
+  quantities: readonly number[],
+  via: Int32Array,
+  remainder: number,
+): number[] {
+  const extra = quantities.map(() => 0);
   let cursor = remainder;
   while (cursor > 0) {
     const index = via[cursor] ?? -1;
     const quantity = quantities[index];
     if (index < 0 || quantity === undefined) {
-      return null;
+      throw new BusinessRuleError("Transport cost could not be distributed.");
     }
     extra[index] = (extra[index] ?? 0) + 1;
     cursor -= quantity;

@@ -150,6 +150,7 @@ function toDomainInput(
     },
     supplier: input.supplier,
     transportCostMinor: input.transportCostMinor ?? 0,
+    transportPaidToSupplier: input.transportPaidToSupplier ?? false,
   };
 }
 

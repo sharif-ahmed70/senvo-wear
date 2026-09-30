@@ -67,11 +67,16 @@ import {
   createPurchaseDraftRecord,
   type ConfirmPurchaseOrderDependencies,
 } from "./purchase-use-cases.js";
-import { recordSupplierPayment } from "./supplier-payment-use-cases.js";
+import {
+  recordSupplierAdjustment,
+  recordSupplierPayment,
+} from "./supplier-payment-use-cases.js";
 
 export const STOCK_INTAKE_IDEMPOTENCY_PREFIX = "stock-intake:";
 export const SELF_PURCHASE_SUPPLIER_CODE = "SELF";
 export const SELF_PURCHASE_SUPPLIER_NAME = "নিজে কেনা";
+export const TRANSPORT_NOT_PAYABLE_NOTE =
+  "Transport/labour — not payable to supplier";
 const DEFAULT_COLOR_HEX = "#9CA3AF";
 const MAX_CODE_ATTEMPTS = 50;
 
@@ -119,6 +124,11 @@ export type RecordStockIntakeInput = {
   };
   supplier: StockIntakeSupplierInput;
   transportCostMinor?: number | null;
+  /**
+   * When false (default) the transport is store cost only: it stays in unit
+   * cost but is written off the supplier ledger with a DEBIT adjustment.
+   */
+  transportPaidToSupplier?: boolean | null;
 };
 
 export type StockIntakeResultVariant = {
@@ -142,6 +152,8 @@ export type StockIntakeResult = {
   product: { code: string; id: string; name: string };
   purchase: { id: string; purchaseNumber: string; totalCostMinor: string };
   supplier: { id: string; name: string };
+  transportAppliedMinor: number;
+  transportRequestedMinor: number;
   variants: StockIntakeResultVariant[];
 };
 
@@ -232,20 +244,27 @@ export async function recordStockIntake(
     (sum, line) => sum + BigInt(line.quantity) * BigInt(line.unitCostMinor),
     0n,
   );
-  const expectedTotalMinor =
-    goodsTotalMinor + BigInt(normalized.transportCostMinor);
-  if (
-    normalized.payment &&
-    BigInt(normalized.payment.amountMinor) > expectedTotalMinor
-  ) {
-    throw new ValidationApplicationError(
-      "Payment amount cannot exceed the purchase total.",
-    );
-  }
-  const unitCostsWithTransport = distributeTransportCost(
+  const transport = distributeTransportCost(
     normalized.lines,
     normalized.transportCostMinor,
   );
+  const transportAppliedMinor = BigInt(transport.appliedMinor);
+  const purchaseTotalMinor = goodsTotalMinor + transportAppliedMinor;
+  // What this purchase leaves owed to the supplier: transport paid to a
+  // carrier or labourer stays in inventory cost but is not supplier debt.
+  const supplierPayableMinor = normalized.transportPaidToSupplier
+    ? purchaseTotalMinor
+    : goodsTotalMinor;
+  if (
+    normalized.payment &&
+    BigInt(normalized.payment.amountMinor) > supplierPayableMinor
+  ) {
+    throw new ValidationApplicationError(
+      normalized.transportPaidToSupplier
+        ? "Payment amount cannot exceed the purchase total."
+        : "Payment amount cannot exceed the goods total owed to the supplier.",
+    );
+  }
 
   if (
     !(await dependencies.stockIntakes.isActiveStockLocation(
@@ -255,17 +274,6 @@ export async function recordStockIntake(
   ) {
     throw new NotFoundError("Destination stock location was not found.");
   }
-  if (normalized.purchase.memoNumber) {
-    const clash = await dependencies.purchases.findByPurchaseNumber(
-      organizationId,
-      normalized.purchase.memoNumber,
-    );
-    if (clash) {
-      throw new ConflictError(
-        "Memo number is already used by another purchase.",
-      );
-    }
-  }
 
   const supplier = await resolveSupplier(dependencies, organizationId, input);
   const product = await resolveProduct(dependencies, organizationId, input);
@@ -274,7 +282,7 @@ export async function recordStockIntake(
     organizationId,
     product,
     normalized.lines,
-    unitCostsWithTransport,
+    transport.unitCosts,
   );
   const barcodes = await ensureBarcodes(
     dependencies,
@@ -294,15 +302,14 @@ export async function recordStockIntake(
       unitCostMinor: line.unitCostMinor,
       variantName: `${line.color.name} / ${line.size.name}`,
     })),
-    notes: normalized.purchase.note,
+    notes: purchaseNotes(normalized.purchase),
     organizationId,
     purchaseDate: normalized.purchase.purchaseDate ?? undefined,
-    purchaseNumber: normalized.purchase.memoNumber ?? undefined,
     supplierId: supplier.id,
   });
-  if (draft.totalCostMinor !== expectedTotalMinor) {
+  if (draft.totalCostMinor !== purchaseTotalMinor) {
     throw new BusinessRuleError(
-      "Purchase total does not match goods plus transport cost.",
+      "Purchase total does not match goods plus applied transport cost.",
     );
   }
 
@@ -319,6 +326,27 @@ export async function recordStockIntake(
       purchaseId: draft.id,
     },
   );
+
+  // confirmPurchaseOrder bills the full purchase total (goods + transport) to
+  // the supplier; take the transport back off when it was not owed to them.
+  if (!normalized.transportPaidToSupplier && transportAppliedMinor > 0n) {
+    await recordSupplierAdjustment(
+      {
+        supplierLedgerRepository: dependencies.supplierLedger,
+        supplierRepository: dependencies.suppliers,
+      },
+      {
+        amountMinor: transportAppliedMinor,
+        direction: "DEBIT",
+        entryType: "ADJUSTMENT",
+        notes: TRANSPORT_NOT_PAYABLE_NOTE,
+        organizationId,
+        purchaseId: purchase.id,
+        referenceId: purchase.id,
+        supplierId: supplier.id,
+      },
+    );
+  }
 
   let payment: StockIntakeResult["payment"] = null;
   if (normalized.payment) {
@@ -348,7 +376,7 @@ export async function recordStockIntake(
 
   const paidMinor = payment ? BigInt(payment.amountMinor) : 0n;
   const result: StockIntakeResult = {
-    dueMinor: (purchase.totalCostMinor - paidMinor).toString(),
+    dueMinor: (supplierPayableMinor - paidMinor).toString(),
     payment,
     product: { code: product.productCode, id: product.id, name: product.name },
     purchase: {
@@ -357,6 +385,8 @@ export async function recordStockIntake(
       totalCostMinor: purchase.totalCostMinor.toString(),
     },
     supplier: { id: supplier.id, name: supplier.name },
+    transportAppliedMinor: transport.appliedMinor,
+    transportRequestedMinor: normalized.transportCostMinor,
     variants: resolvedLines.map((line, index) => ({
       barcode: barcodes[index] ?? null,
       color: line.color.name,
@@ -375,13 +405,12 @@ export async function recordStockIntake(
     metadata: {
       requestSignature,
       result: toAuditJson(result),
-      transportCostMinor: normalized.transportCostMinor,
+      transportPaidToSupplier: normalized.transportPaidToSupplier,
     },
     organizationId,
     resource: "PURCHASE",
     resourceId: purchase.id,
   });
-
   return { replayed: false, result };
 }
 
@@ -467,6 +496,7 @@ function normalizeStockIntakeInput(input: RecordStockIntakeInput) {
   });
 
   const transportCostMinor = input.transportCostMinor ?? 0;
+  const transportPaidToSupplier = input.transportPaidToSupplier ?? false;
   if (!Number.isSafeInteger(transportCostMinor) || transportCostMinor < 0) {
     throw new ValidationApplicationError(
       "Transport cost must be a non-negative integer.",
@@ -489,16 +519,13 @@ function normalizeStockIntakeInput(input: RecordStockIntakeInput) {
 
   const purchase = {
     destinationLocationId: input.purchase.destinationLocationId.toLowerCase(),
-    memoNumber: optionalText(input.purchase.memoNumber),
+    memoNumber: input.purchase.memoNumber?.trim() || null,
     note: optionalText(input.purchase.note),
     purchaseDate: input.purchase.purchaseDate ?? null,
   };
-  if (
-    purchase.memoNumber &&
-    !/^[A-Za-z0-9-]{1,60}$/u.test(purchase.memoNumber)
-  ) {
+  if (purchase.memoNumber && [...purchase.memoNumber].length > 60) {
     throw new ValidationApplicationError(
-      "Memo number may contain only letters, numbers, and hyphen.",
+      "Memo number must be 60 characters or fewer.",
     );
   }
   if (purchase.purchaseDate && Number.isNaN(purchase.purchaseDate.getTime())) {
@@ -556,9 +583,11 @@ function normalizeStockIntakeInput(input: RecordStockIntakeInput) {
       },
       supplier,
       transportCostMinor,
-      version: 1,
+      transportPaidToSupplier,
+      version: 2,
     },
     transportCostMinor,
+    transportPaidToSupplier,
   };
 }
 
@@ -1050,6 +1079,17 @@ function mapPaymentMethod(
     default:
       throw new ValidationApplicationError("Payment method is invalid.");
   }
+}
+
+function purchaseNotes(purchase: {
+  memoNumber: string | null;
+  note: string | null;
+}): string | null {
+  const parts = [
+    purchase.memoNumber ? `Memo: ${purchase.memoNumber}` : null,
+    purchase.note,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join("\n") : null;
 }
 
 function optionalText(value: string | null | undefined): string | null {
