@@ -16,6 +16,7 @@ import type {
   SalesOrderManagementApiHandlers,
   SalesSourceApiHandlers,
   ShippingApiHandlers,
+  StockIntakeApiHandlers,
   StorefrontApiHandlers,
 } from "@senvo/api";
 import {
@@ -68,6 +69,7 @@ export type SenvoHttpHandlers = {
   salesManagement?: SalesOrderManagementApiHandlers;
   salesSource?: SalesSourceApiHandlers;
   shipping?: ShippingApiHandlers;
+  stockIntake?: StockIntakeApiHandlers;
   storefront?: StorefrontApiHandlers;
 };
 
@@ -970,6 +972,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 201,
       },
     );
+  }
+  if (handlers.stockIntake) {
+    routes.push({
+      handler: handlers.stockIntake.recordStockIntake,
+      input: bodyInput,
+      method: "POST",
+      path: /^\/inventory\/stock-intakes$/u,
+      successStatus: 201,
+    });
   }
   if (handlers.shipping) {
     const shipping = handlers.shipping;

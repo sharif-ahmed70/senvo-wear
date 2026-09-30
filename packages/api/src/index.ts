@@ -54,6 +54,11 @@ export {
   type ProcurementApplication,
 } from "./procurement-handlers.js";
 export {
+  createStockIntakeApiHandlers,
+  type StockIntakeApiHandlers,
+  type StockIntakeApplication,
+} from "./stock-intake-handlers.js";
+export {
   createShippingApiHandlers,
   type ShippingApiDependencies,
   type ShippingApiHandlers,

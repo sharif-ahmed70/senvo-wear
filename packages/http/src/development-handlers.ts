@@ -11,6 +11,7 @@ import {
   createSalesOrderManagementApiHandlers,
   createSalesSourceApiHandlers,
   createShippingApiHandlers,
+  createStockIntakeApiHandlers,
   createStorefrontApiHandlers,
 } from "@senvo/api";
 import type {
@@ -87,6 +88,15 @@ export function createDevelopmentApiHandlers(
             application: options.services.onlinePayments,
             authenticationService: options.authenticationService,
             authorizationService: options.authorizationService,
+          }),
+        }
+      : {}),
+    ...(options.services.stockIntake
+      ? {
+          stockIntake: createStockIntakeApiHandlers({
+            authenticationService: options.authenticationService,
+            authorizationService: options.authorizationService,
+            stockIntake: options.services.stockIntake,
           }),
         }
       : {}),

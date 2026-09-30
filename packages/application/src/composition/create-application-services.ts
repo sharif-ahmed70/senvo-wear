@@ -100,6 +100,7 @@ import { CatalogMediaApplicationService } from "../catalog/catalog-media-applica
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { ProcurementApplicationService } from "../procurement/procurement-application-service.js";
+import { StockIntakeApplicationService } from "../procurement/stock-intake-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
@@ -179,6 +180,7 @@ export type ApplicationServices = {
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   shipping: ShippingApplicationService;
+  stockIntake?: StockIntakeApplicationService;
   storefront: StorefrontApplicationService;
   customerAuthentication?: CustomerAuthenticationService;
   workforceAuthentication?: WorkforceAuthenticationService;
@@ -589,6 +591,11 @@ export function createApplicationServices(
           : fakeCourierConsignmentRepository),
       requestIdGenerator: options.requestIdGenerator,
       salesOrders: salesOrderRepository,
+      transactionManager,
+    }),
+    stockIntake: new StockIntakeApplicationService({
+      authorizationService: options.authorizationService,
+      requestIdGenerator: options.requestIdGenerator,
       transactionManager,
     }),
     storefront: new StorefrontApplicationService({

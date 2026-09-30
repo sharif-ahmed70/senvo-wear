@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createProcurementApiHandlers,
   createProtectedApiHandler,
+  createStockIntakeApiHandlers,
   type ApiHandler,
   type ApiRequest,
   type CatalogApiHandlers,
@@ -1230,6 +1231,78 @@ describe("Node HTTP runtime adapter", () => {
           "production" as "development",
         ),
     ).toThrow("unavailable in production");
+  });
+
+  it("routes stock intake POST with trusted context and returns HTTP 201", async () => {
+    const authorization = new AllowAuthorizationService();
+    const received: unknown[] = [];
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        stockIntake: createStockIntakeApiHandlers({
+          authenticationService: new DevelopmentAuthenticationService("test"),
+          authorizationService: authorization,
+          stockIntake: {
+            recordStockIntake: (context, input) => {
+              received.push({ context, input });
+              return Promise.resolve({
+                data: { replayed: false } as never,
+                ok: true,
+              });
+            },
+          },
+        }),
+      },
+    });
+    const payload = {
+      idempotencyKey: "intake-http-0001",
+      lines: [
+        {
+          colorName: "Black",
+          quantity: 1,
+          sellingPriceMinor: 1_000,
+          sizeName: "M",
+          unitCostMinor: 500,
+        },
+      ],
+      product: {
+        audienceCategoryName: "Men",
+        name: "Tee",
+        typeCategoryName: "T-shirt",
+      },
+      purchase: {
+        destinationLocationId: "10000000-0000-4000-8000-000000000004",
+      },
+      supplier: null,
+    };
+
+    const response = await fetch(`${runtime.url}/inventory/stock-intakes`, {
+      body: JSON.stringify(payload),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+    const rejected = await fetch(`${runtime.url}/inventory/stock-intakes`, {
+      body: JSON.stringify({ ...payload, organizationId }),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(rejected.status).toBe(400);
+    expect(received).toEqual([
+      {
+        context: expect.objectContaining({ organizationId, userId }) as unknown,
+        input: payload,
+      },
+    ]);
+    expect(authorization.calls[0]?.permission).toEqual({
+      action: "CREATE",
+      resource: "PROCUREMENT",
+    });
   });
 
   it("routes procurement supplier requests to supplier handlers", async () => {
