@@ -4,6 +4,7 @@ import {
   type WorkforceAuthenticationSession,
 } from "@senvo/domain";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { assertSafeIntegrationTestDatabase } from "../../../../scripts/test-database-safety.mjs";
 import {
   createPrismaClient,
   PrismaUserCredentialRepository,
@@ -14,46 +15,6 @@ import {
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
-const productionWords = /\b(prod|production|stage|staging)\b/i;
-
-// Same rules as scripts/test-database-safety.mjs (assertSafeTestDatabaseUrl),
-// which test:integration already applies before spawning vitest, plus an
-// explicit refusal of the local development database.
-function assertTestDatabaseSafety(url: string | undefined): string {
-  if (!url) {
-    throw new Error("TEST_DATABASE_URL is required for integration tests.");
-  }
-  const appEnv = process.env.APP_ENV ?? process.env.NODE_ENV ?? "test";
-  if (productionWords.test(appEnv)) {
-    throw new Error(`Integration tests may not run when APP_ENV is ${appEnv}.`);
-  }
-  const parsed = new URL(url);
-  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
-    throw new Error("TEST_DATABASE_URL must use the postgresql:// protocol.");
-  }
-  const databaseName = testDatabaseName(url);
-  if (!/test/i.test(databaseName)) {
-    throw new Error(
-      `TEST_DATABASE_URL database name must clearly include "test"; received "${databaseName}".`,
-    );
-  }
-  if (
-    productionWords.test(databaseName) ||
-    productionWords.test(parsed.hostname)
-  ) {
-    throw new Error(
-      "TEST_DATABASE_URL appears to target production or staging.",
-    );
-  }
-  if (databaseName === "senvo_wear_dev") {
-    throw new Error("Forbidden database: senvo_wear_dev");
-  }
-  return url;
-}
-
-function testDatabaseName(url: string): string {
-  return decodeURIComponent(new URL(url).pathname.replace(/^\//, ""));
-}
 
 function createBarrier() {
   let resolve!: () => void;
@@ -123,7 +84,8 @@ describeWithDatabase("Workforce password and session integration", () => {
   };
 
   beforeAll(async () => {
-    const databaseUrl = assertTestDatabaseSafety(testDatabaseUrl);
+    const { databaseName, databaseUrl } =
+      assertSafeIntegrationTestDatabase(testDatabaseUrl);
     process.env.DATABASE_URL = databaseUrl;
     prisma = createPrismaClient();
     prisma2 = createPrismaClient();
@@ -143,7 +105,7 @@ describeWithDatabase("Workforce password and session integration", () => {
       throw new Error("No database identity row returned from query.");
     }
 
-    if (identity.current_database !== testDatabaseName(databaseUrl)) {
+    if (identity.current_database !== databaseName) {
       throw new Error(`Database mismatch: ${identity.current_database}`);
     }
     if (identity.pg_is_in_recovery) {
