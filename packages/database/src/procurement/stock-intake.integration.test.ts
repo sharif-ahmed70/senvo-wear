@@ -1,6 +1,7 @@
 import {
   recordStockIntake,
   type RecordStockIntakeDependencies,
+  type PurchaseRepository,
   type RecordStockIntakeInput,
   type TransactionContext,
 } from "@senvo/domain";
@@ -106,28 +107,31 @@ describeWithDatabase("Stock intake transaction integration", () => {
     await expect(
       transactionManager.execute(base.context, async (transaction) => {
         const dependencies = transactionDependencies(transaction);
-        return recordStockIntake(
+        // The repository is a class instance, so its methods live on the
+        // prototype; spreading it would drop findByIdempotencyKey and friends.
+        // Inherit from the real transaction-scoped repository and override
+        // only create, which runs after categories, product, variants and
+        // barcodes exist inside the transaction.
+        const failingPurchases: PurchaseRepository = Object.assign(
+          Object.create(dependencies.purchases) as PurchaseRepository,
           {
-            ...dependencies,
-            purchases: {
-              ...dependencies.purchases,
-              // Purchase creation runs after categories, product, variants and
-              // barcodes exist inside the transaction.
-              create: async () => {
-                const [product] =
-                  await (transaction.catalogProductRepository?.list({
-                    organizationId: base.organization.id,
-                  }) ?? Promise.resolve([]));
-                variantsCreatedInTransaction = (
-                  await dependencies.productVariants.listByProduct(
-                    base.organization.id,
-                    product?.id ?? "",
-                  )
-                ).length;
-                throw new ForcedFailure("forced failure after variants");
-              },
+            create: async (): Promise<never> => {
+              const [product] =
+                await (transaction.catalogProductRepository?.list({
+                  organizationId: base.organization.id,
+                }) ?? Promise.resolve([]));
+              variantsCreatedInTransaction = (
+                await dependencies.productVariants.listByProduct(
+                  base.organization.id,
+                  product?.id ?? "",
+                )
+              ).length;
+              throw new ForcedFailure("forced failure after variants");
             },
           },
+        );
+        return recordStockIntake(
+          { ...dependencies, purchases: failingPurchases },
           intakeInput(base),
         );
       }),

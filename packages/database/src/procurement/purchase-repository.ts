@@ -37,11 +37,14 @@ export class PrismaPurchaseRepository implements PurchaseRepository {
           lines:
             record.lines && record.lines.length > 0
               ? {
+                  // organizationId is not set here: the line's purchase
+                  // relation is the composite (purchaseId, organizationId)
+                  // key, so Prisma fills both from the parent purchase and
+                  // rejects an explicit organizationId on nested creates.
                   create: record.lines.map(
                     (line: CreatePurchaseLineRecord) => ({
                       lineNumber: line.lineNumber,
                       notes: line.notes ?? null,
-                      organizationId: record.organizationId,
                       productName: line.productName,
                       productVariantId: line.productVariantId,
                       quantity: line.quantity,
