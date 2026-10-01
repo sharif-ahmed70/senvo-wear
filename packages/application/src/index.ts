@@ -133,7 +133,9 @@ export {
 } from "./procurement/procurement-application-service.js";
 export {
   StockIntakeApplicationService,
+  stockIntakePermissionsFor,
   stockIntakeRequiredPermissions,
+  stockIntakeSupplierUpdatePermission,
   type StockIntakeApplicationServiceDependencies,
 } from "./procurement/stock-intake-application-service.js";
 export {

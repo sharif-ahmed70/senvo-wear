@@ -18,6 +18,7 @@ import type {
   Product,
   ProductVariant,
   Size,
+  VariantBarcode,
 } from "../../catalog/domain/models.js";
 import {
   normalizeComparableName,
@@ -40,7 +41,11 @@ import {
   NotFoundError,
   ValidationApplicationError,
 } from "../../errors.js";
-import type { SupplierPaymentMethod, Supplier } from "../domain/models.js";
+import type {
+  PurchaseWithLines,
+  Supplier,
+  SupplierPaymentMethod,
+} from "../domain/models.js";
 import {
   comparableIntakeName,
   createStockIntakeRequestSignature,
@@ -237,7 +242,15 @@ export async function recordStockIntake(
     if (!stored || stored.requestSignature !== requestSignature) {
       throw new StockIntakeIdempotencyConflictError();
     }
-    return { replayed: true, result: stored.result };
+    return {
+      replayed: true,
+      result: await rebuildStockIntakeResult(
+        dependencies,
+        organizationId,
+        existingPurchase,
+        stored,
+      ),
+    };
   }
 
   const goodsTotalMinor = normalized.lines.reduce(
@@ -375,8 +388,14 @@ export async function recordStockIntake(
   }
 
   const paidMinor = payment ? BigInt(payment.amountMinor) : 0n;
+  const dueMinor = supplierPayableMinor - paidMinor;
+  if (dueMinor < 0n) {
+    throw new BusinessRuleError(
+      "Supplier payment exceeds the amount owed for this purchase.",
+    );
+  }
   const result: StockIntakeResult = {
-    dueMinor: (supplierPayableMinor - paidMinor).toString(),
+    dueMinor: dueMinor.toString(),
     payment,
     product: { code: product.productCode, id: product.id, name: product.name },
     purchase: {
@@ -388,7 +407,7 @@ export async function recordStockIntake(
     transportAppliedMinor: transport.appliedMinor,
     transportRequestedMinor: normalized.transportCostMinor,
     variants: resolvedLines.map((line, index) => ({
-      barcode: barcodes[index] ?? null,
+      barcode: barcodes[index]?.value ?? null,
       color: line.color.name,
       id: line.variant.id,
       quantity: line.quantity,
@@ -402,10 +421,27 @@ export async function recordStockIntake(
   await dependencies.auditWriter.recordWithinTransaction({
     action: "STOCK_INTAKE_RECORDED",
     actor: { userId: input.actorUserId },
+    // Identifiers, counts, amounts and the request fingerprint only: no
+    // names, phone numbers or other personal data. Replays rebuild the
+    // response from the stored records these ids point to.
     metadata: {
+      barcodeIds: barcodes.map((barcode) => barcode.id),
+      dueMinor: result.dueMinor,
+      lineCount: resolvedLines.length,
+      paymentId: payment?.id ?? null,
+      productId: product.id,
       requestSignature,
-      result: toAuditJson(result),
+      sellingPricesMinor: resolvedLines.map((line) => line.sellingPriceMinor),
+      supplierId: supplier.id,
+      supplierPayableMinor: supplierPayableMinor.toString(),
+      totalCostMinor: purchase.totalCostMinor.toString(),
+      totalQuantity: resolvedLines.reduce(
+        (sum, line) => sum + line.quantity,
+        0,
+      ),
+      transportAppliedMinor: transport.appliedMinor,
       transportPaidToSupplier: normalized.transportPaidToSupplier,
+      transportRequestedMinor: normalized.transportCostMinor,
     },
     organizationId,
     resource: "PURCHASE",
@@ -1022,17 +1058,17 @@ async function ensureBarcodes(
   dependencies: RecordStockIntakeDependencies,
   organizationId: string,
   lines: readonly ResolvedLine[],
-): Promise<string[]> {
+): Promise<VariantBarcode[]> {
   const generate =
     dependencies.generateBarcodeValue ?? generateCode128BarcodeValue;
-  const values: string[] = [];
+  const barcodes: VariantBarcode[] = [];
   for (const line of lines) {
     const active = await dependencies.barcodes.findActiveByVariant(
       organizationId,
       line.variant.id,
     );
     if (active) {
-      values.push(active.value);
+      barcodes.push(active);
       continue;
     }
     let value = generate();
@@ -1049,9 +1085,9 @@ async function ensureBarcodes(
       type: "CODE128",
       value,
     });
-    values.push(created.value);
+    barcodes.push(created);
   }
-  return values;
+  return barcodes;
 }
 
 async function requireOwned<T extends { organizationId: string }>(
@@ -1102,26 +1138,146 @@ function signatureOptional(value: string | null | undefined) {
   return value === undefined ? { set: false } : { set: optionalText(value) };
 }
 
-function toAuditJson(result: StockIntakeResult): AuditMetadata {
-  return JSON.parse(JSON.stringify(result)) as AuditMetadata;
-}
+type StoredStockIntake = {
+  barcodeIds: (string | null)[];
+  dueMinor: string;
+  paymentId: string | null;
+  productId: string;
+  requestSignature: string;
+  sellingPricesMinor: number[];
+  transportAppliedMinor: number;
+  transportRequestedMinor: number;
+};
 
 function readStoredStockIntake(
   metadata: AuditMetadata | null,
-): { requestSignature: string; result: StockIntakeResult } | null {
+): StoredStockIntake | null {
   if (!metadata) return null;
-  const requestSignature = metadata.requestSignature;
-  const result = metadata.result;
+  const {
+    barcodeIds,
+    dueMinor,
+    paymentId,
+    productId,
+    requestSignature,
+    sellingPricesMinor,
+    transportAppliedMinor,
+    transportRequestedMinor,
+  } = metadata;
   if (
     typeof requestSignature !== "string" ||
-    typeof result !== "object" ||
-    result === null ||
-    Array.isArray(result)
+    typeof productId !== "string" ||
+    typeof dueMinor !== "string" ||
+    (paymentId !== null && typeof paymentId !== "string") ||
+    typeof transportAppliedMinor !== "number" ||
+    typeof transportRequestedMinor !== "number" ||
+    !Array.isArray(barcodeIds) ||
+    !barcodeIds.every((id) => id === null || typeof id === "string") ||
+    !Array.isArray(sellingPricesMinor) ||
+    !sellingPricesMinor.every((price) => typeof price === "number")
   ) {
     return null;
   }
   return {
+    barcodeIds: barcodeIds as (string | null)[],
+    dueMinor,
+    paymentId,
+    productId,
     requestSignature,
-    result: result as unknown as StockIntakeResult,
+    sellingPricesMinor,
+    transportAppliedMinor,
+    transportRequestedMinor,
+  };
+}
+
+/**
+ * Rebuilds the original response for an idempotent replay from the stored
+ * purchase, its lines and the records referenced by the audit entry.
+ */
+async function rebuildStockIntakeResult(
+  dependencies: RecordStockIntakeDependencies,
+  organizationId: string,
+  purchase: PurchaseWithLines,
+  stored: StoredStockIntake,
+): Promise<StockIntakeResult> {
+  const product = await requireOwned(
+    dependencies.products.findById(stored.productId),
+    organizationId,
+    "Product",
+  );
+  const supplier = await dependencies.suppliers.findById(
+    purchase.supplierId,
+    organizationId,
+  );
+  if (!supplier) {
+    throw new NotFoundError("Supplier was not found in this organization.");
+  }
+  let payment: StockIntakeResult["payment"] = null;
+  if (stored.paymentId) {
+    const recorded = await dependencies.supplierPayments.getPaymentById(
+      stored.paymentId,
+      organizationId,
+    );
+    if (!recorded) {
+      throw new NotFoundError("Supplier payment was not found.");
+    }
+    payment = {
+      amountMinor: recorded.amountMinor.toString(),
+      id: recorded.id,
+      method: recorded.paymentMethod,
+    };
+  }
+
+  const lines = [...purchase.lines].sort(
+    (left, right) => left.lineNumber - right.lineNumber,
+  );
+  const variants: StockIntakeResultVariant[] = [];
+  for (const [index, line] of lines.entries()) {
+    const variant = await dependencies.stockIntakes.findVariantById(
+      organizationId,
+      line.productVariantId,
+    );
+    if (!variant) {
+      throw new NotFoundError("Product variant was not found.");
+    }
+    const color = await requireOwned(
+      dependencies.colors.findById(variant.colorId),
+      organizationId,
+      "Color",
+    );
+    const size = await requireOwned(
+      dependencies.sizes.findById(variant.sizeId),
+      organizationId,
+      "Size",
+    );
+    const barcodeId = stored.barcodeIds[index];
+    const barcode = barcodeId
+      ? await dependencies.barcodes.findById(barcodeId, organizationId)
+      : null;
+    variants.push({
+      barcode: barcode?.value ?? null,
+      color: color.name,
+      id: variant.id,
+      quantity: line.quantity,
+      sellingPriceMinor:
+        stored.sellingPricesMinor[index] ?? variant.sellingPriceMinor,
+      size: size.name,
+      sku: line.sku,
+      unitCostMinor: line.unitCostMinor,
+    });
+  }
+
+  return {
+    dueMinor: stored.dueMinor,
+    payment,
+    product: { code: product.productCode, id: product.id, name: product.name },
+    purchase: {
+      id: purchase.id,
+      purchaseNumber: purchase.purchaseNumber,
+      totalCostMinor: purchase.totalCostMinor.toString(),
+    },
+    supplier: { id: supplier.id, name: supplier.name },
+    transportAppliedMinor: stored.transportAppliedMinor,
+    transportRequestedMinor: stored.transportRequestedMinor,
+    variants,
   };
 }

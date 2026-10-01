@@ -6,6 +6,7 @@ import {
   ConflictError,
   NotFoundError,
   StockIntakeIdempotencyConflictError,
+  SupplierPaymentIdempotencyConflictError,
   ValidationApplicationError,
   recordStockIntake,
   type PermissionKey,
@@ -44,6 +45,27 @@ export const stockIntakeRequiredPermissions: readonly PermissionKey[] = [
   { action: "CREATE", resource: "PROCUREMENT" },
 ];
 
+/**
+ * Changing an existing supplier's phone or address is a supplier update, so it
+ * needs the same permission as the standalone supplier update endpoint.
+ */
+export const stockIntakeSupplierUpdatePermission: PermissionKey = {
+  action: "UPDATE",
+  resource: "PROCUREMENT",
+};
+
+export function stockIntakePermissionsFor(
+  input: CreateStockIntakeServiceInputContract,
+): readonly PermissionKey[] {
+  const updatesExistingSupplier =
+    input.supplier !== null &&
+    "existingSupplierId" in input.supplier &&
+    input.supplier.updates !== undefined;
+  return updatesExistingSupplier
+    ? [...stockIntakeRequiredPermissions, stockIntakeSupplierUpdatePermission]
+    : stockIntakeRequiredPermissions;
+}
+
 export type StockIntakeApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
   generateBarcodeValue?: () => string;
@@ -79,7 +101,7 @@ export class StockIntakeApplicationService {
             : "Input is invalid.",
         );
       }
-      for (const permission of stockIntakeRequiredPermissions) {
+      for (const permission of stockIntakePermissionsFor(parsed.data)) {
         await requireAuthorization(
           this.authorizationService,
           validated,
@@ -242,7 +264,10 @@ function normalizeError(error: unknown): ApplicationServiceError {
       code: "NOT_FOUND",
       message: error.message || "The requested resource was not found.",
     });
-  if (error instanceof StockIntakeIdempotencyConflictError)
+  if (
+    error instanceof StockIntakeIdempotencyConflictError ||
+    error instanceof SupplierPaymentIdempotencyConflictError
+  )
     return new ApplicationServiceError({
       code: "IDEMPOTENCY_CONFLICT",
       message: "This request was already used with different details.",

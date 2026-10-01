@@ -21,6 +21,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import { NotFoundError, ValidationApplicationError } from "../../errors.js";
 import { distributeTransportCost } from "../domain/stock-intake-rules.js";
+import { SupplierPaymentIdempotencyConflictError } from "./supplier-payment-use-cases.js";
 import {
   SELF_PURCHASE_SUPPLIER_CODE,
   SELF_PURCHASE_SUPPLIER_NAME,
@@ -537,7 +538,13 @@ function createStockIntakeTestWorld() {
         Promise.resolve(
           state.payments.find((row) => row.idempotencyKey === key) ?? null,
         ),
-      getPaymentById: () => Promise.resolve(null),
+      getPaymentById: (paymentId, organizationId) =>
+        Promise.resolve(
+          state.payments.find(
+            (row) =>
+              row.id === paymentId && row.organizationId === organizationId,
+          ) ?? null,
+        ),
       listPayments: () => Promise.resolve(state.payments),
       recordPayment: (record) => {
         const payment: SupplierPayment = {
@@ -1381,6 +1388,89 @@ describe("recordStockIntake", () => {
   });
 
   describe("idempotency", () => {
+    it("audits ids, counts and amounts only, without names or contact details", async () => {
+      const world = createStockIntakeTestWorld();
+      const { result } = await recordStockIntake(world.dependencies, {
+        ...newProductInput(),
+        payment: { amountMinor: 1_000, method: "CASH" },
+        supplier: {
+          new: {
+            address: "Islampur, Dhaka",
+            name: "Rahim Textiles",
+            phone: "01711000000",
+          },
+        },
+      });
+
+      const metadata = world.state.audits[0]?.metadata ?? {};
+      const serialized = JSON.stringify(metadata);
+      for (const personal of [
+        "Rahim Textiles",
+        "01711000000",
+        "Islampur",
+        "Classic Crew Tee",
+        "Black",
+      ]) {
+        expect(serialized).not.toContain(personal);
+      }
+      expect(metadata).not.toHaveProperty("result");
+      expect(metadata).toMatchObject({
+        dueMinor: "749000",
+        lineCount: 2,
+        paymentId: result.payment?.id,
+        productId: result.product.id,
+        supplierId: result.supplier.id,
+        totalCostMinor: "750000",
+        totalQuantity: 15,
+      });
+    });
+
+    it("rebuilds a replay from stored records", async () => {
+      const world = createStockIntakeTestWorld();
+      const input = {
+        ...newProductInput(),
+        payment: { amountMinor: 1_000, method: "CASH" as const },
+      };
+      const first = await recordStockIntake(world.dependencies, input);
+      // Later edits to the referenced records show up in the rebuilt replay,
+      // proving it is read from the records and not from the audit entry.
+      const supplier = world.state.suppliers[0];
+      if (supplier) supplier.name = "Renamed Supplier";
+
+      const replay = await recordStockIntake(world.dependencies, input);
+
+      expect(replay.replayed).toBe(true);
+      expect(replay.result).toEqual({
+        ...first.result,
+        supplier: { ...first.result.supplier, name: "Renamed Supplier" },
+      });
+    });
+
+    it("never attaches an unrelated payment that already uses the intake key", async () => {
+      const world = createStockIntakeTestWorld();
+      const other = await world.dependencies.suppliers.create({
+        code: "SUP-0099",
+        name: "Other Supplier",
+        organizationId: testOrganizationId,
+      });
+      await world.dependencies.supplierPayments.recordPayment({
+        amountMinor: 200_000n,
+        idempotencyKey: "stock-intake:intake-key-0001",
+        organizationId: testOrganizationId,
+        paymentDate: new Date("2026-09-01T00:00:00.000Z"),
+        paymentMethod: "CASH",
+        supplierId: other.id,
+      });
+
+      await expect(
+        recordStockIntake(world.dependencies, {
+          ...newProductInput(),
+          payment: { amountMinor: 10_000, method: "CASH" },
+        }),
+      ).rejects.toBeInstanceOf(SupplierPaymentIdempotencyConflictError);
+      expect(world.state.payments).toHaveLength(1);
+    });
+
     it("replays the original result for the same key and input without new writes", async () => {
       const world = createStockIntakeTestWorld();
       const input: RecordStockIntakeInput = {

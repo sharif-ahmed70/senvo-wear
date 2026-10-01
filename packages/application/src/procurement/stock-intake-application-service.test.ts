@@ -2,6 +2,7 @@ import {
   AuthorizationError,
   BusinessRuleError,
   StockIntakeIdempotencyConflictError,
+  SupplierPaymentIdempotencyConflictError,
   type RecordStockIntakeOutcome,
 } from "@senvo/domain";
 import { describe, expect, it, vi } from "vitest";
@@ -116,6 +117,90 @@ describe("StockIntakeApplicationService", () => {
       { action: "CREATE", resource: "PROCUREMENT" },
     ]);
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("also requires PROCUREMENT:UPDATE when an existing supplier is updated", async () => {
+    const authorize = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn().mockResolvedValue(outcome);
+    const service = new StockIntakeApplicationService({
+      authorizationService: { authorize },
+      transactionManager: transactionManagerReturning(execute),
+    });
+
+    await service.recordStockIntake(context, {
+      ...payload,
+      supplier: {
+        existingSupplierId: supplierId,
+        updates: { phone: "01900000000" },
+      },
+    });
+
+    expect(authorize.mock.calls.map((call) => call[1] as unknown)).toEqual([
+      ...stockIntakeRequiredPermissions,
+      { action: "UPDATE", resource: "PROCUREMENT" },
+    ]);
+  });
+
+  it("does not require PROCUREMENT:UPDATE for an existing supplier without updates", async () => {
+    const authorize = vi.fn().mockResolvedValue(undefined);
+    const service = new StockIntakeApplicationService({
+      authorizationService: { authorize },
+      transactionManager: transactionManagerReturning(
+        vi.fn().mockResolvedValue(outcome),
+      ),
+    });
+
+    await service.recordStockIntake(context, {
+      ...payload,
+      supplier: { existingSupplierId: supplierId },
+    });
+
+    expect(authorize.mock.calls.map((call) => call[1] as unknown)).toEqual(
+      stockIntakeRequiredPermissions,
+    );
+  });
+
+  it("rejects a supplier update without PROCUREMENT:UPDATE and never opens the transaction", async () => {
+    const execute = vi.fn();
+    const service = new StockIntakeApplicationService({
+      authorizationService: {
+        authorize: vi.fn(
+          (_context, permission: { action: string; resource: string }) =>
+            permission.resource === "PROCUREMENT" &&
+            permission.action === "UPDATE"
+              ? Promise.reject(new AuthorizationError("Denied"))
+              : Promise.resolve(),
+        ),
+      },
+      transactionManager: transactionManagerReturning(execute),
+    });
+
+    const result = await service.recordStockIntake(context, {
+      ...payload,
+      supplier: {
+        existingSupplierId: supplierId,
+        updates: { address: "Babubazar" },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("FORBIDDEN");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("maps a supplier payment key collision to an idempotency conflict", async () => {
+    const service = new StockIntakeApplicationService({
+      transactionManager: transactionManagerReturning(
+        vi
+          .fn()
+          .mockRejectedValue(new SupplierPaymentIdempotencyConflictError()),
+      ),
+    });
+
+    const result = await service.recordStockIntake(context, payload);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("IDEMPOTENCY_CONFLICT");
   });
 
   it("stops without a transaction when any permission is missing", async () => {

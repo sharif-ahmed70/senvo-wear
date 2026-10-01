@@ -875,6 +875,7 @@ export {
   listSupplierPayments,
   recordSupplierPayment,
   recordSupplierAdjustment,
+  SupplierPaymentIdempotencyConflictError,
 } from "./procurement/application/supplier-payment-use-cases.js";
 export type {
   GetSupplierBalanceDependencies,

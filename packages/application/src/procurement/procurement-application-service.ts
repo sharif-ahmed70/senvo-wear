@@ -3,6 +3,7 @@ import {
   BusinessRuleError,
   ConflictError,
   NotFoundError,
+  SupplierPaymentIdempotencyConflictError,
   ValidationApplicationError,
   confirmPurchaseOrder,
   createPurchaseDraftRecord,
@@ -651,6 +652,11 @@ function normalizeError(error: unknown): ApplicationServiceError {
     return new ApplicationServiceError({
       code: "NOT_FOUND",
       message: "The requested resource was not found.",
+    });
+  if (error instanceof SupplierPaymentIdempotencyConflictError)
+    return new ApplicationServiceError({
+      code: "IDEMPOTENCY_CONFLICT",
+      message: "This request was already used with different details.",
     });
   if (error instanceof ConflictError)
     return new ApplicationServiceError({

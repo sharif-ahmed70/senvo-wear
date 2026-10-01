@@ -112,6 +112,8 @@ export function createApiFailure(input: {
 }
 
 const idSchema = z.string().uuid();
+/** Reserved idempotency namespace used by stock intake (see @senvo/domain). */
+const STOCK_INTAKE_KEY_PREFIX = "stock-intake:";
 const displayNameSchema = z.string().trim().min(1).max(160);
 const descriptionSchema = z
   .string()
@@ -4682,7 +4684,18 @@ export const createSupplierPaymentServiceInputSchema = z
         ),
       z.number().int().positive("Amount must be greater than zero."),
     ]),
-    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    // "stock-intake:" keys are reserved for payments recorded by a stock
+    // intake, so a client key can never collide with (and replay) one.
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .refine(
+        (key) => !key.toLowerCase().startsWith(STOCK_INTAKE_KEY_PREFIX),
+        'Idempotency keys starting with "stock-intake:" are reserved.',
+      )
+      .optional(),
     notes: optionalTextSchema(1000),
     paymentDate: isoTimestampSchema.optional(),
     paymentMethod: supplierPaymentMethodSchema,
