@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConflictError, NotFoundError } from "../../errors.js";
 import type { SalesOrder } from "../../sales/domain/models.js";
-import type { CourierConsignment, ShipmentReturnEvent } from "../domain/models.js";
+import type {
+  CourierConsignment,
+  ShipmentReturnEvent,
+} from "../domain/models.js";
 import type {
   CourierConsignmentRepository,
   CreateCourierConsignmentRecord,
@@ -23,7 +26,9 @@ function createMockConsignmentRepository(
   }
 
   return {
-    async create(record: CreateCourierConsignmentRecord): Promise<CourierConsignment> {
+    async create(
+      record: CreateCourierConsignmentRecord,
+    ): Promise<CourierConsignment> {
       const now = new Date();
       const consignment: CourierConsignment = {
         cancelledAt: record.cancelledAt ?? null,
@@ -89,7 +94,10 @@ function createMockConsignmentRepository(
       return null;
     },
 
-    async findById(id: string, organizationId: string): Promise<CourierConsignment | null> {
+    async findById(
+      id: string,
+      organizationId: string,
+    ): Promise<CourierConsignment | null> {
       const c = store.get(id);
       if (c && c.organizationId === organizationId) {
         return c;
@@ -103,28 +111,51 @@ function createMockConsignmentRepository(
     ): Promise<CourierConsignment[]> {
       const results: CourierConsignment[] = [];
       for (const c of store.values()) {
-        if (c.salesOrderId === salesOrderId && c.organizationId === organizationId) {
+        if (
+          c.salesOrderId === salesOrderId &&
+          c.organizationId === organizationId
+        ) {
           results.push(c);
         }
       }
       return results;
     },
 
-    async update(record: UpdateCourierConsignmentRecord): Promise<CourierConsignment> {
+    async update(
+      record: UpdateCourierConsignmentRecord,
+    ): Promise<CourierConsignment> {
       const existing = store.get(record.consignmentId);
       if (!existing || existing.organizationId !== record.organizationId) {
         throw new NotFoundError("Consignment not found");
       }
       const updated: CourierConsignment = {
         ...existing,
-        cancelledAt: record.cancelledAt !== undefined ? record.cancelledAt : existing.cancelledAt,
-        deliveredAt: record.deliveredAt !== undefined ? record.deliveredAt : existing.deliveredAt,
-        dispatchedAt: record.dispatchedAt !== undefined ? record.dispatchedAt : existing.dispatchedAt,
+        cancelledAt:
+          record.cancelledAt !== undefined
+            ? record.cancelledAt
+            : existing.cancelledAt,
+        deliveredAt:
+          record.deliveredAt !== undefined
+            ? record.deliveredAt
+            : existing.deliveredAt,
+        dispatchedAt:
+          record.dispatchedAt !== undefined
+            ? record.dispatchedAt
+            : existing.dispatchedAt,
         note: record.note !== undefined ? record.note : existing.note,
-        returnedAt: record.returnedAt !== undefined ? record.returnedAt : existing.returnedAt,
+        returnedAt:
+          record.returnedAt !== undefined
+            ? record.returnedAt
+            : existing.returnedAt,
         status: record.status,
-        trackingCode: record.trackingCode !== undefined ? record.trackingCode : existing.trackingCode,
-        trackingUrl: record.trackingUrl !== undefined ? record.trackingUrl : existing.trackingUrl,
+        trackingCode:
+          record.trackingCode !== undefined
+            ? record.trackingCode
+            : existing.trackingCode,
+        trackingUrl:
+          record.trackingUrl !== undefined
+            ? record.trackingUrl
+            : existing.trackingUrl,
         updatedAt: new Date(),
         version: existing.version + 1,
       };
@@ -179,12 +210,17 @@ describe("shipping use cases", () => {
       const consignmentRepo = createMockConsignmentRepository();
       const salesOrderRepo = {
         async findById(id: string, organizationId: string) {
-          return id === orderId && organizationId === orgId ? sampleOrder : null;
+          return id === orderId && organizationId === orgId
+            ? sampleOrder
+            : null;
         },
       };
 
       const result = await dispatchSalesOrder(
-        { consignmentRepository: consignmentRepo, salesOrderRepository: salesOrderRepo },
+        {
+          consignmentRepository: consignmentRepo,
+          salesOrderRepository: salesOrderRepo,
+        },
         {
           courierProvider: "STEADFAST",
           organizationId: orgId,
@@ -199,7 +235,9 @@ describe("shipping use cases", () => {
       expect(result.consignment.status).toBe("BOOKED");
       expect(result.consignment.recipientName).toBe("Ahmed Sharif");
       expect(result.consignment.recipientPhone).toBe("+8801711223344");
-      expect(result.consignment.deliveryAddressLine1).toBe("House 15, Road 7, Banani");
+      expect(result.consignment.deliveryAddressLine1).toBe(
+        "House 15, Road 7, Banani",
+      );
       expect(result.consignment.deliveryAddressLine2).toBe("Apt 3A");
       expect(result.consignment.codAmountMinor).toBe(256000n);
       expect(result.consignment.deliveryFeeMinor).toBe(6000n);
@@ -215,7 +253,10 @@ describe("shipping use cases", () => {
       };
 
       await dispatchSalesOrder(
-        { consignmentRepository: consignmentRepo, salesOrderRepository: salesOrderRepo },
+        {
+          consignmentRepository: consignmentRepo,
+          salesOrderRepository: salesOrderRepo,
+        },
         {
           courierProvider: "PATHAO",
           organizationId: orgId,
@@ -226,7 +267,10 @@ describe("shipping use cases", () => {
 
       await expect(
         dispatchSalesOrder(
-          { consignmentRepository: consignmentRepo, salesOrderRepository: salesOrderRepo },
+          {
+            consignmentRepository: consignmentRepo,
+            salesOrderRepository: salesOrderRepo,
+          },
           {
             courierProvider: "REDX",
             organizationId: orgId,
@@ -246,7 +290,10 @@ describe("shipping use cases", () => {
       };
 
       const result = await dispatchSalesOrder(
-        { consignmentRepository: consignmentRepo, salesOrderRepository: salesOrderRepo },
+        {
+          consignmentRepository: consignmentRepo,
+          salesOrderRepository: salesOrderRepo,
+        },
         {
           codAmountMinor: 100000,
           courierProvider: "IN_HOUSE",
@@ -261,7 +308,9 @@ describe("shipping use cases", () => {
 
       expect(result.consignment.recipientName).toBe("Brother of Customer");
       expect(result.consignment.recipientPhone).toBe("+8801999999999");
-      expect(result.consignment.deliveryAddressLine1).toBe("Alternative Office Address");
+      expect(result.consignment.deliveryAddressLine1).toBe(
+        "Alternative Office Address",
+      );
       expect(result.consignment.codAmountMinor).toBe(100000n);
       expect(result.consignment.deliveryFeeMinor).toBe(0n);
       expect(result.consignment.status).toBe("DRAFT");
@@ -277,7 +326,10 @@ describe("shipping use cases", () => {
 
       await expect(
         dispatchSalesOrder(
-          { consignmentRepository: consignmentRepo, salesOrderRepository: salesOrderRepo },
+          {
+            consignmentRepository: consignmentRepo,
+            salesOrderRepository: salesOrderRepo,
+          },
           {
             courierProvider: "STEADFAST",
             organizationId: orgId,
@@ -411,7 +463,9 @@ describe("shipping use cases", () => {
       expect(result.consignment.returnedAt).toBeDefined();
       expect(result.returnEvent).toBeDefined();
       expect(result.returnEvent?.requiresRestocking).toBe(true);
-      expect(result.returnEvent?.reason).toBe("Customer refused delivery - wrong size");
+      expect(result.returnEvent?.reason).toBe(
+        "Customer refused delivery - wrong size",
+      );
       expect(onReturnToOrigin).toHaveBeenCalledTimes(1);
 
       // Repeat RTO is idempotent and does not re-invoke return hook

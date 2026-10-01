@@ -83,7 +83,10 @@ function createMockConsignmentRepository(
       return null;
     },
 
-    async findById(id: string, organizationId: string): Promise<CourierConsignment | null> {
+    async findById(
+      id: string,
+      organizationId: string,
+    ): Promise<CourierConsignment | null> {
       const c = store.get(id);
       if (c && c.organizationId === organizationId) {
         return c;
@@ -97,7 +100,10 @@ function createMockConsignmentRepository(
     ): Promise<CourierConsignment[]> {
       const results: CourierConsignment[] = [];
       for (const c of store.values()) {
-        if (c.salesOrderId === salesOrderId && c.organizationId === organizationId) {
+        if (
+          c.salesOrderId === salesOrderId &&
+          c.organizationId === organizationId
+        ) {
           results.push(c);
         }
       }
@@ -111,14 +117,32 @@ function createMockConsignmentRepository(
       }
       const updated: CourierConsignment = {
         ...existing,
-        cancelledAt: record.cancelledAt !== undefined ? record.cancelledAt : existing.cancelledAt,
-        deliveredAt: record.deliveredAt !== undefined ? record.deliveredAt : existing.deliveredAt,
-        dispatchedAt: record.dispatchedAt !== undefined ? record.dispatchedAt : existing.dispatchedAt,
+        cancelledAt:
+          record.cancelledAt !== undefined
+            ? record.cancelledAt
+            : existing.cancelledAt,
+        deliveredAt:
+          record.deliveredAt !== undefined
+            ? record.deliveredAt
+            : existing.deliveredAt,
+        dispatchedAt:
+          record.dispatchedAt !== undefined
+            ? record.dispatchedAt
+            : existing.dispatchedAt,
         note: record.note !== undefined ? record.note : existing.note,
-        returnedAt: record.returnedAt !== undefined ? record.returnedAt : existing.returnedAt,
+        returnedAt:
+          record.returnedAt !== undefined
+            ? record.returnedAt
+            : existing.returnedAt,
         status: record.status,
-        trackingCode: record.trackingCode !== undefined ? record.trackingCode : existing.trackingCode,
-        trackingUrl: record.trackingUrl !== undefined ? record.trackingUrl : existing.trackingUrl,
+        trackingCode:
+          record.trackingCode !== undefined
+            ? record.trackingCode
+            : existing.trackingCode,
+        trackingUrl:
+          record.trackingUrl !== undefined
+            ? record.trackingUrl
+            : existing.trackingUrl,
         updatedAt: new Date(),
         version: existing.version + 1,
       };
@@ -173,14 +197,19 @@ describe("ShippingApplicationService", () => {
   const createAuth = (allowed = true): ApplicationAuthorizationService => ({
     async authorize() {
       if (!allowed) {
-        throw new AuthorizationError("You are not allowed to perform this action.");
+        throw new AuthorizationError(
+          "You are not allowed to perform this action.",
+        );
       }
     },
   });
 
   const createValidContext = (
     organizationId: string,
-    permissions: Array<{ action: "READ" | "UPDATE"; resource: "SALES_ORDER" }> = [],
+    permissions: Array<{
+      action: "READ" | "UPDATE";
+      resource: "SALES_ORDER";
+    }> = [],
   ) => ({
     organizationId,
     permissions,
@@ -326,7 +355,11 @@ describe("ShippingApplicationService", () => {
       auditWriter,
       authorizationService: createAuth(true),
       consignments: consignmentRepo,
-      salesOrders: { async findById() { return sampleOrder; } },
+      salesOrders: {
+        async findById() {
+          return sampleOrder;
+        },
+      },
     });
 
     const context = createValidContext(orgA, [
@@ -379,7 +412,11 @@ describe("ShippingApplicationService", () => {
     const service = new ShippingApplicationService({
       authorizationService: createAuth(true),
       consignments: consignmentRepo,
-      salesOrders: { async findById() { return sampleOrder; } },
+      salesOrders: {
+        async findById() {
+          return sampleOrder;
+        },
+      },
     });
 
     const context = createValidContext(orgA, [
@@ -413,7 +450,11 @@ describe("ShippingApplicationService", () => {
     const service = new ShippingApplicationService({
       authorizationService: createAuth(true),
       consignments: consignmentRepo,
-      salesOrders: { async findById() { return sampleOrder; } },
+      salesOrders: {
+        async findById() {
+          return sampleOrder;
+        },
+      },
     });
 
     // Caller from orgB attempts to read consignment in orgA

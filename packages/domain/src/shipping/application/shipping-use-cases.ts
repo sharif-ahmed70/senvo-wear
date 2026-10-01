@@ -191,22 +191,22 @@ export async function updateShipmentStatus(
   // Set audit timestamps based on target state
   const dispatchedAt =
     input.status === "PICKED_UP" || input.status === "IN_TRANSIT"
-      ? current.dispatchedAt ?? new Date()
+      ? (current.dispatchedAt ?? new Date())
       : current.dispatchedAt;
 
   const deliveredAt =
     input.status === "DELIVERED"
-      ? current.deliveredAt ?? new Date()
+      ? (current.deliveredAt ?? new Date())
       : current.deliveredAt;
 
   const returnedAt =
     input.status === "RETURNED_TO_ORIGIN"
-      ? current.returnedAt ?? new Date()
+      ? (current.returnedAt ?? new Date())
       : current.returnedAt;
 
   const cancelledAt =
     input.status === "CANCELLED"
-      ? current.cancelledAt ?? new Date()
+      ? (current.cancelledAt ?? new Date())
       : current.cancelledAt;
 
   const updated = await dependencies.consignmentRepository.update({

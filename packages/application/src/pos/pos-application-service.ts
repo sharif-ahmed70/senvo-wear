@@ -371,16 +371,13 @@ export class PosApplicationService {
               });
             }
 
-            const result = await closeSalesSessionWithSettlement(
-              settlements,
-              {
-                ...input,
-                closedAt: this.dependencies.clock.now(),
-                closedByUserId: userId,
-                organizationId: trusted.organizationId,
-                settlementId: this.requestIdGenerator(),
-              },
-            );
+            const result = await closeSalesSessionWithSettlement(settlements, {
+              ...input,
+              closedAt: this.dependencies.clock.now(),
+              closedByUserId: userId,
+              organizationId: trusted.organizationId,
+              settlementId: this.requestIdGenerator(),
+            });
 
             await transaction.auditWriter.recordWithinTransaction({
               action: "POS_REGISTER_SETTLED",

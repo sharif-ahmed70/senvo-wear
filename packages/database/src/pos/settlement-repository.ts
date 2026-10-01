@@ -65,7 +65,9 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
       where: {
         OR: [
           { salesSessionId: sessionId },
-          ...(checkoutIds.length > 0 ? [{ checkoutId: { in: checkoutIds } }] : []),
+          ...(checkoutIds.length > 0
+            ? [{ checkoutId: { in: checkoutIds } }]
+            : []),
         ],
         organizationId,
       },
@@ -80,7 +82,9 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
       },
       where: {
         OR: [
-          ...(checkoutIds.length > 0 ? [{ checkoutId: { in: checkoutIds } }] : []),
+          ...(checkoutIds.length > 0
+            ? [{ checkoutId: { in: checkoutIds } }]
+            : []),
           { paymentBatch: { salesSessionId: sessionId } },
         ],
         organizationId,
@@ -154,7 +158,10 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
     expectedVersion: number;
     session: SalesSession;
     settlement: PosRegisterSettlement;
-  }): Promise<{ session: SalesSession; settlement: PosRegisterSettlement } | null> {
+  }): Promise<{
+    session: SalesSession;
+    settlement: PosRegisterSettlement;
+  } | null> {
     const executeOperation = async (tx: PosSettlementPrismaClient) => {
       const updateResult = await tx.salesSession.updateMany({
         data: {
@@ -193,8 +200,8 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
             closingNotes: params.settlement.closingNotes,
             counterId: params.settlement.counterId,
             denominationBreakdown:
-              (params.settlement.denominationBreakdown as Prisma.InputJsonValue) ??
-              undefined,
+              (params.settlement
+                .denominationBreakdown as Prisma.InputJsonValue) ?? undefined,
             discrepancyReason: params.settlement.discrepancyReason,
             expectedBankTransferMinor:
               params.settlement.expectedBankTransferMinor,

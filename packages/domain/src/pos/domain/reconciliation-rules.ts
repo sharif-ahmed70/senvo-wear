@@ -2,11 +2,7 @@ import { BusinessRuleError, ValidationApplicationError } from "../../errors.js";
 import type { PosSettlementStatus } from "./models.js";
 
 export type PaymentMethodType =
-  | "CASH"
-  | "CARD"
-  | "MOBILE_BANKING"
-  | "BANK_TRANSFER"
-  | "ONLINE_GATEWAY";
+  "CASH" | "CARD" | "MOBILE_BANKING" | "BANK_TRANSFER" | "ONLINE_GATEWAY";
 
 export type SessionPaymentLine = {
   amountMinor: number | bigint;
@@ -59,7 +55,8 @@ export type SettlementDiscrepancies = {
 };
 
 function toBigIntAmount(amount: number | bigint, fieldName = "amount"): bigint {
-  const value = typeof amount === "bigint" ? amount : BigInt(Math.trunc(amount));
+  const value =
+    typeof amount === "bigint" ? amount : BigInt(Math.trunc(amount));
   if (value < 0n) {
     throw new ValidationApplicationError(`${fieldName} cannot be negative.`);
   }
@@ -103,7 +100,10 @@ export function calculateSessionChannelTotals(params: {
   let cashCollections = 0n;
   if (params.collections) {
     for (const collection of params.collections) {
-      const amount = toBigIntAmount(collection.amountMinor, "Collection amount");
+      const amount = toBigIntAmount(
+        collection.amountMinor,
+        "Collection amount",
+      );
       if (collection.method === "CASH") {
         cashCollections += amount;
       }
@@ -157,10 +157,7 @@ export function calculateExpectedRegisterTotals(params: {
   const expectedBankTransfer = params.channelTotals.bankTransferSalesMinor;
 
   const expectedTotal =
-    expectedCash +
-    expectedMobileBanking +
-    expectedCard +
-    expectedBankTransfer;
+    expectedCash + expectedMobileBanking + expectedCard + expectedBankTransfer;
 
   return {
     expectedBankTransferMinor: expectedBankTransfer,
@@ -206,19 +203,16 @@ export function calculateSettlementDiscrepancies(params: {
     "Actual bank transfer",
   );
 
-  const cashDiscrepancy =
-    actualCash - params.expected.expectedCashMinor;
+  const cashDiscrepancy = actualCash - params.expected.expectedCashMinor;
   const mobileBankingDiscrepancy =
     actualMobileBanking - params.expected.expectedMobileBankingMinor;
-  const cardDiscrepancy =
-    actualCard - params.expected.expectedCardMinor;
+  const cardDiscrepancy = actualCard - params.expected.expectedCardMinor;
   const bankTransferDiscrepancy =
     actualBankTransfer - params.expected.expectedBankTransferMinor;
 
   const actualTotal =
     actualCash + actualMobileBanking + actualCard + actualBankTransfer;
-  const totalDiscrepancy =
-    actualTotal - params.expected.expectedTotalMinor;
+  const totalDiscrepancy = actualTotal - params.expected.expectedTotalMinor;
 
   return {
     actualBankTransferMinor: actualBankTransfer,
@@ -268,10 +262,7 @@ export function validateSettlementSubmission(params: {
     const denomTotal = calculateDenominationTotalMinor(
       params.denominationBreakdown,
     );
-    const countedCash = toBigIntAmount(
-      params.actualCashMinor,
-      "Actual cash",
-    );
+    const countedCash = toBigIntAmount(params.actualCashMinor, "Actual cash");
     if (denomTotal !== countedCash) {
       throw new BusinessRuleError(
         `Denomination breakdown total (৳${denomTotal / 100n}) does not match entered cash amount (৳${countedCash / 100n}).`,

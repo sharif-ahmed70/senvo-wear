@@ -386,8 +386,9 @@ export function createApplicationServices(
 
   let courierConsignmentRepository = options.courierConsignmentRepository;
   if (!courierConsignmentRepository && prismaClient)
-    courierConsignmentRepository =
-      new PrismaCourierConsignmentRepository(prismaClient);
+    courierConsignmentRepository = new PrismaCourierConsignmentRepository(
+      prismaClient,
+    );
 
   if (!workforceAuthenticationRepository && prismaClient)
     workforceAuthenticationRepository =
@@ -638,10 +639,12 @@ function resolveStorageProvider(
 }
 
 const fakeCourierConsignmentRepository: CourierConsignmentRepository = {
-  create: () => Promise.reject(new Error("No courier consignment repository configured.")),
+  create: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
   findActiveBySalesOrderId: () => Promise.resolve(null),
   findByConsignmentNumber: () => Promise.resolve(null),
   findById: () => Promise.resolve(null),
   listBySalesOrderId: () => Promise.resolve([]),
-  update: () => Promise.reject(new Error("No courier consignment repository configured.")),
+  update: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
 };

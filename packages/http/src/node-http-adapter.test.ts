@@ -1038,10 +1038,16 @@ describe("Node HTTP runtime adapter", () => {
     const sessionId = "10000000-0000-4000-8000-000000000099";
 
     const getReconciliation = new RecordingApiHandler(
-      createApiSuccess({ sessionId, expectedCashMinor: 50000 }, suppliedRequestId),
+      createApiSuccess(
+        { sessionId, expectedCashMinor: 50000 },
+        suppliedRequestId,
+      ),
     );
     const closeSettlement = new RecordingApiHandler(
-      createApiSuccess({ id: "settle-1", status: "BALANCED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: "settle-1", status: "BALANCED" },
+        suppliedRequestId,
+      ),
     );
 
     const fallback = new RecordingApiHandler(
@@ -2183,16 +2189,28 @@ describe("Node HTTP runtime adapter", () => {
     const salesOrderId = "20000000-0000-4000-8000-000000000001";
 
     const dispatchHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "BOOKED" },
+        suppliedRequestId,
+      ),
     );
     const getShipmentByOrderHandler = new RecordingApiHandler(
-      createApiSuccess([{ id: consignmentId, status: "BOOKED" }], suppliedRequestId),
+      createApiSuccess(
+        [{ id: consignmentId, status: "BOOKED" }],
+        suppliedRequestId,
+      ),
     );
     const updateStatusHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "IN_TRANSIT" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "IN_TRANSIT" },
+        suppliedRequestId,
+      ),
     );
     const getConsignmentHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "BOOKED" },
+        suppliedRequestId,
+      ),
     );
 
     const shippingHandlers: ShippingApiHandlers = {
@@ -2233,7 +2251,9 @@ describe("Node HTTP runtime adapter", () => {
       salesOrderId,
       trackingCode: "ST-9988",
     });
-    expect(dispatchHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(dispatchHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 2. GET /sales/orders/:id/shipment
     const getShipmentRes = await fetch(
@@ -2248,7 +2268,9 @@ describe("Node HTTP runtime adapter", () => {
     expect(getShipmentByOrderHandler.requests[0]?.input).toEqual({
       salesOrderId,
     });
-    expect(getShipmentByOrderHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(getShipmentByOrderHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 3. PATCH /shipping/consignments/:id/status
     const updateRes = await fetch(
@@ -2269,7 +2291,9 @@ describe("Node HTTP runtime adapter", () => {
       note: "Departed hub",
       status: "IN_TRANSIT",
     });
-    expect(updateStatusHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(updateStatusHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 4. GET /shipping/consignments/:id
     const getConsignmentRes = await fetch(
@@ -2284,7 +2308,9 @@ describe("Node HTTP runtime adapter", () => {
     expect(getConsignmentHandler.requests[0]?.input).toEqual({
       consignmentId,
     });
-    expect(getConsignmentHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(getConsignmentHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
   });
 });
 
