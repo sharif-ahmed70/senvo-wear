@@ -119,13 +119,10 @@ export class ShippingApplicationService {
       };
 
       if (this.transactionManager) {
-        return this.transactionManager.execute(
-          validated,
-          async (tx) => {
-            const auditWriter = tx.auditWriter ?? this.auditWriter;
-            return executeDispatch(this.consignments, auditWriter);
-          },
-        );
+        return this.transactionManager.execute(validated, async (tx) => {
+          const auditWriter = tx.auditWriter ?? this.auditWriter;
+          return executeDispatch(this.consignments, auditWriter);
+        });
       }
 
       return executeDispatch(this.consignments, this.auditWriter);
@@ -196,13 +193,10 @@ export class ShippingApplicationService {
       };
 
       if (this.transactionManager) {
-        return this.transactionManager.execute(
-          validated,
-          async (tx) => {
-            const auditWriter = tx.auditWriter ?? this.auditWriter;
-            return executeUpdate(this.consignments, auditWriter);
-          },
-        );
+        return this.transactionManager.execute(validated, async (tx) => {
+          const auditWriter = tx.auditWriter ?? this.auditWriter;
+          return executeUpdate(this.consignments, auditWriter);
+        });
       }
 
       return executeUpdate(this.consignments, this.auditWriter);
@@ -237,10 +231,7 @@ export class ShippingApplicationService {
     payload: unknown,
   ): Promise<ApplicationServiceResult<CourierConsignmentContract>> {
     return this.execute(context, async (validated) => {
-      const input = parsePayload(
-        getConsignmentByIdServiceInputSchema,
-        payload,
-      );
+      const input = parsePayload(getConsignmentByIdServiceInputSchema, payload);
       await this.authorize(validated, "READ");
 
       const consignment = await getConsignmentById(

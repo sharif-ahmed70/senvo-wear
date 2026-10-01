@@ -33,7 +33,11 @@ class FakeSettlementRepository implements PosSettlementRepository {
     id: string,
     org: string,
   ): Promise<SessionReconciliationSource | null> {
-    if (this.source && this.source.session.id === id && this.source.session.organizationId === org) {
+    if (
+      this.source &&
+      this.source.session.id === id &&
+      this.source.session.organizationId === org
+    ) {
       return Promise.resolve(this.source);
     }
     return Promise.resolve(null);
@@ -57,7 +61,10 @@ class FakeSettlementRepository implements PosSettlementRepository {
     expectedVersion: number;
     session: SalesSession;
     settlement: PosRegisterSettlement;
-  }): Promise<{ session: SalesSession; settlement: PosRegisterSettlement } | null> {
+  }): Promise<{
+    session: SalesSession;
+    settlement: PosRegisterSettlement;
+  } | null> {
     if (this.failConcurrency) {
       return Promise.resolve(null);
     }
@@ -78,9 +85,7 @@ function createSource(
 ): SessionReconciliationSource {
   const openedAt = new Date("2026-09-28T09:00:00.000Z");
   return {
-    collections: [
-      { amountMinor: 50000, method: "CASH" },
-    ],
+    collections: [{ amountMinor: 50000, method: "CASH" }],
     counter: { id: counterId, name: "Mirpur Branch Counter 1" },
     payments: [
       { amountMinor: 300000, method: "CASH" },

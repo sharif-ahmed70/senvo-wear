@@ -53,10 +53,7 @@ export function ProductInventoryDrawer({
 
   // Group variants by Color for Garment UX
   const colorGroups = useMemo(() => {
-    const map = new Map<
-      string,
-      Array<(typeof item.variants)[number]>
-    >();
+    const map = new Map<string, Array<(typeof item.variants)[number]>>();
 
     for (const v of item.variants) {
       const color = v.variant.color || "Standard";
@@ -190,7 +187,8 @@ export function ProductInventoryDrawer({
               <h2 id="drawer-product-title">{item.product.name}</h2>
               <div className={styles.heroSubRow}>
                 <span className={styles.skuText}>
-                  SKU: {item.variants[0]?.variant.sku || item.product.productCode}
+                  SKU:{" "}
+                  {item.variants[0]?.variant.sku || item.product.productCode}
                 </span>
                 {firstBarcode ? (
                   <button

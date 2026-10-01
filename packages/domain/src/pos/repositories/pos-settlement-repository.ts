@@ -38,5 +38,8 @@ export type PosSettlementRepository = {
     expectedVersion: number;
     session: SalesSession;
     settlement: PosRegisterSettlement;
-  }): Promise<{ session: SalesSession; settlement: PosRegisterSettlement } | null>;
+  }): Promise<{
+    session: SalesSession;
+    settlement: PosRegisterSettlement;
+  } | null>;
 };

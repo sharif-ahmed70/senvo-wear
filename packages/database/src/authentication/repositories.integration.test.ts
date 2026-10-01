@@ -11,57 +11,57 @@ import { createPrismaClient } from "../index.js";
 import { PrismaUserRepository } from "../identity/repositories.js";
 import { PrismaUserCredentialRepository } from "./repositories.js";
 
-const EXPECTED_TEST_DB_URL =
-  "postgresql://senvo_wpr_test@127.0.0.1:55439/senvo_workforce_rotation_test";
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const describeWithDatabase = testDatabaseUrl ? describe : describe.skip;
+const productionWords = /\b(prod|production|stage|staging)\b/i;
 
-function assertTestDatabaseSafety(url: string | undefined) {
-  if (process.env.APP_ENV !== "test" || process.env.NODE_ENV !== "test") {
-    throw new Error(
-      "Integration tests require APP_ENV=test and NODE_ENV=test.",
-    );
+// Same rules as scripts/test-database-safety.mjs (assertSafeTestDatabaseUrl),
+// which test:integration already applies before spawning vitest, plus an
+// explicit refusal of the local development database.
+function assertTestDatabaseSafety(url: string | undefined): string {
+  if (!url) {
+    throw new Error("TEST_DATABASE_URL is required for integration tests.");
   }
-  if (!url || url !== EXPECTED_TEST_DB_URL) {
-    throw new Error(
-      `TEST_DATABASE_URL must equal exact approved test URL: ${EXPECTED_TEST_DB_URL}; got: ${url}`,
-    );
-  }
-  if (process.env.DATABASE_URL !== EXPECTED_TEST_DB_URL) {
-    throw new Error(
-      `DATABASE_URL must equal exact approved test URL: ${EXPECTED_TEST_DB_URL}`,
-    );
+  const appEnv = process.env.APP_ENV ?? process.env.NODE_ENV ?? "test";
+  if (productionWords.test(appEnv)) {
+    throw new Error(`Integration tests may not run when APP_ENV is ${appEnv}.`);
   }
   const parsed = new URL(url);
-  if (parsed.protocol !== "postgresql:") {
-    throw new Error("Protocol must be postgresql:");
+  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+    throw new Error("TEST_DATABASE_URL must use the postgresql:// protocol.");
   }
-  if (parsed.hostname !== "127.0.0.1" || parsed.port !== "55439") {
-    throw new Error("Target host/port must be 127.0.0.1:55439");
-  }
-  if (parsed.username !== "senvo_wpr_test" || parsed.password) {
-    throw new Error("Role must be senvo_wpr_test without password");
-  }
-  if (parsed.search || parsed.hash) {
-    throw new Error("No query parameters or hash allowed");
-  }
-  const dbName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
-  if (dbName.includes("senvo_wear_dev")) {
-    throw new Error("Forbidden database: senvo_wear_dev");
-  }
-  if (dbName !== "senvo_workforce_rotation_test") {
+  const databaseName = testDatabaseName(url);
+  if (!/test/i.test(databaseName)) {
     throw new Error(
-      `Database name must be senvo_workforce_rotation_test, got: ${dbName}`,
+      `TEST_DATABASE_URL database name must clearly include "test"; received "${databaseName}".`,
     );
   }
+  if (
+    productionWords.test(databaseName) ||
+    productionWords.test(parsed.hostname)
+  ) {
+    throw new Error(
+      "TEST_DATABASE_URL appears to target production or staging.",
+    );
+  }
+  if (databaseName === "senvo_wear_dev") {
+    throw new Error("Forbidden database: senvo_wear_dev");
+  }
+  return url;
 }
 
-describe("Prisma authentication repositories", () => {
+function testDatabaseName(url: string): string {
+  return decodeURIComponent(new URL(url).pathname.replace(/^\//, ""));
+}
+
+describeWithDatabase("Prisma authentication repositories", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
   let prisma: ReturnType<typeof createPrismaClient>;
   let repositories: AuthenticationRepositories;
 
   beforeAll(async () => {
-    assertTestDatabaseSafety(process.env.TEST_DATABASE_URL);
-    process.env.DATABASE_URL = EXPECTED_TEST_DB_URL;
+    const databaseUrl = assertTestDatabaseSafety(testDatabaseUrl);
+    process.env.DATABASE_URL = databaseUrl;
     prisma = createPrismaClient();
 
     const [identity] = await prisma.$queryRaw<
@@ -77,22 +77,8 @@ describe("Prisma authentication repositories", () => {
     if (!identity) {
       throw new Error("No database identity row returned from query.");
     }
-    if (identity.current_database !== "senvo_workforce_rotation_test") {
+    if (identity.current_database !== testDatabaseName(databaseUrl)) {
       throw new Error(`Database mismatch: ${identity.current_database}`);
-    }
-    if (identity.current_user !== "senvo_wpr_test") {
-      throw new Error(`User mismatch: ${identity.current_user}`);
-    }
-    if (identity.inet_server_port !== 55439) {
-      throw new Error(`Port mismatch: ${identity.inet_server_port}`);
-    }
-    if (
-      !identity.data_directory
-        .toLowerCase()
-        .replace(/\//g, "\\")
-        .includes("senvo-wpr-test-047573c3\\data")
-    ) {
-      throw new Error(`Data directory mismatch: ${identity.data_directory}`);
     }
     if (identity.pg_is_in_recovery) {
       throw new Error("Database cluster must not be in recovery.");

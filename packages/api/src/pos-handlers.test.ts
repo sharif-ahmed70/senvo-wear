@@ -318,10 +318,12 @@ describe("POS API handlers", () => {
     });
     expect(application.context?.organizationId).toBe(organizationId);
 
-    const invalid = await handlers(application).getReconciliationSummary.handle({
-      context,
-      input: { sessionId: "invalid-uuid" },
-    });
+    const invalid = await handlers(application).getReconciliationSummary.handle(
+      {
+        context,
+        input: { sessionId: "invalid-uuid" },
+      },
+    );
     expect(invalid).toMatchObject({ success: false });
   });
 
@@ -350,7 +352,9 @@ describe("POS API handlers", () => {
     });
     expect(application.context?.organizationId).toBe(organizationId);
 
-    const invalid = await handlers(application).closeSessionWithSettlement.handle({
+    const invalid = await handlers(
+      application,
+    ).closeSessionWithSettlement.handle({
       context,
       input: {
         actualCashMinor: -100, // Invalid minor unit

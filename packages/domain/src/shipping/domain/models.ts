@@ -1,9 +1,5 @@
 export type CourierProvider =
-  | "STEADFAST"
-  | "PATHAO"
-  | "REDX"
-  | "PAPERFLY"
-  | "IN_HOUSE";
+  "STEADFAST" | "PATHAO" | "REDX" | "PAPERFLY" | "IN_HOUSE";
 
 export type ShipmentStatus =
   | "DRAFT"

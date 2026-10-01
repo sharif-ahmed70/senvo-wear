@@ -221,9 +221,7 @@ export async function closeSalesSessionWithSettlement(
   });
 
   if (!saved) {
-    throw new ConcurrencyError(
-      "Open sales session was not found or changed.",
-    );
+    throw new ConcurrencyError("Open sales session was not found or changed.");
   }
 
   return saved;
