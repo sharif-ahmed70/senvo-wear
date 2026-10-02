@@ -141,7 +141,7 @@ describe("authorization service", () => {
     ).resolves.toMatchObject({ allowed: true, role: "OWNER" });
   });
 
-  it("denies staff and manager procurement access by default", async () => {
+  it("denies staff procurement access and manager supplier updates by default", async () => {
     await expect(
       authorize(repositoriesFor({ role: "STAFF" }), {
         context: { organizationId, role: "STAFF", userId },
@@ -152,7 +152,7 @@ describe("authorization service", () => {
     await expect(
       authorize(repositoriesFor({ role: "MANAGER" }), {
         context: { organizationId, role: "MANAGER", userId },
-        permission: { action: "CREATE", resource: "PROCUREMENT" },
+        permission: { action: "UPDATE", resource: "PROCUREMENT" },
       }),
     ).rejects.toThrow("Permission is required");
   });

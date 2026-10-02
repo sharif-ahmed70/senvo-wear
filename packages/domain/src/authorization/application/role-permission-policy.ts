@@ -5,12 +5,13 @@ import type {
   PermissionResource,
 } from "../domain/models.js";
 
-const allResources: readonly PermissionResource[] = [
+export const allPermissionResources: readonly PermissionResource[] = [
   "ORGANIZATION",
   "TEAM",
   "USER",
   "CATALOG",
   "INVENTORY",
+  "PROCUREMENT",
   "RESERVATION",
   "SALES_ORDER",
   "SALES",
@@ -20,7 +21,7 @@ const allResources: readonly PermissionResource[] = [
   "REPORT",
 ];
 
-const allActions: readonly PermissionAction[] = [
+export const allPermissionActions: readonly PermissionAction[] = [
   "CREATE",
   "READ",
   "UPDATE",
@@ -30,37 +31,69 @@ const allActions: readonly PermissionAction[] = [
   "FULFILL",
 ];
 
+const operations: readonly PermissionResource[] = [
+  "CATALOG",
+  "INVENTORY",
+  "RESERVATION",
+  "SALES_ORDER",
+  "SALES",
+  "POS",
+];
+
+/**
+ * The role matrix. Migration 202610020001_sync_role_permission_matrix writes
+ * exactly these grants to role_permissions; keep both in step.
+ *
+ * - OWNER: everything.
+ * - ADMIN: everything except deleting the organization and managing owners
+ *   (owner-level team rules are enforced by the team membership guards).
+ * - MANAGER: runs the shop: catalog, stock intake, stock, sales, prices.
+ * - STAFF: sells (POS, sales orders) and looks up stock; no cost, profit,
+ *   supplier, team or reports.
+ */
 export const defaultRolePermissions: readonly (PermissionKey & {
   role: Role;
 })[] = [
-  ...permissionsFor("OWNER", allResources, allActions),
-  ...permissionsFor("OWNER", ["PROCUREMENT"], ["READ", "CREATE", "UPDATE"]),
+  ...permissionsFor("OWNER", allPermissionResources, allPermissionActions),
+
+  ...permissionsFor("ADMIN", ["ORGANIZATION"], ["READ", "UPDATE"]),
   ...permissionsFor(
     "ADMIN",
-    ["ORGANIZATION", "USER"],
+    ["TEAM", "USER"],
     ["CREATE", "READ", "UPDATE", "DELETE"],
   ),
-  ...permissionsFor(
-    "ADMIN",
-    ["CATALOG", "INVENTORY", "SALES_ORDER", "SALES", "POS"],
-    ["CREATE", "READ", "UPDATE", "DELETE", "CANCEL", "FULFILL"],
-  ),
+  ...permissionsFor("ADMIN", operations, [
+    "CREATE",
+    "READ",
+    "UPDATE",
+    "DELETE",
+    "CANCEL",
+    "FULFILL",
+  ]),
   ...permissionsFor("ADMIN", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
-  ...permissionsFor("ADMIN", ["RECEIPT"], ["READ"]),
+  ...permissionsFor("ADMIN", ["RECEIPT", "REPORT"], ["READ"]),
+  ...permissionsFor("ADMIN", ["PROCUREMENT"], ["READ", "CREATE", "UPDATE"]),
+
+  ...permissionsFor("MANAGER", ["CATALOG"], ["CREATE", "READ", "UPDATE"]),
   ...permissionsFor(
     "MANAGER",
     ["INVENTORY", "RESERVATION", "SALES_ORDER", "SALES", "POS"],
     ["CREATE", "READ", "UPDATE", "CANCEL", "FULFILL"],
   ),
   ...permissionsFor("MANAGER", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
-  ...permissionsFor("MANAGER", ["RECEIPT"], ["READ"]),
-  ...permissionsFor("STAFF", allResources, ["READ"]),
+  ...permissionsFor("MANAGER", ["RECEIPT", "REPORT"], ["READ"]),
+  ...permissionsFor("MANAGER", ["PROCUREMENT"], ["READ", "CREATE"]),
+
+  ...permissionsFor("STAFF", ["CATALOG", "INVENTORY", "SALES"], ["READ"]),
+  // POS checkout and sales order creation require SALES CREATE.
+  ...permissionsFor("STAFF", ["SALES"], ["CREATE"]),
   ...permissionsFor(
     "STAFF",
-    ["RESERVATION", "SALES_ORDER", "POS"],
-    ["CREATE", "UPDATE"],
+    ["POS", "SALES_ORDER", "RESERVATION"],
+    ["CREATE", "READ", "UPDATE"],
   ),
-  ...permissionsFor("STAFF", ["PAYMENT"], ["CREATE"]),
+  ...permissionsFor("STAFF", ["PAYMENT"], ["CREATE", "READ"]),
+  ...permissionsFor("STAFF", ["RECEIPT"], ["READ"]),
 ];
 
 export function roleAllowsPermission(

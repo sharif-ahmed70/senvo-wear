@@ -24,7 +24,13 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../../_components/page-header";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 import type { AdminPermissionKey } from "../../_lib/admin-access";
-import { useAdminPermissions } from "../../admin-shell";
+import { useAdminPermissions, useAdminSession } from "../../admin-shell";
+import {
+  TEAM_ROLES,
+  assignableRolesFor,
+  roleOptionLabel,
+  teamRowAccess,
+} from "../_lib/team-roles";
 
 type OrganizationView = "profile" | "roles" | "stores" | "team";
 type LoadState = "error" | "loading" | "ready";
@@ -528,6 +534,8 @@ function StoreList({
 }
 
 function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
+  const session = useAdminSession();
+  const actor = session ? { role: session.role, userId: session.userId } : null;
   const [members, setMembers] = useState<TeamMemberContract[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [formOpen, setFormOpen] = useState(false);
@@ -630,8 +638,13 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
         </SectionHeading>
         {message ? <SuccessNotice message={message} /> : null}
         {error && state !== "error" ? <InlineError message={error} /> : null}
+        <RoleLegend />
         {formOpen ? (
-          <TeamForm onCancel={() => setFormOpen(false)} save={add} />
+          <TeamForm
+            assignable={assignableRolesFor(actor?.role ?? null)}
+            onCancel={() => setFormOpen(false)}
+            save={add}
+          />
         ) : null}
         {state === "loading" ? <LoadingRows label="Loading team" /> : null}
         {state === "error" ? (
@@ -642,6 +655,7 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
         ) : null}
         {state === "ready" && members.length ? (
           <TeamList
+            actor={actor}
             canUpdate={canUpdate}
             members={members}
             onRoleChange={(member, role) => void changeRole(member, role)}
@@ -652,10 +666,25 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
     </>
   );
 }
+function RoleLegend() {
+  return (
+    <dl className="organization-role-legend" aria-label="Role-এর মানে">
+      {TEAM_ROLES.map((item) => (
+        <div key={item.role}>
+          <dt>{item.label}</dt>
+          <dd>{item.description}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function TeamForm({
+  assignable,
   onCancel,
   save,
 }: {
+  assignable: readonly TeamMemberContract["role"][];
   onCancel: () => void;
   save: (formData: FormData) => Promise<void>;
 }) {
@@ -686,10 +715,15 @@ function TeamForm({
       <label>
         <span>Role</span>
         <select defaultValue="STAFF" name="role">
-          <option value="OWNER">Owner</option>
-          <option value="ADMIN">Admin</option>
-          <option value="MANAGER">Manager</option>
-          <option value="STAFF">Staff</option>
+          {TEAM_ROLES.map((item) => (
+            <option
+              disabled={!assignable.includes(item.role)}
+              key={item.role}
+              value={item.role}
+            >
+              {roleOptionLabel(item.role)}
+            </option>
+          ))}
         </select>
       </label>
       <div className="organization-form__actions">
@@ -709,11 +743,13 @@ function TeamForm({
   );
 }
 function TeamList({
+  actor,
   canUpdate,
   members,
   onRoleChange,
   onToggle,
 }: {
+  actor: { role: TeamMemberContract["role"]; userId: string } | null;
   canUpdate: boolean;
   members: TeamMemberContract[];
   onRoleChange: (
@@ -735,50 +771,75 @@ function TeamList({
           </tr>
         </thead>
         <tbody>
-          {members.map((member) => (
-            <tr key={member.id}>
-              <td data-label="Team member">
-                <strong>{member.name ?? "Name not added"}</strong>
-                <small>{member.email}</small>
-              </td>
-              <td data-label="Role">
-                {canUpdate ? (
-                  <select
-                    aria-label={`Role for ${member.name ?? member.email}`}
-                    onChange={(event) =>
-                      onRoleChange(
-                        member,
-                        event.target.value as TeamMemberContract["role"],
-                      )
-                    }
-                    value={member.role}
-                  >
-                    <option value="OWNER">Owner</option>
-                    <option value="ADMIN">Admin</option>
-                    <option value="MANAGER">Manager</option>
-                    <option value="STAFF">Staff</option>
-                  </select>
-                ) : (
-                  friendlyRole(member.role)
-                )}
-              </td>
-              <td data-label="Store access">{member.storeAccess}</td>
-              <td data-label="Status">
-                <StatusBadge status={member.status} />
-              </td>
-              {canUpdate ? (
-                <td data-label="Action">
-                  <button
-                    className="organization-text-button"
-                    onClick={() => onToggle(member)}
-                    type="button"
-                  >
-                    {member.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                  </button>
+          {members.map((member) => {
+            const access = teamRowAccess(actor, member, members);
+            const editable = canUpdate && access.canChange;
+            const assignable = assignableRolesFor(actor?.role ?? null);
+            return (
+              <tr key={member.id}>
+                <td data-label="Team member">
+                  <strong>
+                    {member.name ?? "Name not added"}
+                    {access.isSelf ? " (আপনি)" : ""}
+                  </strong>
+                  <small>{member.email}</small>
                 </td>
-              ) : null}
-            </tr>
-          ))}
+                <td data-label="Role">
+                  {editable ? (
+                    <select
+                      aria-label={`Role for ${member.name ?? member.email}`}
+                      onChange={(event) =>
+                        onRoleChange(
+                          member,
+                          event.target.value as TeamMemberContract["role"],
+                        )
+                      }
+                      value={member.role}
+                    >
+                      {TEAM_ROLES.map((item) => (
+                        <option
+                          disabled={
+                            item.role !== member.role &&
+                            !assignable.includes(item.role)
+                          }
+                          key={item.role}
+                          value={item.role}
+                        >
+                          {roleOptionLabel(item.role)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      {friendlyRole(member.role)}
+                      {canUpdate && access.lockedReason ? (
+                        <small>{access.lockedReason}</small>
+                      ) : null}
+                    </>
+                  )}
+                </td>
+                <td data-label="Store access">{member.storeAccess}</td>
+                <td data-label="Status">
+                  <StatusBadge status={member.status} />
+                </td>
+                {canUpdate ? (
+                  <td data-label="Action">
+                    {editable ? (
+                      <button
+                        className="organization-text-button"
+                        onClick={() => onToggle(member)}
+                        type="button"
+                      >
+                        {member.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                      </button>
+                    ) : (
+                      <span aria-hidden="true">—</span>
+                    )}
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

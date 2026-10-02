@@ -31,6 +31,8 @@ export const auditActions = [
   "ORDER_DISPATCHED",
   "SHIPMENT_STATUS_UPDATED",
   "STOCK_INTAKE_RECORDED",
+  "TEAM_MEMBER_ROLE_CHANGED",
+  "TEAM_MEMBER_STATUS_CHANGED",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
@@ -48,6 +50,7 @@ export const auditResources = [
   "POS_SESSION",
   "COURIER_CONSIGNMENT",
   "PURCHASE",
+  "ORGANIZATION_MEMBERSHIP",
 ] as const satisfies readonly AuditResource[];
 
 export function assertAuditId(value: string, field: string): string {

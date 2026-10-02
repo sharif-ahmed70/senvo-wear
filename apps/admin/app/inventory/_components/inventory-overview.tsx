@@ -27,7 +27,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AdminPermissionKey } from "../../_lib/admin-access";
+import {
+  canAccessPath,
+  type AdminPermissionKey,
+} from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
 import { useAdminPermissions } from "../../admin-shell";
 import { InventoryScanDialog } from "./inventory-scan-dialog";
@@ -244,10 +247,12 @@ export function InventoryOverview({
                 <PackagePlus size={15} />
                 <span>Receive Stock</span>
               </Link>
-              <Link className={styles.primaryButton} href="/inventory/intake">
-                <PackagePlus size={16} />
-                <span>নতুন মাল তুলুন</span>
-              </Link>
+              {canAccessPath(permissions, "/inventory/intake") ? (
+                <Link className={styles.primaryButton} href="/inventory/intake">
+                  <PackagePlus size={16} />
+                  <span>নতুন মাল তুলুন</span>
+                </Link>
+              ) : null}
             </>
           ) : null}
         </div>

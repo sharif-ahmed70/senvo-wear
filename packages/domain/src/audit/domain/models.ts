@@ -17,7 +17,9 @@ export type AuditAction =
   | "POS_REGISTER_SETTLED"
   | "ORDER_DISPATCHED"
   | "SHIPMENT_STATUS_UPDATED"
-  | "STOCK_INTAKE_RECORDED";
+  | "STOCK_INTAKE_RECORDED"
+  | "TEAM_MEMBER_ROLE_CHANGED"
+  | "TEAM_MEMBER_STATUS_CHANGED";
 
 export type AuditResource =
   | "INVENTORY_MOVEMENT"
@@ -33,7 +35,8 @@ export type AuditResource =
   | "USER_CREDENTIAL"
   | "POS_SESSION"
   | "COURIER_CONSIGNMENT"
-  | "PURCHASE";
+  | "PURCHASE"
+  | "ORGANIZATION_MEMBERSHIP";
 
 export type AuditJsonValue =
   | boolean

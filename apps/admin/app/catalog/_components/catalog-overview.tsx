@@ -29,7 +29,10 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AdminPermissionKey } from "../../_lib/admin-access";
+import {
+  canAccessPath,
+  type AdminPermissionKey,
+} from "../../_lib/admin-access";
 import { AdminApiClient } from "../../_lib/api-client";
 import { useAdminPermissions } from "../../admin-shell";
 import styles from "./catalog-overview.module.css";
@@ -56,6 +59,8 @@ export function CatalogOverview({
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
   const canAddStock = permissions.includes("INVENTORY:CREATE");
+  const canCreateProduct = permissions.includes("CATALOG:CREATE");
+  const canStockIntake = canAccessPath(permissions, "/inventory/intake");
   const canReadInventory = permissions.includes("INVENTORY:READ");
 
   const [products, setProducts] = useState<ProductContract[]>([]);
@@ -241,10 +246,12 @@ export function CatalogOverview({
             Manage what SENVO sells — products, variants, media and identity.
           </p>
         </div>
-        <Link className={styles.primaryAction} href="/inventory/intake">
-          <PackagePlus aria-hidden="true" size={17} />
-          নতুন মাল তুলুন
-        </Link>
+        {canStockIntake ? (
+          <Link className={styles.primaryAction} href="/inventory/intake">
+            <PackagePlus aria-hidden="true" size={17} />
+            নতুন মাল তুলুন
+          </Link>
+        ) : null}
       </header>
 
       <section className={styles.metrics} aria-label="Catalog summary">
@@ -374,7 +381,10 @@ export function CatalogOverview({
           ) : state === "error" ? (
             <ErrorState message={error} onRetry={() => void load()} />
           ) : filtered.length === 0 ? (
-            <EmptyState hasProducts={products.length > 0} />
+            <EmptyState
+              canCreate={canStockIntake}
+              hasProducts={products.length > 0}
+            />
           ) : (
             <>
               {viewMode === "cards" ? (
@@ -464,18 +474,22 @@ export function CatalogOverview({
             <p>
               Move naturally from merchandise setup to identification and stock.
             </p>
-            <Shortcut
-              href="/inventory/intake"
-              icon={PackagePlus}
-              label="নতুন মাল তুলুন"
-              detail="Product, stock, barcode আর Supplier একসাথে"
-            />
-            <Shortcut
-              href="/catalog/products/new"
-              icon={PackagePlus}
-              label="Add product"
-              detail="Create product, variants and media"
-            />
+            {canStockIntake ? (
+              <Shortcut
+                href="/inventory/intake"
+                icon={PackagePlus}
+                label="নতুন মাল তুলুন"
+                detail="Product, stock, barcode আর Supplier একসাথে"
+              />
+            ) : null}
+            {canCreateProduct ? (
+              <Shortcut
+                href="/catalog/products/new"
+                icon={PackagePlus}
+                label="Add product"
+                detail="Create product, variants and media"
+              />
+            ) : null}
             <Shortcut
               href="/catalog/barcodes"
               icon={Barcode}
@@ -536,9 +550,11 @@ export function CatalogOverview({
             </p>
           </div>
         </div>
-        <Link href="/inventory/intake">
-          নতুন মাল তুলুন <ArrowRight aria-hidden="true" size={15} />
-        </Link>
+        {canStockIntake ? (
+          <Link href="/inventory/intake">
+            নতুন মাল তুলুন <ArrowRight aria-hidden="true" size={15} />
+          </Link>
+        ) : null}
       </section>
     </div>
   );
@@ -974,7 +990,13 @@ function ErrorState({
   );
 }
 
-function EmptyState({ hasProducts }: { hasProducts: boolean }) {
+function EmptyState({
+  canCreate,
+  hasProducts,
+}: {
+  canCreate: boolean;
+  hasProducts: boolean;
+}) {
   return (
     <div className={styles.emptyState}>
       <PackagePlus aria-hidden="true" size={24} />
@@ -990,7 +1012,7 @@ function EmptyState({ hasProducts }: { hasProducts: boolean }) {
             : "Create the product first; barcode and stock workflows come next."}
         </p>
       </div>
-      {!hasProducts ? (
+      {!hasProducts && canCreate ? (
         <Link href="/inventory/intake">নতুন মাল তুলুন</Link>
       ) : null}
     </div>

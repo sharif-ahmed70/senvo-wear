@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import type { AdminPermissionKey } from "../../_lib/admin-access";
 import { AdminApiClient } from "../../_lib/api-client";
+import { useAdminPermissions } from "../../admin-shell";
 import styles from "./inventory-overview.module.css";
 
 const client = new AdminApiClient({
@@ -29,15 +31,22 @@ type HistoryTab = "movements" | "purchases" | "sales";
 
 export function ProductHistoryModal({
   onClose,
+  permissions: propsPermissions,
   productCode,
   productId,
   productName,
 }: {
   onClose: () => void;
+  permissions?: readonly AdminPermissionKey[];
   productCode: string;
   productId: string;
   productName: string;
 }) {
+  const sessionPermissions = useAdminPermissions();
+  // Purchases carry cost, so only roles that may see procurement get them.
+  const canViewPurchases = (propsPermissions ?? sessionPermissions).includes(
+    "PROCUREMENT:READ",
+  );
   const [activeTab, setActiveTab] = useState<HistoryTab>("movements");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -70,7 +79,9 @@ export function ProductHistoryModal({
       try {
         const [movRes, purRes, salRes] = await Promise.allSettled([
           client.listInventoryMovements({ pageSize: 50 }),
-          client.listPurchases({ limit: 50 }),
+          canViewPurchases
+            ? client.listPurchases({ limit: 50 })
+            : Promise.reject(new Error("Purchases are not visible.")),
           client.listSalesOrders({ pageSize: 50 }),
         ]);
 
@@ -114,7 +125,7 @@ export function ProductHistoryModal({
     return () => {
       cancelled = true;
     };
-  }, [productCode, productId, productName]);
+  }, [canViewPurchases, productCode, productId, productName]);
 
   function formatDate(iso: string) {
     try {
@@ -195,16 +206,18 @@ export function ProductHistoryModal({
             <Truck size={15} />
             <span>Stock Movements ({movements.length})</span>
           </button>
-          <button
-            className={`${styles.historyTab} ${
-              activeTab === "purchases" ? styles.historyTab_active : ""
-            }`}
-            onClick={() => setActiveTab("purchases")}
-            type="button"
-          >
-            <Package size={15} />
-            <span>Purchases ({purchases.length})</span>
-          </button>
+          {canViewPurchases ? (
+            <button
+              className={`${styles.historyTab} ${
+                activeTab === "purchases" ? styles.historyTab_active : ""
+              }`}
+              onClick={() => setActiveTab("purchases")}
+              type="button"
+            >
+              <Package size={15} />
+              <span>Purchases ({purchases.length})</span>
+            </button>
+          ) : null}
           <button
             className={`${styles.historyTab} ${
               activeTab === "sales" ? styles.historyTab_active : ""
@@ -304,7 +317,7 @@ export function ProductHistoryModal({
                 </table>
               </div>
             )
-          ) : activeTab === "purchases" ? (
+          ) : activeTab === "purchases" && canViewPurchases ? (
             purchases.length === 0 ? (
               <div className={styles.emptyStateCompact}>
                 <Package size={28} />
