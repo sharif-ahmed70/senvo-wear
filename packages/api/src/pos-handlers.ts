@@ -193,7 +193,7 @@ export function createPosApiHandlers(dependencies: {
   pos: PosApplication;
 }): PosApiHandlers {
   const handler = <TInput, TOutput>(
-    action: "CREATE" | "READ" | "UPDATE",
+    action: "CREATE" | "READ" | "UPDATE" | "APPROVE",
     inputSchema: Parameters<
       typeof createProtectedApiHandler<TInput, TOutput>
     >[0]["inputSchema"],
@@ -265,18 +265,18 @@ export function createPosApiHandlers(dependencies: {
       (context, input) => dependencies.pos.addCartItem(context, input),
     ),
     closeSession: handler(
-      "UPDATE",
+      "APPROVE",
       closeSalesSessionServiceInputSchema,
       (context, input) => dependencies.pos.closeSession(context, input),
     ),
     getReconciliationSummary: handler(
-      "READ",
+      "APPROVE",
       getSalesSessionReconciliationServiceInputSchema,
       (context, input) =>
         dependencies.pos.getReconciliationSummary(context, input),
     ),
     closeSessionWithSettlement: handler(
-      "UPDATE",
+      "APPROVE",
       closeSalesSessionWithSettlementServiceInputSchema,
       (context, input) =>
         dependencies.pos.closeSessionWithSettlement(context, input),

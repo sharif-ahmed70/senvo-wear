@@ -42,7 +42,7 @@ const operations: readonly PermissionResource[] = [
 
 /**
  * The role matrix. Migration 202610020001_sync_role_permission_matrix writes
- * exactly these grants to role_permissions; keep both in step.
+ * the baseline grants; later additive migrations extend that matrix.
  *
  * - OWNER: everything.
  * - ADMIN: everything except deleting the organization and managing owners
@@ -70,6 +70,7 @@ export const defaultRolePermissions: readonly (PermissionKey & {
     "CANCEL",
     "FULFILL",
   ]),
+  ...permissionsFor("ADMIN", ["POS"], ["APPROVE"]),
   ...permissionsFor("ADMIN", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
   ...permissionsFor("ADMIN", ["RECEIPT", "REPORT"], ["READ"]),
   ...permissionsFor("ADMIN", ["PROCUREMENT"], ["READ", "CREATE", "UPDATE"]),
@@ -80,6 +81,7 @@ export const defaultRolePermissions: readonly (PermissionKey & {
     ["INVENTORY", "RESERVATION", "SALES_ORDER", "SALES", "POS"],
     ["CREATE", "READ", "UPDATE", "CANCEL", "FULFILL"],
   ),
+  ...permissionsFor("MANAGER", ["POS"], ["APPROVE"]),
   ...permissionsFor("MANAGER", ["PAYMENT"], ["CREATE", "READ", "APPROVE"]),
   ...permissionsFor("MANAGER", ["RECEIPT", "REPORT"], ["READ"]),
   ...permissionsFor("MANAGER", ["PROCUREMENT"], ["READ", "CREATE"]),

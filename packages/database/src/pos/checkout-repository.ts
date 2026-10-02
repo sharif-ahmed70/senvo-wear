@@ -9,7 +9,11 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type CheckoutPrismaClient = Pick<
   PrismaClient,
-  "$queryRaw" | "inventoryAllocationPolicy" | "posCart" | "posCheckoutRecord"
+  | "$queryRaw"
+  | "inventoryAllocationPolicy"
+  | "posCart"
+  | "posCheckoutRecord"
+  | "organizationMembership"
 >;
 
 const checkoutInclude = {
@@ -41,6 +45,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
   async prepare(
     cartId: string,
     organizationId: string,
+    staffId: string,
   ): Promise<PosCheckoutPreparation | null> {
     await this.prisma.$queryRaw`
       SELECT "id"
@@ -68,8 +73,6 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         salesSession: {
           include: {
             counter: { include: { booth: true, branch: true } },
-            openedBy: true,
-            openedMembership: true,
           },
         },
         organization: true,
@@ -77,6 +80,11 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       where: { id: cartId, organizationId },
     });
     if (!cart) return null;
+    const membership = await this.prisma.organizationMembership.findUnique({
+      where: { userId_organizationId: { userId: staffId, organizationId } },
+      include: { user: true },
+    });
+    if (!membership) return null;
     const counter = cart.salesSession.counter;
     const allocationPolicy =
       await this.prisma.inventoryAllocationPolicy.findFirst({
@@ -114,7 +122,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         sellingPriceMinor: line.productVariant.sellingPriceMinor,
         variantStatus: line.productVariant.status,
       })),
-      membershipStatus: cart.salesSession.openedMembership.status,
+      membershipStatus: membership.status,
       organizationId: cart.organizationId,
       organizationAddressLine1: cart.organization.addressLine1,
       organizationAddressLine2: cart.organization.addressLine2,
@@ -126,10 +134,9 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       organizationPostalCode: cart.organization.postalCode,
       salesSessionId: cart.salesSessionId,
       sessionStatus: cart.salesSession.status,
-      staffId: cart.salesSession.openedByUserId,
-      staffName:
-        cart.salesSession.openedBy.name ?? cart.salesSession.openedBy.email,
-      staffStatus: cart.salesSession.openedBy.status,
+      staffId,
+      staffName: membership.user.name ?? membership.user.email,
+      staffStatus: membership.user.status,
       sourceName:
         counter.type === "EVENT_BOOTH"
           ? (counter.booth?.name ?? counter.name)

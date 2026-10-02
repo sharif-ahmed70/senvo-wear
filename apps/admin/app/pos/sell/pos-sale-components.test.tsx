@@ -36,6 +36,7 @@ const session: SalesSessionContract = {
   id: id("4"),
   openedAt: "2026-08-06T00:00:00.000Z",
   openedByUserId: id("5"),
+  openedByName: "Shop Owner",
   openingFloatMinor: 0,
   status: "OPEN",
   updatedAt: "2026-08-06T00:00:00.000Z",
@@ -67,6 +68,17 @@ const cart: PosCartDetailsContract = {
 };
 
 describe("guided POS selling components", () => {
+  it("shows who opened the shared counter", () => {
+    const html = renderToStaticMarkup(
+      <SellingContextSelector
+        contexts={[{ counter, session }]}
+        onSelect={() => undefined}
+        selectedId={session.id}
+      />,
+    );
+    expect(html).toContain("Opened by Shop Owner");
+  });
+
   it("renders a friendly restricted state", () => {
     const html = renderToStaticMarkup(
       <PosSaleWorkspace permissions={["POS:READ"]} />,

@@ -17,6 +17,7 @@ export const adminPermissionKeys = [
   "POS:READ",
   "POS:CREATE",
   "POS:UPDATE",
+  "POS:APPROVE",
   "PAYMENT:READ",
   "PAYMENT:CREATE",
   "PAYMENT:APPROVE",

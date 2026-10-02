@@ -10,7 +10,9 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-type SessionRecord = Prisma.SalesSessionGetPayload<{ include: { cart: true } }>;
+type SessionRecord = Prisma.SalesSessionGetPayload<{
+  include: { cart: true; openedBy: { select: { name: true; email: true } } };
+}>;
 type CartRecord = Prisma.PosCartGetPayload<{
   include: {
     checkout: { select: { id: true } };
@@ -86,18 +88,25 @@ export class PrismaPosRepository implements PosRepository {
 
   async findOpenSessionByCounter(counterId: string, organizationId: string) {
     const record = await this.prisma.salesSession.findFirst({
-      include: { cart: true },
+      include: {
+        cart: true,
+        openedBy: { select: { name: true, email: true } },
+      },
       where: { counterId, organizationId, status: "OPEN" },
     });
     return record ? mapSession(record) : null;
   }
 
-  async listOpenSessionsByUser(organizationId: string, openedByUserId: string) {
+  async listOpenSessionsByUser(organizationId: string, _userId: string) {
+    void _userId;
     return (
       await this.prisma.salesSession.findMany({
-        include: { cart: true },
+        include: {
+          cart: true,
+          openedBy: { select: { name: true, email: true } },
+        },
         orderBy: [{ openedAt: "desc" }, { id: "desc" }],
-        where: { openedByUserId, organizationId, status: "OPEN" },
+        where: { organizationId, status: "OPEN" },
       })
     ).map(mapSession);
   }
@@ -118,7 +127,10 @@ export class PrismaPosRepository implements PosRepository {
           },
         });
         return transaction.salesSession.findUniqueOrThrow({
-          include: { cart: true },
+          include: {
+            cart: true,
+            openedBy: { select: { name: true, email: true } },
+          },
           where: { id: created.id },
         });
       });
@@ -134,7 +146,10 @@ export class PrismaPosRepository implements PosRepository {
   async listSessions(organizationId: string) {
     return (
       await this.prisma.salesSession.findMany({
-        include: { cart: true },
+        include: {
+          cart: true,
+          openedBy: { select: { name: true, email: true } },
+        },
         orderBy: [{ openedAt: "desc" }, { id: "desc" }],
         where: { organizationId },
       })
@@ -157,24 +172,24 @@ export class PrismaPosRepository implements PosRepository {
     });
     if (result.count === 0) return null;
     const session = await this.prisma.salesSession.findFirst({
-      include: { cart: true },
+      include: {
+        cart: true,
+        openedBy: { select: { name: true, email: true } },
+      },
       where: { id: record.id, organizationId: record.organizationId },
     });
     return session ? mapSession(session) : null;
   }
 
-  async findCartById(
-    id: string,
-    organizationId: string,
-    openedByUserId: string,
-  ) {
+  async findCartById(id: string, organizationId: string, _userId: string) {
+    void _userId;
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
         lines: true,
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId, salesSession: { openedByUserId } },
+      where: { id, organizationId },
     });
     return record ? mapCart(record) : null;
   }
@@ -182,8 +197,9 @@ export class PrismaPosRepository implements PosRepository {
   async findCartDetailsById(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    _userId: string,
   ) {
+    void _userId;
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
@@ -197,7 +213,7 @@ export class PrismaPosRepository implements PosRepository {
         },
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId, salesSession: { openedByUserId } },
+      where: { id, organizationId },
     });
     return record ? mapCartDetails(record) : null;
   }
@@ -283,6 +299,7 @@ function mapSession(record: SessionRecord): SalesSession {
     id: record.id,
     openedAt: record.openedAt,
     openedByUserId: record.openedByUserId,
+    openedByName: record.openedBy.name ?? record.openedBy.email,
     openingFloatMinor: record.openingFloatMinor ?? 0,
     organizationId: record.organizationId,
     status: record.status,

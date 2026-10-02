@@ -90,6 +90,9 @@ export function SellingContextSelector({
         <span>Sales counter</span>
         <strong>{contexts[0]?.counter.name}</strong>
         <small>{contexts[0]?.counter.code}</small>
+        <small>
+          Opened by {contexts[0]?.session.openedByName ?? "Unknown"}
+        </small>
       </div>
     );
   }
@@ -103,7 +106,8 @@ export function SellingContextSelector({
         <option value="">Choose a counter</option>
         {contexts.map(({ counter, session }) => (
           <option key={session.id} value={session.id}>
-            {counter.name} ({counter.code})
+            {counter.name} ({counter.code}) / Opened by{" "}
+            {session.openedByName ?? "Unknown"}
           </option>
         ))}
       </select>

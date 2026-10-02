@@ -291,7 +291,7 @@ export class PosApplicationService {
   closeSession(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<SalesSessionContract>(context, async (trusted) => {
       const input = parsePayload(closeSalesSessionServiceInputSchema, payload);
-      await this.authorize(trusted, "UPDATE");
+      await this.authorize(trusted, "APPROVE");
       return mapSession(
         await closeSalesSession(this.dependencies.pos, {
           ...input,
@@ -313,7 +313,7 @@ export class PosApplicationService {
           getSalesSessionReconciliationServiceInputSchema,
           payload,
         );
-        await this.authorize(trusted, "READ");
+        await this.authorize(trusted, "APPROVE");
         if (!this.dependencies.settlements) {
           throw new ApplicationServiceError({
             code: "INTERNAL_ERROR",
@@ -351,7 +351,7 @@ export class PosApplicationService {
           closeSalesSessionWithSettlementServiceInputSchema,
           payload,
         );
-        await this.authorize(trusted, "UPDATE");
+        await this.authorize(trusted, "APPROVE");
         await requireAuthentication(this.dependencies.authenticationService, {
           requestId: trusted.requestId,
           userId: trusted.userId,
@@ -1063,7 +1063,7 @@ export class PosApplicationService {
 
   private authorize(
     context: ValidatedApplicationExecutionContext,
-    action: "CREATE" | "READ" | "UPDATE",
+    action: "CREATE" | "READ" | "UPDATE" | "APPROVE",
   ) {
     return requireAuthorization(
       this.dependencies.authorizationService,
@@ -1121,6 +1121,7 @@ function mapSession(record: SalesSession): SalesSessionContract {
     id: record.id,
     openedAt: record.openedAt.toISOString(),
     openedByUserId: record.openedByUserId,
+    openedByName: record.openedByName,
     openingFloatMinor: record.openingFloatMinor ?? 0,
     status: record.status,
     updatedAt: record.updatedAt.toISOString(),

@@ -3352,6 +3352,7 @@ export const salesSessionContractSchema = z
     id: idSchema,
     openedAt: isoTimestampSchema,
     openedByUserId: idSchema,
+    openedByName: z.string().optional(),
     openingFloatMinor: minorUnitAmountSchema.default(0),
     status: salesSessionStatusSchema,
     updatedAt: isoTimestampSchema,

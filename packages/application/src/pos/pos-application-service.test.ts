@@ -706,11 +706,11 @@ describe("PosApplicationService settlement", () => {
   const sessionId = "10000000-0000-4000-8000-000000000050";
   const counterId = "10000000-0000-4000-8000-000000000051";
 
-  it("requires POS:READ permission to get reconciliation summary", async () => {
+  it("requires POS:APPROVE permission to get reconciliation summary", async () => {
     let authChecked = false;
     const authorizationService: ApplicationAuthorizationService = {
       authorize: (_context, permission) => {
-        if (permission.action === "READ" && permission.resource === "POS") {
+        if (permission.action === "APPROVE" && permission.resource === "POS") {
           authChecked = true;
           return Promise.resolve();
         }
@@ -777,11 +777,11 @@ describe("PosApplicationService settlement", () => {
     }
   });
 
-  it("requires POS:UPDATE, executes atomically, and records POS_REGISTER_SETTLED audit event", async () => {
+  it("requires POS:APPROVE, executes atomically, and records POS_REGISTER_SETTLED audit event", async () => {
     let authChecked = false;
     const authorizationService: ApplicationAuthorizationService = {
       authorize: (_context, permission) => {
-        if (permission.action === "UPDATE" && permission.resource === "POS") {
+        if (permission.action === "APPROVE" && permission.resource === "POS") {
           authChecked = true;
           return Promise.resolve();
         }

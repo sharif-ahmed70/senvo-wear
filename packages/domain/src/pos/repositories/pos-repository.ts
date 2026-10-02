@@ -34,12 +34,12 @@ export type PosRepository = {
   findCartById(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<PosCart | null>;
   findCartDetailsById?(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<PosCartDetails | null>;
   findCartLineById(
     id: string,
@@ -60,7 +60,7 @@ export type PosRepository = {
   ): Promise<SalesSession | null>;
   listOpenSessionsByUser(
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<SalesSession[]>;
   findSellableVariant(
     id: string,

@@ -27,7 +27,7 @@ export function ZReportPreview({
 }) {
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
-  const canRead = permissions.includes("POS:READ");
+  const canRead = permissions.includes("POS:APPROVE");
 
   const [summary, setSummary] =
     useState<PosSessionReconciliationSummaryContract | null>(null);

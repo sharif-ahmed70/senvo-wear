@@ -61,7 +61,7 @@ export function PosManagementWorkspace({
   ) : view === "sessions" ? (
     <SessionManagement
       canCreate={permissions.includes("POS:CREATE")}
-      canUpdate={permissions.includes("POS:UPDATE")}
+      canUpdate={permissions.includes("POS:APPROVE")}
     />
   ) : (
     <CheckoutHistory
@@ -607,14 +607,14 @@ function SessionManagement({
                       ) : (
                         <span className="pos-muted">Open</span>
                       )
-                    ) : (
+                    ) : canUpdate ? (
                       <Link
                         className="pos-receipt-link"
                         href={`/pos/sessions/${session.id}/z-report`}
                       >
                         View Z-Report
                       </Link>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               ))}

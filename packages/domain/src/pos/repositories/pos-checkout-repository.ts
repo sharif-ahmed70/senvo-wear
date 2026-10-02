@@ -19,5 +19,6 @@ export type PosCheckoutRepository = {
   prepare(
     cartId: string,
     organizationId: string,
+    staffId: string,
   ): Promise<PosCheckoutPreparation | null>;
 };

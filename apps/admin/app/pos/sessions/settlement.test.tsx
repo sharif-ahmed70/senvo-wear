@@ -124,9 +124,9 @@ describe("POS Register Settlement & Reconciliation", () => {
   describe("Printable Z-Report Preview", () => {
     const sessionId = "10000000-0000-4000-8000-000000000001";
 
-    it("blocks access to Z-Report when user lacks POS:READ", () => {
+    it("blocks access to Z-Report with POS:READ but no POS:APPROVE", () => {
       const markup = renderToStaticMarkup(
-        <ZReportPreview sessionId={sessionId} permissions={["CATALOG:READ"]} />,
+        <ZReportPreview sessionId={sessionId} permissions={["POS:READ"]} />,
       );
 
       expect(markup).toContain("Access Restricted");
@@ -137,7 +137,7 @@ describe("POS Register Settlement & Reconciliation", () => {
 
     it("renders loading state initially when authorized", () => {
       const markup = renderToStaticMarkup(
-        <ZReportPreview sessionId={sessionId} permissions={["POS:READ"]} />,
+        <ZReportPreview sessionId={sessionId} permissions={["POS:APPROVE"]} />,
       );
 
       expect(markup).toContain("Generating Day-End Z-Report...");

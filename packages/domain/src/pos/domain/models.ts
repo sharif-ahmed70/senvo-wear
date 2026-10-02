@@ -24,6 +24,7 @@ export type SalesSession = {
   id: string;
   openedAt: Date;
   openedByUserId: string;
+  openedByName?: string;
   openingFloatMinor: number;
   organizationId: string;
   status: SalesSessionStatus;

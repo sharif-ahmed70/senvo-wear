@@ -171,7 +171,7 @@ describeWithDatabase("Prisma offline POS repository", () => {
         base.organization.id,
         otherCashier.id,
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ id: opened.cartId });
     const closed = await repository.closeSession({
       closedAt: new Date("2026-08-03T10:00:00.000Z"),
       expectedVersion: 1,
@@ -183,6 +183,54 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await expect(
       prisma.salesCounter.delete({ where: { id: base.counter.id } }),
     ).rejects.toMatchObject({ code: "P2003" });
+  });
+
+  it("STAFF checks out the OWNER shared cart as the logged-in seller", async () => {
+    const base = await seedCheckout("SHARED", 5, 2);
+    await prisma.organizationMembership.update({
+      where: {
+        userId_organizationId: {
+          userId: base.user.id,
+          organizationId: base.organization.id,
+        },
+      },
+      data: { role: "OWNER" },
+    });
+    const staff = await seedOrganizationMember(
+      base.organization.id,
+      "SHARED-STAFF",
+    );
+    await prisma.organizationMembership.update({
+      where: {
+        userId_organizationId: {
+          userId: staff.id,
+          organizationId: base.organization.id,
+        },
+      },
+      data: { role: "STAFF" },
+    });
+    const current = await repository.listOpenSessionsByUser(
+      base.organization.id,
+      staff.id,
+    );
+    expect(current).toEqual([
+      expect.objectContaining({
+        id: base.session.id,
+        openedByUserId: base.user.id,
+        openedByName: base.user.name ?? base.user.email,
+      }),
+    ]);
+    const result = await completeCheckout(
+      { ...base, user: staff },
+      "shared-staff-checkout",
+    );
+    expect(
+      await prisma.posCheckoutRecord.findUnique({
+        where: { id: result.checkout.id },
+        select: { staffId: true },
+      }),
+    ).toEqual({ staffId: staff.id });
+    expect(result.checkout.salesSessionId).toBe(base.session.id);
   });
 
   it("atomically completes a sale, consumes inventory, and writes audit history", async () => {

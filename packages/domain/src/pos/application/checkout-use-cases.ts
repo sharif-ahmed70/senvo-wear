@@ -80,6 +80,7 @@ export async function checkoutCart(
   const preparation = await repositories.checkouts.prepare(
     cartId,
     organizationId,
+    staffId,
   );
   if (!preparation) throw new NotFoundError("Cart was not found.");
   if (preparation.checkout) {
