@@ -5,9 +5,13 @@ import {
   ConflictError,
   ConcurrencyError,
   NotFoundError,
+  OWNER_ONLY_MEMBERSHIP_MESSAGE,
+  TeamMembershipRuleError,
   ValidationApplicationError,
-  assignOrganizationMembershipRole,
+  assertTeamMembershipChangeAllowed,
   changeBranchStatus,
+  changeTeamMemberRole,
+  changeTeamMemberStatus,
   createBranch,
   createOrganizationMembership,
   createUser,
@@ -15,7 +19,6 @@ import {
   listBranches,
   listOrganizationTeam,
   updateBranchMetadata,
-  updateOrganizationMembershipStatus,
   updateOrganizationProfile,
   type Branch,
   type BranchRepository,
@@ -26,6 +29,7 @@ import {
   type OrganizationTeamReadRepository,
   type Role,
   type RolePermissionRepository,
+  type TeamMembershipTransactionManager,
   type UserRepository,
 } from "@senvo/domain";
 import {
@@ -87,6 +91,11 @@ export type OrganizationApplicationServiceDependencies = {
   organizations: OrganizationProfileRepository;
   requestIdGenerator?: () => string;
   rolePermissions: RolePermissionRepository;
+  /**
+   * Runs role and status changes in one transaction (owner-count lock,
+   * session revocation, audit). Required in production composition.
+   */
+  teamMembershipTransactions: TeamMembershipTransactionManager;
   users: UserRepository;
 };
 
@@ -228,6 +237,13 @@ export class OrganizationApplicationService {
     return this.execute<TeamMemberContract>(context, async (trusted) => {
       const input = parsePayload(createTeamMemberServiceInputSchema, payload);
       await this.authorize(trusted, "TEAM", "UPDATE");
+      // Only an owner can add owners or admins.
+      assertTeamMembershipChangeAllowed({
+        actor: await this.requireActorMembership(trusted),
+        change: { kind: "create", role: input.role },
+        members: [],
+        target: null,
+      });
       const user =
         (await this.dependencies.users.findByEmail(
           input.email.toLowerCase(),
@@ -263,12 +279,16 @@ export class OrganizationApplicationService {
         payload,
       );
       await this.authorize(trusted, "TEAM", "UPDATE");
-      await updateOrganizationMembershipStatus(this.dependencies.memberships, {
-        expectedVersion: input.expectedVersion,
-        membershipId: input.teamMemberId,
-        organizationId: trusted.organizationId,
-        status: input.status,
-      });
+      await changeTeamMemberStatus(
+        this.dependencies.teamMembershipTransactions,
+        {
+          actorUserId: requireActorUserId(trusted),
+          expectedVersion: input.expectedVersion,
+          membershipId: input.teamMemberId,
+          organizationId: trusted.organizationId,
+          status: input.status,
+        },
+      );
       return this.requireTeamMember(trusted.organizationId, input.teamMemberId);
     });
   }
@@ -280,7 +300,8 @@ export class OrganizationApplicationService {
         payload,
       );
       await this.authorize(trusted, "TEAM", "UPDATE");
-      await assignOrganizationMembershipRole(this.dependencies.memberships, {
+      await changeTeamMemberRole(this.dependencies.teamMembershipTransactions, {
+        actorUserId: requireActorUserId(trusted),
         expectedVersion: input.expectedVersion,
         membershipId: input.teamMemberId,
         organizationId: trusted.organizationId,
@@ -309,6 +330,22 @@ export class OrganizationApplicationService {
         ),
       );
     });
+  }
+
+  private async requireActorMembership(
+    context: ValidatedApplicationExecutionContext,
+  ) {
+    const membership =
+      await this.dependencies.memberships.findByUserAndOrganization(
+        requireActorUserId(context),
+        context.organizationId,
+      );
+    if (!membership || membership.status !== "ACTIVE") {
+      throw new AuthorizationError(
+        "Your organization membership is not active.",
+      );
+    }
+    return membership;
   }
 
   private async requireTeamMember(
@@ -357,6 +394,15 @@ export class OrganizationApplicationService {
       };
     }
   }
+}
+
+function requireActorUserId(
+  context: ValidatedApplicationExecutionContext,
+): string {
+  if (!context.userId) {
+    throw new AuthorizationError("A signed-in team member is required.");
+  }
+  return context.userId;
 }
 
 const roles: readonly { description: string; name: string; role: Role }[] = [
@@ -436,6 +482,20 @@ function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {
 
 function normalizeError(error: unknown): ApplicationServiceError {
   if (error instanceof ApplicationServiceError) return error;
+  // Team guard messages are safe and tell the user what to do instead.
+  if (error instanceof TeamMembershipRuleError)
+    return new ApplicationServiceError({
+      code: "BUSINESS_RULE_VIOLATION",
+      message: error.message,
+    });
+  if (
+    error instanceof AuthorizationError &&
+    error.message === OWNER_ONLY_MEMBERSHIP_MESSAGE
+  )
+    return new ApplicationServiceError({
+      code: "FORBIDDEN",
+      message: error.message,
+    });
   if (error instanceof ValidationApplicationError)
     return new ApplicationServiceError({
       code: "VALIDATION_ERROR",

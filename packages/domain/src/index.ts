@@ -452,11 +452,30 @@ export {
   validateOrganizationAccess,
 } from "./identity/application/identity-use-cases.js";
 export {
+  LAST_OWNER_MESSAGE,
+  OWNER_ONLY_MEMBERSHIP_MESSAGE,
+  OWN_MEMBERSHIP_MESSAGE,
+  TeamMembershipRuleError,
+  assertTeamMembershipChangeAllowed,
+  assignableRoles,
+  canManageMemberRole,
+  changeTeamMemberRole,
+  changeTeamMemberStatus,
+} from "./identity/application/team-membership-use-cases.js";
+export type {
+  TeamMembershipChange,
+  TeamMembershipChangeResult,
+  TeamMembershipTransactionContext,
+  TeamMembershipTransactionManager,
+} from "./identity/application/team-membership-use-cases.js";
+export {
   assignRolePermission,
   authorize,
   createPermission,
 } from "./authorization/application/authorization-service.js";
 export {
+  allPermissionActions,
+  allPermissionResources,
   defaultRolePermissions,
   roleAllowsPermission,
 } from "./authorization/application/role-permission-policy.js";

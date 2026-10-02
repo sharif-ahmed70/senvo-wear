@@ -23,6 +23,7 @@ import {
   PrismaOnlinePaymentRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
+  PrismaTeamMembershipTransactionManager,
   PrismaTransactionManager,
   PrismaStorefrontRepository,
   PrismaRolePermissionRepository,
@@ -68,6 +69,7 @@ import type {
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
+  TeamMembershipTransactionManager,
   UserRepository,
   AuthenticationMessageProvider,
   AuthenticationSecretService,
@@ -143,6 +145,7 @@ export type CreateApplicationServicesOptions = {
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
+  teamMembershipTransactionManager?: TeamMembershipTransactionManager;
   productRepository?: CatalogProductManagementRepository;
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
@@ -538,6 +541,11 @@ export function createApplicationServices(
       organizations: organizationProfileRepository,
       requestIdGenerator: options.requestIdGenerator,
       rolePermissions: rolePermissionRepository,
+      teamMembershipTransactions:
+        options.teamMembershipTransactionManager ??
+        (prismaClient
+          ? new PrismaTeamMembershipTransactionManager(prismaClient)
+          : unavailableTeamMembershipTransactions),
       users: userRepository,
     }),
     procurement: new ProcurementApplicationService({
@@ -655,3 +663,14 @@ const fakeCourierConsignmentRepository: CourierConsignmentRepository = {
   update: () =>
     Promise.reject(new Error("No courier consignment repository configured.")),
 };
+
+/** Fails closed: team role/status changes need a real transaction. */
+const unavailableTeamMembershipTransactions: TeamMembershipTransactionManager =
+  {
+    execute: () =>
+      Promise.reject(
+        new Error(
+          "Team membership changes require a database transaction manager.",
+        ),
+      ),
+  };
