@@ -710,7 +710,7 @@ export function SupplierDetailsPanel({
       {/* Supplier Payable & Ledger Section */}
       <SupplierPurchaseHistory supplierId={supplier.id} />
 
-        <SupplierPayableSection
+      <SupplierPayableSection
         canCreatePayment={canCreate}
         initialBalance={initialBalance}
         initialLedger={initialLedger}
