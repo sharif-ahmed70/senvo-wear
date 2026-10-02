@@ -82,3 +82,15 @@ export function roleOptionLabel(role: Role): string {
   const found = TEAM_ROLES.find((item) => item.role === role);
   return found ? `${found.label} — ${found.description}` : role;
 }
+
+/**
+ * Password reset rule (mirrors the backend): never your own row, and only
+ * roles you manage. Unlike role changes, the last owner rule does not apply.
+ */
+export function canResetPassword(
+  actor: Pick<AdminSession, "role" | "userId"> | null,
+  member: Pick<TeamMemberContract, "role" | "userId">,
+): boolean {
+  if (!actor || member.userId === actor.userId) return false;
+  return assignableRolesFor(actor.role).includes(member.role);
+}

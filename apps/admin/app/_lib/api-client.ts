@@ -9,6 +9,7 @@ import type {
   AssignTeamMemberRoleServiceInputContract,
   CreateStoreServiceInputContract,
   CreateTeamMemberServiceInputContract,
+  ResetTeamMemberPasswordServiceInputContract,
   CreateCategoryServiceInputContract,
   CreateVariantBarcodeServiceInputContract,
   CreateCollectionServiceInputContract,
@@ -1126,6 +1127,18 @@ export class AdminApiClient {
     return this.request<TeamMemberContract>(
       `/organization/team/${teamMemberId}/role`,
       { ...request, body, method: "PATCH" },
+    );
+  }
+
+  /** Sets another member's password; the server signs them out everywhere. */
+  resetTeamMemberPassword(
+    input: ResetTeamMemberPasswordServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { teamMemberId, ...body } = input;
+    return this.request<TeamMemberContract>(
+      `/organization/team/${teamMemberId}/password`,
+      { ...request, body, method: "PUT" },
     );
   }
 

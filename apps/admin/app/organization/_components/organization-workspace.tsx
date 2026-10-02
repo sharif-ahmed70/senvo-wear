@@ -28,6 +28,7 @@ import { useAdminPermissions, useAdminSession } from "../../admin-shell";
 import {
   TEAM_ROLES,
   assignableRolesFor,
+  canResetPassword,
   roleOptionLabel,
   teamRowAccess,
 } from "../_lib/team-roles";
@@ -539,6 +540,9 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
   const [members, setMembers] = useState<TeamMemberContract[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [formOpen, setFormOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<TeamMemberContract | null>(
+    null,
+  );
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   async function load() {
@@ -561,10 +565,13 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
         email: stringValue(formData, "email"),
         name: stringValue(formData, "name"),
         role: roleValue(formData),
+        temporaryPassword: passwordValue(formData, "temporaryPassword"),
       });
       setMembers([...members, result.data]);
       setFormOpen(false);
-      setMessage("Team member added successfully.");
+      setMessage(
+        "Team member added. নতুন সদস্যকে email আর temporary password জানিয়ে দিন।",
+      );
     } catch (caught) {
       setError(messageForError(caught));
     }
@@ -589,6 +596,28 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
       setMessage("Role updated successfully.");
     } catch (caught) {
       setError(messageForError(caught));
+    }
+  }
+  async function resetPassword(
+    member: TeamMemberContract,
+    newPassword: string,
+  ): Promise<boolean> {
+    try {
+      const result = await client.resetTeamMemberPassword({
+        expectedVersion: member.version,
+        newPassword,
+        teamMemberId: member.id,
+      });
+      replaceMember(result.data);
+      setResetTarget(null);
+      setError("");
+      setMessage(
+        `${member.name ?? member.email}-এর password বদলানো হয়েছে। আগের সব login বন্ধ হয়ে গেছে — নতুন password জানিয়ে দিন।`,
+      );
+      return true;
+    } catch (caught) {
+      setError(messageForError(caught));
+      return false;
     }
   }
   async function toggle(member: TeamMemberContract) {
@@ -639,6 +668,13 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
         {message ? <SuccessNotice message={message} /> : null}
         {error && state !== "error" ? <InlineError message={error} /> : null}
         <RoleLegend />
+        {resetTarget ? (
+          <PasswordResetForm
+            member={resetTarget}
+            onCancel={() => setResetTarget(null)}
+            save={(password) => resetPassword(resetTarget, password)}
+          />
+        ) : null}
         {formOpen ? (
           <TeamForm
             assignable={assignableRolesFor(actor?.role ?? null)}
@@ -658,6 +694,10 @@ function TeamPanel({ canUpdate }: { canUpdate: boolean }) {
             actor={actor}
             canUpdate={canUpdate}
             members={members}
+            onPasswordReset={(member) => {
+              setMessage("");
+              setResetTarget(member);
+            }}
             onRoleChange={(member, role) => void changeRole(member, role)}
             onToggle={(member) => void toggle(member)}
           />
@@ -693,7 +733,9 @@ function TeamForm({
       <div className="organization-form__title">
         <div>
           <h3>Add a team member</h3>
-          <p>This creates team access only. No password or login is created.</p>
+          <p>
+            Creates team access and a login with the temporary password below.
+          </p>
         </div>
         <button
           aria-label="Close form"
@@ -711,6 +753,16 @@ function TeamForm({
         placeholder="employee@business.com"
         required
         type="email"
+      />
+      <Field
+        autoComplete="new-password"
+        label="Temporary password"
+        maxLength={128}
+        minLength={8}
+        name="temporaryPassword"
+        placeholder="কমপক্ষে ৮ অক্ষর"
+        required
+        type="password"
       />
       <label>
         <span>Role</span>
@@ -742,10 +794,115 @@ function TeamForm({
     </form>
   );
 }
+function PasswordResetForm({
+  member,
+  onCancel,
+  save,
+}: {
+  member: TeamMemberContract;
+  onCancel: () => void;
+  save: (password: string) => Promise<boolean>;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [problem, setProblem] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password.length < 8 || password.length > 128) {
+      setProblem("Password ৮ থেকে ১২৮ অক্ষরের মধ্যে দিন।");
+      return;
+    }
+    if (password !== confirm) {
+      setProblem("দুটো password মিলছে না।");
+      return;
+    }
+    setProblem("");
+    setSaving(true);
+    const saved = await save(password);
+    setSaving(false);
+    if (!saved) return;
+    setPassword("");
+    setConfirm("");
+  }
+  const name = member.name ?? member.email;
+  return (
+    <form
+      aria-label={`Password reset for ${name}`}
+      className="organization-form organization-form--boxed"
+      onSubmit={(event) => void submit(event)}
+    >
+      <div className="organization-form__title">
+        <div>
+          <h3>Password reset — {name}</h3>
+          <p>
+            নতুন password দিন। Save করলে {name}-এর আগের সব login বন্ধ হয়ে যাবে।
+          </p>
+        </div>
+        <button
+          aria-label="Close password reset"
+          className="organization-icon-button"
+          onClick={onCancel}
+          type="button"
+        >
+          <X aria-hidden="true" size={17} />
+        </button>
+      </div>
+      <label>
+        <span>New password</span>
+        <input
+          autoComplete="new-password"
+          maxLength={128}
+          minLength={8}
+          onChange={(event) => setPassword(event.target.value)}
+          required
+          type="password"
+          value={password}
+        />
+      </label>
+      <label>
+        <span>Confirm password</span>
+        <input
+          autoComplete="new-password"
+          maxLength={128}
+          minLength={8}
+          onChange={(event) => setConfirm(event.target.value)}
+          required
+          type="password"
+          value={confirm}
+        />
+      </label>
+      {problem ? (
+        <p className="organization-form__wide" role="alert">
+          {problem}
+        </p>
+      ) : null}
+      <div className="organization-form__actions">
+        <button
+          className="organization-secondary-button"
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="organization-primary-button"
+          disabled={saving}
+          type="submit"
+        >
+          <Check aria-hidden="true" size={16} />
+          {saving ? "Saving…" : "Save password"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function TeamList({
   actor,
   canUpdate,
   members,
+  onPasswordReset,
   onRoleChange,
   onToggle,
 }: {
@@ -756,6 +913,7 @@ function TeamList({
     member: TeamMemberContract,
     role: TeamMemberContract["role"],
   ) => void;
+  onPasswordReset: (member: TeamMemberContract) => void;
   onToggle: (member: TeamMemberContract) => void;
 }) {
   return (
@@ -774,6 +932,7 @@ function TeamList({
           {members.map((member) => {
             const access = teamRowAccess(actor, member, members);
             const editable = canUpdate && access.canChange;
+            const canReset = canUpdate && canResetPassword(actor, member);
             const assignable = assignableRolesFor(actor?.role ?? null);
             return (
               <tr key={member.id}>
@@ -832,9 +991,20 @@ function TeamList({
                       >
                         {member.status === "ACTIVE" ? "Deactivate" : "Activate"}
                       </button>
-                    ) : (
+                    ) : null}
+                    {canReset ? (
+                      <button
+                        aria-label={`Password reset for ${member.name ?? member.email}`}
+                        className="organization-text-button"
+                        onClick={() => onPasswordReset(member)}
+                        type="button"
+                      >
+                        Password reset
+                      </button>
+                    ) : null}
+                    {!editable && !canReset ? (
                       <span aria-hidden="true">—</span>
-                    )}
+                    ) : null}
                   </td>
                 ) : null}
               </tr>
@@ -944,20 +1114,24 @@ function SectionHeading({
   );
 }
 function Field({
+  autoComplete,
   defaultValue,
   disabled,
   label,
   maxLength,
+  minLength,
   name,
   placeholder,
   required,
   type = "text",
   wide,
 }: {
+  autoComplete?: string;
   defaultValue?: string;
   disabled?: boolean;
   label: string;
   maxLength?: number;
+  minLength?: number;
   name: string;
   placeholder?: string;
   required?: boolean;
@@ -968,9 +1142,11 @@ function Field({
     <label className={wide ? "organization-form__wide" : undefined}>
       <span>{label}</span>
       <input
+        autoComplete={autoComplete}
         defaultValue={defaultValue}
         disabled={disabled}
         maxLength={maxLength}
+        minLength={minLength}
         name={name}
         placeholder={placeholder}
         required={required}
@@ -1091,6 +1267,11 @@ function LoadingRows({ label }: { label: string }) {
 function stringValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+/** Passwords are sent exactly as typed: never trimmed. */
+function passwordValue(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
 }
 function optionalValue(formData: FormData, key: string) {
   return stringValue(formData, key) || null;
