@@ -4,6 +4,7 @@ import type {
   SalesCounterContract,
   SalesSessionContract,
 } from "@senvo/contracts";
+import { parseTaka } from "../_lib/money";
 
 export type SellingContext = {
   counter: SalesCounterContract;
@@ -20,13 +21,31 @@ export function SellingContextSelector({
 }: {
   availableCounters?: readonly SalesCounterContract[];
   contexts: readonly SellingContext[];
-  onOpenCounter?: (counterId: string) => void;
+  onOpenCounter?: (counterId: string, openingFloatMinor: number) => void;
   onSelect: (sessionId: string) => void;
   openingCounter?: boolean;
   selectedId: string;
 }) {
   const [selectedCounterId, setSelectedCounterId] = useState("");
+  const [openingFloat, setOpeningFloat] = useState("");
+  const [floatError, setFloatError] = useState("");
   const activeCounterId = selectedCounterId || (availableCounters[0]?.id ?? "");
+
+  function handleOpen() {
+    if (!onOpenCounter) return;
+    const floatStr = openingFloat.trim();
+    let openingFloatMinor = 0;
+    if (floatStr) {
+      const parsed = parseTaka(floatStr);
+      if (parsed === null || parsed < 0) {
+        setFloatError("সঠিক টাকার পরিমাণ লিখুন");
+        return;
+      }
+      openingFloatMinor = parsed;
+    }
+    setFloatError("");
+    onOpenCounter(activeCounterId, openingFloatMinor);
+  }
 
   if (contexts.length === 0) {
     if (onOpenCounter && availableCounters.length > 0) {
@@ -57,10 +76,25 @@ export function SellingContextSelector({
                 </select>
               </label>
             )}
+            <label className="pos-sale-context-select">
+              Drawer-এ শুরুর টাকা (৳)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={openingFloat}
+                onChange={(e) => {
+                  setOpeningFloat(e.target.value);
+                  if (floatError) setFloatError("");
+                }}
+                disabled={openingCounter}
+                placeholder="0.00"
+              />
+            </label>
+            {floatError && <p className="pos-form-error" role="alert">{floatError}</p>}
             <button
               className="pos-complete-button"
               disabled={openingCounter || !activeCounterId}
-              onClick={() => onOpenCounter(activeCounterId)}
+              onClick={handleOpen}
               type="button"
             >
               {openingCounter

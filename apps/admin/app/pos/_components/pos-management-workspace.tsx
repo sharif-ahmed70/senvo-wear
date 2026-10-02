@@ -478,8 +478,16 @@ function SessionManagement({
     event.preventDefault();
     try {
       const form = new FormData(event.currentTarget);
-      const floatStr = formText(form, "openingFloat");
-      const openingFloatMinor = floatStr ? (parseTaka(floatStr) ?? 0) : 0;
+      const floatStr = formText(form, "openingFloat").trim();
+      let openingFloatMinor = 0;
+      if (floatStr) {
+        const parsed = parseTaka(floatStr);
+        if (parsed === null || parsed < 0) {
+          setError("সঠিক টাকার পরিমাণ লিখুন");
+          return;
+        }
+        openingFloatMinor = parsed;
+      }
       await client.openSalesSession({
         counterId: formText(form, "counterId"),
         openingFloatMinor,
