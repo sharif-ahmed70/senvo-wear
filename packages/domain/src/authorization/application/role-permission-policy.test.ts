@@ -99,7 +99,7 @@ describe("default role permission matrix", () => {
     );
   });
 
-  it("STAFF matches the target matrix (plus SALES CREATE for POS checkout)", () => {
+  it("STAFF matches the target matrix (plus SALES CREATE and REPORT READ)", () => {
     expect(grantsOf("STAFF")).toEqual(
       [
         ...keys(["CATALOG", "INVENTORY"], ["READ"]),
@@ -109,7 +109,7 @@ describe("default role permission matrix", () => {
           ["CREATE", "READ", "UPDATE"],
         ),
         ...keys(["PAYMENT"], ["CREATE", "READ"]),
-        ...keys(["RECEIPT"], ["READ"]),
+        ...keys(["RECEIPT", "REPORT"], ["READ"]),
       ].sort(),
     );
   });
@@ -148,10 +148,9 @@ describe("default role permission matrix", () => {
     }
   });
 
-  it("STAFF sees no cost, supplier, report, team or organization data", () => {
+  it("STAFF sees no cost, supplier, team or organization data", () => {
     for (const resource of [
       "PROCUREMENT",
-      "REPORT",
       "TEAM",
       "USER",
       "ORGANIZATION",
@@ -160,6 +159,12 @@ describe("default role permission matrix", () => {
         expect(can("STAFF", resource, action)).toBe(false);
       }
     }
+    // Dashboard yes, financial figures no: those need POS APPROVE.
+    expect(can("STAFF", "REPORT", "READ")).toBe(true);
+    for (const action of allPermissionActions.filter((a) => a !== "READ")) {
+      expect(can("STAFF", "REPORT", action)).toBe(false);
+    }
+    expect(can("STAFF", "POS", "APPROVE")).toBe(false);
     expect(can("STAFF", "CATALOG", "UPDATE")).toBe(false);
     expect(can("STAFF", "INVENTORY", "CREATE")).toBe(false);
   });

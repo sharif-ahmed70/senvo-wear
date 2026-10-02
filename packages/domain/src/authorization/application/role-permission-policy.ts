@@ -95,7 +95,9 @@ export const defaultRolePermissions: readonly (PermissionKey & {
     ["CREATE", "READ", "UPDATE"],
   ),
   ...permissionsFor("STAFF", ["PAYMENT"], ["CREATE", "READ"]),
-  ...permissionsFor("STAFF", ["RECEIPT"], ["READ"]),
+  // REPORT READ shows the operational dashboard only; sales money stays
+  // behind POS APPROVE, which STAFF does not have.
+  ...permissionsFor("STAFF", ["RECEIPT", "REPORT"], ["READ"]),
 ];
 
 export function roleAllowsPermission(

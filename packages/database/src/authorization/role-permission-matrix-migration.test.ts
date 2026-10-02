@@ -18,6 +18,14 @@ const additiveSql = readFileSync(
   "utf8",
 );
 
+const staffReportSql = readFileSync(
+  new URL(
+    "../../prisma/migrations/202610020004_staff_report_read/migration.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 function migrationMatrixRows(sql: string): string[] {
   return [
     ...sql.matchAll(/^\s+\('([A-Z_]+)', '([A-Z_]+)', '([A-Z_]+)'\)[,;]?$/gmu),
@@ -30,17 +38,20 @@ describe("role permission matrix migration", () => {
       ...new Set([
         ...migrationMatrixRows(migrationSql),
         ...migrationMatrixRows(additiveSql),
+        ...migrationMatrixRows(staffReportSql),
       ]),
     ].sort();
     const fromCode = defaultRolePermissions
       .map((grant) => `${grant.role}:${grant.resource}:${grant.action}`)
       .sort();
-    expect(fromMigration).toHaveLength(198);
+    expect(fromMigration).toHaveLength(199);
     expect(fromMigration).toEqual(fromCode);
   });
 
   it("adds approval without deleting or updating existing data", () => {
     expect(additiveSql).not.toMatch(/\b(DELETE|UPDATE|DROP|TRUNCATE)\s/iu);
+    expect(staffReportSql).not.toMatch(/\b(DELETE|UPDATE|DROP|TRUNCATE)\s/iu);
+    expect(migrationMatrixRows(staffReportSql)).toEqual(["STAFF:REPORT:READ"]);
   });
 
   it("only touches permission data, never the schema", () => {

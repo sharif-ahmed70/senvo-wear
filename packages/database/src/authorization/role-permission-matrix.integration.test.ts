@@ -14,6 +14,22 @@ const migrationSql = readFileSync(
   "utf8",
 );
 
+// Grants added after the sync migration, applied in migration order.
+const additiveMigrations = [
+  "202610020002_pos_shared_counter_approval",
+  "202610020004_staff_report_read",
+].map((name) =>
+  readFileSync(
+    new URL(`../../prisma/migrations/${name}/migration.sql`, import.meta.url),
+    "utf8",
+  ),
+);
+
+async function applyGrantMigrations(client: pg.Client) {
+  await client.query(migrationSql);
+  for (const sql of additiveMigrations) await client.query(sql);
+}
+
 const expected = defaultRolePermissions
   .map((grant) => `${grant.role}:${grant.resource}:${grant.action}:ACTIVE`)
   .sort();
@@ -65,7 +81,7 @@ describeWithDatabase("role permission matrix migration (database)", () => {
     await client.query(`
       DELETE FROM permissions WHERE resource = 'PROCUREMENT' AND action = 'APPROVE'`);
 
-    await client.query(migrationSql);
+    await applyGrantMigrations(client);
     expect(await grants()).toEqual(expected);
 
     const permissionCount = await client.query<{ count: string }>(
@@ -73,7 +89,7 @@ describeWithDatabase("role permission matrix migration (database)", () => {
     );
     expect(Number(permissionCount.rows[0]?.count)).toBe(7);
 
-    await client.query(migrationSql);
+    await applyGrantMigrations(client);
     expect(await grants()).toEqual(expected);
   });
 });
