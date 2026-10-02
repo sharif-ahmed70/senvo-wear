@@ -68,7 +68,7 @@ type CandidateBarcode = {
   variant: ProductVariantContract;
 };
 
-type LabelSize = "40x30" | "50x30" | "50x40";
+export type LabelSize = "40x30" | "50x30" | "50x40";
 
 type PrintSettings = {
   copies: number;
@@ -942,7 +942,7 @@ function PrintStep({
   );
 }
 
-function Code128Barcode({ value }: { value: string }) {
+export function Code128Barcode({ value }: { value: string }) {
   const encoded = useMemo(() => encodeCode128B(value), [value]);
   return (
     <svg
@@ -1234,7 +1234,7 @@ function encodeCode128B(value: string) {
   return { bars, width: x + quiet };
 }
 
-function dimensionsFor(size: LabelSize) {
+export function dimensionsFor(size: LabelSize) {
   if (size === "50x30") return { height: 30, width: 50 };
   if (size === "50x40") return { height: 40, width: 50 };
   return { height: 30, width: 40 };
