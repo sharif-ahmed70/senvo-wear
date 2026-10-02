@@ -9,6 +9,7 @@ import type {
   AssignTeamMemberRoleServiceInputContract,
   CreateStoreServiceInputContract,
   CreateTeamMemberServiceInputContract,
+  DashboardSummaryContract,
   ResetTeamMemberPasswordServiceInputContract,
   CreateCategoryServiceInputContract,
   CreateVariantBarcodeServiceInputContract,
@@ -872,6 +873,14 @@ export class AdminApiClient {
   ) {
     return this.request<VariantInventoryAvailabilityContract>(
       `/inventory/variants/${input.variantId}/availability`,
+      request,
+    );
+  }
+
+  /** Read-only dashboard; `financials` is present only for POS APPROVE roles. */
+  getDashboardSummary(request?: AdminApiRequest) {
+    return this.request<DashboardSummaryContract>(
+      "/reports/dashboard",
       request,
     );
   }

@@ -35,6 +35,7 @@ import {
   PrismaPurchaseRepository,
   PrismaCostRepository,
   PrismaCourierConsignmentRepository,
+  PrismaDashboardReadRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -69,6 +70,7 @@ import type {
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
+  DashboardReadRepository,
   TeamMembershipTransactionManager,
   UserRepository,
   AuthenticationMessageProvider,
@@ -111,6 +113,7 @@ import { OnlinePaymentApplicationService } from "../payment/online-payment-appli
 import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
 import { WorkforceAuthenticationService } from "../workforce/workforce-authentication-service.js";
 import { ShippingApplicationService } from "../shipping/shipping-application-service.js";
+import { ReportingApplicationService } from "../reporting/reporting-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -145,6 +148,7 @@ export type CreateApplicationServicesOptions = {
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
+  dashboardReadRepository?: DashboardReadRepository;
   teamMembershipTransactionManager?: TeamMembershipTransactionManager;
   productRepository?: CatalogProductManagementRepository;
   productVariantRepository?: CatalogProductVariantManagementRepository;
@@ -183,6 +187,7 @@ export type ApplicationServices = {
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   shipping: ShippingApplicationService;
+  reporting?: ReportingApplicationService;
   stockIntake?: StockIntakeApplicationService;
   storefront: StorefrontApplicationService;
   customerAuthentication?: CustomerAuthenticationService;
@@ -603,6 +608,20 @@ export function createApplicationServices(
       salesOrders: salesOrderRepository,
       transactionManager,
     }),
+    ...(options.dashboardReadRepository || prismaClient
+      ? {
+          reporting: new ReportingApplicationService({
+            authorizationService: options.authorizationService,
+            clock,
+            dashboards:
+              options.dashboardReadRepository ??
+              new PrismaDashboardReadRepository(
+                requirePrismaClient(prismaClient),
+              ),
+            requestIdGenerator: options.requestIdGenerator,
+          }),
+        }
+      : {}),
     stockIntake: new StockIntakeApplicationService({
       authorizationService: options.authorizationService,
       requestIdGenerator: options.requestIdGenerator,

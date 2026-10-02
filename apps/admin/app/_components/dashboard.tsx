@@ -36,11 +36,11 @@ export type DashboardChannel = {
 };
 
 export type DashboardOrder = {
-  channel: "Online" | "Store" | "Booth";
+  channel: string;
   customer: string;
   href: string;
   id: string;
-  status: "Reserved" | "Paid" | "Confirmed";
+  status: string;
   time: string;
   total: string;
 };
@@ -58,13 +58,17 @@ export type DashboardInventorySlice = {
   tone: "healthy" | "warning" | "danger" | "muted";
 };
 
+/**
+ * chart, channels, products and revenueTotal are financial figures: they are
+ * absent for roles that may not see sales money, and those panels are hidden.
+ */
 export type DashboardModel = {
   attention: DashboardAttentionItem[];
-  chart: {
+  chart?: {
     labels: string[];
     values: number[];
   };
-  channels: DashboardChannel[];
+  channels?: DashboardChannel[];
   dateLabel: string;
   greetingName: string;
   inventory: {
@@ -74,8 +78,8 @@ export type DashboardModel = {
   };
   metrics: DashboardMetric[];
   orders: DashboardOrder[];
-  products: DashboardProduct[];
-  revenueTotal: string;
+  products?: DashboardProduct[];
+  revenueTotal?: string;
 };
 
 const attentionIcons = {
@@ -140,11 +144,16 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
       </section>
 
       <section className={styles.primaryGrid}>
-        <article className={`${styles.panel} ${styles.salesPanel}`}>
-          <PanelHeader title="Sales overview" action="Last 7 days" />
-          <SalesChart labels={model.chart.labels} values={model.chart.values} />
-          <div className={styles.panelFootnote}>All sales channels</div>
-        </article>
+        {model.chart ? (
+          <article className={`${styles.panel} ${styles.salesPanel}`}>
+            <PanelHeader title="Sales overview" action="Last 7 days" />
+            <SalesChart
+              labels={model.chart.labels}
+              values={model.chart.values}
+            />
+            <div className={styles.panelFootnote}>All sales channels</div>
+          </article>
+        ) : null}
 
         <article className={`${styles.panel} ${styles.attentionPanel}`}>
           <PanelHeader
@@ -182,34 +191,36 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
           </div>
         </article>
 
-        <article className={`${styles.panel} ${styles.channelPanel}`}>
-          <PanelHeader title="Channel performance" action="Today" />
-          <div className={styles.channelList}>
-            {model.channels.map((channel) => {
-              const Icon = channelIcons[channel.kind];
-              return (
-                <div className={styles.channelRow} key={channel.label}>
-                  <span
-                    className={`${styles.channelIcon} ${styles[`channel_${channel.kind}`]}`}
-                  >
-                    <Icon aria-hidden="true" size={16} strokeWidth={1.8} />
-                  </span>
-                  <span className={styles.channelName}>{channel.label}</span>
-                  <strong>{channel.amount}</strong>
-                  <span className={styles.positive}>↗ {channel.change}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className={styles.channelSummary}>
-            <div className={styles.donut} aria-hidden="true" />
-            <div>
-              <span>Total revenue</span>
-              <strong>{model.revenueTotal}</strong>
-              <small>Across active sales channels</small>
+        {model.channels ? (
+          <article className={`${styles.panel} ${styles.channelPanel}`}>
+            <PanelHeader title="Channel performance" action="Last 7 days" />
+            <div className={styles.channelList}>
+              {model.channels.map((channel) => {
+                const Icon = channelIcons[channel.kind];
+                return (
+                  <div className={styles.channelRow} key={channel.label}>
+                    <span
+                      className={`${styles.channelIcon} ${styles[`channel_${channel.kind}`]}`}
+                    >
+                      <Icon aria-hidden="true" size={16} strokeWidth={1.8} />
+                    </span>
+                    <span className={styles.channelName}>{channel.label}</span>
+                    <strong>{channel.amount}</strong>
+                    <span className={styles.positive}>{channel.change}</span>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        </article>
+            <div className={styles.channelSummary}>
+              <div className={styles.donut} aria-hidden="true" />
+              <div>
+                <span>Total revenue</span>
+                <strong>{model.revenueTotal}</strong>
+                <small>Last 7 days, all sales channels</small>
+              </div>
+            </div>
+          </article>
+        ) : null}
       </section>
 
       <section className={styles.secondaryGrid}>
@@ -232,6 +243,11 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                 </tr>
               </thead>
               <tbody>
+                {model.orders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>No orders yet.</td>
+                  </tr>
+                ) : null}
                 {model.orders.map((order) => (
                   <tr key={order.id}>
                     <td>
@@ -261,28 +277,35 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
           </div>
         </article>
 
-        <article className={`${styles.panel} ${styles.productsPanel}`}>
-          <PanelHeader
-            title="Top selling products"
-            href="/catalog"
-            action="View all"
-          />
-          <div className={styles.productList}>
-            {model.products.map((product, index) => (
-              <div className={styles.productRow} key={product.label}>
-                <span className={styles.productThumb} aria-hidden="true">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                </span>
-                <span className={styles.productCopy}>
-                  <strong>{product.label}</strong>
-                  <small>{product.meta}</small>
-                </span>
-                <span className={styles.productSold}>{product.sold}</span>
-                <strong>{product.revenue}</strong>
-              </div>
-            ))}
-          </div>
-        </article>
+        {model.products ? (
+          <article className={`${styles.panel} ${styles.productsPanel}`}>
+            <PanelHeader
+              title="Top selling products"
+              href="/catalog"
+              action="View all"
+            />
+            <div className={styles.productList}>
+              {model.products.length === 0 ? (
+                <p className={styles.panelFootnote}>
+                  No sales in the last 7 days.
+                </p>
+              ) : null}
+              {model.products.map((product, index) => (
+                <div className={styles.productRow} key={product.label}>
+                  <span className={styles.productThumb} aria-hidden="true">
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                  </span>
+                  <span className={styles.productCopy}>
+                    <strong>{product.label}</strong>
+                    <small>{product.meta}</small>
+                  </span>
+                  <span className={styles.productSold}>{product.sold}</span>
+                  <strong>{product.revenue}</strong>
+                </div>
+              ))}
+            </div>
+          </article>
+        ) : null}
 
         <article className={`${styles.panel} ${styles.inventoryPanel}`}>
           <PanelHeader

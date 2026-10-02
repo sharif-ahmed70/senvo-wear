@@ -1,6 +1,5 @@
-import { AdminDashboard } from "./_components/dashboard";
-import { dashboardPreviewData } from "./_lib/dashboard-preview-data";
+import { DashboardLive } from "./_components/dashboard-live";
 
 export default function AdminPage() {
-  return <AdminDashboard model={dashboardPreviewData} />;
+  return <DashboardLive />;
 }

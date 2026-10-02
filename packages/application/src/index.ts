@@ -144,3 +144,7 @@ export {
   type ShippingAuditWriter,
 } from "./shipping/shipping-application-service.js";
 export { mapCourierConsignment } from "./shipping/mappers.js";
+export {
+  ReportingApplicationService,
+  type ReportingApplicationServiceDependencies,
+} from "./reporting/reporting-application-service.js";

@@ -5199,3 +5199,111 @@ export const stockIntakeContractSchema = z
   })
   .strict();
 export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
+
+// ---------------------------------------------------------------------------
+// Reports: admin dashboard
+// ---------------------------------------------------------------------------
+
+export const getDashboardSummaryServiceInputSchema = z.object({}).strict();
+export type GetDashboardSummaryServiceInputContract = z.infer<
+  typeof getDashboardSummaryServiceInputSchema
+>;
+
+const dashboardCountSchema = z.number().int().nonnegative();
+const dashboardMinorSchema = z.number().int().nonnegative();
+
+/**
+ * GET /reports/dashboard. Business day is the Asia/Dhaka calendar day; money
+ * is integer minor units. `financials` is present only for callers that also
+ * hold POS APPROVE; it is omitted (never zeroed) for everyone else.
+ */
+export const dashboardSummaryContractSchema = z
+  .object({
+    attention: z
+      .object({
+        lowStockVariants: dashboardCountSchema,
+        openSessions: z.array(
+          z
+            .object({
+              counterName: z.string(),
+              openedAt: isoTimestampSchema,
+              openedByName: z.string(),
+              openingFloatMinor: dashboardMinorSchema,
+            })
+            .strict(),
+        ),
+        outOfStockVariants: dashboardCountSchema,
+        pendingOrders: dashboardCountSchema,
+      })
+      .strict(),
+    businessDate: calendarDateSchema,
+    financials: z
+      .object({
+        channels: z.array(
+          z
+            .object({
+              channel: salesOrderChannelSchema,
+              previousPeriodMinor: dashboardMinorSchema,
+              salesMinor: dashboardMinorSchema,
+            })
+            .strict(),
+        ),
+        last7Days: z
+          .array(
+            z
+              .object({
+                date: calendarDateSchema,
+                salesMinor: dashboardMinorSchema,
+              })
+              .strict(),
+          )
+          .length(7),
+        refundsTodayMinor: dashboardMinorSchema,
+        todaySaleCount: dashboardCountSchema,
+        todaySalesMinor: dashboardMinorSchema,
+        topProducts: z
+          .array(
+            z
+              .object({
+                name: z.string(),
+                productId: idSchema,
+                quantity: dashboardCountSchema,
+                revenueMinor: dashboardMinorSchema,
+              })
+              .strict(),
+          )
+          .max(5),
+        yesterdaySalesMinor: dashboardMinorSchema,
+      })
+      .strict()
+      .optional(),
+    generatedAt: isoTimestampSchema,
+    inventory: z
+      .object({
+        inStock: dashboardCountSchema,
+        inactive: dashboardCountSchema,
+        lowStock: dashboardCountSchema,
+        outOfStock: dashboardCountSchema,
+        total: dashboardCountSchema,
+      })
+      .strict(),
+    recentOrders: z
+      .array(
+        z
+          .object({
+            channel: salesOrderChannelSchema,
+            createdAt: isoTimestampSchema,
+            customerName: z.string().nullable(),
+            id: idSchema,
+            orderNumber: z.string(),
+            status: salesOrderStatusSchema,
+            totalMinor: dashboardMinorSchema,
+          })
+          .strict(),
+      )
+      .max(6),
+  })
+  .strict();
+export type DashboardSummaryContract = z.infer<
+  typeof dashboardSummaryContractSchema
+>;

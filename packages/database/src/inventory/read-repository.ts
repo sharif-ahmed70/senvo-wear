@@ -693,7 +693,7 @@ function invalidCursor(): ValidationApplicationError {
 
 // Shared by the existing variant/location read and the product summary. This is
 // read-only SQL; posting, reservation eligibility and movement logic stay separate.
-function availabilityCtes(
+export function availabilityCtes(
   organizationId: string,
   variantFilter = Prisma.empty,
 ): Prisma.Sql {

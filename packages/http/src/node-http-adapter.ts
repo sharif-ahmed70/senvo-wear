@@ -14,6 +14,7 @@ import type {
   PosApiHandlers,
   ProcurementApiHandlers,
   SalesOrderManagementApiHandlers,
+  ReportingApiHandlers,
   SalesSourceApiHandlers,
   ShippingApiHandlers,
   StockIntakeApiHandlers,
@@ -67,6 +68,7 @@ export type SenvoHttpHandlers = {
   createInventoryMovementDraft?: ApiHandler<unknown>;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
+  reporting?: ReportingApiHandlers;
   salesSource?: SalesSourceApiHandlers;
   shipping?: ShippingApiHandlers;
   stockIntake?: StockIntakeApiHandlers;
@@ -635,6 +637,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         handlers.salesManagement.cancel,
       ),
     );
+  }
+  if (handlers.reporting) {
+    routes.push({
+      handler: handlers.reporting.getDashboardSummary,
+      input: emptyInput,
+      method: "GET",
+      path: /^\/reports\/dashboard$/u,
+      successStatus: 200,
+    });
   }
   if (handlers.salesSource) {
     routes.push(

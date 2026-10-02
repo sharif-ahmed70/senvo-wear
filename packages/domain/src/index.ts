@@ -990,3 +990,29 @@ export type {
   UpdateShipmentStatusInput,
   UpdateShipmentStatusResult,
 } from "./shipping/application/shipping-use-cases.js";
+export {
+  DASHBOARD_RECENT_ORDER_LIMIT,
+  DASHBOARD_SALES_CHANNELS,
+  DASHBOARD_TIME_ZONE,
+  DASHBOARD_TOP_PRODUCT_LIMIT,
+  DASHBOARD_TREND_DAYS,
+  LOW_STOCK_MAX_AVAILABLE,
+  PENDING_ORDER_STATUSES,
+  SALE_ORDER_STATUSES,
+  addBusinessDays,
+  businessDateOf,
+  classifyStock,
+  dashboardWindows,
+  getDashboardSummary,
+  startOfBusinessDate,
+  zeroFillDailySales,
+} from "./reporting/dashboard.js";
+export type {
+  DailySales,
+  DashboardReadModel,
+  DashboardReadRepository,
+  DashboardSalesChannel,
+  DashboardSummary,
+  DashboardWindows,
+  StockClass,
+} from "./reporting/dashboard.js";

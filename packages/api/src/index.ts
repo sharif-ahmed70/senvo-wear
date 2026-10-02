@@ -69,3 +69,8 @@ export {
   type ApiAuthenticatedUser,
   type ApiRequestContext,
 } from "./request-context.js";
+export {
+  createReportingApiHandlers,
+  type ReportingApiHandlers,
+  type ReportingApplication,
+} from "./reporting-handlers.js";

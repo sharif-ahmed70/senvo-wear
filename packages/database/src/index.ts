@@ -90,3 +90,4 @@ export {
   PrismaSupplierLedgerRepository,
 } from "./procurement/supplier-payment-repository.js";
 export { PrismaCourierConsignmentRepository } from "./shipping/courier-consignment-repository.js";
+export { PrismaDashboardReadRepository } from "./reporting/dashboard-repository.js";

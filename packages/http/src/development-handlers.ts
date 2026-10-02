@@ -6,6 +6,7 @@ import {
   createOrganizationManagementApiHandlers,
   createPosApiHandlers,
   createPostInventoryMovementApiHandler,
+  createReportingApiHandlers,
   createProcurementApiHandlers,
   createSalesOrderApiHandler,
   createSalesOrderManagementApiHandlers,
@@ -88,6 +89,15 @@ export function createDevelopmentApiHandlers(
             application: options.services.onlinePayments,
             authenticationService: options.authenticationService,
             authorizationService: options.authorizationService,
+          }),
+        }
+      : {}),
+    ...(options.services.reporting
+      ? {
+          reporting: createReportingApiHandlers({
+            authenticationService: options.authenticationService,
+            authorizationService: options.authorizationService,
+            reporting: options.services.reporting,
           }),
         }
       : {}),
