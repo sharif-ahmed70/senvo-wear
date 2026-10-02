@@ -36,6 +36,7 @@ import { useAdminPermissions } from "../../admin-shell";
 import { InventoryScanDialog } from "./inventory-scan-dialog";
 import { ProductHistoryModal } from "./product-history-modal";
 import { ProductInventoryDrawer } from "./product-inventory-drawer";
+import { ProductThumb } from "../../_components/product-thumb";
 import styles from "./inventory-overview.module.css";
 
 const client = new AdminApiClient();
@@ -521,9 +522,7 @@ export function InventoryOverview({
               >
                 {/* Hero / Thumbnail */}
                 <div className={styles.cardHero}>
-                  <div className={styles.cardImageFallback}>
-                    <span>{item.product.name.charAt(0).toUpperCase()}</span>
-                  </div>
+                  <ProductThumb productId={item.product.id} name={item.product.name} size={58} />
 
                   <div className={styles.cardBadgePos}>
                     {isOutOfStock ? (

@@ -34,6 +34,7 @@ import {
   type IntakeReferences,
 } from "./intake-parts";
 import { IntakeSuccess } from "./intake-success";
+import { ProductThumb } from "../../../_components/product-thumb";
 import styles from "./stock-intake-wizard.module.css";
 import { intakeClient, useIntakeSubmission } from "./use-intake-submission";
 
@@ -331,10 +332,13 @@ export function RestockIntake({
                         onClick={() => void choose(item)}
                         type="button"
                       >
-                        <span>
-                          <strong>{item.product.name}</strong>{" "}
-                          <small>{item.product.productCode}</small>
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <ProductThumb productId={item.product.id} name={item.product.name} size={40} />
+                          <span>
+                            <strong>{item.product.name}</strong>{" "}
+                            <small>{item.product.productCode}</small>
+                          </span>
+                        </div>
                         <small>
                           {loadingId === item.product.id
                             ? "আনছি…"

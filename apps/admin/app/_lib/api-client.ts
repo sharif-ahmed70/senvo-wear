@@ -477,6 +477,13 @@ export class AdminApiClient {
     );
   }
 
+  getPrimaryProductImage(productId: string, request?: AdminApiRequest) {
+    return this.request<PrimaryProductImageContract>(
+      `/catalog/products/${productId}/primary-image`,
+      request,
+    );
+  }
+
   setPrimaryProductImage(
     input: SetPrimaryProductImageServiceInputContract,
     request?: AdminApiRequest,

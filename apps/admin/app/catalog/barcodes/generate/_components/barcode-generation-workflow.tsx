@@ -38,6 +38,7 @@ import {
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
+import { ProductThumb } from "../../../../_components/product-thumb";
 import styles from "./barcode-generation.module.css";
 
 const client = new AdminApiClient({
@@ -485,6 +486,7 @@ function SelectStep({
   const allSelectableChecked =
     selectableVisible.length > 0 &&
     selectedVisibleCount === selectableVisible.length;
+  const selectedProduct = products.find((p) => p.id === selectedProductId);
 
   return (
     <section className={styles.workflowCard}>
@@ -592,12 +594,13 @@ function SelectStep({
                     </td>
                     <td>
                       <div className={styles.variantIdentity}>
-                        <span
-                          className={styles.variantSwatch}
-                          aria-hidden="true"
-                        >
-                          {color.slice(0, 1)}
-                        </span>
+                        {selectedProduct ? (
+                          <ProductThumb productId={selectedProduct.id} name={selectedProduct.name} size={36} />
+                        ) : (
+                          <span className={styles.variantSwatch} aria-hidden="true">
+                            {color.slice(0, 1)}
+                          </span>
+                        )}
                         <span>
                           <strong>
                             {color} / {size}
@@ -686,9 +689,13 @@ function ReviewStep({
           {candidates.map((candidate) => (
             <article className={styles.reviewRow} key={candidate.variant.id}>
               <div className={styles.reviewIdentity}>
-                <span className={styles.variantSwatch} aria-hidden="true">
-                  {candidate.colorName.slice(0, 1)}
-                </span>
+                {product ? (
+                  <ProductThumb productId={product.id} name={product.name} size={36} />
+                ) : (
+                  <span className={styles.variantSwatch} aria-hidden="true">
+                    {candidate.colorName.slice(0, 1)}
+                  </span>
+                )}
                 <div>
                   <strong>
                     {candidate.colorName} / {candidate.sizeName}

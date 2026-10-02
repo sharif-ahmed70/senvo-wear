@@ -1,6 +1,7 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
 import type { PosCartDetailsContract } from "@senvo/contracts";
 import { formatBdt } from "../_lib/money";
+import { ProductThumb } from "../../../_components/product-thumb";
 
 export function CartLineList({
   cart,
@@ -28,6 +29,7 @@ export function CartLineList({
         const busy = mutatingId === line.id;
         return (
           <article className="pos-cart-line" key={line.id} aria-busy={busy}>
+            <ProductThumb productId={line.productVariantId} name={line.productName} size={40} />
             <div className="pos-cart-line__details">
               <strong>{line.productName}</strong>
               <span>

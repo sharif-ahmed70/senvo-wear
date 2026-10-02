@@ -1,0 +1,27 @@
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  border-radius: 6px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.icon {
+  opacity: 0.6;
+}
+
+.loading {
+  background-color: #f9fafb;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.image {
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background-color: #f9fafb;
+}

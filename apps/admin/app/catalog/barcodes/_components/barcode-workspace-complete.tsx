@@ -36,6 +36,7 @@ import {
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
+import { ProductThumb } from "../../../_components/product-thumb";
 import styles from "./barcode-management.module.css";
 import edge from "./barcode-edge-states.module.css";
 
@@ -416,9 +417,7 @@ export function BarcodeWorkspaceComplete({
                   onClick={() => setSelectedProductId(product.id)}
                   type="button"
                 >
-                  <span className={styles.productGlyph} aria-hidden="true">
-                    {product.name.slice(0, 1).toUpperCase()}
-                  </span>
+                  <ProductThumb productId={product.id} name={product.name} size={36} />
                   <span className={styles.productCopy}>
                     <strong>{product.name}</strong>
                     <small>{product.productCode}</small>
