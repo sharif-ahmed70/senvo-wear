@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AdminApiClient } from '../../../_lib/api-client';
-import { PurchaseContract } from '@senvo/contracts';
+import type { PurchaseContract } from '@senvo/contracts';
 import styles from './supplier-workspace.module.css';
 
 const client = new AdminApiClient();
@@ -22,7 +22,7 @@ export function SupplierPurchaseHistory({ supplierId }: { supplierId: string }) 
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [supplierId]);
 
   if (loading) return <div>Loading purchases...</div>;
@@ -46,7 +46,7 @@ export function SupplierPurchaseHistory({ supplierId }: { supplierId: string }) 
               <tr key={p.id}>
                 <td>{new Date(p.purchaseDate || p.createdAt).toLocaleDateString()}</td>
                 <td>{p.status}</td>
-                <td>{p.totalMinor}</td>
+                <td>{p.totalCostMinor}</td>
               </tr>
             ))}
           </tbody>
