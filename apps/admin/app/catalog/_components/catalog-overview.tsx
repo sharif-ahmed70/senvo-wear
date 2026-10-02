@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canAccessPath,
   type AdminPermissionKey,
@@ -51,6 +51,85 @@ type ProductRowDetail = {
 
 type LoadState = "error" | "loading" | "ready";
 
+/** Visible products whose details were never requested (fetched or failed). */
+export function productsToFetch<T extends { id: string }>(
+  visible: readonly T[],
+  requested: ReadonlySet<string>,
+): T[] {
+  return visible.filter((product) => !requested.has(product.id));
+}
+
+/**
+ * Loads details for a batch. Every product settles on its own: one failure
+ * never hides the others, and failed IDs are reported instead of retried.
+ */
+export async function fetchProductDetails<T>(
+  products: readonly { id: string }[],
+  load: (productId: string) => Promise<T>,
+): Promise<{ details: Record<string, T>; failed: string[] }> {
+  const results = await Promise.allSettled(
+    products.map((product) => load(product.id)),
+  );
+  const details: Record<string, T> = {};
+  const failed: string[] = [];
+  results.forEach((result, index) => {
+    const id = products[index]?.id;
+    if (!id) return;
+    if (result.status === "fulfilled") details[id] = result.value;
+    else failed.push(id);
+  });
+  return { details, failed };
+}
+
+async function loadRowDetail(
+  productId: string,
+  canReadInventory: boolean,
+): Promise<ProductRowDetail> {
+  const detailsResult = await client.getProduct(productId);
+  const [barcodeLists, availabilityLists] = await Promise.all([
+    Promise.all(
+      detailsResult.data.variants.map((variant) =>
+        client
+          .listVariantBarcodes(variant.id)
+          .then((result) => result.data)
+          .catch(() => []),
+      ),
+    ),
+    canReadInventory
+      ? Promise.all(
+          detailsResult.data.variants.map((variant) =>
+            client
+              .getVariantAvailability({ variantId: variant.id })
+              .then((result) => result.data)
+              .catch(() => null),
+          ),
+        )
+      : Promise.resolve([]),
+  ]);
+  const barcodeVariantCount = barcodeLists.filter((barcodes) =>
+    barcodes.some((barcode) => barcode.status === "ACTIVE"),
+  ).length;
+
+  let totalAvailableStock: number | undefined = undefined;
+  if (canReadInventory) {
+    totalAvailableStock = availabilityLists.reduce((sum, item) => {
+      if (!item) return sum;
+      const variantAvailable = item.locations.reduce(
+        (locSum, loc) => locSum + loc.availableToSell,
+        0,
+      );
+      return sum + variantAvailable;
+    }, 0);
+  }
+
+  return {
+    barcodeVariantCount,
+    details: detailsResult.data,
+    stockLoading: false,
+    totalAvailableStock,
+  };
+}
+
 export function CatalogOverview({
   permissions: propsPermissions,
 }: {
@@ -71,8 +150,15 @@ export function CatalogOverview({
   const [rowDetails, setRowDetails] = useState<
     Record<string, ProductRowDetail>
   >({});
+  const [failedIds, setFailedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // Products whose details were requested (in flight, fetched or failed).
+  // Each is fetched at most once; failures are shown, never auto-retried.
+  const requestedIds = useRef(new Set<string>());
+  const [pendingBatches, setPendingBatches] = useState(0);
+  const detailLoading = pendingBatches > 0;
   const [state, setState] = useState<LoadState>("loading");
-  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState("ALL");
@@ -82,6 +168,10 @@ export function CatalogOverview({
   const load = useCallback(async () => {
     setState("loading");
     setError("");
+    // A manual (re)load starts details afresh, including earlier failures.
+    requestedIds.current = new Set();
+    setRowDetails({});
+    setFailedIds(new Set());
     try {
       const [productResult, categoryResult, colorResult, sizeResult] =
         await Promise.all([
@@ -139,85 +229,30 @@ export function CatalogOverview({
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const visibleProducts = filtered.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
+  const visibleProducts = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
   );
 
   useEffect(() => {
-    if (visibleProducts.length === 0) return;
-    let active = true;
-    const missing = visibleProducts.filter(
-      (product) => !rowDetails[product.id],
-    );
+    const missing = productsToFetch(visibleProducts, requestedIds.current);
     if (missing.length === 0) return;
+    missing.forEach((product) => requestedIds.current.add(product.id));
 
-    setDetailLoading(true);
-    void Promise.all(
-      missing.map(async (product) => {
-        const detailsResult = await client.getProduct(product.id);
-        const [barcodeLists, availabilityLists] = await Promise.all([
-          Promise.all(
-            detailsResult.data.variants.map((variant) =>
-              client
-                .listVariantBarcodes(variant.id)
-                .then((result) => result.data)
-                .catch(() => []),
-            ),
-          ),
-          canReadInventory
-            ? Promise.all(
-                detailsResult.data.variants.map((variant) =>
-                  client
-                    .getVariantAvailability({ variantId: variant.id })
-                    .then((result) => result.data)
-                    .catch(() => null),
-                ),
-              )
-            : Promise.resolve([]),
-        ]);
-        const barcodeVariantCount = barcodeLists.filter((barcodes) =>
-          barcodes.some((barcode) => barcode.status === "ACTIVE"),
-        ).length;
-
-        let totalAvailableStock: number | undefined = undefined;
-        if (canReadInventory) {
-          totalAvailableStock = availabilityLists.reduce((sum, item) => {
-            if (!item) return sum;
-            const variantAvailable = item.locations.reduce(
-              (locSum, loc) => locSum + loc.availableToSell,
-              0,
-            );
-            return sum + variantAvailable;
-          }, 0);
-        }
-
-        return [
-          product.id,
-          {
-            barcodeVariantCount,
-            details: detailsResult.data,
-            stockLoading: false,
-            totalAvailableStock,
-          },
-        ] as const;
-      }),
+    setPendingBatches((count) => count + 1);
+    void fetchProductDetails(missing, (productId) =>
+      loadRowDetail(productId, canReadInventory),
     )
-      .then((entries) => {
-        if (!active) return;
-        setRowDetails((current) => ({
-          ...current,
-          ...Object.fromEntries(entries),
-        }));
+      .then(({ details, failed }) => {
+        setRowDetails((current) => ({ ...current, ...details }));
+        if (failed.length) {
+          setFailedIds((current) => new Set([...current, ...failed]));
+        }
       })
       .finally(() => {
-        if (active) setDetailLoading(false);
+        setPendingBatches((count) => Math.max(0, count - 1));
       });
-
-    return () => {
-      active = false;
-    };
-  }, [canReadInventory, rowDetails, visibleProducts]);
+  }, [canReadInventory, visibleProducts]);
 
   useEffect(() => {
     setPage(1);
@@ -397,6 +432,7 @@ export function CatalogOverview({
                       }
                       colorMap={colorMap}
                       detail={rowDetails[product.id]}
+                      detailsUnavailable={failedIds.has(product.id)}
                       key={product.id}
                       product={product}
                       sizeMap={sizeMap}
@@ -425,6 +461,7 @@ export function CatalogOverview({
                             "Uncategorized"
                           }
                           detail={rowDetails[product.id]}
+                          detailsUnavailable={failedIds.has(product.id)}
                           key={product.id}
                           product={product}
                         />
@@ -565,6 +602,8 @@ export type ProductCardProps = {
   category: string;
   colorMap: Map<string, { hexValue?: string | null; id: string; name: string }>;
   detail?: ProductRowDetail;
+  /** Details failed to load; show the placeholder and say so. */
+  detailsUnavailable?: boolean;
   product: ProductContract;
   sizeMap: Map<string, { id: string; name: string }>;
 };
@@ -574,6 +613,7 @@ export function ProductCard({
   category,
   colorMap,
   detail,
+  detailsUnavailable = false,
   product,
   sizeMap,
 }: ProductCardProps) {
@@ -670,7 +710,9 @@ export function ProductCard({
         )}
 
         <div className={styles.cardStockBadgeWrapper}>
-          {detail?.stockLoading ? (
+          {detailsUnavailable ? (
+            <span className={styles.cardStockNeutral}>Details unavailable</span>
+          ) : detail?.stockLoading ? (
             <span className={styles.cardStockLoading}>
               <LoaderCircle className={styles.spin} size={12} />
               হিসাব হচ্ছে...
@@ -801,10 +843,12 @@ export function ProductCard({
 function ProductRow({
   category,
   detail,
+  detailsUnavailable = false,
   product,
 }: {
   category: string;
   detail?: ProductRowDetail;
+  detailsUnavailable?: boolean;
   product: ProductContract;
 }) {
   const variantCount = detail?.details.variants.length;
@@ -835,7 +879,9 @@ function ProductRow({
       </td>
       <td>{category}</td>
       <td>
-        {variantCount === undefined ? (
+        {detailsUnavailable ? (
+          <span className={styles.muted}>Details unavailable</span>
+        ) : variantCount === undefined ? (
           <span className={styles.skeletonText}>Loading…</span>
         ) : (
           <>
@@ -861,7 +907,9 @@ function ProductRow({
         )}
       </td>
       <td>
-        {variantCount === undefined || barcodeVariantCount === undefined ? (
+        {detailsUnavailable ? (
+          <span className={styles.muted}>—</span>
+        ) : variantCount === undefined || barcodeVariantCount === undefined ? (
           <span className={styles.skeletonText}>Loading…</span>
         ) : variantCount === 0 ? (
           <span className={styles.muted}>No variants</span>
