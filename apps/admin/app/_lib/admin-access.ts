@@ -246,3 +246,79 @@ export function adminSessionFromPrincipal(
     userId: principal.userId,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Route access
+// ---------------------------------------------------------------------------
+
+/**
+ * Permissions a page needs, matched by the longest route prefix. The backend
+ * still authorizes every call; this only keeps people from landing on a page
+ * that cannot work for them.
+ */
+const routePermissions: ReadonlyArray<
+  readonly [prefix: string, permissions: readonly AdminPermissionKey[]]
+> = [
+  ["/catalog", ["CATALOG:READ"]],
+  ["/catalog/products/new", ["CATALOG:CREATE"]],
+  ["/catalog/barcodes/generate", ["CATALOG:CREATE"]],
+  ["/inventory", ["INVENTORY:READ"]],
+  ["/inventory/receive", ["INVENTORY:CREATE"]],
+  ["/inventory/adjustment", ["INVENTORY:CREATE"]],
+  ["/inventory/transfer", ["INVENTORY:CREATE"]],
+  [
+    "/inventory/intake",
+    [
+      "CATALOG:CREATE",
+      "CATALOG:UPDATE",
+      "INVENTORY:CREATE",
+      "INVENTORY:UPDATE",
+      "PROCUREMENT:CREATE",
+    ],
+  ],
+  ["/procurement", ["PROCUREMENT:READ"]],
+  ["/procurement/purchases/new", ["PROCUREMENT:CREATE"]],
+  ["/procurement/payments/new", ["PROCUREMENT:CREATE"]],
+  ["/sales/orders", ["SALES_ORDER:READ"]],
+  ["/sales-orders", ["SALES_ORDER:READ"]],
+  ["/sales/channels", ["SALES:READ"]],
+  ["/sales/booths", ["SALES:READ"]],
+  ["/pos", ["POS:READ"]],
+  [
+    "/pos/sell",
+    ["POS:READ", "POS:CREATE", "POS:UPDATE", "SALES:CREATE", "PAYMENT:CREATE"],
+  ],
+  ["/organization", ["ORGANIZATION:READ"]],
+  ["/store-locations", ["ORGANIZATION:READ"]],
+  ["/team", ["TEAM:READ"]],
+  ["/roles", ["TEAM:READ"]],
+  ["/users", ["TEAM:READ"]],
+];
+
+export function requiredPermissionsForPath(
+  pathname: string,
+): readonly AdminPermissionKey[] {
+  let best: (typeof routePermissions)[number] | undefined;
+  for (const entry of routePermissions) {
+    const [prefix] = entry;
+    const matches = pathname === prefix || pathname.startsWith(`${prefix}/`);
+    if (matches && (!best || prefix.length > best[0].length)) best = entry;
+  }
+  return best ? best[1] : [];
+}
+
+export function canAccessPath(
+  permissions: readonly AdminPermissionKey[],
+  pathname: string,
+): boolean {
+  return requiredPermissionsForPath(pathname).every((key) =>
+    permissions.includes(key),
+  );
+}
+
+export function hasPermission(
+  permissions: readonly AdminPermissionKey[],
+  key: AdminPermissionKey,
+): boolean {
+  return permissions.includes(key);
+}

@@ -56,6 +56,7 @@ export function CatalogOverview({
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
   const canAddStock = permissions.includes("INVENTORY:CREATE");
+  const canCreateProduct = permissions.includes("CATALOG:CREATE");
   const canReadInventory = permissions.includes("INVENTORY:READ");
 
   const [products, setProducts] = useState<ProductContract[]>([]);
@@ -241,10 +242,12 @@ export function CatalogOverview({
             Manage what SENVO sells — products, variants, media and identity.
           </p>
         </div>
-        <Link className={styles.primaryAction} href="/catalog/products/new">
-          <PackagePlus aria-hidden="true" size={17} />
-          Add product
-        </Link>
+        {canCreateProduct ? (
+          <Link className={styles.primaryAction} href="/catalog/products/new">
+            <PackagePlus aria-hidden="true" size={17} />
+            Add product
+          </Link>
+        ) : null}
       </header>
 
       <section className={styles.metrics} aria-label="Catalog summary">
@@ -374,7 +377,10 @@ export function CatalogOverview({
           ) : state === "error" ? (
             <ErrorState message={error} onRetry={() => void load()} />
           ) : filtered.length === 0 ? (
-            <EmptyState hasProducts={products.length > 0} />
+            <EmptyState
+              canCreate={canCreateProduct}
+              hasProducts={products.length > 0}
+            />
           ) : (
             <>
               {viewMode === "cards" ? (
@@ -464,12 +470,14 @@ export function CatalogOverview({
             <p>
               Move naturally from merchandise setup to identification and stock.
             </p>
-            <Shortcut
-              href="/catalog/products/new"
-              icon={PackagePlus}
-              label="Add product"
-              detail="Create product, variants and media"
-            />
+            {canCreateProduct ? (
+              <Shortcut
+                href="/catalog/products/new"
+                icon={PackagePlus}
+                label="Add product"
+                detail="Create product, variants and media"
+              />
+            ) : null}
             <Shortcut
               href="/catalog/barcodes"
               icon={Barcode}
@@ -530,9 +538,11 @@ export function CatalogOverview({
             </p>
           </div>
         </div>
-        <Link href="/catalog/products/new">
-          Add a product <ArrowRight aria-hidden="true" size={15} />
-        </Link>
+        {canCreateProduct ? (
+          <Link href="/catalog/products/new">
+            Add a product <ArrowRight aria-hidden="true" size={15} />
+          </Link>
+        ) : null}
       </section>
     </div>
   );
@@ -968,7 +978,13 @@ function ErrorState({
   );
 }
 
-function EmptyState({ hasProducts }: { hasProducts: boolean }) {
+function EmptyState({
+  canCreate,
+  hasProducts,
+}: {
+  canCreate: boolean;
+  hasProducts: boolean;
+}) {
   return (
     <div className={styles.emptyState}>
       <PackagePlus aria-hidden="true" size={24} />
@@ -984,7 +1000,7 @@ function EmptyState({ hasProducts }: { hasProducts: boolean }) {
             : "Create the product first; barcode and stock workflows come next."}
         </p>
       </div>
-      {!hasProducts ? (
+      {!hasProducts && canCreate ? (
         <Link href="/catalog/products/new">Add product</Link>
       ) : null}
     </div>

@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { AdminSession } from "../_lib/admin-access";
+import { canAccessPath, type AdminSession } from "../_lib/admin-access";
 import { AdminNavigation } from "./admin-navigation";
 import styles from "./admin-shell.module.css";
 
@@ -59,14 +59,21 @@ export function AdminAppFrame({
           </div>
 
           <div className={`${styles.actions} admin-topbar__actions`}>
-            <Link className={styles.actionPrimary} href="/pos/sell">
-              <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.8} />
-              New sale
-            </Link>
-            <Link className={styles.actionSecondary} href="/inventory/receive">
-              <PackagePlus aria-hidden="true" size={16} strokeWidth={1.8} />
-              Receive stock
-            </Link>
+            {canAccessPath(session.permissions, "/pos/sell") ? (
+              <Link className={styles.actionPrimary} href="/pos/sell">
+                <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.8} />
+                New sale
+              </Link>
+            ) : null}
+            {canAccessPath(session.permissions, "/inventory/receive") ? (
+              <Link
+                className={styles.actionSecondary}
+                href="/inventory/receive"
+              >
+                <PackagePlus aria-hidden="true" size={16} strokeWidth={1.8} />
+                Receive stock
+              </Link>
+            ) : null}
             <div className={styles.account}>
               <span
                 className={`${styles.avatar} admin-avatar`}

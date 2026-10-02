@@ -11,8 +11,13 @@ import {
   useState,
 } from "react";
 import { AdminAppFrame } from "./_components/admin-app-frame";
+import { NoAccessState } from "./_components/no-access-state";
 import { AdminAuthClient, type AdminCredentials } from "./_lib/admin-auth";
-import type { AdminPermissionKey, AdminSession } from "./_lib/admin-access";
+import {
+  canAccessPath,
+  type AdminPermissionKey,
+  type AdminSession,
+} from "./_lib/admin-access";
 
 const authClient = new AdminAuthClient();
 
@@ -83,11 +88,14 @@ export function AdminShellView({
   children,
   isPublicAuthRoute,
   onLogout,
+  pathname,
   state,
 }: {
   children?: ReactNode;
   isPublicAuthRoute: boolean;
   onLogout?: () => void;
+  /** When given, pages the role cannot use show a no-access state. */
+  pathname?: string;
   state: AdminShellState;
 }) {
   if (state.kind === "restoring") {
@@ -105,7 +113,11 @@ export function AdminShellView({
   return (
     <AdminAppFrame session={state.session} onLogout={onLogout ?? (() => {})}>
       <AdminSessionContext.Provider value={state.session}>
-        {children}
+        {pathname && !canAccessPath(state.session.permissions, pathname) ? (
+          <NoAccessState />
+        ) : (
+          children
+        )}
       </AdminSessionContext.Provider>
     </AdminAppFrame>
   );
@@ -177,6 +189,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <AdminShellView
       isPublicAuthRoute={isPublicAuthRoute}
       onLogout={() => void handleLogout()}
+      pathname={pathname}
       state={state}
     >
       {children}
