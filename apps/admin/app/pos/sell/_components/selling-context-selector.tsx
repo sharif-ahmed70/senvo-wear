@@ -90,7 +90,11 @@ export function SellingContextSelector({
                 placeholder="0.00"
               />
             </label>
-            {floatError && <p className="pos-form-error" role="alert">{floatError}</p>}
+            {floatError && (
+              <p className="pos-form-error" role="alert">
+                {floatError}
+              </p>
+            )}
             <button
               className="pos-complete-button"
               disabled={openingCounter || !activeCounterId}

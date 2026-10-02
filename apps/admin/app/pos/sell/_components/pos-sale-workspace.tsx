@@ -172,11 +172,17 @@ function ActivePosSale({
     }
   }, []);
 
-  async function handleOpenCounter(counterId: string, openingFloatMinor: number) {
+  async function handleOpenCounter(
+    counterId: string,
+    openingFloatMinor: number,
+  ) {
     setOpeningCounter(true);
     setError(null);
     try {
-      const opened = await client.openSalesSession({ counterId, openingFloatMinor });
+      const opened = await client.openSalesSession({
+        counterId,
+        openingFloatMinor,
+      });
       setNotice("Sales counter opened.");
       await loadContexts();
       setSelectedSessionId(opened.data.id);
@@ -404,7 +410,9 @@ function ActivePosSale({
           <SellingContextSelector
             availableCounters={activeCounters}
             contexts={contexts}
-            onOpenCounter={(counterId, floatMinor) => void handleOpenCounter(counterId, floatMinor)}
+            onOpenCounter={(counterId, floatMinor) =>
+              void handleOpenCounter(counterId, floatMinor)
+            }
             onSelect={setSelectedSessionId}
             openingCounter={openingCounter}
             selectedId={selectedSessionId}
