@@ -6,6 +6,7 @@ import type {
   SupplierLedgerEntryContract,
 } from "@senvo/contracts";
 import { SupplierPayableSection } from "./supplier-payable-section";
+import { SupplierPurchaseHistory } from "./supplier-purchase-history";
 import {
   AlertCircle,
   Check,
@@ -707,7 +708,9 @@ export function SupplierDetailsPanel({
       </div>
 
       {/* Supplier Payable & Ledger Section */}
-      <SupplierPayableSection
+      <SupplierPurchaseHistory supplierId={supplier.id} />
+
+        <SupplierPayableSection
         canCreatePayment={canCreate}
         initialBalance={initialBalance}
         initialLedger={initialLedger}
