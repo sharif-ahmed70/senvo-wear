@@ -588,6 +588,7 @@ export function QuantityGridEditor({
 /* ------------------------------------------------------------------ */
 
 export function PriceAndSupplierStep({
+  canEditSupplier = false,
   colors,
   errors,
   lines,
@@ -607,6 +608,7 @@ export function PriceAndSupplierStep({
   onPurchase: (purchase: PurchaseDraft) => void;
   prices: PriceDraft;
   purchase: PurchaseDraft;
+  canEditSupplier?: boolean;
   suppliers: readonly SupplierContract[];
   totals: IntakeTotals;
 }) {
@@ -839,6 +841,7 @@ export function PriceAndSupplierStep({
       </div>
 
       <SupplierSection
+        canEditSupplier={canEditSupplier}
         errors={errors}
         onChange={onPurchase}
         purchase={purchase}
@@ -962,6 +965,7 @@ export function PriceAndSupplierStep({
 }
 
 function SupplierSection({
+  canEditSupplier,
   errors,
   onChange,
   purchase,
@@ -970,6 +974,7 @@ function SupplierSection({
   errors: FieldErrors;
   onChange: (purchase: PurchaseDraft) => void;
   purchase: PurchaseDraft;
+  canEditSupplier: boolean;
   suppliers: readonly SupplierContract[];
 }) {
   const uid = useId();
@@ -1092,24 +1097,26 @@ function SupplierSection({
               >
                 অন্য Supplier বেছে নিন
               </button>
-              <button
-                aria-expanded={purchase.editSupplier}
-                className={styles.textButton}
-                onClick={() =>
-                  update({
-                    editSupplier: !purchase.editSupplier,
-                    supplierAddress: selected.address ?? "",
-                    supplierPhone: selected.phone ?? "",
-                  })
-                }
-                type="button"
-              >
-                {purchase.editSupplier
-                  ? "Phone/ঠিকানা বদলাবো না"
-                  : "Phone/ঠিকানা বদলান"}
-              </button>
+              {canEditSupplier ? (
+                <button
+                  aria-expanded={purchase.editSupplier}
+                  className={styles.textButton}
+                  onClick={() =>
+                    update({
+                      editSupplier: !purchase.editSupplier,
+                      supplierAddress: selected.address ?? "",
+                      supplierPhone: selected.phone ?? "",
+                    })
+                  }
+                  type="button"
+                >
+                  {purchase.editSupplier
+                    ? "Phone/ঠিকানা বদলাবো না"
+                    : "Phone/ঠিকানা বদলান"}
+                </button>
+              ) : null}
             </div>
-            {purchase.editSupplier ? (
+            {canEditSupplier && purchase.editSupplier ? (
               <div className={styles.fields}>
                 <label className={styles.field}>
                   নতুন Phone

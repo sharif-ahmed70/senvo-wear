@@ -12,7 +12,10 @@ import { AdminApiError } from "../../_lib/api-client";
 import { IntakeSuccess } from "./_components/intake-success";
 import { labelCopies } from "./_components/intake-barcode-labels";
 import { StockIntakeWizard } from "./_components/stock-intake-wizard";
-import type { IntakeReferences } from "./_components/intake-parts";
+import {
+  PriceAndSupplierStep,
+  type IntakeReferences,
+} from "./_components/intake-parts";
 import {
   calculateProfit,
   formatTaka,
@@ -772,5 +775,58 @@ describe("success screen", () => {
   it("prints one label per piece or per variant, skipping missing barcodes", () => {
     expect(labelCopies(result.variants, "perPiece")).toHaveLength(3);
     expect(labelCopies(result.variants, "perVariant")).toHaveLength(1);
+  });
+});
+
+describe("supplier details edit permission", () => {
+  const selectedPurchase = purchase({
+    existingSupplier: {
+      address: "Gulistan",
+      id: SUPPLIER_ID,
+      name: "Karim Traders",
+      phone: "01811",
+    },
+    supplierMode: "existing",
+  });
+  const lines = linesFromGrid(twoColorGrid);
+  const render = (canEditSupplier: boolean) =>
+    renderToStaticMarkup(
+      <PriceAndSupplierStep
+        canEditSupplier={canEditSupplier}
+        colors={[]}
+        errors={{}}
+        lines={lines}
+        locations={[]}
+        onPrices={() => undefined}
+        onPurchase={() => undefined}
+        prices={prices}
+        purchase={selectedPurchase}
+        suppliers={[]}
+        totals={summarizeIntake(lines, prices, selectedPurchase)}
+      />,
+    );
+
+  it("shows the phone/address edit only with PROCUREMENT UPDATE", () => {
+    expect(render(true)).toContain("Phone/ঠিকানা বদলান");
+    const withoutPermission = render(false);
+    expect(withoutPermission).toContain("Karim Traders");
+    expect(withoutPermission).not.toContain("Phone/ঠিকানা বদলান");
+  });
+
+  it("derives the permission from the session in the wizard", () => {
+    const managerHtml = renderToStaticMarkup(
+      <StockIntakeWizard
+        initialReferences={references}
+        permissions={[
+          "CATALOG:CREATE",
+          "CATALOG:UPDATE",
+          "INVENTORY:CREATE",
+          "INVENTORY:UPDATE",
+          "PROCUREMENT:CREATE",
+        ]}
+      />,
+    );
+    // A manager may record intakes, so no owner-only warning.
+    expect(managerHtml).not.toContain(OWNER_ONLY_MESSAGE);
   });
 });

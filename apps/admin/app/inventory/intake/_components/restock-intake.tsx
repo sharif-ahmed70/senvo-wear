@@ -60,9 +60,11 @@ const emptyGrid: QuantityGrid = {
 };
 
 export function RestockIntake({
+  canEditSupplier = false,
   canSave,
   references,
 }: {
+  canEditSupplier?: boolean;
   canSave: boolean;
   references: IntakeReferences;
 }) {
@@ -387,6 +389,7 @@ export function RestockIntake({
 
         {step === 2 ? (
           <PriceAndSupplierStep
+            canEditSupplier={canEditSupplier}
             colors={references.colors}
             errors={errors}
             lines={lines}

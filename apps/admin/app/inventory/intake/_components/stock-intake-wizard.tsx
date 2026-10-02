@@ -15,7 +15,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
-import { useAdminSession } from "../../../admin-shell";
+import { useAdminPermissions, useAdminSession } from "../../../admin-shell";
 import {
   canRecordStockIntake,
   OWNER_ONLY_MESSAGE,
@@ -63,6 +63,11 @@ export function StockIntakeWizard({
   const session = useAdminSession();
   const permissions = propsPermissions ?? session?.permissions ?? null;
   const canSave = canRecordStockIntake(permissions);
+  // Changing a supplier's phone/address is a supplier update.
+  const sessionPermissions = useAdminPermissions();
+  const canEditSupplier = (propsPermissions ?? sessionPermissions).includes(
+    "PROCUREMENT:UPDATE",
+  );
   const uid = useId();
   const [tab, setTab] = useState<Tab>("new");
   const [references, setReferences] = useState<IntakeReferences | null>(
@@ -172,9 +177,17 @@ export function StockIntakeWizard({
             role="tabpanel"
           >
             {value === "new" ? (
-              <NewProductIntake canSave={canSave} references={references} />
+              <NewProductIntake
+                canEditSupplier={canEditSupplier}
+                canSave={canSave}
+                references={references}
+              />
             ) : (
-              <RestockIntake canSave={canSave} references={references} />
+              <RestockIntake
+                canEditSupplier={canEditSupplier}
+                canSave={canSave}
+                references={references}
+              />
             )}
           </div>
         ))

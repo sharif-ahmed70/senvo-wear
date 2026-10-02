@@ -65,9 +65,11 @@ const photoTypes = ["image/jpeg", "image/png", "image/webp"] as const;
 type PhotoType = (typeof photoTypes)[number];
 
 export function NewProductIntake({
+  canEditSupplier = false,
   canSave,
   references,
 }: {
+  canEditSupplier?: boolean;
   canSave: boolean;
   references: IntakeReferences;
 }) {
@@ -430,6 +432,7 @@ export function NewProductIntake({
 
         {step === 2 ? (
           <PriceAndSupplierStep
+            canEditSupplier={canEditSupplier}
             colors={references.colors}
             errors={errors}
             lines={lines}
