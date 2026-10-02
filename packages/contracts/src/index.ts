@@ -3150,6 +3150,7 @@ export const teamMemberContractSchema = z
     status: organizationMembershipStatusSchema,
     storeAccess: z.string(),
     updatedAt: isoTimestampSchema,
+    userId: idSchema,
     userStatus: userStatusSchema,
     version: expectedVersionSchema,
   })

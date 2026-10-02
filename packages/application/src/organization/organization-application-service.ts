@@ -464,6 +464,7 @@ function mapTeamMember(record: OrganizationTeamMember): TeamMemberContract {
     status: record.status,
     storeAccess: "All stores",
     updatedAt: record.updatedAt.toISOString(),
+    userId: record.userId,
     userStatus: record.userStatus,
     version: record.version,
   });

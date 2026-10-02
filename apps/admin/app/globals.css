@@ -492,6 +492,33 @@
   color: #5e6971;
 }
 
+.organization-role-legend {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin: 0 0 16px;
+}
+
+.organization-role-legend > div {
+  background: #fbf7f1;
+  border: 1px solid #e8e1d8;
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+.organization-role-legend dt {
+  color: #721522;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.organization-role-legend dd {
+  color: #5f625d;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  margin: 2px 0 0;
+}
+
 .organization-role-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
