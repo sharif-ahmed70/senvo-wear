@@ -20,6 +20,12 @@ export type SessionRefundLine = {
 };
 
 export type SessionChannelTotals = {
+  cardCollectionsMinor?: bigint;
+  bankTransferCollectionsMinor?: bigint;
+  mobileBankingCollectionsMinor?: bigint;
+  cardRefundsMinor?: bigint;
+  bankTransferRefundsMinor?: bigint;
+  mobileBankingRefundsMinor?: bigint;
   bankTransferSalesMinor: bigint;
   cardSalesMinor: bigint;
   cashCollectionsMinor: bigint;
@@ -97,6 +103,12 @@ export function calculateSessionChannelTotals(params: {
     }
   }
 
+  let cardCollectionsMinor = 0n;
+  let bankTransferCollectionsMinor = 0n;
+  let mobileBankingCollectionsMinor = 0n;
+  let cardRefundsMinor = 0n;
+  let bankTransferRefundsMinor = 0n;
+  let mobileBankingRefundsMinor = 0n;
   let cashCollections = 0n;
   if (params.collections) {
     for (const collection of params.collections) {
@@ -104,6 +116,11 @@ export function calculateSessionChannelTotals(params: {
         collection.amountMinor,
         "Collection amount",
       );
+      if (collection.method === "CARD") cardCollectionsMinor += amount;
+      if (collection.method === "BANK_TRANSFER")
+        bankTransferCollectionsMinor += amount;
+      if (collection.method === "MOBILE_BANKING")
+        mobileBankingCollectionsMinor += amount;
       if (collection.method === "CASH") {
         cashCollections += amount;
       }
@@ -115,6 +132,10 @@ export function calculateSessionChannelTotals(params: {
   if (params.refunds) {
     for (const refund of params.refunds) {
       const amount = toBigIntAmount(refund.amountMinor, "Refund amount");
+      if (refund.method === "CARD") cardRefundsMinor += amount;
+      if (refund.method === "BANK_TRANSFER") bankTransferRefundsMinor += amount;
+      if (refund.method === "MOBILE_BANKING")
+        mobileBankingRefundsMinor += amount;
       if (refund.method === "CASH") {
         cashRefunds += amount;
       } else {
@@ -124,6 +145,12 @@ export function calculateSessionChannelTotals(params: {
   }
 
   return {
+    cardCollectionsMinor,
+    bankTransferCollectionsMinor,
+    mobileBankingCollectionsMinor,
+    cardRefundsMinor,
+    bankTransferRefundsMinor,
+    mobileBankingRefundsMinor,
     bankTransferSalesMinor: bankTransferSales,
     cardSalesMinor: cardSales,
     cashCollectionsMinor: cashCollections,
@@ -152,9 +179,18 @@ export function calculateExpectedRegisterTotals(params: {
     params.channelTotals.cashCollectionsMinor -
     params.channelTotals.cashRefundsMinor;
 
-  const expectedMobileBanking = params.channelTotals.mobileBankingSalesMinor;
-  const expectedCard = params.channelTotals.cardSalesMinor;
-  const expectedBankTransfer = params.channelTotals.bankTransferSalesMinor;
+  const expectedMobileBanking =
+    params.channelTotals.mobileBankingSalesMinor +
+    (params.channelTotals.mobileBankingCollectionsMinor ?? 0n) -
+    (params.channelTotals.mobileBankingRefundsMinor ?? 0n);
+  const expectedCard =
+    params.channelTotals.cardSalesMinor +
+    (params.channelTotals.cardCollectionsMinor ?? 0n) -
+    (params.channelTotals.cardRefundsMinor ?? 0n);
+  const expectedBankTransfer =
+    params.channelTotals.bankTransferSalesMinor +
+    (params.channelTotals.bankTransferCollectionsMinor ?? 0n) -
+    (params.channelTotals.bankTransferRefundsMinor ?? 0n);
 
   const expectedTotal =
     expectedCash + expectedMobileBanking + expectedCard + expectedBankTransfer;

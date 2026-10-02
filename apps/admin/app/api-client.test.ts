@@ -22,10 +22,21 @@ describe("AdminApiClient", () => {
 
     await client.lookupPosSale(" CODE / 1 ");
     await client.getPosCart(cartId);
-    await client.addPosCartItem({ cartId, productVariantId, quantity: 1 });
-    await client.updatePosCartItem({ cartId, itemId, quantity: 2 });
-    await client.removePosCartItem({ cartId, itemId });
+    await client.addPosCartItem({
+      expectedVersion: 1,
+      cartId,
+      productVariantId,
+      quantity: 1,
+    });
+    await client.updatePosCartItem({
+      expectedVersion: 1,
+      cartId,
+      itemId,
+      quantity: 2,
+    });
+    await client.removePosCartItem({ expectedVersion: 1, cartId, itemId });
     await client.checkoutPosCart({
+      expectedVersion: 1,
       allowOutstanding: false,
       cartId,
       idempotencyKey: "pos-safe-retry-1",
@@ -57,6 +68,7 @@ describe("AdminApiClient", () => {
       );
     }
     expect(JSON.parse(bodies.at(-1) ?? "{}")).toEqual({
+      expectedVersion: 1,
       allowOutstanding: false,
       idempotencyKey: "pos-safe-retry-1",
       payments: [{ amountMinor: 250000, method: "CASH" }],
@@ -595,6 +607,7 @@ describe("AdminApiClient", () => {
     await client.listCurrentSalesSessions({ requestId: "req_pos_client_5" });
     await client.checkoutPosCart(
       {
+        expectedVersion: 1,
         allowOutstanding: false,
         cartId: "10000000-0000-4000-8000-000000000012",
         idempotencyKey: "checkout-client-001",

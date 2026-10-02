@@ -41,6 +41,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -98,6 +100,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -106,6 +110,7 @@ describe("offline POS use cases", () => {
         { inventory: {} as never, pos },
         {
           cartId: branchId,
+          expectedVersion: 1,
           organizationId: otherOrganizationId,
           productVariantId: variantId,
           quantity: 1,
@@ -116,6 +121,7 @@ describe("offline POS use cases", () => {
     await expect(
       updatePosCartItem(pos, {
         cartId: branchId,
+        expectedVersion: 1,
         itemId: variantId,
         organizationId: otherOrganizationId,
         quantity: 2,
@@ -125,6 +131,7 @@ describe("offline POS use cases", () => {
     await expect(
       removePosCartItem(pos, {
         cartId: branchId,
+        expectedVersion: 1,
         itemId: variantId,
         organizationId: otherOrganizationId,
         userId: otherUserId,
@@ -241,6 +248,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -260,6 +269,7 @@ describe("offline POS use cases", () => {
       },
       {
         cartId: branchId,
+        expectedVersion: 1,
         organizationId,
         productVariantId: variantId,
         quantity: 3,

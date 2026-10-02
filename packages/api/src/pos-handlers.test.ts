@@ -163,7 +163,12 @@ describe("POS API handlers", () => {
     });
     const cartResponse = await handlers(application).addCartItem.handle({
       context,
-      input: { cartId: "bad", productVariantId: "bad", quantity: 0 },
+      input: {
+        expectedVersion: 1,
+        cartId: "bad",
+        productVariantId: "bad",
+        quantity: 0,
+      },
     });
     expect(counterResponse.success).toBe(false);
     expect(cartResponse.success).toBe(false);
@@ -174,6 +179,7 @@ describe("POS API handlers", () => {
     const response = await handlers(application).checkoutCart.handle({
       context,
       input: {
+        expectedVersion: 1,
         cartId: "20000000-0000-4000-8000-000000000001",
         allowOutstanding: false,
         idempotencyKey: "checkout-attempt-001",
@@ -443,6 +449,9 @@ class FakeAuthorization implements ApplicationAuthorizationService {
   }
 }
 class FakePos implements PosApplication {
+  startNextCart(context: ApplicationExecutionContext) {
+    return this.result(context, {} as SalesSessionContract);
+  }
   context?: ApplicationExecutionContext;
   private result<T>(context: ApplicationExecutionContext, data: T) {
     this.context = context;

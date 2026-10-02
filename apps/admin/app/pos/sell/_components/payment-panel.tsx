@@ -92,7 +92,7 @@ export function PaymentPanel({
   onComplete: (
     payload: Omit<
       CheckoutPosCartServiceInputContract,
-      "cartId" | "idempotencyKey"
+      "cartId" | "idempotencyKey" | "expectedVersion"
     >,
   ) => void;
   submitting: boolean;

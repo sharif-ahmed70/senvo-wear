@@ -43,6 +43,8 @@ const session: SalesSessionContract = {
   version: 1,
 };
 const cart: PosCartDetailsContract = {
+  status: "ACTIVE",
+  version: 1,
   checkoutId: null,
   createdAt: session.createdAt,
   id: session.cartId,

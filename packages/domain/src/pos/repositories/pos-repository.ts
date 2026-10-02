@@ -8,7 +8,12 @@ import type {
 } from "../domain/models.js";
 
 export type PosRepository = {
+  startNextCart?(
+    sessionId: string,
+    organizationId: string,
+  ): Promise<SalesSession>;
   addCartLine(record: {
+    expectedVersion: number;
     cartId: string;
     lineSubtotalMinor: number;
     organizationId: string;
@@ -79,8 +84,10 @@ export type PosRepository = {
     id: string,
     cartId: string,
     organizationId: string,
+    expectedVersion: number,
   ): Promise<boolean>;
   updateCartLine(record: {
+    expectedVersion: number;
     cartId: string;
     id: string;
     lineSubtotalMinor: number;

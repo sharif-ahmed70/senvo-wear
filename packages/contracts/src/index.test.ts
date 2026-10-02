@@ -371,6 +371,7 @@ describe("API contracts", () => {
       allowOutstanding: false,
       cartId: "10000000-0000-4000-8000-000000000001",
       idempotencyKey: "checkout-contract-001",
+      expectedVersion: 1,
       payments: [
         { amountMinor: 1200, method: "CASH" },
         { amountMinor: 1300, method: "CARD", reference: "CARD-123" },

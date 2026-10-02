@@ -223,6 +223,31 @@ export function ZReportPreview({
                   <strong>{formatBdt(summary.expectedCashMinor)}</strong>
                 </td>
               </tr>
+              <section className={styles.section}>
+                <h2>Sales by team member</h2>
+                <p>
+                  Returns are credited against sales; refunds are money paid
+                  out.
+                </p>
+                {summary.sellerTotals.map((seller) => (
+                  <div key={seller.staffId}>
+                    <h3>{seller.staffName}</h3>
+                    <p>
+                      {seller.salesCount} sales / Sales{" "}
+                      {formatBdt(seller.grossSalesMinor)} / Returns{" "}
+                      {formatBdt(seller.returnsMinor)} / Net sales{" "}
+                      {formatBdt(seller.netSalesMinor)}
+                    </p>
+                    <p>
+                      Payments {formatBdt(seller.paymentsMinor)} / Collections{" "}
+                      {formatBdt(seller.collectionsMinor)} / Refunds{" "}
+                      {formatBdt(seller.refundsMinor)}
+                    </p>
+                  </div>
+                ))}
+                <p>Total returns: {formatBdt(summary.returnsMinor)}</p>
+              </section>
+
               {settlement && (
                 <>
                   <tr>

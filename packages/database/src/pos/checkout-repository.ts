@@ -1,3 +1,4 @@
+import { CART_CHANGED, lockCartSession } from "./cart-lock.js";
 import {
   calculateCheckoutSettlement,
   ConflictError,
@@ -47,6 +48,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
     organizationId: string,
     staffId: string,
   ): Promise<PosCheckoutPreparation | null> {
+    await lockCartSession(this.prisma, cartId, organizationId);
     await this.prisma.$queryRaw`
       SELECT "id"
       FROM "pos_carts"
@@ -109,6 +111,8 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       boothId: counter.boothId,
       branchId: counter.branchId,
       cartId: cart.id,
+      cartStatus: cart.status,
+      cartVersion: cart.version,
       checkout: cart.checkout ? mapCheckout(cart.checkout) : null,
       counterId: counter.id,
       counterCode: counter.code,
@@ -148,9 +152,21 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
     record: Parameters<PosCheckoutRepository["createCompleted"]>[0],
   ): Promise<PosCheckout> {
     try {
+      const { expectedVersion, ...checkout } = record;
+      const updated = await this.prisma.posCart.updateMany({
+        where: {
+          id: record.cartId,
+          organizationId: record.organizationId,
+          status: "ACTIVE",
+          version: expectedVersion,
+          salesSession: { status: "OPEN" },
+        },
+        data: { status: "CHECKED_OUT", version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new ConflictError(CART_CHANGED);
       return mapCheckout(
         await this.prisma.posCheckoutRecord.create({
-          data: { ...record, status: "COMPLETED" },
+          data: { ...checkout, status: "COMPLETED" },
           include: checkoutInclude,
         }),
       );

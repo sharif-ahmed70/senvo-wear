@@ -217,12 +217,14 @@ function ActivePosSale({
       if (existing) {
         await client.updatePosCartItem({
           cartId: cart.id,
+          expectedVersion: cart.version,
           itemId: existing.id,
           quantity: existing.quantity + 1,
         });
       } else {
         await client.addPosCartItem({
           cartId: cart.id,
+          expectedVersion: cart.version,
           productVariantId: lookup.data.variantId,
           quantity: 1,
         });
@@ -246,6 +248,7 @@ function ActivePosSale({
     try {
       await client.updatePosCartItem({
         cartId: cart.id,
+        expectedVersion: cart.version,
         itemId: lineId,
         quantity,
       });
@@ -262,7 +265,11 @@ function ActivePosSale({
     if (!cart || mutatingId) return;
     setMutatingId(lineId);
     try {
-      await client.removePosCartItem({ cartId: cart.id, itemId: lineId });
+      await client.removePosCartItem({
+        cartId: cart.id,
+        expectedVersion: cart.version,
+        itemId: lineId,
+      });
       await loadCart(cart.id);
       setNotice("Item removed.");
     } catch (reason) {
@@ -275,7 +282,7 @@ function ActivePosSale({
   async function completeSale(
     payload: Omit<
       CheckoutPosCartServiceInputContract,
-      "cartId" | "idempotencyKey"
+      "cartId" | "idempotencyKey" | "expectedVersion"
     >,
   ) {
     if (!cart || submitting) return;
@@ -287,6 +294,7 @@ function ActivePosSale({
       const result = await client.checkoutPosCart({
         ...payload,
         cartId: cart.id,
+        expectedVersion: cart.version,
         idempotencyKey: attempt.idempotencyKey,
       });
       setCheckout(result.data);
@@ -306,13 +314,8 @@ function ActivePosSale({
     try {
       const next = await reconcileNextSale(
         {
-          closeSession: async (input) => {
-            await client.closeSalesSession(input);
-          },
-          listCurrentSessions: async () =>
-            (await client.listCurrentSalesSessions()).data,
-          openSession: async (counterId) =>
-            (await client.openSalesSession({ counterId })).data,
+          startNextCart: async (sessionId) =>
+            (await client.startNextPosCart(sessionId)).data,
         },
         {
           completedSessionId: selectedContext.session.id,
@@ -370,6 +373,20 @@ function ActivePosSale({
         {error ? (
           <p className="pos-form-error" role="alert">
             {error.message}
+            {cart &&
+            error.message === "Cart changed on another screen. Refresh." ? (
+              <button
+                className="pos-sale-secondary"
+                disabled={cartLoading || submitting}
+                type="button"
+                onClick={() => {
+                  setPaymentOpen(false);
+                  void loadCart(cart.id);
+                }}
+              >
+                Refresh cart
+              </button>
+            ) : null}
             {error.requestId ? (
               <small> Support reference: {error.requestId}</small>
             ) : null}

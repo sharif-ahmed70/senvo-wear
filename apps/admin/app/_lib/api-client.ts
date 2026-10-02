@@ -1197,6 +1197,13 @@ export class AdminApiClient {
     });
   }
 
+  startNextPosCart(sessionId: string, request?: AdminApiRequest) {
+    return this.request<SalesSessionContract>(
+      `/pos/sessions/${sessionId}/carts`,
+      { ...request, body: {}, method: "POST" },
+    );
+  }
+
   closeSalesSession(
     input: CloseSalesSessionServiceInputContract,
     request?: AdminApiRequest,
@@ -1272,7 +1279,11 @@ export class AdminApiClient {
   ) {
     return this.request<null>(
       `/pos/carts/${input.cartId}/items/${input.itemId}`,
-      { ...request, method: "DELETE" },
+      {
+        ...request,
+        body: { expectedVersion: input.expectedVersion },
+        method: "DELETE",
+      },
     );
   }
 

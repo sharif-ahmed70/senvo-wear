@@ -294,6 +294,23 @@ export function RegisterSettlementModal({
               </div>
             </section>
 
+            <section className={styles.countSection}>
+              <h3>Sales by team member</h3>
+              {summary.sellerTotals.map((seller) => (
+                <p key={seller.staffId}>
+                  {seller.staffName}: {seller.salesCount} sales /{" "}
+                  {formatBdt(seller.grossSalesMinor)} sales /{" "}
+                  {formatBdt(seller.returnsMinor)} returns /{" "}
+                  {formatBdt(
+                    seller.paymentsMinor +
+                      seller.collectionsMinor -
+                      seller.refundsMinor,
+                  )}{" "}
+                  net received
+                </p>
+              ))}
+            </section>
+
             {/* Actual Drawer Count Inputs */}
             <section className={styles.countSection}>
               <h3>Actual Drawer Count (ক্যাশ ড্রয়ারে গণনা করা আসল টাকা)</h3>

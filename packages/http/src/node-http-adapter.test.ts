@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createProcurementApiHandlers,
+  createPosApiHandlers,
   createProtectedApiHandler,
   createStockIntakeApiHandlers,
   type ApiHandler,
@@ -15,8 +16,11 @@ import {
   type ShippingApiHandlers,
   type StorefrontApiHandlers,
 } from "@senvo/api";
-import type { ApplicationAuthorizationService } from "@senvo/application";
-import { AuthorizationError } from "@senvo/domain";
+import {
+  PosApplicationService,
+  type ApplicationAuthorizationService,
+} from "@senvo/application";
+import { AuthorizationError, roleAllowsPermission } from "@senvo/domain";
 import {
   createApiFailure,
   createApiSuccess,
@@ -61,6 +65,127 @@ afterEach(async () => {
 });
 
 describe("Node HTTP runtime adapter", () => {
+  it("returns 409 for a stale shared cart and 403 when STAFF attempts settlement", async () => {
+    const authenticationService = new DevelopmentAuthenticationService("test");
+    const authorizationService: ApplicationAuthorizationService = {
+      authorize: (_context, permission) =>
+        roleAllowsPermission("STAFF", permission)
+          ? Promise.resolve()
+          : Promise.reject(new AuthorizationError("Forbidden")),
+    };
+    const now = new Date("2026-10-02T10:00:00Z");
+    const session = {
+      id: movementId,
+      cartId: movementId,
+      closedAt: null,
+      counterId: movementId,
+      createdAt: now,
+      openedAt: now,
+      openedByUserId: userId,
+      openedByName: "Owner",
+      openingFloatMinor: 0,
+      organizationId,
+      status: "OPEN" as const,
+      updatedAt: now,
+      version: 1,
+    };
+    const service = new PosApplicationService({
+      authenticationService,
+      authorizationService,
+      clock: { now: () => now },
+      barcodes: {} as never,
+      branches: {} as never,
+      checkouts: {} as never,
+      inventory: {} as never,
+      memberships: {} as never,
+      payments: {} as never,
+      receipts: {} as never,
+      salesSources: {} as never,
+      transactionManager: {} as never,
+      users: {} as never,
+      pos: {
+        findCartById: () =>
+          Promise.resolve({
+            id: movementId,
+            organizationId,
+            salesSessionId: movementId,
+            sessionStatus: "OPEN",
+            status: "ACTIVE",
+            version: 2,
+            lines: [],
+            createdAt: now,
+            updatedAt: now,
+          }),
+        startNextCart: () => Promise.resolve(session),
+      } as never,
+    });
+    const pos = createPosApiHandlers({
+      authenticationService,
+      authorizationService,
+      pos: service,
+    });
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        pos,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    const headers = developmentHeaders(suppliedRequestId);
+    const stale = await fetch(
+      `${runtime.url}/pos/carts/${movementId}/items/${movementId}`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ expectedVersion: 1, quantity: 2 }),
+      },
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      success: false,
+      error: {
+        code: "CONFLICT.STATE",
+        message: "Cart changed on another screen. Refresh.",
+      },
+    });
+    const next = await fetch(
+      `${runtime.url}/pos/sessions/${movementId}/carts`,
+      { method: "POST", headers, body: "{}" },
+    );
+    expect(next.status).toBe(200);
+    expect(await next.json()).toMatchObject({
+      success: true,
+      data: { id: movementId, cartId: movementId, openedByName: "Owner" },
+    });
+    const settle = await fetch(
+      `${runtime.url}/pos/sessions/${movementId}/settlement`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          expectedVersion: 1,
+          actualCashMinor: 0,
+          actualCardMinor: 0,
+          actualMobileBankingMinor: 0,
+          actualBankTransferMinor: 0,
+        }),
+      },
+    );
+    expect(settle.status).toBe(403);
+    expect(await settle.json()).toMatchObject({
+      success: false,
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+    });
+    const close = await fetch(
+      `${runtime.url}/pos/sessions/${movementId}/close`,
+      { method: "POST", headers, body: JSON.stringify({ expectedVersion: 1 }) },
+    );
+    expect(close.status).toBe(403);
+  });
+
   it("routes variant price PATCH with path ownership and validates its payload", async () => {
     const requests: unknown[] = [];
     const handler = createProtectedApiHandler({

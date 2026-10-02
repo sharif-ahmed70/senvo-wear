@@ -1088,7 +1088,7 @@ model SalesSession {
   counter          SalesCounter           @relation(fields: [counterId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
   openedBy         User                   @relation(fields: [openedByUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   openedMembership OrganizationMembership @relation(fields: [openedByUserId, organizationId], references: [userId, organizationId], onDelete: Restrict, onUpdate: Cascade)
-  cart             PosCart?
+  carts            PosCart[]
   checkoutRecords  PosCheckoutRecord[]
   paymentBatches   PaymentBatch[]
   settlement       PosRegisterSettlement?
@@ -1143,10 +1143,18 @@ model PosRegisterSettlement {
   @@map("pos_register_settlements")
 }
 
+enum PosCartStatus {
+  ACTIVE
+  CHECKED_OUT
+  ABANDONED
+}
+
 model PosCart {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   salesSessionId String   @map("sales_session_id") @db.Uuid
+  status         PosCartStatus @default(ACTIVE)
+  version        Int @default(1)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -1156,7 +1164,7 @@ model PosCart {
   checkout     PosCheckoutRecord?
 
   @@unique([id, organizationId])
-  @@unique([salesSessionId, organizationId])
+  @@unique([salesSessionId, organizationId], map: "pos_carts_one_active_per_session_key", where: { status: "ACTIVE" })
   @@index([organizationId, createdAt])
   @@map("pos_carts")
 }

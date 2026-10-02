@@ -1,9 +1,8 @@
+import { assertEmptyActiveCart, lockSession } from "./cart-lock.js";
 import {
   ConflictError,
-  type PaymentMethodType,
   type PosRegisterSettlement,
   type PosSettlementRepository,
-  type PosSettlementStatus,
   type SalesSession,
   type SessionCollectionLineData,
   type SessionPaymentLineData,
@@ -13,14 +12,19 @@ import {
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type SessionRecord = Prisma.SalesSessionGetPayload<{
-  include: { cart: true; counter: { select: { id: true; name: true } } };
+  include: {
+    carts: { include: { _count: { select: { lines: true } } } };
+    counter: { select: { id: true; name: true } };
+  };
 }>;
 
-type SettlementRecord = Prisma.PosRegisterSettlementGetPayload<{}>;
+type SettlementRecord = Prisma.PosRegisterSettlementGetPayload<object>;
 
 type PosSettlementPrismaClient = Pick<
   PrismaClient,
   | "$transaction"
+  | "$queryRaw"
+  | "posCart"
   | "paymentBatch"
   | "paymentCollection"
   | "paymentRefund"
@@ -36,23 +40,36 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
     sessionId: string,
     organizationId: string,
   ): Promise<SessionReconciliationSource | null> {
+    await lockSession(this.prisma, sessionId, organizationId);
     const sessionRecord = await this.prisma.salesSession.findFirst({
       include: {
-        cart: true,
+        carts: {
+          include: { _count: { select: { lines: true } } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        },
         counter: { select: { id: true, name: true } },
       },
       where: { id: sessionId, organizationId },
     });
 
-    if (!sessionRecord || !sessionRecord.cart) {
+    if (!sessionRecord || sessionRecord.carts.length === 0) {
       return null;
     }
 
     const checkoutRecords = await this.prisma.posCheckoutRecord.findMany({
-      select: { id: true },
+      select: {
+        id: true,
+        staffId: true,
+        totalMinor: true,
+        staff: { select: { name: true, email: true } },
+        posSaleReturns: { select: { totalCreditMinor: true } },
+      },
       where: { organizationId, salesSessionId: sessionId },
     });
 
+    const staffByCheckout = new Map(
+      checkoutRecords.map((c) => [c.id, c.staffId]),
+    );
     const checkoutIds = checkoutRecords.map((c) => c.id);
 
     const paymentBatches = await this.prisma.paymentBatch.findMany({
@@ -109,29 +126,50 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
 
     const payments: SessionPaymentLineData[] = paymentBatches.flatMap((batch) =>
       batch.lines.map((line) => ({
+        staffId: batch.checkoutId
+          ? staffByCheckout.get(batch.checkoutId)
+          : (batch.staffId ?? undefined),
         amountMinor: line.amountMinor,
-        method: line.method as PaymentMethodType,
+        method: line.method,
       })),
     );
 
     const collectionLines: SessionCollectionLineData[] = collections.flatMap(
       (collection) =>
         collection.lines.map((line) => ({
+          staffId: staffByCheckout.get(collection.checkoutId),
           amountMinor: line.amountMinor,
-          method: line.method as PaymentMethodType,
+          method: line.method,
         })),
     );
 
     const refundLines: SessionRefundLineData[] = refunds.flatMap((refund) =>
       refund.lines.map((line) => ({
+        staffId: refund.checkoutId
+          ? staffByCheckout.get(refund.checkoutId)
+          : undefined,
         amountMinor: line.amountMinor,
-        method: line.method as PaymentMethodType,
+        method: line.method,
       })),
     );
 
     const salesCount = Math.max(checkoutRecords.length, paymentBatches.length);
 
     return {
+      hasActiveNonEmptyCart: sessionRecord.carts.some(
+        (cart) => cart.status === "ACTIVE" && cart._count.lines > 0,
+      ),
+      sales: checkoutRecords.map((c) => ({
+        staffId: c.staffId,
+        staffName: c.staff.name ?? c.staff.email,
+        totalMinor: c.totalMinor,
+      })),
+      returns: checkoutRecords.flatMap((c) =>
+        c.posSaleReturns.map((r) => ({
+          staffId: c.staffId,
+          amountMinor: r.totalCreditMinor,
+        })),
+      ),
       collections: collectionLines,
       counter: {
         id: sessionRecord.counter.id,
@@ -163,6 +201,12 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
     settlement: PosRegisterSettlement;
   } | null> {
     const executeOperation = async (tx: PosSettlementPrismaClient) => {
+      await lockSession(tx, params.session.id, params.session.organizationId);
+      await assertEmptyActiveCart(
+        tx,
+        params.session.id,
+        params.session.organizationId,
+      );
       const updateResult = await tx.salesSession.updateMany({
         data: {
           closedAt: params.settlement.closedAt,
@@ -181,6 +225,14 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
         return null;
       }
 
+      await tx.posCart.updateMany({
+        where: {
+          salesSessionId: params.session.id,
+          organizationId: params.session.organizationId,
+          status: "ACTIVE",
+        },
+        data: { status: "ABANDONED", version: { increment: 1 } },
+      });
       try {
         const created = await tx.posRegisterSettlement.create({
           data: {
@@ -223,7 +275,10 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
 
         const updatedSession = await tx.salesSession.findUniqueOrThrow({
           include: {
-            cart: true,
+            carts: {
+              include: { _count: { select: { lines: true } } },
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            },
             counter: { select: { id: true, name: true } },
           },
           where: { id: params.session.id },
@@ -262,9 +317,11 @@ export class PrismaPosSettlementRepository implements PosSettlementRepository {
 }
 
 function mapSession(record: SessionRecord): SalesSession {
-  if (!record.cart) throw new Error("Sales session cart is missing.");
+  const cart =
+    record.carts.find((cart) => cart.status === "ACTIVE") ?? record.carts[0];
+  if (!cart) throw new Error("Sales session cart is missing.");
   return {
-    cartId: record.cart.id,
+    cartId: cart.id,
     closedAt: record.closedAt,
     counterId: record.counterId,
     createdAt: record.createdAt,
@@ -310,7 +367,7 @@ function mapSettlement(record: SettlementRecord): PosRegisterSettlement {
     openingFloatMinor: record.openingFloatMinor,
     organizationId: record.organizationId,
     salesSessionId: record.salesSessionId,
-    status: record.status as PosSettlementStatus,
+    status: record.status,
     totalDiscrepancyMinor: record.totalDiscrepancyMinor,
   };
 }

@@ -6,6 +6,7 @@ import type {
 } from "@senvo/application";
 import {
   addPosCartItemServiceInputSchema,
+  startNextPosCartServiceInputSchema,
   collectPosPaymentServiceInputSchema,
   createPaymentRefundServiceInputSchema,
   createPosReturnServiceInputSchema,
@@ -47,6 +48,10 @@ import {
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
 export type PosApplication = {
+  startNextCart(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesSessionContract>>;
   collectPayment(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -158,6 +163,7 @@ export type PosApplication = {
 };
 
 export type PosApiHandlers = {
+  startNextCart: ApiHandler<SalesSessionContract>;
   collectPayment: ApiHandler<CollectPosPaymentResultContract>;
   createRefund: ApiHandler<PaymentRefundResultContract>;
   getRefunds: ApiHandler<PaymentRefundAccountContract>;
@@ -210,6 +216,11 @@ export function createPosApiHandlers(dependencies: {
       permission: { action, resource: "POS" },
     });
   return {
+    startNextCart: handler(
+      "CREATE",
+      startNextPosCartServiceInputSchema,
+      (context, input) => dependencies.pos.startNextCart(context, input),
+    ),
     collectPayment: createProtectedApiHandler({
       authenticationService: dependencies.authenticationService,
       authorizationService: dependencies.authorizationService,

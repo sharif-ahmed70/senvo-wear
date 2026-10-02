@@ -69,6 +69,7 @@ import {
 } from "@senvo/domain";
 import {
   addPosCartItemServiceInputSchema,
+  startNextPosCartServiceInputSchema,
   collectPosPaymentResultContractSchema,
   collectPosPaymentServiceInputSchema,
   createPaymentRefundServiceInputSchema,
@@ -260,6 +261,21 @@ export class PosApplicationService {
           organizationId: trusted.organizationId,
           userId,
         }),
+      );
+    });
+  }
+  startNextCart(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<SalesSessionContract>(context, async (trusted) => {
+      const input = parsePayload(startNextPosCartServiceInputSchema, payload);
+      await this.authorize(trusted, "CREATE");
+      this.requireUserId(trusted);
+      if (!this.dependencies.pos.startNextCart)
+        throw new Error("POS next-cart capability is required.");
+      return mapSession(
+        await this.dependencies.pos.startNextCart(
+          input.sessionId,
+          trusted.organizationId,
+        ),
       );
     });
   }
@@ -1133,6 +1149,8 @@ function mapReconciliationSummary(
   record: PosSessionReconciliationSummary,
 ): PosSessionReconciliationSummaryContract {
   return posSessionReconciliationSummaryContractSchema.parse({
+    returnsMinor: record.returnsMinor,
+    sellerTotals: record.sellerTotals,
     bankTransferSalesMinor: record.bankTransferSalesMinor,
     cardSalesMinor: record.cardSalesMinor,
     cashCollectionsMinor: record.cashCollectionsMinor,
@@ -1206,6 +1224,8 @@ function mapLine(record: PosCartLine): PosCartLineContract {
 }
 function mapCartDetails(record: PosCartDetails): PosCartDetailsContract {
   return posCartDetailsContractSchema.parse({
+    status: record.status,
+    version: record.version,
     checkoutId: record.checkoutId,
     createdAt: record.createdAt.toISOString(),
     id: record.id,
@@ -1452,7 +1472,9 @@ function normalizeError(error: unknown): ApplicationServiceError {
         : "CONFLICT",
       message: error.message.includes("idempotency key")
         ? "This request was already used with different details."
-        : "The request conflicts with the current information.",
+        : error.message === "Cart changed on another screen. Refresh."
+          ? error.message
+          : "The request conflicts with the current information.",
     });
   if (error instanceof BusinessRuleError)
     return new ApplicationServiceError({
@@ -1467,6 +1489,12 @@ function normalizeError(error: unknown): ApplicationServiceError {
 }
 
 function mapBusinessRuleMessage(message: string): string {
+  if (
+    message ===
+      "Complete or empty the active cart before settling this session." ||
+    message === "The sales session is closed."
+  )
+    return message;
   if (message.includes("legacy payment checkout"))
     return "Returns are not available for this older sale yet.";
   if (message.includes("Return hold"))

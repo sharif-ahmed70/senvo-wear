@@ -1,8 +1,11 @@
+import { PrismaPosSettlementRepository } from "./settlement-repository.js";
 import {
   BusinessRuleError,
   ConflictError,
   addPosCartItem,
   checkoutCart,
+  closeSalesSessionWithSettlement,
+  getSalesSessionReconciliationSummary,
   collectOutstandingPayment,
   recordCheckoutRefund,
   recordPosSaleReturn,
@@ -43,6 +46,308 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await cleanDatabase();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
+  });
+
+  it("keeps three sales by two sellers in one daily session and settles the whole day", async () => {
+    const base = await seedCheckout("DAY", 8, 1);
+    const staff = await seedOrganizationMember(
+      base.organization.id,
+      "DAY-STAFF",
+    );
+    const first = await completeCheckout(base, "day-sale-1");
+    const sessions = await Promise.all([
+      repository.startNextCart(base.session.id, base.organization.id),
+      repository.startNextCart(base.session.id, base.organization.id),
+    ]);
+    expect(sessions[0].cartId).toBe(sessions[1].cartId);
+    await expect(
+      prisma.posCart.create({
+        data: {
+          salesSessionId: base.session.id,
+          organizationId: base.organization.id,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+    const secondSession = sessions[0];
+    expect(secondSession.id).toBe(base.session.id);
+    await repository.addCartLine({
+      expectedVersion: 1,
+      cartId: secondSession.cartId,
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      quantity: 1,
+      unitPriceMinor: 2500,
+      lineSubtotalMinor: 2500,
+    });
+    const second = await completeCheckout(
+      { ...base, user: staff, session: secondSession },
+      "day-sale-2",
+      {
+        allowOutstanding: true,
+        payments: [{ amountMinor: 1500, method: "CASH" }],
+      },
+    );
+    await collectPayment(
+      { ...base, user: staff },
+      second.checkout.id,
+      1000,
+      "day-collection",
+    );
+    const thirdSession = await repository.startNextCart(
+      base.session.id,
+      base.organization.id,
+    );
+    await repository.addCartLine({
+      expectedVersion: 1,
+      cartId: thirdSession.cartId,
+      organizationId: base.organization.id,
+      productVariantId: base.variant.id,
+      quantity: 1,
+      unitPriceMinor: 2500,
+      lineSubtotalMinor: 2500,
+    });
+    const third = await completeCheckout(
+      { ...base, session: thirdSession },
+      "day-sale-3",
+    );
+    const records = await prisma.posCheckoutRecord.findMany({
+      where: { salesSessionId: base.session.id },
+      select: { id: true, staffId: true },
+    });
+    expect(records).toHaveLength(3);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        { id: first.checkout.id, staffId: base.user.id },
+        { id: second.checkout.id, staffId: staff.id },
+        { id: third.checkout.id, staffId: base.user.id },
+      ]),
+    );
+    const destination = await seedReturnHold(base);
+    const line = await prisma.salesOrderLine.findFirstOrThrow({
+      where: { salesOrderId: third.checkout.salesOrderId },
+    });
+    await recordReturn(
+      base,
+      third.checkout.id,
+      destination.id,
+      line.id,
+      1,
+      "day-return",
+    );
+    await recordRefund(base, third.checkout.id, "day-refund", [
+      { method: "CASH", amountMinor: 2500 },
+    ]);
+    const summary = await getSalesSessionReconciliationSummary(
+      new PrismaPosSettlementRepository(prisma),
+      { sessionId: base.session.id, organizationId: base.organization.id },
+    );
+    expect(summary).toMatchObject({
+      salesCount: 3,
+      grossSalesMinor: 7500,
+      returnsMinor: 2500,
+      expectedTotalMinor: 5000,
+      expectedCashMinor: 4000,
+      expectedCardMinor: 1000,
+    });
+    expect(summary.sellerTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          staffId: base.user.id,
+          salesCount: 2,
+          grossSalesMinor: 5000,
+          paymentsMinor: 5000,
+          collectionsMinor: 0,
+          refundsMinor: 2500,
+          returnsMinor: 2500,
+          netSalesMinor: 2500,
+        }),
+        expect.objectContaining({
+          staffId: staff.id,
+          salesCount: 1,
+          grossSalesMinor: 2500,
+          paymentsMinor: 1500,
+          collectionsMinor: 1000,
+          refundsMinor: 0,
+          returnsMinor: 0,
+          netSalesMinor: 2500,
+        }),
+      ]),
+    );
+    await repository.startNextCart(base.session.id, base.organization.id);
+    const settled = await settleDay(base, 4000, 1000);
+    expect(settled.settlement).toMatchObject({
+      expectedTotalMinor: 5000,
+      status: "BALANCED",
+    });
+    expect(await repository.listSessions(base.organization.id)).toEqual([
+      expect.objectContaining({ id: base.session.id, status: "CLOSED" }),
+    ]);
+    expect(
+      await repository.findCartDetailsById(
+        base.session.cartId,
+        base.organization.id,
+        staff.id,
+      ),
+    ).toMatchObject({ status: "CHECKED_OUT", sessionStatus: "CLOSED" });
+    expect(
+      (
+        await getSalesSessionReconciliationSummary(
+          new PrismaPosSettlementRepository(prisma),
+          { sessionId: base.session.id, organizationId: base.organization.id },
+        )
+      ).sellerTotals,
+    ).toEqual(summary.sellerTotals);
+    await expect(
+      repository.startNextCart(base.session.id, base.organization.id),
+    ).rejects.toThrow("closed");
+    await expect(completeCheckout(base, "day-sale-1")).resolves.toMatchObject({
+      replayed: true,
+    });
+  });
+
+  it("rejects stale cart updates, deletion and checkout without side effects", async () => {
+    const base = await seedCheckout("STALE", 5, 1);
+    const line = await prisma.posCartLine.findFirstOrThrow({
+      where: { cartId: base.session.cartId },
+    });
+    const update = {
+      cartId: base.session.cartId,
+      organizationId: base.organization.id,
+      id: line.id,
+      expectedVersion: 2,
+      quantity: 2,
+      lineSubtotalMinor: 5000,
+    };
+    const outcomes = await Promise.allSettled([
+      repository.updateCartLine(update),
+      repository.updateCartLine(update),
+    ]);
+    expect(outcomes.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = outcomes.find((r) => r.status === "rejected");
+    expect(rejected).toMatchObject({
+      reason: { message: "Cart changed on another screen. Refresh." },
+    });
+    await expect(
+      repository.removeCartLine(
+        line.id,
+        base.session.cartId,
+        base.organization.id,
+        2,
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      repository.addCartLine({
+        expectedVersion: 2,
+        cartId: base.session.cartId,
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        quantity: 1,
+        unitPriceMinor: 2500,
+        lineSubtotalMinor: 2500,
+      }),
+    ).rejects.toThrow("Cart changed on another screen. Refresh.");
+    await expect(completeCheckout(base, "stale-checkout")).rejects.toThrow(
+      "Cart changed on another screen. Refresh.",
+    );
+    expect(await prisma.posCheckoutRecord.count()).toBe(0);
+    expect(
+      await prisma.posCart.findUnique({ where: { id: base.session.cartId } }),
+    ).toMatchObject({ status: "ACTIVE", version: 3 });
+  });
+
+  it("serializes settlement against a simultaneous cart edit", async () => {
+    const base = await seedCheckout("CLOSE-RACE", 5, 1);
+    const line = await prisma.posCartLine.findFirstOrThrow({
+      where: { cartId: base.session.cartId },
+    });
+    await repository.removeCartLine(
+      line.id,
+      base.session.cartId,
+      base.organization.id,
+      2,
+    );
+    const results = await Promise.allSettled([
+      settleDay(base, 0, 0),
+      repository.addCartLine({
+        expectedVersion: 3,
+        cartId: base.session.cartId,
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        quantity: 1,
+        unitPriceMinor: 2500,
+        lineSubtotalMinor: 2500,
+      }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const session = await prisma.salesSession.findUniqueOrThrow({
+      where: { id: base.session.id },
+    });
+    const count = await prisma.posCart.count({
+      where: {
+        salesSessionId: base.session.id,
+        status: "ACTIVE",
+        lines: { some: {} },
+      },
+    });
+    expect(count).toBe(session.status === "CLOSED" ? 0 : 1);
+  });
+
+  it("reads historical closed sessions with abandoned carts and no sales", async () => {
+    const base = await seedOrganization("OLD-CLOSED");
+    const opened = await repository.openSession({
+      counterId: base.counter.id,
+      organizationId: base.organization.id,
+      openedByUserId: base.user.id,
+      openedAt: new Date("2026-08-01T08:00:00Z"),
+    });
+    await repository.closeSession({
+      id: opened.id,
+      organizationId: base.organization.id,
+      expectedVersion: 1,
+      closedAt: new Date("2026-08-01T20:00:00Z"),
+    });
+    expect(
+      await repository.findCartDetailsById(
+        opened.cartId,
+        base.organization.id,
+        base.user.id,
+      ),
+    ).toMatchObject({ status: "ABANDONED", sessionStatus: "CLOSED" });
+    expect(
+      await getSalesSessionReconciliationSummary(
+        new PrismaPosSettlementRepository(prisma),
+        { sessionId: opened.id, organizationId: base.organization.id },
+      ),
+    ).toMatchObject({ salesCount: 0, sellerTotals: [], expectedTotalMinor: 0 });
+  });
+
+  it("blocks both close and settlement while the active cart is nonempty", async () => {
+    const base = await seedCheckout("NONEMPTY", 5, 1);
+    await expect(settleDay(base, 0, 0)).rejects.toThrow(
+      "Complete or empty the active cart",
+    );
+    await expect(
+      repository.closeSession({
+        id: base.session.id,
+        organizationId: base.organization.id,
+        expectedVersion: 1,
+        closedAt: new Date(),
+      }),
+    ).rejects.toThrow("Complete or empty the active cart");
+    expect(await prisma.posRegisterSettlement.count()).toBe(0);
+    expect(
+      await prisma.salesSession.findUnique({ where: { id: base.session.id } }),
+    ).toMatchObject({ status: "OPEN" });
+    const other = await seedOrganization("DAY-OTHER");
+    await expect(
+      repository.startNextCart(base.session.id, other.organization.id),
+    ).rejects.toThrow("not found");
+    expect(
+      await repository.listOpenSessionsByUser(
+        other.organization.id,
+        other.user.id,
+      ),
+    ).toEqual([]);
   });
 
   it("preserves organization isolation and unique counter codes", async () => {
@@ -127,6 +432,7 @@ describeWithDatabase("Prisma offline POS repository", () => {
         pos: repository,
       },
       {
+        expectedVersion: 1,
         cartId: opened.cartId,
         organizationId: base.organization.id,
         productVariantId: variant.id,
@@ -145,6 +451,8 @@ describeWithDatabase("Prisma offline POS repository", () => {
         base.user.id,
       ),
     ).resolves.toMatchObject({
+      status: "ACTIVE",
+      version: 2,
       checkoutId: null,
       lines: [
         {
@@ -172,6 +480,12 @@ describeWithDatabase("Prisma offline POS repository", () => {
         otherCashier.id,
       ),
     ).resolves.toMatchObject({ id: opened.cartId });
+    await repository.removeCartLine(
+      line.id,
+      opened.cartId,
+      base.organization.id,
+      2,
+    );
     const closed = await repository.closeSession({
       closedAt: new Date("2026-08-03T10:00:00.000Z"),
       expectedVersion: 1,
@@ -1374,6 +1688,7 @@ async function seedCheckout(label: string, stock: number, quantity: number) {
     organizationId: base.organization.id,
   });
   await repository.addCartLine({
+    expectedVersion: 1,
     cartId: session.cartId,
     lineSubtotalMinor: 2500 * quantity,
     organizationId: base.organization.id,
@@ -1427,6 +1742,7 @@ async function completeCheckout(
           salesOrders: transaction.posCheckoutSalesOrderRepository,
         },
         {
+          expectedVersion: 2,
           allowOutstanding: options.allowOutstanding ?? false,
           approveOutstanding: () => Promise.resolve(),
           cartId: base.session.cartId,
@@ -1721,6 +2037,7 @@ async function cleanDatabase() {
   await prisma.paymentLine.deleteMany();
   await prisma.paymentBatch.deleteMany();
   await prisma.posCheckoutRecord.deleteMany();
+  await prisma.posRegisterSettlement.deleteMany();
   await prisma.posCartLine.deleteMany();
   await prisma.posCart.deleteMany();
   await prisma.salesSession.deleteMany();
@@ -1758,4 +2075,34 @@ async function cleanDatabase() {
   await prisma.rolePermission.deleteMany();
   await prisma.permission.deleteMany();
   await prisma.organization.deleteMany();
+}
+
+async function settleDay(
+  base: Awaited<ReturnType<typeof seedCheckout>>,
+  cash: number,
+  card: number,
+) {
+  return new PrismaTransactionManager<CheckoutTestContext>(prisma).execute(
+    {
+      organizationId: base.organization.id,
+      userId: base.user.id,
+      requestId: "settle-day",
+    },
+    (tx) => {
+      if (!tx.posSettlementRepository)
+        throw new Error("Settlement capability required");
+      return closeSalesSessionWithSettlement(tx.posSettlementRepository, {
+        sessionId: base.session.id,
+        organizationId: base.organization.id,
+        expectedVersion: 1,
+        settlementId: crypto.randomUUID(),
+        closedByUserId: base.user.id,
+        closedAt: new Date(),
+        actualCashMinor: cash,
+        actualCardMinor: card,
+        actualBankTransferMinor: 0,
+        actualMobileBankingMinor: 0,
+      });
+    },
+  );
 }

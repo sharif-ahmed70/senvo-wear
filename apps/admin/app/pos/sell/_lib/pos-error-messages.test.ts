@@ -12,6 +12,19 @@ function error(code: ConstructorParameters<typeof AdminApiError>[0]["code"]) {
 }
 
 describe("cashier-safe POS errors", () => {
+  it("shows a clear shared-cart refresh message for stale versions", () => {
+    const reason = new AdminApiError({
+      code: "CONFLICT.STATE",
+      message: "Cart changed on another screen. Refresh.",
+      status: 409,
+      requestId: "req_stale",
+    });
+    expect(friendlyPosError(reason, "cart")).toEqual({
+      message: "Cart changed on another screen. Refresh.",
+      uncertain: false,
+      requestId: "req_stale",
+    });
+  });
   it("maps missing barcodes without exposing API codes", () => {
     expect(
       friendlyPosError(error("NOT_FOUND.RESOURCE"), "lookup"),

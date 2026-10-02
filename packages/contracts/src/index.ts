@@ -3375,6 +3375,8 @@ export const posCartLineContractSchema = z
 
 export const posCartDetailsContractSchema = z
   .object({
+    status: z.enum(["ACTIVE", "CHECKED_OUT", "ABANDONED"]),
+    version: expectedVersionSchema,
     checkoutId: idSchema.nullable(),
     createdAt: isoTimestampSchema,
     id: idSchema,
@@ -3451,6 +3453,22 @@ export const closeSalesSessionWithSettlementServiceInputSchema = z
   .strict();
 export const posSessionReconciliationSummaryContractSchema = z
   .object({
+    returnsMinor: minorUnitAmountSchema.default(0),
+    sellerTotals: z
+      .array(
+        z.object({
+          staffId: idSchema,
+          staffName: z.string(),
+          salesCount: z.number().int().nonnegative(),
+          grossSalesMinor: minorUnitAmountSchema,
+          paymentsMinor: minorUnitAmountSchema,
+          collectionsMinor: minorUnitAmountSchema,
+          refundsMinor: minorUnitAmountSchema,
+          returnsMinor: minorUnitAmountSchema,
+          netSalesMinor: z.number().int(),
+        }),
+      )
+      .default([]),
     bankTransferSalesMinor: minorUnitAmountSchema,
     cardSalesMinor: minorUnitAmountSchema,
     cashCollectionsMinor: minorUnitAmountSchema,
@@ -3516,6 +3534,7 @@ export const lookupPosSaleServiceInputSchema = z
   .strict();
 export const addPosCartItemServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     productVariantId: idSchema,
     quantity: positiveInventoryQuantitySchema.max(10000),
@@ -3523,14 +3542,23 @@ export const addPosCartItemServiceInputSchema = z
   .strict();
 export const updatePosCartItemServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     itemId: idSchema,
     quantity: positiveInventoryQuantitySchema.max(10000),
   })
   .strict();
 export const removePosCartItemServiceInputSchema = z
-  .object({ cartId: idSchema, itemId: idSchema })
+  .object({
+    cartId: idSchema,
+    itemId: idSchema,
+    expectedVersion: expectedVersionSchema,
+  })
   .strict();
+export const startNextPosCartServiceInputSchema = z
+  .object({ sessionId: idSchema })
+  .strict();
+
 export const getPosCartServiceInputSchema = z
   .object({ cartId: idSchema })
   .strict();
@@ -3603,6 +3631,7 @@ export const posCheckoutCustomerInputSchema = z
 
 export const checkoutPosCartServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     customer: posCheckoutCustomerInputSchema.nullable().optional(),
     idempotencyKey: z

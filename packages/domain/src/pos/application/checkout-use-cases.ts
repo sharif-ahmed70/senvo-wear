@@ -47,6 +47,7 @@ export async function checkoutCart(
     allowOutstanding: boolean;
     approveOutstanding(): Promise<void>;
     cartId: string;
+    expectedVersion: number;
     checkoutId: string;
     completedAt: Date;
     customer?: PosCheckoutCustomerInput | null;
@@ -99,6 +100,15 @@ export async function checkoutCart(
     }
     return { checkout: preparation.checkout, replayed: true };
   }
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+    throw new ValidationApplicationError(
+      "expectedVersion must be a positive integer.",
+    );
+  if (
+    preparation.cartVersion !== input.expectedVersion ||
+    preparation.cartStatus !== "ACTIVE"
+  )
+    throw new ConflictError("Cart changed on another screen. Refresh.");
   validatePreparation(preparation, staffId);
   const balance = calculatePaymentBalance(
     checkoutTotal(preparation),
@@ -155,6 +165,7 @@ export async function checkoutCart(
     salesOrderId: draft.id,
   });
   const checkoutRecord = await repositories.checkouts.createCompleted({
+    expectedVersion: input.expectedVersion,
     cartId,
     completedAt: input.completedAt,
     counterId: preparation.counterId,

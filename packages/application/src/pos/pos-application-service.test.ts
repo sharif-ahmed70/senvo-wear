@@ -48,6 +48,7 @@ describe("PosApplicationService checkout", () => {
     const result = await service.checkoutCart(
       { organizationId, requestId: "req_checkout_1", userId },
       {
+        expectedVersion: 1,
         allowOutstanding: false,
         cartId,
         idempotencyKey: "checkout-service-001",
@@ -210,6 +211,8 @@ describe("PosApplicationService cart reads", () => {
           expect(scopedOrganizationId).toBe(organizationId);
           expect(openedByUserId).toBe(userId);
           return Promise.resolve({
+            status: "ACTIVE",
+            version: 1,
             checkoutId: null,
             createdAt: now,
             id: cartId,
@@ -224,7 +227,13 @@ describe("PosApplicationService cart reads", () => {
     });
     const result = await service.getCart(context(), { cartId });
     expect(result).toMatchObject({
-      data: { id: cartId, lines: [], sessionStatus: "OPEN" },
+      data: {
+        status: "ACTIVE",
+        version: 1,
+        id: cartId,
+        lines: [],
+        sessionStatus: "OPEN",
+      },
       ok: true,
     });
     expect(permissions).toEqual([{ action: "READ", resource: "POS" }]);
@@ -454,6 +463,7 @@ function context() {
 
 function checkoutPayload() {
   return {
+    expectedVersion: 1,
     allowOutstanding: false,
     cartId,
     idempotencyKey: "checkout-service-001",
@@ -463,6 +473,8 @@ function checkoutPayload() {
 
 function preparation(): PosCheckoutPreparation {
   return {
+    cartStatus: "ACTIVE",
+    cartVersion: 1,
     allocationPolicyId: "10000000-0000-4000-8000-000000000004",
     boothId: null,
     branchId: "10000000-0000-4000-8000-000000000005",

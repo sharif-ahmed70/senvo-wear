@@ -68,7 +68,21 @@ export type PosRegisterSettlement = {
   totalDiscrepancyMinor: number;
 };
 
+export type PosSellerTotals = {
+  staffId: string;
+  staffName: string;
+  salesCount: number;
+  grossSalesMinor: number;
+  paymentsMinor: number;
+  collectionsMinor: number;
+  refundsMinor: number;
+  returnsMinor: number;
+  netSalesMinor: number;
+};
+
 export type PosSessionReconciliationSummary = {
+  sellerTotals: PosSellerTotals[];
+  returnsMinor: number;
   bankTransferSalesMinor: number;
   cardSalesMinor: number;
   cashCollectionsMinor: number;
@@ -102,7 +116,11 @@ export type PosCartLine = {
   updatedAt: Date;
 };
 
+export type PosCartStatus = "ACTIVE" | "CHECKED_OUT" | "ABANDONED";
+
 export type PosCart = {
+  status: PosCartStatus;
+  version: number;
   checkoutId?: string | null;
   createdAt: Date;
   id: string;
@@ -114,6 +132,8 @@ export type PosCart = {
 };
 
 export type PosCartDetails = {
+  status: PosCartStatus;
+  version: number;
   checkoutId: string | null;
   createdAt: Date;
   id: string;
@@ -160,6 +180,8 @@ export type PosCheckout = {
 };
 
 export type PosCheckoutPreparation = {
+  cartStatus: PosCartStatus;
+  cartVersion: number;
   allocationPolicyId: string | null;
   boothId: string | null;
   branchId: string | null;

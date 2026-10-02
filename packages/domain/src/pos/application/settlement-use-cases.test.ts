@@ -141,10 +141,10 @@ describe("POS register settlement use cases", () => {
 
       // Expected Cash = 100,000 (float) + 300,000 (cash sales) + 50,000 (collections) - 20,000 (cash refunds) = 430,000
       expect(summary.expectedCashMinor).toBe(430000);
-      expect(summary.expectedMobileBankingMinor).toBe(250000);
+      expect(summary.expectedMobileBankingMinor).toBe(240000);
       expect(summary.expectedCardMinor).toBe(150000);
       expect(summary.expectedBankTransferMinor).toBe(50000);
-      expect(summary.expectedTotalMinor).toBe(880000);
+      expect(summary.expectedTotalMinor).toBe(870000);
     });
 
     it("throws NotFoundError when session reconciliation source does not exist", async () => {
@@ -168,7 +168,7 @@ describe("POS register settlement use cases", () => {
         actualBankTransferMinor: 50000,
         actualCardMinor: 150000,
         actualCashMinor: 430000,
-        actualMobileBankingMinor: 250000,
+        actualMobileBankingMinor: 240000,
         closedAt,
         closedByUserId: userId,
         closingNotes: "Smooth evening closing",
@@ -196,7 +196,7 @@ describe("POS register settlement use cases", () => {
         actualBankTransferMinor: 50000,
         actualCardMinor: 150000,
         actualCashMinor: 425000, // ৳50 short (5,000 minor)
-        actualMobileBankingMinor: 250000,
+        actualMobileBankingMinor: 240000,
         approvedByUserId: managerId,
         closedAt,
         closedByUserId: userId,
@@ -225,7 +225,7 @@ describe("POS register settlement use cases", () => {
         actualBankTransferMinor: 50000,
         actualCardMinor: 150000,
         actualCashMinor: 440000, // ৳100 over (10,000 minor)
-        actualMobileBankingMinor: 250000,
+        actualMobileBankingMinor: 240000,
         closedAt,
         closedByUserId: userId,
         discrepancyReason: "Customer left 100 BDT tip in drawer",
@@ -252,7 +252,7 @@ describe("POS register settlement use cases", () => {
           actualBankTransferMinor: 50000,
           actualCardMinor: 150000,
           actualCashMinor: 425000, // Shortage without reason
-          actualMobileBankingMinor: 250000,
+          actualMobileBankingMinor: 240000,
           closedAt: new Date(),
           closedByUserId: userId,
           expectedVersion: 1,
@@ -272,7 +272,7 @@ describe("POS register settlement use cases", () => {
         actualBankTransferMinor: 50000,
         actualCardMinor: 150000,
         actualCashMinor: 430000,
-        actualMobileBankingMinor: 250000,
+        actualMobileBankingMinor: 240000,
         closedAt: new Date(),
         closedByUserId: userId,
         denominationBreakdown: { "100": 3, "1000": 4 }, // 4*1000 + 3*100 = 4300 BDT = 430,000 minor
@@ -289,7 +289,7 @@ describe("POS register settlement use cases", () => {
           actualBankTransferMinor: 50000,
           actualCardMinor: 150000,
           actualCashMinor: 430000,
-          actualMobileBankingMinor: 250000,
+          actualMobileBankingMinor: 240000,
           closedAt: new Date(),
           closedByUserId: userId,
           denominationBreakdown: { "1000": 1 }, // Only ৳1,000 vs ৳4,300 entered
@@ -310,7 +310,7 @@ describe("POS register settlement use cases", () => {
           actualBankTransferMinor: 50000,
           actualCardMinor: 150000,
           actualCashMinor: 430000,
-          actualMobileBankingMinor: 250000,
+          actualMobileBankingMinor: 240000,
           closedAt: new Date(),
           closedByUserId: userId,
           expectedVersion: 1,
@@ -328,7 +328,7 @@ describe("POS register settlement use cases", () => {
         actualBankTransferMinor: 50000,
         actualCardMinor: 150000,
         actualCashMinor: 430000,
-        actualMobileBankingMinor: 250000,
+        actualMobileBankingMinor: 240000,
         actualTotalMinor: 880000,
         bankTransferDiscrepancyMinor: 0,
         cardDiscrepancyMinor: 0,
@@ -356,7 +356,7 @@ describe("POS register settlement use cases", () => {
           actualBankTransferMinor: 50000,
           actualCardMinor: 150000,
           actualCashMinor: 430000,
-          actualMobileBankingMinor: 250000,
+          actualMobileBankingMinor: 240000,
           closedAt: new Date(),
           closedByUserId: userId,
           expectedVersion: 1,
@@ -376,7 +376,7 @@ describe("POS register settlement use cases", () => {
           actualBankTransferMinor: 50000,
           actualCardMinor: 150000,
           actualCashMinor: 430000,
-          actualMobileBankingMinor: 250000,
+          actualMobileBankingMinor: 240000,
           closedAt: new Date(),
           closedByUserId: userId,
           expectedVersion: 1, // Client expects version 1

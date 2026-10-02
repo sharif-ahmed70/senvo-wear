@@ -10,6 +10,11 @@ describe("PrismaPosSettlementRepository", () => {
 
   it("returns null when session is not found", async () => {
     const mockPrisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      posCart: {
+        count: vi.fn().mockResolvedValue(0),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       posCheckoutRecord: { findMany: vi.fn() },
       salesSession: { findFirst: vi.fn().mockResolvedValue(null) },
     };
@@ -24,6 +29,11 @@ describe("PrismaPosSettlementRepository", () => {
 
   it("aggregates session payment batches, collections, and refunds", async () => {
     const mockPrisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      posCart: {
+        count: vi.fn().mockResolvedValue(0),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       paymentBatch: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -49,11 +59,19 @@ describe("PrismaPosSettlementRepository", () => {
         ]),
       },
       posCheckoutRecord: {
-        findMany: vi.fn().mockResolvedValue([{ id: "checkout-1" }]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "checkout-1",
+            staffId: userId,
+            totalMinor: 40000,
+            staff: { name: "Staff", email: "staff@example.test" },
+            posSaleReturns: [],
+          },
+        ]),
       },
       salesSession: {
         findFirst: vi.fn().mockResolvedValue({
-          cart: { id: "cart-1" },
+          carts: [{ id: "cart-1", status: "ACTIVE", _count: { lines: 0 } }],
           closedAt: null,
           counter: { id: counterId, name: "Main Counter" },
           counterId,
@@ -87,6 +105,11 @@ describe("PrismaPosSettlementRepository", () => {
 
   it("returns settlement by sessionId", async () => {
     const mockPrisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      posCart: {
+        count: vi.fn().mockResolvedValue(0),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       posRegisterSettlement: {
         findFirst: vi.fn().mockResolvedValue({
           actualBankTransferMinor: 0,
@@ -132,6 +155,11 @@ describe("PrismaPosSettlementRepository", () => {
 
   it("handles version conflict returning null when updateMany affects 0 rows", async () => {
     const mockPrisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      posCart: {
+        count: vi.fn().mockResolvedValue(0),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       salesSession: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
@@ -194,6 +222,11 @@ describe("PrismaPosSettlementRepository", () => {
     (p2002Error as unknown as { code: string }).code = "P2002";
 
     const mockPrisma = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      posCart: {
+        count: vi.fn().mockResolvedValue(0),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       posRegisterSettlement: {
         create: vi.fn().mockRejectedValue(p2002Error),
       },

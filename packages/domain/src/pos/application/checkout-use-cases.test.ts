@@ -188,6 +188,7 @@ describe("POS checkout", () => {
 
 function input() {
   return {
+    expectedVersion: 1,
     cartId: ids.cart,
     allowOutstanding: false,
     approveOutstanding: () => Promise.resolve(),
@@ -204,6 +205,8 @@ function input() {
 
 function preparation(): PosCheckoutPreparation {
   return {
+    cartStatus: "ACTIVE",
+    cartVersion: 1,
     allocationPolicyId: ids.allocation,
     boothId: null,
     branchId: "10000000-0000-4000-8000-000000000010",

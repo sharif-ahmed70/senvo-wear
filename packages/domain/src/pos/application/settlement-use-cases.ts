@@ -7,6 +7,7 @@ import {
 } from "../../errors.js";
 import type {
   PosRegisterSettlement,
+  PosSellerTotals,
   PosSessionReconciliationSummary,
   SalesSession,
 } from "../domain/models.js";
@@ -66,7 +67,44 @@ export async function getSalesSessionReconciliationSummary(
     openingFloatMinor: source.session.openingFloatMinor,
   });
 
+  const sellerTotals = new Map<string, PosSellerTotals>();
+  for (const sale of source.sales ?? []) {
+    const total = sellerTotals.get(sale.staffId) ?? {
+      staffId: sale.staffId,
+      staffName: sale.staffName,
+      salesCount: 0,
+      grossSalesMinor: 0,
+      paymentsMinor: 0,
+      collectionsMinor: 0,
+      refundsMinor: 0,
+      returnsMinor: 0,
+      netSalesMinor: 0,
+    };
+    total.salesCount += 1;
+    total.grossSalesMinor += sale.totalMinor;
+    sellerTotals.set(sale.staffId, total);
+  }
+  for (const [lines, field] of [
+    [source.payments, "paymentsMinor"],
+    [source.collections, "collectionsMinor"],
+    [source.refunds, "refundsMinor"],
+    [source.returns ?? [], "returnsMinor"],
+  ] as const) {
+    for (const line of lines) {
+      const total = line.staffId ? sellerTotals.get(line.staffId) : undefined;
+      if (total) total[field] += line.amountMinor;
+    }
+  }
+  for (const total of sellerTotals.values())
+    total.netSalesMinor = total.grossSalesMinor - total.returnsMinor;
   return {
+    sellerTotals: [...sellerTotals.values()].sort((a, b) =>
+      a.staffId.localeCompare(b.staffId),
+    ),
+    returnsMinor: (source.returns ?? []).reduce(
+      (sum, item) => sum + item.amountMinor,
+      0,
+    ),
     bankTransferSalesMinor: Number(channelTotals.bankTransferSalesMinor),
     cardSalesMinor: Number(channelTotals.cardSalesMinor),
     cashCollectionsMinor: Number(channelTotals.cashCollectionsMinor),
@@ -80,7 +118,9 @@ export async function getSalesSessionReconciliationSummary(
     expectedCashMinor: Number(expected.expectedCashMinor),
     expectedMobileBankingMinor: Number(expected.expectedMobileBankingMinor),
     expectedTotalMinor: Number(expected.expectedTotalMinor),
-    grossSalesMinor: Number(channelTotals.grossSalesMinor),
+    grossSalesMinor: source.sales
+      ? source.sales.reduce((sum, sale) => sum + sale.totalMinor, 0)
+      : Number(channelTotals.grossSalesMinor),
     mobileBankingSalesMinor: Number(channelTotals.mobileBankingSalesMinor),
     openedAt: source.session.openedAt,
     openingFloatMinor: source.session.openingFloatMinor,
@@ -131,6 +171,11 @@ export async function closeSalesSessionWithSettlement(
   if (source.session.status !== "OPEN") {
     throw new BusinessRuleError("The sales session is already closed.");
   }
+
+  if (source.hasActiveNonEmptyCart)
+    throw new BusinessRuleError(
+      "Complete or empty the active cart before settling this session.",
+    );
 
   const existingSettlement = await repository.findSettlementBySessionId(
     sessionId,

@@ -26,6 +26,15 @@ export function friendlyPosError(
       uncertain: operation === "checkout",
     };
   }
+  if (
+    reason.code === "CONFLICT.STATE" &&
+    reason.message === "Cart changed on another screen. Refresh."
+  )
+    return {
+      message: reason.message,
+      requestId: reason.requestId,
+      uncertain: false,
+    };
   const messages: Partial<Record<string, string>> = {
     "AUTHENTICATION.REQUIRED":
       "Your sign-in is no longer active. Sign in again to continue.",

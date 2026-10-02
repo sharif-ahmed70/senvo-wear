@@ -713,6 +713,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 201,
       },
       {
+        handler: handlers.pos.startNextCart,
+        input: pathBodyInput("sessionId"),
+        method: "POST",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/carts$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.closeSession,
         input: pathBodyInput("sessionId"),
         method: "POST",
@@ -860,7 +867,8 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
       {
         handler: handlers.pos.removeCartItem,
-        input: (_body, match) => ({
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
           cartId: match.groups?.cartId,
           itemId: match.groups?.itemId,
         }),
