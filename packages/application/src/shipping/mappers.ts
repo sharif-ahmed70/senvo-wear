@@ -1,6 +1,4 @@
-import type {
-  CourierConsignmentContract,
-} from "@senvo/contracts";
+import type { CourierConsignmentContract } from "@senvo/contracts";
 import { courierConsignmentContractSchema } from "@senvo/contracts";
 import type { CourierConsignment } from "@senvo/domain";
 
@@ -20,7 +18,9 @@ export function mapCourierConsignment(
     deliveryDistrict: record.deliveryDistrict,
     deliveryFeeMinor: record.deliveryFeeMinor.toString(),
     deliveryPostalCode: record.deliveryPostalCode,
-    dispatchedAt: record.dispatchedAt ? record.dispatchedAt.toISOString() : null,
+    dispatchedAt: record.dispatchedAt
+      ? record.dispatchedAt.toISOString()
+      : null,
     id: record.id,
     itemWeightGram: record.itemWeightGram,
     note: record.note,

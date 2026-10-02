@@ -763,6 +763,31 @@ describe("ProcurementApplicationService", () => {
       );
     });
 
+    it.each(["stock-intake:intake-key-0001", "Stock-Intake:abc"])(
+      "rejects the reserved stock intake key prefix %s before writing",
+      async (idempotencyKey) => {
+        const mockSupplierRepo = createMockRepository();
+        const mockPaymentRepo = createMockPaymentRepo();
+        const service = new ProcurementApplicationService({
+          supplierLedger: createMockLedgerRepo() as any,
+          supplierPayments: mockPaymentRepo as any,
+          suppliers: mockSupplierRepo as any,
+        });
+
+        const result = await service.recordSupplierPayment(validContext, {
+          amountMinor: "1000",
+          idempotencyKey,
+          paymentMethod: "CASH",
+          supplierId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.code).toBe("VALIDATION_ERROR");
+        expect(mockSupplierRepo.findById).not.toHaveBeenCalled();
+        expect(mockPaymentRepo.recordPayment).not.toHaveBeenCalled();
+      },
+    );
+
     it("rejects recording payment when user lacks PROCUREMENT:CREATE permission", async () => {
       const mockSupplierRepo = createMockRepository();
       const service = new ProcurementApplicationService({

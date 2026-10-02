@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createProcurementApiHandlers,
   createProtectedApiHandler,
+  createStockIntakeApiHandlers,
   type ApiHandler,
   type ApiRequest,
   type CatalogApiHandlers,
@@ -1038,10 +1039,16 @@ describe("Node HTTP runtime adapter", () => {
     const sessionId = "10000000-0000-4000-8000-000000000099";
 
     const getReconciliation = new RecordingApiHandler(
-      createApiSuccess({ sessionId, expectedCashMinor: 50000 }, suppliedRequestId),
+      createApiSuccess(
+        { sessionId, expectedCashMinor: 50000 },
+        suppliedRequestId,
+      ),
     );
     const closeSettlement = new RecordingApiHandler(
-      createApiSuccess({ id: "settle-1", status: "BALANCED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: "settle-1", status: "BALANCED" },
+        suppliedRequestId,
+      ),
     );
 
     const fallback = new RecordingApiHandler(
@@ -1230,6 +1237,78 @@ describe("Node HTTP runtime adapter", () => {
           "production" as "development",
         ),
     ).toThrow("unavailable in production");
+  });
+
+  it("routes stock intake POST with trusted context and returns HTTP 201", async () => {
+    const authorization = new AllowAuthorizationService();
+    const received: unknown[] = [];
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+        stockIntake: createStockIntakeApiHandlers({
+          authenticationService: new DevelopmentAuthenticationService("test"),
+          authorizationService: authorization,
+          stockIntake: {
+            recordStockIntake: (context, input) => {
+              received.push({ context, input });
+              return Promise.resolve({
+                data: { replayed: false } as never,
+                ok: true,
+              });
+            },
+          },
+        }),
+      },
+    });
+    const payload = {
+      idempotencyKey: "intake-http-0001",
+      lines: [
+        {
+          colorName: "Black",
+          quantity: 1,
+          sellingPriceMinor: 1_000,
+          sizeName: "M",
+          unitCostMinor: 500,
+        },
+      ],
+      product: {
+        audienceCategoryName: "Men",
+        name: "Tee",
+        typeCategoryName: "T-shirt",
+      },
+      purchase: {
+        destinationLocationId: "10000000-0000-4000-8000-000000000004",
+      },
+      supplier: null,
+    };
+
+    const response = await fetch(`${runtime.url}/inventory/stock-intakes`, {
+      body: JSON.stringify(payload),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+    const rejected = await fetch(`${runtime.url}/inventory/stock-intakes`, {
+      body: JSON.stringify({ ...payload, organizationId }),
+      headers: developmentHeaders(suppliedRequestId),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(201);
+    expect(rejected.status).toBe(400);
+    expect(received).toEqual([
+      {
+        context: expect.objectContaining({ organizationId, userId }) as unknown,
+        input: payload,
+      },
+    ]);
+    expect(authorization.calls[0]?.permission).toEqual({
+      action: "CREATE",
+      resource: "PROCUREMENT",
+    });
   });
 
   it("routes procurement supplier requests to supplier handlers", async () => {
@@ -2183,16 +2262,28 @@ describe("Node HTTP runtime adapter", () => {
     const salesOrderId = "20000000-0000-4000-8000-000000000001";
 
     const dispatchHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "BOOKED" },
+        suppliedRequestId,
+      ),
     );
     const getShipmentByOrderHandler = new RecordingApiHandler(
-      createApiSuccess([{ id: consignmentId, status: "BOOKED" }], suppliedRequestId),
+      createApiSuccess(
+        [{ id: consignmentId, status: "BOOKED" }],
+        suppliedRequestId,
+      ),
     );
     const updateStatusHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "IN_TRANSIT" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "IN_TRANSIT" },
+        suppliedRequestId,
+      ),
     );
     const getConsignmentHandler = new RecordingApiHandler(
-      createApiSuccess({ id: consignmentId, status: "BOOKED" }, suppliedRequestId),
+      createApiSuccess(
+        { id: consignmentId, status: "BOOKED" },
+        suppliedRequestId,
+      ),
     );
 
     const shippingHandlers: ShippingApiHandlers = {
@@ -2233,7 +2324,9 @@ describe("Node HTTP runtime adapter", () => {
       salesOrderId,
       trackingCode: "ST-9988",
     });
-    expect(dispatchHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(dispatchHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 2. GET /sales/orders/:id/shipment
     const getShipmentRes = await fetch(
@@ -2248,7 +2341,9 @@ describe("Node HTTP runtime adapter", () => {
     expect(getShipmentByOrderHandler.requests[0]?.input).toEqual({
       salesOrderId,
     });
-    expect(getShipmentByOrderHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(getShipmentByOrderHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 3. PATCH /shipping/consignments/:id/status
     const updateRes = await fetch(
@@ -2269,7 +2364,9 @@ describe("Node HTTP runtime adapter", () => {
       note: "Departed hub",
       status: "IN_TRANSIT",
     });
-    expect(updateStatusHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(updateStatusHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
 
     // 4. GET /shipping/consignments/:id
     const getConsignmentRes = await fetch(
@@ -2284,7 +2381,9 @@ describe("Node HTTP runtime adapter", () => {
     expect(getConsignmentHandler.requests[0]?.input).toEqual({
       consignmentId,
     });
-    expect(getConsignmentHandler.requests[0]?.context.organizationId).toBe(organizationId);
+    expect(getConsignmentHandler.requests[0]?.context.organizationId).toBe(
+      organizationId,
+    );
   });
 });
 

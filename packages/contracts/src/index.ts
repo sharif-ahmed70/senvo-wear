@@ -112,6 +112,8 @@ export function createApiFailure(input: {
 }
 
 const idSchema = z.string().uuid();
+/** Reserved idempotency namespace used by stock intake (see @senvo/domain). */
+const STOCK_INTAKE_KEY_PREFIX = "stock-intake:";
 const displayNameSchema = z.string().trim().min(1).max(160);
 const descriptionSchema = z
   .string()
@@ -4682,7 +4684,18 @@ export const createSupplierPaymentServiceInputSchema = z
         ),
       z.number().int().positive("Amount must be greater than zero."),
     ]),
-    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    // "stock-intake:" keys are reserved for payments recorded by a stock
+    // intake, so a client key can never collide with (and replay) one.
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .refine(
+        (key) => !key.toLowerCase().startsWith(STOCK_INTAKE_KEY_PREFIX),
+        'Idempotency keys starting with "stock-intake:" are reserved.',
+      )
+      .optional(),
     notes: optionalTextSchema(1000),
     paymentDate: isoTimestampSchema.optional(),
     paymentMethod: supplierPaymentMethodSchema,
@@ -4965,3 +4978,175 @@ export const productInventorySummaryPageContractSchema =
 export type ProductInventorySummaryContract = z.infer<
   typeof productInventorySummaryContractSchema
 >;
+
+const stockIntakeIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(100)
+  .regex(/^[A-Za-z0-9._:-]+$/);
+const stockIntakeMinorAmountSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(2_147_483_647);
+const stockIntakeSellingPriceSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(2_147_483_647);
+const stockIntakeLineCommonShape = {
+  quantity: z.number().int().positive().max(100_000),
+  unitCostMinor: stockIntakeMinorAmountSchema,
+};
+const stockIntakeRequiredPhoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(
+    /^[+0-9() .-]+$/,
+    "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+  );
+
+export const stockIntakeProductInputSchema = z.union([
+  z.object({ existingProductId: idSchema }).strict(),
+  z
+    .object({
+      audienceCategoryName: displayNameSchema,
+      description: descriptionSchema,
+      name: displayNameSchema,
+      status: z.enum(["ACTIVE", "DRAFT", "INACTIVE"]).optional(),
+      typeCategoryName: displayNameSchema,
+    })
+    .strict(),
+]);
+
+export const stockIntakeLineInputSchema = z.union([
+  z
+    .object({
+      ...stockIntakeLineCommonShape,
+      existingVariantId: idSchema,
+      sellingPriceMinor: stockIntakeSellingPriceSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...stockIntakeLineCommonShape,
+      colorName: displayNameSchema,
+      sellingPriceMinor: stockIntakeSellingPriceSchema,
+      sizeName: displayNameSchema,
+    })
+    .strict(),
+]);
+
+export const stockIntakeSupplierInputSchema = z
+  .union([
+    z
+      .object({
+        existingSupplierId: idSchema,
+        updates: z
+          .object({
+            address: optionalTextSchema(255),
+            phone: phoneSchema,
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    z
+      .object({
+        new: z
+          .object({
+            address: optionalTextSchema(255),
+            name: displayNameSchema,
+            phone: stockIntakeRequiredPhoneSchema,
+          })
+          .strict(),
+      })
+      .strict(),
+  ])
+  .nullable();
+
+export const stockIntakePaymentMethodSchema = z.enum([
+  "CASH",
+  "MOBILE_BANKING",
+  "BANK",
+]);
+
+export const createStockIntakeServiceInputSchema = z
+  .object({
+    idempotencyKey: stockIntakeIdempotencyKeySchema,
+    lines: z.array(stockIntakeLineInputSchema).min(1).max(100),
+    payment: z
+      .object({
+        amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        method: stockIntakePaymentMethodSchema,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    product: stockIntakeProductInputSchema,
+    purchase: z
+      .object({
+        destinationLocationId: idSchema,
+        // Supplier's memo/invoice reference, any script; stored in purchase
+        // notes as "Memo: <value>". It is not the purchase number.
+        memoNumber: z.string().trim().min(1).max(60).optional(),
+        note: optionalTextSchema(1000),
+        purchaseDate: z
+          .union([isoTimestampSchema, calendarDateSchema])
+          .optional(),
+      })
+      .strict(),
+    supplier: stockIntakeSupplierInputSchema,
+    transportCostMinor: stockIntakeMinorAmountSchema.optional(),
+    transportPaidToSupplier: z.boolean().optional(),
+  })
+  .strict();
+export type CreateStockIntakeServiceInputContract = z.infer<
+  typeof createStockIntakeServiceInputSchema
+>;
+
+export const stockIntakeContractSchema = z
+  .object({
+    dueMinor: z.string(),
+    payment: z
+      .object({
+        amountMinor: z.string(),
+        id: idSchema,
+        method: supplierPaymentMethodSchema,
+      })
+      .strict()
+      .nullable(),
+    product: z
+      .object({ code: z.string(), id: idSchema, name: z.string() })
+      .strict(),
+    purchase: z
+      .object({
+        id: idSchema,
+        purchaseNumber: z.string(),
+        totalCostMinor: z.string(),
+      })
+      .strict(),
+    replayed: z.boolean(),
+    supplier: z.object({ id: idSchema, name: z.string() }).strict(),
+    transportAppliedMinor: z.number().int().nonnegative(),
+    transportRequestedMinor: z.number().int().nonnegative(),
+    variants: z.array(
+      z
+        .object({
+          barcode: z.string().nullable(),
+          color: z.string(),
+          id: idSchema,
+          quantity: z.number().int().positive(),
+          sellingPriceMinor: z.number().int().nonnegative(),
+          size: z.string(),
+          sku: z.string(),
+          unitCostMinor: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;

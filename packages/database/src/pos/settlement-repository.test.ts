@@ -15,7 +15,10 @@ describe("PrismaPosSettlementRepository", () => {
     };
 
     const repo = new PrismaPosSettlementRepository(mockPrisma as never);
-    const result = await repo.findSessionReconciliationSource(sessionId, organizationId);
+    const result = await repo.findSessionReconciliationSource(
+      sessionId,
+      organizationId,
+    );
     expect(result).toBeNull();
   });
 
@@ -68,7 +71,10 @@ describe("PrismaPosSettlementRepository", () => {
     };
 
     const repo = new PrismaPosSettlementRepository(mockPrisma as never);
-    const result = await repo.findSessionReconciliationSource(sessionId, organizationId);
+    const result = await repo.findSessionReconciliationSource(
+      sessionId,
+      organizationId,
+    );
 
     expect(result).not.toBeNull();
     expect(result?.counter.name).toBe("Main Counter");
@@ -116,7 +122,10 @@ describe("PrismaPosSettlementRepository", () => {
     };
 
     const repo = new PrismaPosSettlementRepository(mockPrisma as never);
-    const result = await repo.findSettlementBySessionId(sessionId, organizationId);
+    const result = await repo.findSettlementBySessionId(
+      sessionId,
+      organizationId,
+    );
     expect(result?.status).toBe("BALANCED");
     expect(result?.actualTotalMinor).toBe(37000);
   });

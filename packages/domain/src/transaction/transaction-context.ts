@@ -20,7 +20,17 @@ import type {
   PaymentRefundRepository,
 } from "../payment/repositories/payment-refund-repository.js";
 import type { CatalogMediaRepository } from "../catalog/repositories/catalog-media-repository.js";
-import type { CatalogProductManagementRepository } from "../catalog/repositories/catalog-repositories.js";
+import type {
+  BarcodeRepository,
+  CatalogProductManagementRepository,
+  CatalogProductVariantManagementRepository,
+  CategoryRepository,
+  ColorRepository,
+  OrganizationRepository,
+  SizeRepository,
+} from "../catalog/repositories/catalog-repositories.js";
+import type { StockIntakeRepository } from "../procurement/repositories/stock-intake-repository.js";
+import type { SupplierRepository } from "../procurement/repositories/supplier-repository.js";
 import type { OnlinePaymentRepository } from "../payment/repositories/online-payment-repository.js";
 import type { PurchaseRepository } from "../procurement/repositories/purchase-repository.js";
 import type { CostRepository } from "../procurement/repositories/cost-repository.js";
@@ -56,6 +66,14 @@ export type TransactionContext<TApplicationContext> = {
   storefrontRepository?: StorefrontRepository;
   supplierLedgerRepository?: SupplierLedgerRepository;
   supplierPaymentRepository?: SupplierPaymentRepository;
+  barcodeRepository?: BarcodeRepository;
+  categoryRepository?: CategoryRepository;
+  colorRepository?: ColorRepository;
+  organizationRepository?: OrganizationRepository;
+  productVariantRepository?: CatalogProductVariantManagementRepository;
+  sizeRepository?: SizeRepository;
+  stockIntakeRepository?: StockIntakeRepository;
+  supplierRepository?: SupplierRepository;
 };
 
 export type TransactionManager<TApplicationContext> = {

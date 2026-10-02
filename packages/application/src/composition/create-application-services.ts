@@ -100,6 +100,7 @@ import { CatalogMediaApplicationService } from "../catalog/catalog-media-applica
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
 import { ProcurementApplicationService } from "../procurement/procurement-application-service.js";
+import { StockIntakeApplicationService } from "../procurement/stock-intake-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
@@ -179,6 +180,7 @@ export type ApplicationServices = {
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
   shipping: ShippingApplicationService;
+  stockIntake?: StockIntakeApplicationService;
   storefront: StorefrontApplicationService;
   customerAuthentication?: CustomerAuthenticationService;
   workforceAuthentication?: WorkforceAuthenticationService;
@@ -386,8 +388,9 @@ export function createApplicationServices(
 
   let courierConsignmentRepository = options.courierConsignmentRepository;
   if (!courierConsignmentRepository && prismaClient)
-    courierConsignmentRepository =
-      new PrismaCourierConsignmentRepository(prismaClient);
+    courierConsignmentRepository = new PrismaCourierConsignmentRepository(
+      prismaClient,
+    );
 
   if (!workforceAuthenticationRepository && prismaClient)
     workforceAuthenticationRepository =
@@ -591,6 +594,11 @@ export function createApplicationServices(
       salesOrders: salesOrderRepository,
       transactionManager,
     }),
+    stockIntake: new StockIntakeApplicationService({
+      authorizationService: options.authorizationService,
+      requestIdGenerator: options.requestIdGenerator,
+      transactionManager,
+    }),
     storefront: new StorefrontApplicationService({
       clock,
       maintenanceService: new StorefrontReservationMaintenanceService({
@@ -638,10 +646,12 @@ function resolveStorageProvider(
 }
 
 const fakeCourierConsignmentRepository: CourierConsignmentRepository = {
-  create: () => Promise.reject(new Error("No courier consignment repository configured.")),
+  create: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
   findActiveBySalesOrderId: () => Promise.resolve(null),
   findByConsignmentNumber: () => Promise.resolve(null),
   findById: () => Promise.resolve(null),
   listBySalesOrderId: () => Promise.resolve([]),
-  update: () => Promise.reject(new Error("No courier consignment repository configured.")),
+  update: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
 };

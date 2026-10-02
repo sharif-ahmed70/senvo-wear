@@ -5,6 +5,7 @@ import {
   listSupplierPayments,
   recordSupplierPayment,
   recordSupplierAdjustment,
+  SupplierPaymentIdempotencyConflictError,
 } from "./supplier-payment-use-cases.js";
 import { confirmPurchaseOrder } from "./purchase-use-cases.js";
 import type {
@@ -404,6 +405,37 @@ describe("supplier payment and ledger use cases", () => {
       expect(ctx.payments).toHaveLength(1);
       expect(ctx.ledgerEntries).toHaveLength(1);
     });
+
+    it.each([
+      ["a different amount", { amountMinor: 2_000n }],
+      ["a different method", { paymentMethod: "CASH" as const }],
+      ["a different purchase", { purchaseId }],
+    ])(
+      "rejects a replayed key with %s instead of returning the stored payment",
+      async (_label, change) => {
+        const ctx = setupInMemoryRepositories();
+        const dependencies = {
+          purchaseRepository: ctx.purchaseRepository,
+          supplierLedgerRepository: ctx.supplierLedgerRepository,
+          supplierPaymentRepository: ctx.supplierPaymentRepository,
+          supplierRepository: ctx.supplierRepository,
+        };
+        const original = {
+          amountMinor: 100n,
+          idempotencyKey: "idem-key-collide",
+          organizationId: orgId,
+          paymentMethod: "CHEQUE" as const,
+          supplierId,
+        };
+        await recordSupplierPayment(dependencies, original);
+
+        await expect(
+          recordSupplierPayment(dependencies, { ...original, ...change }),
+        ).rejects.toBeInstanceOf(SupplierPaymentIdempotencyConflictError);
+        expect(ctx.payments).toHaveLength(1);
+        expect(ctx.ledgerEntries).toHaveLength(1);
+      },
+    );
 
     it("rejects non-positive payment amount", async () => {
       const ctx = setupInMemoryRepositories();

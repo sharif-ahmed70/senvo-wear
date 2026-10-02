@@ -90,7 +90,9 @@ export function InventoryOverview({
       if (caught instanceof AdminApiError) {
         setError(caught.message);
       } else {
-        setError("Failed to connect to inventory service. Please check connection.");
+        setError(
+          "Failed to connect to inventory service. Please check connection.",
+        );
       }
     } finally {
       setLoading(false);
@@ -258,9 +260,7 @@ export function InventoryOverview({
             <strong className={styles.summaryValue}>
               {metrics.totalProducts}
             </strong>
-            <span className={styles.summarySubtext}>
-              Active catalog styles
-            </span>
+            <span className={styles.summarySubtext}>Active catalog styles</span>
           </div>
         </article>
 
@@ -298,9 +298,7 @@ export function InventoryOverview({
             >
               {metrics.needRestockCount}
             </strong>
-            <span className={styles.summarySubtext}>
-              Available ≤ 5 pieces
-            </span>
+            <span className={styles.summarySubtext}>Available ≤ 5 pieces</span>
           </div>
         </article>
 
@@ -320,9 +318,7 @@ export function InventoryOverview({
             >
               {metrics.outOfStockCount}
             </strong>
-            <span className={styles.summarySubtext}>
-              0 available to sell
-            </span>
+            <span className={styles.summarySubtext}>0 available to sell</span>
           </div>
         </article>
       </section>
@@ -406,8 +402,7 @@ export function InventoryOverview({
           >
             <CheckCircle2 size={13} />
             <span>
-              In Stock (
-              {items.filter((i) => i.availableToSell > 5).length})
+              In Stock ({items.filter((i) => i.availableToSell > 5).length})
             </span>
           </button>
 
@@ -487,7 +482,8 @@ export function InventoryOverview({
           {filteredProducts.map((item) => {
             const isOutOfStock = item.availableToSell <= 0;
             const isLowStock = !isOutOfStock && item.availableToSell <= 5;
-            const primarySku = item.variants[0]?.variant.sku || item.product.productCode;
+            const primarySku =
+              item.variants[0]?.variant.sku || item.product.productCode;
 
             // Unique colors and sizes count
             const uniqueColors = new Set(
@@ -588,8 +584,9 @@ export function InventoryOverview({
                   <div className={styles.cardVariantsSummary}>
                     <Boxes size={13} />
                     <span>
-                      {uniqueColors.size} color{uniqueColors.size !== 1 ? "s" : ""} ·{" "}
-                      {uniqueSizes.size} size{uniqueSizes.size !== 1 ? "s" : ""}
+                      {uniqueColors.size} color
+                      {uniqueColors.size !== 1 ? "s" : ""} · {uniqueSizes.size}{" "}
+                      size{uniqueSizes.size !== 1 ? "s" : ""}
                     </span>
                   </div>
                 </div>

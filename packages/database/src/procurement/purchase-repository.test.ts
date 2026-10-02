@@ -131,7 +131,6 @@ describe("PrismaPurchaseRepository", () => {
               {
                 lineNumber: 1,
                 notes: "100 pcs black 32",
-                organizationId: orgA,
                 productName: "Slim Fit Chino Pant",
                 productVariantId: variantId,
                 quantity: 100,

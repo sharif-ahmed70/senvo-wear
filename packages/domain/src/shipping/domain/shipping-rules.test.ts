@@ -17,9 +17,9 @@ describe("shipping rules and state machine", () => {
       expect(canTransitionShipmentStatus("BOOKED", "IN_TRANSIT")).toBe(true);
       expect(canTransitionShipmentStatus("PICKED_UP", "IN_TRANSIT")).toBe(true);
       expect(canTransitionShipmentStatus("IN_TRANSIT", "DELIVERED")).toBe(true);
-      expect(canTransitionShipmentStatus("IN_TRANSIT", "RETURNED_TO_ORIGIN")).toBe(
-        true,
-      );
+      expect(
+        canTransitionShipmentStatus("IN_TRANSIT", "RETURNED_TO_ORIGIN"),
+      ).toBe(true);
       expect(canTransitionShipmentStatus("BOOKED", "CANCELLED")).toBe(true);
       expect(canTransitionShipmentStatus("IN_TRANSIT", "CANCELLED")).toBe(true);
 
@@ -38,11 +38,13 @@ describe("shipping rules and state machine", () => {
     });
 
     it("prevents delivered shipment from moving back to transit or other states", () => {
-      expect(canTransitionShipmentStatus("DELIVERED", "IN_TRANSIT")).toBe(false);
-      expect(canTransitionShipmentStatus("DELIVERED", "CANCELLED")).toBe(false);
-      expect(canTransitionShipmentStatus("DELIVERED", "RETURNED_TO_ORIGIN")).toBe(
+      expect(canTransitionShipmentStatus("DELIVERED", "IN_TRANSIT")).toBe(
         false,
       );
+      expect(canTransitionShipmentStatus("DELIVERED", "CANCELLED")).toBe(false);
+      expect(
+        canTransitionShipmentStatus("DELIVERED", "RETURNED_TO_ORIGIN"),
+      ).toBe(false);
 
       expect(() =>
         assertValidShipmentTransition("DELIVERED", "IN_TRANSIT"),
@@ -54,7 +56,9 @@ describe("shipping rules and state machine", () => {
 
     it("prevents cancelled shipment from being dispatched or modified", () => {
       expect(canTransitionShipmentStatus("CANCELLED", "BOOKED")).toBe(false);
-      expect(canTransitionShipmentStatus("CANCELLED", "IN_TRANSIT")).toBe(false);
+      expect(canTransitionShipmentStatus("CANCELLED", "IN_TRANSIT")).toBe(
+        false,
+      );
 
       expect(() =>
         assertValidShipmentTransition("CANCELLED", "BOOKED"),
@@ -65,9 +69,9 @@ describe("shipping rules and state machine", () => {
     });
 
     it("prevents returned-to-origin shipment from being modified or moved to active states", () => {
-      expect(canTransitionShipmentStatus("RETURNED_TO_ORIGIN", "DELIVERED")).toBe(
-        false,
-      );
+      expect(
+        canTransitionShipmentStatus("RETURNED_TO_ORIGIN", "DELIVERED"),
+      ).toBe(false);
       expect(() =>
         assertValidShipmentTransition("RETURNED_TO_ORIGIN", "DELIVERED"),
       ).toThrow(ConflictError);
@@ -78,9 +82,9 @@ describe("shipping rules and state machine", () => {
 
     it("rejects illegal skips like DRAFT directly to DELIVERED", () => {
       expect(canTransitionShipmentStatus("DRAFT", "DELIVERED")).toBe(false);
-      expect(() =>
-        assertValidShipmentTransition("DRAFT", "DELIVERED"),
-      ).toThrow(BusinessRuleError);
+      expect(() => assertValidShipmentTransition("DRAFT", "DELIVERED")).toThrow(
+        BusinessRuleError,
+      );
     });
   });
 

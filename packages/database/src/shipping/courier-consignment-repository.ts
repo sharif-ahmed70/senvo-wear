@@ -8,17 +8,17 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-type CourierConsignmentPrismaClient = Pick<
-  PrismaClient,
-  "courierConsignment"
->;
+type CourierConsignmentPrismaClient = Pick<PrismaClient, "courierConsignment">;
 
-function toDomain(record: Prisma.CourierConsignmentGetPayload<{}>): CourierConsignment {
+function toDomain(
+  record: Prisma.CourierConsignmentGetPayload<{}>,
+): CourierConsignment {
   return {
     cancelledAt: record.cancelledAt,
     codAmountMinor: BigInt(record.codAmountMinor),
     consignmentNumber: record.consignmentNumber,
-    courierProvider: record.courierProvider as CourierConsignment["courierProvider"],
+    courierProvider:
+      record.courierProvider as CourierConsignment["courierProvider"],
     createdAt: record.createdAt,
     deliveredAt: record.deliveredAt,
     deliveryAddressLine1: record.deliveryAddressLine1,
@@ -45,9 +45,7 @@ function toDomain(record: Prisma.CourierConsignmentGetPayload<{}>): CourierConsi
   };
 }
 
-export class PrismaCourierConsignmentRepository
-  implements CourierConsignmentRepository
-{
+export class PrismaCourierConsignmentRepository implements CourierConsignmentRepository {
   constructor(private readonly prisma: CourierConsignmentPrismaClient) {}
 
   async create(

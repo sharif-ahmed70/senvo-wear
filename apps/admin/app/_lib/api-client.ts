@@ -57,6 +57,7 @@ import type {
   CreatePurchaseDraftServiceInputContract,
   ListPurchasesServiceInputContract,
   PurchaseContract,
+  CreateStockIntakeServiceInputContract,
   CreateSupplierServiceInputContract,
   CreateSupplierPaymentServiceInputContract,
   CreateSupplierAdjustmentServiceInputContract,
@@ -65,6 +66,7 @@ import type {
   SupplierBalanceSummaryContract,
   SupplierContract,
   SupplierLedgerEntryContract,
+  StockIntakeContract,
   SupplierPaymentContract,
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
@@ -651,6 +653,22 @@ export class AdminApiClient {
     return this.request<
       InventoryReadPageContract<ProductInventorySummaryContract>
     >(`/inventory/products${queryString(input)}`, request);
+  }
+
+  /**
+   * Records a whole supplier delivery (catalog, barcodes, stock, cost,
+   * supplier bill and optional payment) in one server transaction. Reuse the
+   * same idempotencyKey when retrying an uncertain submission.
+   */
+  createStockIntake(
+    input: CreateStockIntakeServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<StockIntakeContract>("/inventory/stock-intakes", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
   }
 
   listSuppliers(

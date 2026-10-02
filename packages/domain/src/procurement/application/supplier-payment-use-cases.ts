@@ -1,5 +1,6 @@
 import {
   BusinessRuleError,
+  ConflictError,
   NotFoundError,
   ValidationApplicationError,
 } from "../../errors.js";
@@ -18,6 +19,14 @@ import type {
 import type { SupplierRepository } from "../repositories/supplier-repository.js";
 import type { PurchaseRepository } from "../repositories/purchase-repository.js";
 import { createSupplierLedgerEntry } from "../domain/supplier-ledger-rules.js";
+
+export class SupplierPaymentIdempotencyConflictError extends ConflictError {
+  constructor() {
+    super(
+      "This supplier payment idempotency key was already used with different details.",
+    );
+  }
+}
 
 export type RecordSupplierPaymentDependencies = {
   purchaseRepository?: PurchaseRepository;
@@ -80,26 +89,6 @@ export async function recordSupplierPayment(
     }
   }
 
-  // Idempotency check
-  if (
-    input.idempotencyKey &&
-    dependencies.supplierPaymentRepository.findByIdempotencyKey
-  ) {
-    const existing =
-      await dependencies.supplierPaymentRepository.findByIdempotencyKey(
-        organizationId,
-        input.idempotencyKey,
-      );
-    if (existing) {
-      const currentBalance =
-        await dependencies.supplierLedgerRepository.getSupplierBalance(
-          supplierId,
-          organizationId,
-        );
-      return { balance: currentBalance, payment: existing };
-    }
-  }
-
   let amountMinor: bigint;
   try {
     amountMinor = BigInt(input.amountMinor);
@@ -115,6 +104,36 @@ export async function recordSupplierPayment(
       "Payment amount must be greater than zero.",
       [{ field: "amountMinor", reason: "Must be > 0" }],
     );
+  }
+
+  // Idempotency: a stored payment is only a replay of this request when it
+  // records the same money movement. A key reused for a different supplier,
+  // purchase, amount or method must never return (and attach) that payment.
+  if (
+    input.idempotencyKey &&
+    dependencies.supplierPaymentRepository.findByIdempotencyKey
+  ) {
+    const existing =
+      await dependencies.supplierPaymentRepository.findByIdempotencyKey(
+        organizationId,
+        input.idempotencyKey,
+      );
+    if (existing) {
+      if (
+        existing.supplierId !== supplierId ||
+        (existing.purchaseId ?? null) !== (purchaseId ?? null) ||
+        existing.amountMinor !== amountMinor ||
+        existing.paymentMethod !== input.paymentMethod
+      ) {
+        throw new SupplierPaymentIdempotencyConflictError();
+      }
+      const currentBalance =
+        await dependencies.supplierLedgerRepository.getSupplierBalance(
+          supplierId,
+          organizationId,
+        );
+      return { balance: currentBalance, payment: existing };
+    }
   }
 
   const currentBalance =
