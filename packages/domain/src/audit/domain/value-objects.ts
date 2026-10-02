@@ -33,6 +33,8 @@ export const auditActions = [
   "STOCK_INTAKE_RECORDED",
   "TEAM_MEMBER_ROLE_CHANGED",
   "TEAM_MEMBER_STATUS_CHANGED",
+  "TEAM_MEMBER_PASSWORD_SET",
+  "TEAM_MEMBER_PASSWORD_RESET",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [

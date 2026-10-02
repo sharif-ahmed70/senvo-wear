@@ -455,6 +455,8 @@ export {
   LAST_OWNER_MESSAGE,
   OWNER_ONLY_MEMBERSHIP_MESSAGE,
   OWN_MEMBERSHIP_MESSAGE,
+  OWN_PASSWORD_MESSAGE,
+  OWNER_ONLY_PASSWORD_MESSAGE,
   TeamMembershipRuleError,
   assertTeamMembershipChangeAllowed,
   assignableRoles,
@@ -462,6 +464,18 @@ export {
   changeTeamMemberRole,
   changeTeamMemberStatus,
 } from "./identity/application/team-membership-use-cases.js";
+export {
+  CUSTOMER_ACCOUNT_MESSAGE,
+  EXISTING_LOGIN_MESSAGE,
+  createTeamMemberWithPassword,
+  resetTeamMemberPassword,
+} from "./identity/application/team-credential-use-cases.js";
+export type {
+  CreateTeamMemberWithPasswordInput,
+  CreateTeamMemberWithPasswordResult,
+  ResetTeamMemberPasswordInput,
+  ResetTeamMemberPasswordResult,
+} from "./identity/application/team-credential-use-cases.js";
 export type {
   TeamMembershipChange,
   TeamMembershipChangeResult,

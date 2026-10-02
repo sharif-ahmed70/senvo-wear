@@ -12,9 +12,12 @@ import {
   changeBranchStatus,
   changeTeamMemberRole,
   changeTeamMemberStatus,
+  createTeamMemberWithPassword,
+  CUSTOMER_ACCOUNT_MESSAGE,
+  EXISTING_LOGIN_MESSAGE,
+  OWNER_ONLY_PASSWORD_MESSAGE,
+  resetTeamMemberPassword,
   createBranch,
-  createOrganizationMembership,
-  createUser,
   getOrganizationProfile,
   listBranches,
   listOrganizationTeam,
@@ -28,6 +31,7 @@ import {
   type OrganizationTeamMember,
   type OrganizationTeamReadRepository,
   type Role,
+  type PasswordHasher,
   type RolePermissionRepository,
   type TeamMembershipTransactionManager,
   type UserRepository,
@@ -38,6 +42,7 @@ import {
   createTeamMemberServiceInputSchema,
   organizationManagementEmptyInputSchema,
   organizationProfileContractSchema,
+  resetTeamMemberPasswordServiceInputSchema,
   roleVisibilityContractSchema,
   storeManagementContractSchema,
   teamMemberContractSchema,
@@ -90,6 +95,8 @@ export type OrganizationApplicationServiceDependencies = {
   memberships: MembershipRepositories;
   organizations: OrganizationProfileRepository;
   requestIdGenerator?: () => string;
+  /** Workforce password hasher (scrypt in production). */
+  passwords: PasswordHasher;
   rolePermissions: RolePermissionRepository;
   /**
    * Runs role and status changes in one transaction (owner-count lock,
@@ -237,35 +244,62 @@ export class OrganizationApplicationService {
     return this.execute<TeamMemberContract>(context, async (trusted) => {
       const input = parsePayload(createTeamMemberServiceInputSchema, payload);
       await this.authorize(trusted, "TEAM", "UPDATE");
-      // Only an owner can add owners or admins.
+      // Only an owner can add owners or admins; checked again under lock.
       assertTeamMembershipChangeAllowed({
         actor: await this.requireActorMembership(trusted),
         change: { kind: "create", role: input.role },
         members: [],
         target: null,
       });
-      const user =
-        (await this.dependencies.users.findByEmail(
-          input.email.toLowerCase(),
-        )) ?? (await createUser(this.dependencies.users, input));
-      const teamMember = await createOrganizationMembership(
+      const { membership, user } = await createTeamMemberWithPassword(
+        this.dependencies.teamMembershipTransactions,
         {
-          memberships: this.dependencies.memberships,
-          organizations: this.dependencies.organizations,
-          users: this.dependencies.users,
-        },
-        {
+          actorUserId: requireActorUserId(trusted),
+          email: input.email,
+          name: input.name,
           organizationId: trusted.organizationId,
+          passwordHash: await this.dependencies.passwords.hash(
+            input.temporaryPassword,
+          ),
           role: input.role,
-          userId: user.id,
         },
       );
       return mapTeamMember({
-        ...teamMember,
+        ...membership,
         email: user.email,
         name: user.name,
         userStatus: user.status,
       });
+    });
+  }
+
+  /**
+   * Sets a new password for another team member and signs them out
+   * everywhere. The password is hashed here and never returned or logged.
+   */
+  resetTeamMemberPassword(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.execute<TeamMemberContract>(context, async (trusted) => {
+      const input = parsePayload(
+        resetTeamMemberPasswordServiceInputSchema,
+        payload,
+      );
+      await this.authorize(trusted, "TEAM", "UPDATE");
+      await resetTeamMemberPassword(
+        this.dependencies.teamMembershipTransactions,
+        {
+          actorUserId: requireActorUserId(trusted),
+          expectedVersion: input.expectedVersion,
+          membershipId: input.teamMemberId,
+          organizationId: trusted.organizationId,
+          passwordHash: await this.dependencies.passwords.hash(
+            input.newPassword,
+          ),
+        },
+      );
+      return this.requireTeamMember(trusted.organizationId, input.teamMemberId);
     });
   }
 
@@ -491,10 +525,21 @@ function normalizeError(error: unknown): ApplicationServiceError {
     });
   if (
     error instanceof AuthorizationError &&
-    error.message === OWNER_ONLY_MEMBERSHIP_MESSAGE
+    (error.message === OWNER_ONLY_MEMBERSHIP_MESSAGE ||
+      error.message === OWNER_ONLY_PASSWORD_MESSAGE)
   )
     return new ApplicationServiceError({
       code: "FORBIDDEN",
+      message: error.message,
+    });
+  if (
+    (error instanceof ConflictError || error instanceof BusinessRuleError) &&
+    (error.message === EXISTING_LOGIN_MESSAGE ||
+      error.message === CUSTOMER_ACCOUNT_MESSAGE)
+  )
+    return new ApplicationServiceError({
+      code:
+        error instanceof ConflictError ? "CONFLICT" : "BUSINESS_RULE_VIOLATION",
       message: error.message,
     });
   if (error instanceof ValidationApplicationError)

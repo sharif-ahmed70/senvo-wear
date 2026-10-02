@@ -589,6 +589,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "teamMemberId",
       ),
       organizationRoute(
+        "PUT",
+        /^\/organization\/team\/(?<id>[0-9a-f-]+)\/password$/iu,
+        organization.resetTeamMemberPassword,
+        200,
+        "teamMemberId",
+      ),
+      organizationRoute(
         "GET",
         /^\/organization\/roles$/u,
         organization.listRoles,

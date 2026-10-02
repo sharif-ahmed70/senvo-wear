@@ -539,6 +539,7 @@ export function createApplicationServices(
       branches: branchRepository,
       memberships: membershipRepository,
       organizations: organizationProfileRepository,
+      passwords: options.passwordHasher ?? unavailablePasswordHasher,
       requestIdGenerator: options.requestIdGenerator,
       rolePermissions: rolePermissionRepository,
       teamMembershipTransactions:
@@ -674,3 +675,12 @@ const unavailableTeamMembershipTransactions: TeamMembershipTransactionManager =
         ),
       ),
   };
+
+/** Fails closed: team passwords need the real workforce password hasher. */
+const unavailablePasswordHasher: PasswordHasher = {
+  hash: () =>
+    Promise.reject(
+      new Error("Team passwords require a workforce password hasher."),
+    ),
+  verify: () => Promise.resolve(false),
+};

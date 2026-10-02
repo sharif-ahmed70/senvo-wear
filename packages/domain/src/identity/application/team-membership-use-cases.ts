@@ -17,7 +17,11 @@ import {
   normalizeMembershipStatus,
   normalizeRole,
 } from "../domain/value-objects.js";
-import type { OrganizationMembershipRepository } from "../repositories/identity-repositories.js";
+import type { UserCredentialRepository } from "../../authentication/repositories/authentication-repositories.js";
+import type {
+  OrganizationMembershipRepository,
+  UserRepository,
+} from "../repositories/identity-repositories.js";
 
 /**
  * Team membership rules (role changes, deactivation, new members):
@@ -29,6 +33,9 @@ import type { OrganizationMembershipRepository } from "../repositories/identity-
  *    an ADMIN manages MANAGER and STAFF only. Other roles manage nobody.
  * 4. A role change or deactivation revokes the member's workforce sessions so
  *    the new access applies at once.
+ *
+ * Password resets follow rules 1 and 3 (not your own, owner/admin passwords
+ * only by an owner); see team-credential-use-cases.ts.
  */
 export class TeamMembershipRuleError extends BusinessRuleError {}
 
@@ -38,6 +45,9 @@ export const LAST_OWNER_MESSAGE =
   "The last active owner cannot be demoted or deactivated. Make another member owner first.";
 export const OWNER_ONLY_MEMBERSHIP_MESSAGE =
   "Only an owner can grant, change or remove owner and admin roles.";
+export const OWN_PASSWORD_MESSAGE = "You cannot reset your own password here.";
+export const OWNER_ONLY_PASSWORD_MESSAGE =
+  "Only an owner can reset an owner's or admin's password.";
 
 const rolesAdminCanManage: readonly Role[] = ["MANAGER", "STAFF"];
 
@@ -55,6 +65,7 @@ export function canManageMemberRole(actorRole: Role, targetRole: Role) {
 
 export type TeamMembershipChange =
   | { kind: "create"; role: Role }
+  | { kind: "password" }
   | { kind: "role"; role: Role }
   | { kind: "status"; status: OrganizationMembershipStatus };
 
@@ -86,14 +97,24 @@ export function assertTeamMembershipChangeAllowed(input: {
 
   // Rule 1.
   if (target.userId === actor.userId) {
-    throw new TeamMembershipRuleError(OWN_MEMBERSHIP_MESSAGE);
+    throw new TeamMembershipRuleError(
+      change.kind === "password"
+        ? OWN_PASSWORD_MESSAGE
+        : OWN_MEMBERSHIP_MESSAGE,
+    );
   }
 
   // Rule 3: the member's current role and the new role must both be ones the
   // actor manages.
   if (!canManageMemberRole(actor.role, target.role)) {
-    throw new AuthorizationError(OWNER_ONLY_MEMBERSHIP_MESSAGE);
+    throw new AuthorizationError(
+      change.kind === "password"
+        ? OWNER_ONLY_PASSWORD_MESSAGE
+        : OWNER_ONLY_MEMBERSHIP_MESSAGE,
+    );
   }
+  // A password reset changes neither role nor status, so rule 2 does not apply.
+  if (change.kind === "password") return;
   if (change.kind === "role" && !canManageMemberRole(actor.role, change.role)) {
     throw new AuthorizationError(OWNER_ONLY_MEMBERSHIP_MESSAGE);
   }
@@ -126,11 +147,19 @@ export type TeamMembershipTransactionContext = {
   ): Promise<OrganizationMembership[]>;
   memberships: Pick<
     OrganizationMembershipRepository,
-    "assignRole" | "changeStatus"
+    "assignRole" | "changeStatus" | "create" | "findByUserAndOrganization"
   >;
+  /** Password credentials (provider PASSWORD), for new members and resets. */
+  credentials: Pick<
+    UserCredentialRepository,
+    "create" | "findByProviderIdentifier" | "replacePassword"
+  >;
+  /** True when the user also has a storefront customer account (locked). */
+  userHasCustomerAccount(userId: string): Promise<boolean>;
+  users: Pick<UserRepository, "create" | "findByEmail" | "findById">;
   workforceSessions: Pick<
     WorkforceAuthenticationRepository,
-    "revokeAllForUser"
+    "revokeAllForUser" | "revokeAllWorkforceSessionsForUser"
   >;
 };
 

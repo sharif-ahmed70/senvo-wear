@@ -3156,11 +3156,26 @@ export const teamMemberContractSchema = z
   })
   .strict();
 
+/**
+ * Workforce passwords: 8-128 characters, the range the workforce password
+ * maintenance flow and the scrypt hasher accept. Never trimmed or logged.
+ */
+const workforcePasswordSchema = z.string().min(8).max(128);
+
 export const createTeamMemberServiceInputSchema = z
   .object({
     email: z.string().trim().email().max(254),
     name: displayNameSchema,
     role: roleSchema,
+    temporaryPassword: workforcePasswordSchema,
+  })
+  .strict();
+
+export const resetTeamMemberPasswordServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    newPassword: workforcePasswordSchema,
+    teamMemberId: idSchema,
   })
   .strict();
 
@@ -3280,6 +3295,9 @@ export type UpdateStoreStatusServiceInputContract = z.infer<
 export type TeamMemberContract = z.infer<typeof teamMemberContractSchema>;
 export type CreateTeamMemberServiceInputContract = z.infer<
   typeof createTeamMemberServiceInputSchema
+>;
+export type ResetTeamMemberPasswordServiceInputContract = z.infer<
+  typeof resetTeamMemberPasswordServiceInputSchema
 >;
 export type UpdateTeamMemberStatusServiceInputContract = z.infer<
   typeof updateTeamMemberStatusServiceInputSchema

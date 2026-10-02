@@ -6,8 +6,12 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { PrismaAuditEntryRepository } from "../audit/repositories.js";
+import { PrismaUserCredentialRepository } from "../authentication/repositories.js";
 import { PrismaWorkforceAuthenticationRepository } from "../workforce/workforce-authentication-repository.js";
-import { PrismaOrganizationMembershipRepository } from "./repositories.js";
+import {
+  PrismaOrganizationMembershipRepository,
+  PrismaUserRepository,
+} from "./repositories.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 
@@ -45,7 +49,15 @@ export class PrismaTeamMembershipTransactionManager implements TeamMembershipTra
             }),
           );
         },
+        credentials: new PrismaUserCredentialRepository(tx),
         memberships,
+        userHasCustomerAccount: async (userId: string) => {
+          const rows = await tx.$queryRaw<
+            Array<{ id: string }>
+          >`SELECT id FROM "customer_accounts" WHERE "user_id" = ${userId}::uuid FOR UPDATE`;
+          return rows.length > 0;
+        },
+        users: new PrismaUserRepository(tx),
         workforceSessions: new PrismaWorkforceAuthenticationRepository(tx),
       });
     });

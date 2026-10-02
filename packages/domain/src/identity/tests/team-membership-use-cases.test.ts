@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await -- in-memory fakes implement async repository interfaces */
 import { describe, expect, it, vi } from "vitest";
 import type { RecordAuditEntryInput } from "../../audit/domain/models.js";
 import { AuthorizationError } from "../../errors.js";
@@ -33,6 +34,18 @@ function member(role: Role, status: "ACTIVE" | "INACTIVE" = "ACTIVE") {
   } satisfies OrganizationMembership;
 }
 
+// Role/status changes never touch users or credentials.
+const unusedMethod = () => {
+  throw new Error("not used by role/status changes");
+};
+const unused = {
+  create: unusedMethod,
+  findByEmail: unusedMethod,
+  findById: unusedMethod,
+  findByProviderIdentifier: unusedMethod,
+  replacePassword: unusedMethod,
+};
+
 function harness(members: OrganizationMembership[]) {
   const state = members.map((item) => ({ ...item }));
   const audits: RecordAuditEntryInput[] = [];
@@ -57,12 +70,20 @@ function harness(members: OrganizationMembership[]) {
           },
         },
         lockOrganizationMemberships: lock,
+        credentials: unused,
         memberships: {
           assignRole: async (record) => update(record, { role: record.role }),
           changeStatus: async (record) =>
             update(record, { status: record.status }),
+          create: unusedMethod,
+          findByUserAndOrganization: unusedMethod,
         },
-        workforceSessions: { revokeAllForUser },
+        userHasCustomerAccount: unusedMethod,
+        users: unused,
+        workforceSessions: {
+          revokeAllForUser,
+          revokeAllWorkforceSessionsForUser: unusedMethod,
+        },
       }),
   };
   return { audits, lock, manager, revokeAllForUser, state };
