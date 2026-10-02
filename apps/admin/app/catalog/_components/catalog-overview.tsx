@@ -241,9 +241,9 @@ export function CatalogOverview({
             Manage what SENVO sells — products, variants, media and identity.
           </p>
         </div>
-        <Link className={styles.primaryAction} href="/catalog/products/new">
+        <Link className={styles.primaryAction} href="/inventory/intake">
           <PackagePlus aria-hidden="true" size={17} />
-          Add product
+          নতুন মাল তুলুন
         </Link>
       </header>
 
@@ -465,6 +465,12 @@ export function CatalogOverview({
               Move naturally from merchandise setup to identification and stock.
             </p>
             <Shortcut
+              href="/inventory/intake"
+              icon={PackagePlus}
+              label="নতুন মাল তুলুন"
+              detail="Product, stock, barcode আর Supplier একসাথে"
+            />
+            <Shortcut
               href="/catalog/products/new"
               icon={PackagePlus}
               label="Add product"
@@ -530,8 +536,8 @@ export function CatalogOverview({
             </p>
           </div>
         </div>
-        <Link href="/catalog/products/new">
-          Add a product <ArrowRight aria-hidden="true" size={15} />
+        <Link href="/inventory/intake">
+          নতুন মাল তুলুন <ArrowRight aria-hidden="true" size={15} />
         </Link>
       </section>
     </div>
@@ -985,7 +991,7 @@ function EmptyState({ hasProducts }: { hasProducts: boolean }) {
         </p>
       </div>
       {!hasProducts ? (
-        <Link href="/catalog/products/new">Add product</Link>
+        <Link href="/inventory/intake">নতুন মাল তুলুন</Link>
       ) : null}
     </div>
   );

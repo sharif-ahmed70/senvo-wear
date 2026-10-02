@@ -237,9 +237,16 @@ export function InventoryOverview({
                 <Truck size={15} />
                 <span>Transfer Stock</span>
               </Link>
-              <Link className={styles.primaryButton} href="/inventory/receive">
-                <PackagePlus size={16} />
+              <Link
+                className={styles.secondaryButton}
+                href="/inventory/receive"
+              >
+                <PackagePlus size={15} />
                 <span>Receive Stock</span>
+              </Link>
+              <Link className={styles.primaryButton} href="/inventory/intake">
+                <PackagePlus size={16} />
+                <span>নতুন মাল তুলুন</span>
               </Link>
             </>
           ) : null}
