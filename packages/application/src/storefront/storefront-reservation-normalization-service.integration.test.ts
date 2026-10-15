@@ -510,10 +510,11 @@ describe("StorefrontReservationNormalizationService PostgreSQL integration", () 
         },
       });
       expect(audits.length).toBe(2);
-      expect(audits[0]?.action).toBe(
+      // Both entries share one transaction timestamp, so order is not defined.
+      expect(audits.map((audit) => audit.action).sort()).toEqual([
+        "STOREFRONT_RESERVATION_EXPIRED",
         "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
-      );
-      expect(audits[1]?.action).toBe("STOREFRONT_RESERVATION_EXPIRED");
+      ]);
     } finally {
       await cleanupFixture(prisma, fixture);
     }
