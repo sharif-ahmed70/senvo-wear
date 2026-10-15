@@ -692,6 +692,9 @@ export function ProductCard({
 
   return (
     <article className={styles.productCard} aria-label={product.name}>
+      {product.status === "ARCHIVED" ? (
+        <StatusPill status={product.status} />
+      ) : null}
       <div className={styles.cardMedia}>
         {primaryImage ? (
           <Image

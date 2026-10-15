@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductLifecycleActions } from "./product-lifecycle-actions";
 import type {
   ProductDetailsContract,
   ProductVariantContract,
@@ -135,6 +136,11 @@ export function ProductInventoryDetail({
           {humanize(product.product.status)}
         </span>
       </header>
+      <ProductLifecycleActions
+        product={product.product}
+        permissions={permissions}
+        onSaved={(updated) => setProduct({ ...product, product: updated })}
+      />
       <ProductMedia
         canUpdate={permissions.includes("CATALOG:UPDATE")}
         details={product}

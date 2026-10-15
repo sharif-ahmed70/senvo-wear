@@ -1,3 +1,4 @@
+import type { ProductLifecycleRepository } from "../catalog/repositories/product-lifecycle-repository.js";
 import type { AuditWriter } from "../audit/application/audit-writer.js";
 import type {
   InventoryMovementPostingRepository,
@@ -46,6 +47,7 @@ type TransactionalInventoryMovementRepository =
 export type TransactionContext<TApplicationContext> = {
   applicationContext: TApplicationContext;
   auditWriter: Pick<AuditWriter, "recordWithinTransaction">;
+  productLifecycleRepository?: ProductLifecycleRepository;
   catalogMediaRepository?: CatalogMediaRepository;
   catalogProductRepository?: CatalogProductManagementRepository;
   costRepository?: CostRepository;

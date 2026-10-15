@@ -1,3 +1,5 @@
+import { PrismaProductLifecycleRepository } from "../catalog/product-lifecycle-repository.js";
+import { PrismaBarcodeRepository } from "../catalog/barcode-repository.js";
 import { PrismaPosSettlementRepository } from "./settlement-repository.js";
 import {
   BusinessRuleError,
@@ -46,6 +48,63 @@ describeWithDatabase("Prisma offline POS repository", () => {
     await cleanDatabase();
     await prisma.$disconnect();
     process.env.DATABASE_URL = originalDatabaseUrl;
+  });
+
+  it("archive blocks scan, cart additions and checkout; restore preserves history", async () => {
+    const base = await seedCheckout("ARCHIVE", 5, 1);
+    const barcodes = new PrismaBarcodeRepository(prisma);
+    await prisma.$transaction(async (tx) => {
+      const repo = new PrismaProductLifecycleRepository(tx);
+      const product = await repo.findLocked(
+        base.variant.productId,
+        base.organization.id,
+      );
+      expect(await repo.hasHistory(product!.id, base.organization.id)).toBe(
+        true,
+      );
+      await expect(repo.delete(product!)).rejects.toThrow(
+        "This product has history. Archive it instead.",
+      );
+      await repo.update(product!, { status: "ARCHIVED" });
+    });
+    expect(
+      await barcodes.lookupActive(base.organization.id, "ARCHIVE-BARCODE"),
+    ).toBeNull();
+    expect(
+      await barcodes.listByVariant(base.organization.id, base.variant.id),
+    ).toEqual([]);
+    expect(
+      await repository.findSellableVariant(
+        base.variant.id,
+        base.organization.id,
+      ),
+    ).toBeNull();
+    await expect(
+      repository.addCartLine({
+        expectedVersion: 2,
+        cartId: base.session.cartId,
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        quantity: 1,
+        unitPriceMinor: 2500,
+        lineSubtotalMinor: 2500,
+      }),
+    ).rejects.toThrow("Sellable product variant was not found.");
+    await expect(completeCheckout(base, "archived-sale")).rejects.toThrow();
+    expect(await prisma.posCheckoutRecord.count()).toBe(0);
+    await prisma.$transaction(async (tx) => {
+      const repo = new PrismaProductLifecycleRepository(tx);
+      const product = await repo.findLocked(
+        base.variant.productId,
+        base.organization.id,
+      );
+      await repo.update(product!, { status: "ACTIVE" });
+    });
+    expect(
+      await barcodes.lookupActive(base.organization.id, "ARCHIVE-BARCODE"),
+    ).not.toBeNull();
+    await completeCheckout(base, "restored-sale");
+    expect(await prisma.posCheckoutRecord.count()).toBe(1);
   });
 
   it("keeps three sales by two sellers in one daily session and settles the whole day", async () => {

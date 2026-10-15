@@ -566,6 +566,22 @@ class FakeAuthorization implements ApplicationAuthorizationService {
 }
 
 class FakeCatalog implements CatalogManagementApplication {
+  editProduct(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  archiveProduct(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  restoreProduct(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  deleteProduct(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  getProductDeletable(context: ApplicationExecutionContext) {
+    return this.success(context, { deletable: true, reason: null });
+  }
+
   context?: ApplicationExecutionContext;
   payloads: unknown[] = [];
   rejectColorAsDuplicate = false;

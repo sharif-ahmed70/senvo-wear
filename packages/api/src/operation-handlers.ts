@@ -5,6 +5,9 @@ import type {
   ApplicationServiceResult,
 } from "@senvo/application";
 import {
+  editProductServiceInputSchema,
+  productLifecycleInputSchema,
+  type ProductDeletableContract,
   createCategoryServiceInputSchema,
   createVariantBarcodeServiceInputSchema,
   createCollectionServiceInputSchema,
@@ -219,6 +222,27 @@ export type InventoryReadApiHandlers = {
 };
 
 export type CatalogManagementApplication = {
+  editProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  archiveProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  restoreProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  deleteProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  getProductDeletable(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductDeletableContract>>;
+
   createVariantBarcode(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -350,6 +374,12 @@ export type CatalogManagementApplication = {
 };
 
 export type CatalogApiHandlers = {
+  editProduct: ApiHandler<ProductContract | null>;
+  archiveProduct: ApiHandler<ProductContract | null>;
+  restoreProduct: ApiHandler<ProductContract | null>;
+  deleteProduct: ApiHandler<ProductContract | null>;
+  getProductDeletable: ApiHandler<ProductDeletableContract>;
+
   addProductMedia: ApiHandler<ProductMediaContract>;
   archiveProductMedia: ApiHandler<null>;
   createVariantBarcode: ApiHandler<VariantBarcodeContract>;
@@ -390,7 +420,7 @@ export function createCatalogApiHandlers(
   },
 ): CatalogApiHandlers {
   const protectedHandler = <TInput, TOutput>(options: {
-    action: "CREATE" | "READ" | "UPDATE";
+    action: "CREATE" | "READ" | "UPDATE" | "DELETE";
     execute: (
       context: ApplicationExecutionContext,
       input: TInput,
@@ -408,6 +438,32 @@ export function createCatalogApiHandlers(
     });
 
   return {
+    editProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: editProductServiceInputSchema,
+      execute: (ctx, input) => dependencies.catalog.editProduct(ctx, input),
+    }),
+    archiveProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.archiveProduct(ctx, input),
+    }),
+    restoreProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.restoreProduct(ctx, input),
+    }),
+    deleteProduct: protectedHandler({
+      action: "DELETE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.deleteProduct(ctx, input),
+    }),
+    getProductDeletable: protectedHandler({
+      action: "READ",
+      inputSchema: getProductServiceInputSchema,
+      execute: (ctx, input) =>
+        dependencies.catalog.getProductDeletable(ctx, input),
+    }),
     addProductMedia: protectedHandler<
       AddProductMediaServiceInputContract,
       ProductMediaContract

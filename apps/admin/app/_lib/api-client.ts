@@ -1,4 +1,7 @@
 import type {
+  EditProductServiceInputContract,
+  ProductLifecycleInputContract,
+  ProductDeletableContract,
   ApiErrorCode,
   BarcodeLookupContract,
   ApiFailure,
@@ -468,6 +471,29 @@ export class AdminApiClient {
       body: input,
       method: "POST",
     });
+  }
+
+  getProductDeletable(productId: string) {
+    return this.request<ProductDeletableContract>(
+      `/catalog/products/${productId}/deletable`,
+    );
+  }
+  editProduct(input: EditProductServiceInputContract) {
+    const { productId, ...body } = input;
+    return this.request<ProductContract>(`/catalog/products/${productId}`, {
+      method: "PATCH",
+      body,
+    });
+  }
+  changeProductLifecycle(
+    operation: "archive" | "restore" | "delete",
+    input: ProductLifecycleInputContract,
+  ) {
+    const { productId, ...body } = input;
+    return this.request<ProductContract | null>(
+      `/catalog/products/${productId}${operation === "delete" ? "" : `/${operation}`}`,
+      { method: operation === "delete" ? "DELETE" : "POST", body },
+    );
   }
 
   getProduct(productId: string, request?: AdminApiRequest) {

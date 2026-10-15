@@ -56,6 +56,11 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         AND "organization_id" = ${organizationId}::uuid
       FOR UPDATE
     `;
+    await this.prisma.$queryRaw`SELECT p.id FROM products p
+      JOIN product_variants v ON v.product_id = p.id AND v.organization_id = p.organization_id
+      JOIN pos_cart_lines l ON l.product_variant_id = v.id AND l.organization_id = v.organization_id
+      WHERE l.cart_id = ${cartId}::uuid AND l.organization_id = ${organizationId}::uuid
+      ORDER BY p.id FOR SHARE OF p`;
     const cart = await this.prisma.posCart.findFirst({
       include: {
         checkout: { include: checkoutInclude },
@@ -63,6 +68,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
           include: {
             productVariant: {
               include: {
+                product: { select: { status: true } },
                 barcodes: {
                   select: { id: true },
                   where: { status: "ACTIVE" },
@@ -124,7 +130,10 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         productVariantId: line.productVariantId,
         quantity: line.quantity,
         sellingPriceMinor: line.productVariant.sellingPriceMinor,
-        variantStatus: line.productVariant.status,
+        variantStatus:
+          line.productVariant.product.status === "ACTIVE"
+            ? line.productVariant.status
+            : "ARCHIVED",
       })),
       membershipStatus: membership.status,
       organizationId: cart.organizationId,

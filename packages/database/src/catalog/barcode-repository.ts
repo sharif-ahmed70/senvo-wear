@@ -63,7 +63,14 @@ export class PrismaBarcodeRepository implements BarcodeRepository {
   ): Promise<VariantBarcode[]> {
     const records = await this.prisma.variantBarcode.findMany({
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      where: { organizationId, productVariantId },
+      where: {
+        organizationId,
+        productVariantId,
+        productVariant: {
+          status: { not: "ARCHIVED" },
+          product: { status: { not: "ARCHIVED" } },
+        },
+      },
     });
     return records.map(mapBarcode);
   }
@@ -78,7 +85,12 @@ export class PrismaBarcodeRepository implements BarcodeRepository {
           include: { color: true, product: true, size: true },
         },
       },
-      where: { organizationId, status: "ACTIVE", value },
+      where: {
+        organizationId,
+        status: "ACTIVE",
+        value,
+        productVariant: { status: "ACTIVE", product: { status: "ACTIVE" } },
+      },
     });
     return record ? mapLookup(record) : null;
   }

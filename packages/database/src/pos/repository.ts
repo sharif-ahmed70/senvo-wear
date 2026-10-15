@@ -261,7 +261,7 @@ export class PrismaPosRepository implements PosRepository {
         sellingPriceMinor: true,
         status: true,
       },
-      where: { id, organizationId },
+      where: { id, organizationId, product: { status: "ACTIVE" } },
     });
     return record;
   }
@@ -276,6 +276,17 @@ export class PrismaPosRepository implements PosRepository {
           record.organizationId,
           expectedVersion,
         );
+        await tx.$queryRaw`SELECT p.id FROM products p JOIN product_variants v ON v.product_id = p.id AND v.organization_id = p.organization_id WHERE v.id = ${record.productVariantId}::uuid AND v.organization_id = ${record.organizationId}::uuid FOR SHARE OF p, v`;
+        const sellable = await tx.productVariant.count({
+          where: {
+            id: record.productVariantId,
+            organizationId: record.organizationId,
+            status: "ACTIVE",
+            product: { status: "ACTIVE" },
+          },
+        });
+        if (!sellable)
+          throw new NotFoundError("Sellable product variant was not found.");
         return mapLine(await tx.posCartLine.create({ data }));
       });
     } catch (error) {

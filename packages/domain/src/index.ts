@@ -1016,3 +1016,5 @@ export type {
   DashboardWindows,
   StockClass,
 } from "./reporting/dashboard.js";
+
+export type { ProductLifecycleRepository } from "./catalog/repositories/product-lifecycle-repository.js";

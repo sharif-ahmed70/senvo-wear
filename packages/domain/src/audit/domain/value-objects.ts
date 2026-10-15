@@ -12,6 +12,10 @@ const sensitiveMetadataKeyPattern =
   /(?:authorization|cookie|credential|password|secret|token)/iu;
 
 export const auditActions = [
+  "PRODUCT_UPDATED",
+  "PRODUCT_ARCHIVED",
+  "PRODUCT_RESTORED",
+  "PRODUCT_DELETED",
   "INVENTORY_MOVEMENT_POSTED",
   "POS_CHECKOUT_COMPLETED",
   "POS_PAYMENT_RECORDED",
@@ -38,6 +42,7 @@ export const auditActions = [
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
+  "PRODUCT",
   "INVENTORY_MOVEMENT",
   "PAYMENT",
   "PAYMENT_COLLECTION",

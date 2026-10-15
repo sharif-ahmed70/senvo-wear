@@ -5307,3 +5307,32 @@ export const dashboardSummaryContractSchema = z
 export type DashboardSummaryContract = z.infer<
   typeof dashboardSummaryContractSchema
 >;
+
+export const productLifecycleInputSchema = z
+  .object({ productId: idSchema, expectedUpdatedAt: isoTimestampSchema })
+  .strict();
+export const editProductServiceInputSchema = productLifecycleInputSchema
+  .extend({
+    name: z.string().trim().min(1).max(160).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    categoryId: idSchema.optional(),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.categoryId !== undefined,
+    "Provide a field to edit.",
+  );
+export const productDeletableContractSchema = z
+  .object({ deletable: z.boolean(), reason: z.string().nullable() })
+  .strict();
+export type ProductLifecycleInputContract = z.infer<
+  typeof productLifecycleInputSchema
+>;
+export type EditProductServiceInputContract = z.infer<
+  typeof editProductServiceInputSchema
+>;
+export type ProductDeletableContract = z.infer<
+  typeof productDeletableContractSchema
+>;

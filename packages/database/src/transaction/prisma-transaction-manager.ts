@@ -1,3 +1,4 @@
+import { PrismaProductLifecycleRepository } from "../catalog/product-lifecycle-repository.js";
 import {
   BusinessRuleError,
   RepositoryAuditWriter,
@@ -62,6 +63,9 @@ export class PrismaTransactionManager<
           new RepositoryAuditWriter(
             new PrismaAuditEntryRepository(transaction),
           ),
+        ),
+        productLifecycleRepository: new PrismaProductLifecycleRepository(
+          transaction,
         ),
         catalogMediaRepository: new PrismaCatalogMediaRepository(transaction),
         catalogProductRepository: new PrismaProductRepository(transaction),

@@ -1,4 +1,8 @@
 export type AuditAction =
+  | "PRODUCT_UPDATED"
+  | "PRODUCT_ARCHIVED"
+  | "PRODUCT_RESTORED"
+  | "PRODUCT_DELETED"
   | "INVENTORY_MOVEMENT_POSTED"
   | "POS_CHECKOUT_COMPLETED"
   | "POS_PAYMENT_RECORDED"
@@ -24,6 +28,7 @@ export type AuditAction =
   | "TEAM_MEMBER_PASSWORD_RESET";
 
 export type AuditResource =
+  | "PRODUCT"
   | "INVENTORY_MOVEMENT"
   | "PAYMENT"
   | "PAYMENT_COLLECTION"

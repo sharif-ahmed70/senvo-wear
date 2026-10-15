@@ -1,4 +1,11 @@
 import {
+  ConflictError,
+  defaultRolePermissions,
+  type Product,
+  type ProductLifecycleRepository,
+} from "@senvo/domain";
+import type { ApplicationTransactionContext } from "../context/transaction.js";
+import {
   AuthorizationError,
   type CatalogProductVariantManagementRepository,
   type ProductVariant,
@@ -292,5 +299,170 @@ describe("CatalogApplicationService variant pricing", () => {
       organizationId: variantId,
     });
     expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+  });
+});
+
+describe("product lifecycle", () => {
+  const productId = "11111111-1111-4111-8111-111111111112";
+  function setup(history = false) {
+    let product: Product | null = {
+      id: productId,
+      organizationId,
+      categoryId: productId,
+      name: "Original",
+      description: null,
+      productCode: "FIXED",
+      slug: "fixed",
+      status: "ACTIVE",
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    };
+    const audit = vi.fn().mockResolvedValue(undefined);
+    const repo: ProductLifecycleRepository = {
+      findLocked: (id, org) =>
+        Promise.resolve(
+          product?.id === id && product.organizationId === org ? product : null,
+        ),
+      hasHistory: () => Promise.resolve(history),
+      update: (record, changes) => {
+        product = {
+          ...record,
+          ...changes,
+          updatedAt: new Date(record.updatedAt.getTime() + 1),
+        };
+        return Promise.resolve(product);
+      },
+      delete: () => {
+        if (history)
+          return Promise.reject(
+            new ConflictError("This product has history. Archive it instead."),
+          );
+        product = null;
+        return Promise.resolve();
+      },
+    };
+    const service = new CatalogApplicationService({
+      barcodes: createFailFastStub("barcodes"),
+      categories: createFailFastStub("categories"),
+      collections: createFailFastStub("collections"),
+      colors: createFailFastStub("colors"),
+      organizations: createFailFastStub("organizations"),
+      products: createFailFastStub("products"),
+      productVariants: createFailFastStub("variants"),
+      sizes: createFailFastStub("sizes"),
+      authorizationService: {
+        authorize: (ctx, permission) =>
+          defaultRolePermissions.some(
+            (grant) =>
+              grant.role === ctx.role &&
+              grant.resource === permission.resource &&
+              grant.action === permission.action,
+          )
+            ? Promise.resolve()
+            : Promise.reject(new AuthorizationError("Denied")),
+      },
+      transactionManager: {
+        execute: (ctx, operation) =>
+          operation({
+            applicationContext: ctx,
+            productLifecycleRepository: repo,
+            auditWriter: { recordWithinTransaction: audit },
+          } as unknown as ApplicationTransactionContext),
+      },
+    });
+    return { service, audit, read: () => product };
+  }
+  const input = { productId, expectedUpdatedAt: new Date(0).toISOString() };
+  it("edits only permitted metadata and rejects a stale edit", async () => {
+    const { service, audit, read } = setup();
+    expect(
+      await service.editProduct(context, {
+        ...input,
+        name: "Updated",
+        description: "Text",
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: { name: "Updated", slug: "fixed", productCode: "FIXED" },
+    });
+    expect(
+      await service.editProduct(context, { ...input, name: "Stale" }),
+    ).toMatchObject({ ok: false, error: { code: "CONCURRENCY_CONFLICT" } });
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "PRODUCT_UPDATED",
+        resourceId: productId,
+      }),
+    );
+    expect(read()?.name).toBe("Updated");
+  });
+  it("rejects editing immutable fields", async () => {
+    expect(
+      await setup().service.editProduct(context, {
+        ...input,
+        name: "x",
+        slug: "new",
+      }),
+    ).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+  });
+  it("archives and restores with a fresh token", async () => {
+    const { service, read } = setup();
+    expect(await service.archiveProduct(context, input)).toMatchObject({
+      ok: true,
+      data: { status: "ARCHIVED" },
+    });
+    expect(
+      await service.restoreProduct(context, {
+        ...input,
+        expectedUpdatedAt: read()!.updatedAt.toISOString(),
+      }),
+    ).toMatchObject({ ok: true, data: { status: "ACTIVE" } });
+  });
+  it("blocks history and deletes a clean product with audit", async () => {
+    expect(
+      await setup(true).service.deleteProduct(context, input),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "This product has history. Archive it instead.",
+      },
+    });
+    const { service, read, audit } = setup();
+    expect(await service.deleteProduct(context, input)).toEqual({
+      ok: true,
+      data: null,
+    });
+    expect(read()).toBeNull();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "PRODUCT_DELETED" }),
+    );
+  });
+  it.each(["MANAGER", "STAFF"] as const)("denies %s deletion", async (role) => {
+    expect(
+      await setup().service.deleteProduct({ ...context, role }, input),
+    ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  });
+  it("denies STAFF edits/archive and isolates other tenants", async () => {
+    const { service, audit } = setup();
+    expect(
+      await service.archiveProduct({ ...context, role: "STAFF" }, input),
+    ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    expect(
+      await service.editProduct(
+        { ...context, role: "STAFF" },
+        { ...input, name: "x" },
+      ),
+    ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+    const other = { ...context, organizationId: productId };
+    expect(await service.deleteProduct(other, input)).toMatchObject({
+      ok: false,
+      error: { code: "NOT_FOUND" },
+    });
+    expect(
+      await service.getProductDeletable(other, { productId }),
+    ).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    expect(audit).not.toHaveBeenCalled();
   });
 });
