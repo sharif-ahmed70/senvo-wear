@@ -4,7 +4,6 @@ import {
   courierProviderSchema,
   createProductVariantServiceInputSchema,
   dispatchSalesOrderServiceInputSchema,
-  getShipmentsByOrderIdServiceInputSchema,
   openSalesSessionServiceInputSchema,
   posRegisterSettlementContractSchema,
   posSessionReconciliationSummaryContractSchema,
