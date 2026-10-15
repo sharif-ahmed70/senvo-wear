@@ -150,7 +150,7 @@ export function TrackOrderWorkspace() {
       </header>
 
       <section className={styles.formCard}>
-        <form onSubmit={handleSearch}>
+        <form onSubmit={(event) => void handleSearch(event)}>
           <div className={styles.formGrid}>
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="track-order-number">

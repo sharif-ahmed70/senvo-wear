@@ -41,6 +41,12 @@ import {
 } from "../_lib/storefront-api";
 import { useCustomerAuth } from "./customer-auth-provider";
 
+// Both are off by default: the OTP message sender is a stub and the
+// newsletter has no backend. Set the NEXT_PUBLIC_* flag to "true" to enable.
+const showCodeSignIn =
+  process.env.NEXT_PUBLIC_STOREFRONT_CODE_SIGN_IN === "true";
+const showNewsletter = process.env.NEXT_PUBLIC_STOREFRONT_NEWSLETTER === "true";
+
 const emptyCart: HydratedCart = { lines: [], unavailable: [] };
 const mobileLinks = [
   ["01", "New arrivals", "/#collection"],
@@ -312,30 +318,32 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
         {children}
       </motion.div>
 
-      <section className="newsletter-band" aria-labelledby="newsletter-title">
-        <div>
-          <p className="eyebrow light">The SENVO circle</p>
-          <h2 id="newsletter-title">
-            First look. Private drops. Quiet confidence.
-          </h2>
-        </div>
-        <form onSubmit={subscribe}>
-          <label htmlFor="newsletter-email">Email address</label>
+      {showNewsletter ? (
+        <section className="newsletter-band" aria-labelledby="newsletter-title">
           <div>
-            <input
-              id="newsletter-email"
-              name="email"
-              placeholder="you@example.com"
-              required
-              type="email"
-            />
-            <button type="submit">
-              Join the circle <ArrowRight size={17} />
-            </button>
+            <p className="eyebrow light">The SENVO circle</p>
+            <h2 id="newsletter-title">
+              First look. Private drops. Quiet confidence.
+            </h2>
           </div>
-          <p aria-live="polite">{newsletterMessage}</p>
-        </form>
-      </section>
+          <form onSubmit={subscribe}>
+            <label htmlFor="newsletter-email">Email address</label>
+            <div>
+              <input
+                id="newsletter-email"
+                name="email"
+                placeholder="you@example.com"
+                required
+                type="email"
+              />
+              <button type="submit">
+                Join the circle <ArrowRight size={17} />
+              </button>
+            </div>
+            <p aria-live="polite">{newsletterMessage}</p>
+          </form>
+        </section>
+      ) : null}
 
       <footer className="premium-footer">
         <div className="footer-brand-row">
@@ -359,7 +367,9 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
             <span>About</span>
             <Link href="/#journal">Our story</Link>
             <Link href="/#journal">SENVO journal</Link>
-            <Link href="/#newsletter-title">SENVO circle</Link>
+            {showNewsletter ? (
+              <Link href="/#newsletter-title">SENVO circle</Link>
+            ) : null}
           </div>
         </div>
         <div className="footer-bottom">
@@ -402,12 +412,16 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
           <Link href="/account/login" onClick={closePanels}>
             Continue with email <ArrowRight size={17} />
           </Link>
-          <Link href="/account/code?channel=phone" onClick={closePanels}>
-            Continue with phone <ArrowRight size={17} />
-          </Link>
-          <Link href="/account/code?channel=email" onClick={closePanels}>
-            Continue with email code <ArrowRight size={17} />
-          </Link>
+          {showCodeSignIn ? (
+            <>
+              <Link href="/account/code?channel=phone" onClick={closePanels}>
+                Continue with phone <ArrowRight size={17} />
+              </Link>
+              <Link href="/account/code?channel=email" onClick={closePanels}>
+                Continue with email code <ArrowRight size={17} />
+              </Link>
+            </>
+          ) : null}
           <Link href="/account/register" onClick={closePanels}>
             Create an account <ArrowRight size={17} />
           </Link>
