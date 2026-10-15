@@ -29,7 +29,11 @@ export function CartLineList({
         const busy = mutatingId === line.id;
         return (
           <article className="pos-cart-line" key={line.id} aria-busy={busy}>
-            <ProductThumb productId={line.productVariantId} name={line.productName} size={40} />
+            <ProductThumb
+              productId={line.productVariantId}
+              name={line.productName}
+              size={40}
+            />
             <div className="pos-cart-line__details">
               <strong>{line.productName}</strong>
               <span>

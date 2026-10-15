@@ -356,7 +356,11 @@ export function BarcodeWorkspace({
                   onClick={() => setSelectedProductId(product.id)}
                   type="button"
                 >
-                  <ProductThumb productId={product.id} name={product.name} size={36} />
+                  <ProductThumb
+                    productId={product.id}
+                    name={product.name}
+                    size={36}
+                  />
                   <span className={styles.productCopy}>
                     <strong>{product.name}</strong>
                     <small>{product.productCode}</small>

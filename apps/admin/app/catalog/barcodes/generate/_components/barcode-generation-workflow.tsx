@@ -595,9 +595,16 @@ function SelectStep({
                     <td>
                       <div className={styles.variantIdentity}>
                         {selectedProduct ? (
-                          <ProductThumb productId={selectedProduct.id} name={selectedProduct.name} size={36} />
+                          <ProductThumb
+                            productId={selectedProduct.id}
+                            name={selectedProduct.name}
+                            size={36}
+                          />
                         ) : (
-                          <span className={styles.variantSwatch} aria-hidden="true">
+                          <span
+                            className={styles.variantSwatch}
+                            aria-hidden="true"
+                          >
                             {color.slice(0, 1)}
                           </span>
                         )}
@@ -690,7 +697,11 @@ function ReviewStep({
             <article className={styles.reviewRow} key={candidate.variant.id}>
               <div className={styles.reviewIdentity}>
                 {product ? (
-                  <ProductThumb productId={product.id} name={product.name} size={36} />
+                  <ProductThumb
+                    productId={product.id}
+                    name={product.name}
+                    size={36}
+                  />
                 ) : (
                   <span className={styles.variantSwatch} aria-hidden="true">
                     {candidate.colorName.slice(0, 1)}

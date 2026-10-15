@@ -522,7 +522,11 @@ export function InventoryOverview({
               >
                 {/* Hero / Thumbnail */}
                 <div className={styles.cardHero}>
-                  <ProductThumb productId={item.product.id} name={item.product.name} size={58} />
+                  <ProductThumb
+                    productId={item.product.id}
+                    name={item.product.name}
+                    size={58}
+                  />
 
                   <div className={styles.cardBadgePos}>
                     {isOutOfStock ? (

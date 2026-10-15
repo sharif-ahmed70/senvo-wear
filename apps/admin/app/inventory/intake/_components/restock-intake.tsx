@@ -332,8 +332,18 @@ export function RestockIntake({
                         onClick={() => void choose(item)}
                         type="button"
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <ProductThumb productId={item.product.id} name={item.product.name} size={40} />
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                          }}
+                        >
+                          <ProductThumb
+                            productId={item.product.id}
+                            name={item.product.name}
+                            size={40}
+                          />
                           <span>
                             <strong>{item.product.name}</strong>{" "}
                             <small>{item.product.productCode}</small>
