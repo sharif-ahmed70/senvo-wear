@@ -16,6 +16,7 @@ param(
   [int]$Port = 5432,
   [string]$User = "postgres",
   [string]$OutDir = "C:\SENVO_TRANSFER\DATABASE",
+  [ValidateRange(1,3650)]
   [int]$Keep = 14,
   [string]$PgBin = ""
 )

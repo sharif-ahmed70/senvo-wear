@@ -438,6 +438,29 @@ describeWithDatabase("Prisma sales order repositories", () => {
     });
   });
 
+  it("rejects orders for variants of an archived product and accepts active ones", async () => {
+    const base = await createSalesBase("ARCHIVED-PRODUCT");
+    await prisma.product.update({
+      data: { status: "ARCHIVED" },
+      where: { id: base.product.id },
+    });
+    await expect(createOrder(base, "SO-ARCHIVED-PRODUCT", 1)).rejects.toThrow(
+      "Archived products cannot be ordered.",
+    );
+    expect(
+      await prisma.salesOrder.count({
+        where: { organizationId: base.organization.id },
+      }),
+    ).toBe(0);
+
+    await prisma.product.update({
+      data: { status: "ACTIVE" },
+      where: { id: base.product.id },
+    });
+    const order = await createOrder(base, "SO-RESTORED-PRODUCT", 1);
+    expect(order.orderNumber).toBe("SO-RESTORED-PRODUCT");
+  });
+
   it("rejects invalid draft amendments without changing persisted lines or totals", async () => {
     const base = await createSalesBase("AMEND-INVALID");
     const other = await createSalesBase("AMEND-OTHER");

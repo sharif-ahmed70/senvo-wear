@@ -1437,6 +1437,9 @@ async function loadVariantSnapshots(
         "Archived product variants cannot be ordered.",
       );
     }
+    if (variant.product.status === "ARCHIVED") {
+      throw new BusinessRuleError("Archived products cannot be ordered.");
+    }
     snapshots.set(variant.id, variant);
   }
   return snapshots;
