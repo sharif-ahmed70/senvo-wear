@@ -12,6 +12,7 @@ import {
   createColor,
   createProduct,
   createProductVariant,
+  updateVariantPrice,
   createSize,
   listVariantBarcodes,
   lookupVariantByBarcode,
@@ -34,6 +35,9 @@ import {
   type VariantBarcode,
 } from "@senvo/domain";
 import {
+  editProductServiceInputSchema,
+  productLifecycleInputSchema,
+  type ProductDeletableContract,
   categoryContractSchema,
   barcodeLookupContractSchema,
   collectionContractSchema,
@@ -44,6 +48,7 @@ import {
   createColorServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
   reorderCollectionProductsServiceInputSchema,
@@ -408,6 +413,142 @@ export class CatalogApplicationService {
     });
   }
 
+  getProductDeletable(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<ProductDeletableContract>(context, async (trusted) => {
+      const input = parsePayload(getProductServiceInputSchema, payload);
+      await this.authorize(trusted, "READ");
+      if (!this.transactionManager)
+        throw new Error("Transaction manager is required.");
+      return this.transactionManager.execute(trusted, async (tx) => {
+        const repo = tx.productLifecycleRepository;
+        if (!repo) throw new Error("Product lifecycle repository is required.");
+        if (!(await repo.findLocked(input.productId, trusted.organizationId)))
+          throw new NotFoundError("Product was not found.");
+        const history = await repo.hasHistory(
+          input.productId,
+          trusted.organizationId,
+        );
+        return {
+          deletable: !history,
+          reason: history
+            ? "This product has history. Archive it instead."
+            : null,
+        };
+      });
+    });
+  }
+
+  editProduct(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateProduct(context, payload, "edit");
+  }
+  archiveProduct(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateProduct(context, payload, "archive");
+  }
+  restoreProduct(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateProduct(context, payload, "restore");
+  }
+  deleteProduct(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateProduct(context, payload, "delete");
+  }
+
+  private mutateProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+    operation: "edit" | "archive" | "restore" | "delete",
+  ) {
+    return this.execute<ProductContract | null>(context, async (trusted) => {
+      await this.authorize(
+        trusted,
+        operation === "delete" ? "DELETE" : "UPDATE",
+      );
+      const input =
+        operation === "edit"
+          ? parsePayload(editProductServiceInputSchema, payload)
+          : {
+              ...parsePayload(productLifecycleInputSchema, payload),
+              name: undefined,
+              description: undefined,
+              categoryId: undefined,
+            };
+      if (!this.transactionManager)
+        throw new Error("Transaction manager is required.");
+      return this.transactionManager.execute(trusted, async (tx) => {
+        const repo = tx.productLifecycleRepository;
+        if (!repo) throw new Error("Product lifecycle repository is required.");
+        const product = await repo.findLocked(
+          input.productId,
+          trusted.organizationId,
+        );
+        if (!product) throw new NotFoundError("Product was not found.");
+        if (
+          product.updatedAt.getTime() !==
+          new Date(input.expectedUpdatedAt).getTime()
+        )
+          throw new ConcurrencyError("Product changed. Refresh.");
+        if (
+          operation === "edit" &&
+          input.categoryId &&
+          !(await this.categories.findById(
+            input.categoryId,
+            trusted.organizationId,
+          ))
+        )
+          throw new NotFoundError("Category was not found.");
+        const changes =
+          operation === "edit"
+            ? {
+                ...(input.name !== undefined ? { name: input.name } : {}),
+                ...(input.description !== undefined
+                  ? { description: input.description }
+                  : {}),
+                ...(input.categoryId !== undefined
+                  ? { categoryId: input.categoryId }
+                  : {}),
+              }
+            : {
+                status:
+                  operation === "archive"
+                    ? ("ARCHIVED" as const)
+                    : ("ACTIVE" as const),
+              };
+        let result: Product | null = null;
+        if (operation === "delete") await repo.delete(product);
+        else result = await repo.update(product, changes);
+        await tx.auditWriter.recordWithinTransaction({
+          action:
+            operation === "edit"
+              ? "PRODUCT_UPDATED"
+              : operation === "archive"
+                ? "PRODUCT_ARCHIVED"
+                : operation === "restore"
+                  ? "PRODUCT_RESTORED"
+                  : "PRODUCT_DELETED",
+          actor: { userId: trusted.userId },
+          organizationId: trusted.organizationId,
+          resource: "PRODUCT",
+          resourceId: product.id,
+          metadata: {
+            before: {
+              name: product.name,
+              description: product.description,
+              categoryId: product.categoryId,
+              status: product.status,
+            },
+            after: result
+              ? {
+                  name: result.name,
+                  description: result.description,
+                  categoryId: result.categoryId,
+                  status: result.status,
+                }
+              : null,
+          },
+        });
+        return result ? mapProduct(result) : null;
+      });
+    });
+  }
+
   getProduct(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -449,6 +590,22 @@ export class CatalogApplicationService {
           )
         ).map(mapVariant),
       });
+    });
+  }
+
+  updateVariantPrice(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(updateVariantPriceServiceInputSchema, payload);
+      await this.authorize(validated, "UPDATE");
+      return mapVariant(
+        await updateVariantPrice(this.productVariants, {
+          ...input,
+          organizationId: validated.organizationId,
+        }),
+      );
     });
   }
 
@@ -716,7 +873,7 @@ export class CatalogApplicationService {
 
   private authorize(
     context: ValidatedApplicationExecutionContext,
-    action: "CREATE" | "READ" | "UPDATE",
+    action: "CREATE" | "READ" | "UPDATE" | "DELETE",
   ): Promise<void> {
     return requireAuthorization(this.authorizationService, context, {
       action,
@@ -785,7 +942,10 @@ function normalizeError(error: unknown): ApplicationServiceError {
   if (error instanceof ConflictError)
     return new ApplicationServiceError({
       code: "CONFLICT",
-      message: "The request conflicts with the current state.",
+      message:
+        error.message === "This product has history. Archive it instead."
+          ? error.message
+          : "The request conflicts with the current state.",
     });
   if (error instanceof BusinessRuleError)
     return new ApplicationServiceError({
@@ -808,7 +968,16 @@ function mapCollection(record: Collection): CollectionContract {
 }
 
 function mapColor(record: Color): ColorContract {
-  return colorContractSchema.parse(mapRecord(record));
+  return colorContractSchema.parse({
+    code: record.code,
+    createdAt: record.createdAt.toISOString(),
+    hexValue: record.hexValue ?? null,
+    id: record.id,
+    name: record.name,
+    organizationId: record.organizationId,
+    status: record.status,
+    updatedAt: record.updatedAt.toISOString(),
+  });
 }
 
 function mapSize(record: Size): SizeContract {
@@ -820,7 +989,18 @@ function mapProduct(record: Product): ProductContract {
 }
 
 function mapVariant(record: ProductVariant): ProductVariantContract {
-  return productVariantContractSchema.parse(mapRecord(record));
+  return productVariantContractSchema.parse({
+    colorId: record.colorId,
+    createdAt: record.createdAt.toISOString(),
+    id: record.id,
+    organizationId: record.organizationId,
+    productId: record.productId,
+    sizeId: record.sizeId,
+    sku: record.sku,
+    sellingPriceMinor: record.sellingPriceMinor,
+    status: record.status,
+    updatedAt: record.updatedAt.toISOString(),
+  });
 }
 
 function mapBarcode(record: VariantBarcode): VariantBarcodeContract {

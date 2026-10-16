@@ -6,6 +6,7 @@ export type PermissionResource =
   | "USER"
   | "CATALOG"
   | "INVENTORY"
+  | "PROCUREMENT"
   | "RESERVATION"
   | "SALES_ORDER"
   | "SALES"

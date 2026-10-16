@@ -1,3 +1,4 @@
+import { assertSellingPriceMinor } from "./variant-pricing-use-cases.js";
 import {
   ConflictError,
   NotFoundError,
@@ -274,6 +275,7 @@ export async function createProduct(
 }
 
 export type CreateProductVariantInput = {
+  sellingPriceMinor?: number;
   colorId: string;
   organizationId: string;
   productId: string;
@@ -291,6 +293,8 @@ export async function createProductVariant(
   },
   input: CreateProductVariantInput,
 ): Promise<ProductVariant> {
+  if (input.sellingPriceMinor !== undefined)
+    assertSellingPriceMinor(input.sellingPriceMinor);
   const product = await requireProduct(repositories.products, input.productId);
   const color = await requireColor(repositories.colors, input.colorId);
   const size = await requireSize(repositories.sizes, input.sizeId);
@@ -319,6 +323,7 @@ export async function createProductVariant(
   );
 
   return repositories.productVariants.create({
+    sellingPriceMinor: input.sellingPriceMinor ?? 0,
     colorId: input.colorId,
     organizationId: input.organizationId,
     productId: input.productId,

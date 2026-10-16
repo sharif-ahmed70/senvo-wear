@@ -3,12 +3,21 @@ import {
   ConcurrencyError,
   ConflictError,
   NotFoundError,
+  SalesOrderReservationExpiredError,
   calculateSalesOrderTotals,
   encodeSalesOrderCursor,
   parseSalesOrderCursor,
+  calculateHistoricalReservationExpiry,
   type AmendDraftSalesOrderRecord,
   type CreateDraftSalesOrderRecord,
+  type FindDueStorefrontReservationOrderIdsFilter,
+  type FindLegacyNullExpiryCandidatesFilter,
   type FulfillSalesOrderRecord,
+  type LegacyNullExpiryCandidateRecord,
+  type NormalizeLegacyStorefrontReservationRecord,
+  type NormalizeLegacyStorefrontReservationResult,
+  type ReclaimExpiredStorefrontReservationRecord,
+  type ReclaimExpiredStorefrontReservationResult,
   type ReserveSalesOrderRecord,
   type SalesOrder,
   type SalesOrderListFilter,
@@ -29,8 +38,11 @@ type SalesPrismaClient = Pick<
   | "inventoryAllocationPolicyLocation"
   | "inventoryReservation"
   | "inventoryReservationLine"
+  | "onlinePaymentAttempt"
+  | "paymentBatch"
   | "productVariant"
   | "salesOrder"
+  | "salesOrderCommerceProfile"
   | "salesOrderLine"
 >;
 
@@ -396,6 +408,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           const reservation = await transaction.inventoryReservation.findFirst({
             where: {
               id: order.inventoryReservationId,
@@ -472,6 +489,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           await assertMovementIdempotencyAvailable(
             transaction,
             record,
@@ -556,6 +578,634 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
     }
   }
 
+  async findDueStorefrontReservationOrderIds(
+    filter: FindDueStorefrontReservationOrderIdsFilter,
+  ): Promise<string[]> {
+    const orders = await this.prisma.salesOrder.findMany({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+      take: filter.limit,
+      where: {
+        commerceProfile: {
+          source: "STOREFRONT",
+        },
+        inventoryReservation: {
+          consumedByMovementId: null,
+          expiresAt: {
+            lte: filter.cutoff,
+            not: null,
+          },
+          status: "ACTIVE",
+        },
+        organizationId: filter.organizationId,
+        status: "RESERVED",
+      },
+    });
+    return orders.map((order) => order.id);
+  }
+
+  async findLegacyNullExpiryCandidates(
+    filter: FindLegacyNullExpiryCandidatesFilter,
+  ): Promise<LegacyNullExpiryCandidateRecord[]> {
+    const cursorCondition = filter.cursor
+      ? {
+          OR: [
+            { createdAt: { gt: filter.cursor.createdAt } },
+            {
+              createdAt: filter.cursor.createdAt,
+              id: { gt: filter.cursor.id },
+            },
+          ],
+        }
+      : {};
+
+    const orders = await this.prisma.salesOrder.findMany({
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        _count: {
+          select: {
+            onlinePaymentAttempts: true,
+          },
+        },
+        paymentBatch: {
+          select: {
+            id: true,
+          },
+        },
+        cancelledAt: true,
+        channel: true,
+        confirmedAt: true,
+        createdAt: true,
+        fulfilledAt: true,
+        fulfillmentMovementId: true,
+        id: true,
+        orderNumber: true,
+        reservedAt: true,
+        commerceProfile: {
+          select: {
+            paymentPreference: true,
+          },
+        },
+        inventoryReservation: {
+          select: {
+            confirmedAt: true,
+            expiredAt: true,
+            id: true,
+            referenceId: true,
+            referenceType: true,
+            releasedAt: true,
+            reservationNumber: true,
+            version: true,
+          },
+        },
+      },
+      take: filter.limit,
+      where: {
+        ...cursorCondition,
+        commerceProfile: {
+          source: "STOREFRONT",
+        },
+        inventoryReservation: {
+          consumedByMovementId: null,
+          expiresAt: null,
+          status: "ACTIVE",
+        },
+        inventoryReservationId: { not: null },
+        organizationId: filter.organizationId,
+        status: "RESERVED",
+      },
+    });
+
+    return orders.map((order) => ({
+      cancelledAt: order.cancelledAt,
+      channel: order.channel,
+      confirmedAt: order.confirmedAt,
+      createdAt: order.createdAt,
+      fulfilledAt: order.fulfilledAt,
+      fulfillmentMovementId: order.fulfillmentMovementId,
+      hasOnlinePaymentAttempts: (order._count?.onlinePaymentAttempts ?? 0) > 0,
+      hasPaymentBatches: order.paymentBatch !== null,
+      id: order.id,
+      inventoryReservationId: order.inventoryReservation!.id,
+      orderNumber: order.orderNumber,
+      paymentPreference: order.commerceProfile?.paymentPreference ?? null,
+      reservationConfirmedAt: order.inventoryReservation?.confirmedAt ?? null,
+      reservationExpiredAt: order.inventoryReservation?.expiredAt ?? null,
+      reservationNumber: order.inventoryReservation!.reservationNumber,
+      reservationReferenceId: order.inventoryReservation?.referenceId ?? null,
+      reservationReferenceType:
+        order.inventoryReservation?.referenceType ?? null,
+      reservationReleasedAt: order.inventoryReservation?.releasedAt ?? null,
+      reservationVersion: order.inventoryReservation!.version,
+      reservedAt: order.reservedAt,
+    }));
+  }
+
+  async normalizeLegacyStorefrontReservation(
+    record: NormalizeLegacyStorefrontReservationRecord,
+  ): Promise<NormalizeLegacyStorefrontReservationResult> {
+    const effectiveNow = record.applicationTime ?? new Date();
+    if (record.cutoff.getTime() > effectiveNow.getTime()) {
+      throw new Error("Cutoff timestamp cannot be in the future.");
+    }
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockOrderRow(
+          transaction,
+          record.organizationId,
+          record.salesOrderId,
+        );
+        const order = await transaction.salesOrder.findFirst({
+          include: {
+            commerceProfile: true,
+            lines: { orderBy: { lineNumber: "asc" } },
+          },
+          where: {
+            id: record.salesOrderId,
+            organizationId: record.organizationId,
+          },
+        });
+
+        if (!order) {
+          return {
+            orderId: record.salesOrderId,
+            previousExpiresAt: null,
+            reclaimed: false,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "SKIPPED",
+          };
+        }
+
+        if (order.status !== "RESERVED") {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            skipOrDeferReason: "TERMINAL_ORDER",
+            status: "SKIPPED",
+          };
+        }
+
+        if (!order.inventoryReservationId) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (order.commerceProfile?.source !== "STOREFRONT") {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            skipOrDeferReason: "NOT_STOREFRONT",
+            status: "DEFERRED",
+          };
+        }
+
+        await lockReservationRow(
+          transaction,
+          order.organizationId,
+          order.inventoryReservationId,
+        );
+        const reservation = await transaction.inventoryReservation.findFirst({
+          include: { lines: { orderBy: { lineNumber: "asc" } } },
+          where: {
+            id: order.inventoryReservationId,
+            organizationId: order.organizationId,
+          },
+        });
+
+        if (!reservation) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (reservation.expiresAt !== null) {
+          return {
+            calculatedExpiresAt: reservation.expiresAt,
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "ALREADY_HAS_EXPIRY",
+            status: "SKIPPED",
+          };
+        }
+
+        if (reservation.status !== "ACTIVE") {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "NOT_ACTIVE",
+            status: "SKIPPED",
+          };
+        }
+
+        if (reservation.consumedByMovementId !== null) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          record.expectedReservationId !== undefined &&
+          reservation.id !== record.expectedReservationId
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          record.expectedReservationNumber !== undefined &&
+          reservation.reservationNumber !== record.expectedReservationNumber
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          record.expectedReservationVersion !== undefined &&
+          reservation.version !== record.expectedReservationVersion
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        // Revalidate all integrity rules (order channel, references, terminal timestamps)
+        if (
+          order.channel !== "ONLINE" ||
+          reservation.referenceType !== "SALES_ORDER" ||
+          reservation.referenceId !== order.id ||
+          order.confirmedAt !== null ||
+          order.cancelledAt !== null ||
+          order.fulfilledAt !== null ||
+          order.fulfillmentMovementId !== null ||
+          reservation.confirmedAt !== null ||
+          reservation.releasedAt !== null ||
+          reservation.expiredAt !== null
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        const paymentPreference = order.commerceProfile?.paymentPreference;
+        if (
+          paymentPreference !== "ONLINE_PAYMENT" &&
+          paymentPreference !== "CASH_ON_DELIVERY"
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INTEGRITY_MISMATCH",
+            status: "DEFERRED",
+          };
+        }
+
+        if (
+          !order.reservedAt ||
+          order.reservedAt.getTime() > record.cutoff.getTime()
+        ) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "INVALID_RESERVED_AT",
+            status: "DEFERRED",
+          };
+        }
+
+        // PAYMENT EXPOSURE RULE:
+        // Any OnlinePaymentAttempt in ANY status excludes automatic normalization
+        const paymentAttemptCount =
+          await transaction.onlinePaymentAttempt.count({
+            where: {
+              organizationId: record.organizationId,
+              salesOrderId: record.salesOrderId,
+            },
+          });
+        if (paymentAttemptCount > 0) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "PAYMENT_EXPOSED",
+            status: "DEFERRED",
+          };
+        }
+
+        // Any PaymentBatch excludes automatic normalization
+        const paymentBatch = await transaction.paymentBatch.findFirst({
+          where: {
+            organizationId: record.organizationId,
+            salesOrderId: record.salesOrderId,
+          },
+        });
+        if (paymentBatch !== null) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "PAYMENT_BATCH_EXPOSED",
+            status: "DEFERRED",
+          };
+        }
+
+        // Calculate historical expiry deterministically from reservedAt
+        const { calculatedExpiresAt, isDue } =
+          calculateHistoricalReservationExpiry({
+            paymentPreference,
+            referenceTime: record.cutoff,
+            reservedAt: order.reservedAt,
+          });
+
+        const reservationVersionBefore = reservation.version;
+        const updateResult = await transaction.inventoryReservation.updateMany({
+          data: {
+            expiresAt: calculatedExpiresAt,
+            version: { increment: 1 },
+          },
+          where: {
+            expiresAt: null,
+            id: reservation.id,
+            organizationId: record.organizationId,
+            version: reservationVersionBefore,
+          },
+        });
+
+        if (updateResult.count !== 1) {
+          return {
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter: reservation.version,
+            reservationVersionBefore: reservation.version,
+            skipOrDeferReason: "ALREADY_HAS_EXPIRY",
+            status: "SKIPPED",
+          };
+        }
+
+        const reservationVersionAfter = reservationVersionBefore + 1;
+
+        if (!isDue) {
+          // Still valid: hold remains RESERVED + ACTIVE
+          return {
+            calculatedExpiresAt,
+            orderId: record.salesOrderId,
+            orderNumber: order.orderNumber,
+            paymentPreference,
+            previousExpiresAt: null,
+            reclaimed: false,
+            reservationId: reservation.id,
+            reservationNumber: reservation.reservationNumber,
+            reservationVersionAfter,
+            reservationVersionBefore,
+            reservedAt: order.reservedAt,
+            status: "NORMALIZED_STILL_VALID",
+          };
+        }
+
+        // Overdue: atomically invoke existing Phase 2A reclaim in SAME transaction!
+        await lockStockKeys(transaction, {
+          lines: reservation.lines,
+          organizationId: reservation.organizationId,
+          stockLocationId: reservation.stockLocationId,
+        });
+
+        const now = record.applicationTime ?? record.cutoff;
+        await transaction.inventoryReservation.update({
+          data: {
+            expiredAt: now,
+            status: "EXPIRED",
+            version: { increment: 1 },
+          },
+          where: { id: reservation.id },
+        });
+
+        await transaction.salesOrder.update({
+          data: {
+            cancelledAt: now,
+            status: "CANCELLED",
+            version: { increment: 1 },
+          },
+          where: { id: order.id },
+        });
+
+        return {
+          calculatedExpiresAt,
+          orderId: record.salesOrderId,
+          orderNumber: order.orderNumber,
+          paymentPreference,
+          previousExpiresAt: null,
+          reclaimed: true,
+          reservationId: reservation.id,
+          reservationNumber: reservation.reservationNumber,
+          reservationVersionAfter: reservationVersionAfter + 1,
+          reservationVersionBefore,
+          reservedAt: order.reservedAt,
+          status: "NORMALIZED_AND_RECLAIMED",
+        };
+      });
+    } catch (error) {
+      mapSalesOrderIntegrityError(error);
+    }
+  }
+
+  async reclaimExpiredStorefrontReservation(
+    record: ReclaimExpiredStorefrontReservationRecord,
+  ): Promise<ReclaimExpiredStorefrontReservationResult> {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await lockOrderRow(
+          transaction,
+          record.organizationId,
+          record.salesOrderId,
+        );
+        const order = await transaction.salesOrder.findFirst({
+          include: {
+            commerceProfile: true,
+            lines: { orderBy: { lineNumber: "asc" } },
+          },
+          where: {
+            id: record.salesOrderId,
+            organizationId: record.organizationId,
+          },
+        });
+
+        if (
+          !order ||
+          order.status !== "RESERVED" ||
+          !order.inventoryReservationId ||
+          order.commerceProfile?.source !== "STOREFRONT"
+        ) {
+          return {
+            expiresAt: null,
+            orderId: record.salesOrderId,
+            reclaimed: false,
+          };
+        }
+
+        await lockReservationRow(
+          transaction,
+          order.organizationId,
+          order.inventoryReservationId,
+        );
+        const reservation = await transaction.inventoryReservation.findFirst({
+          include: { lines: { orderBy: { lineNumber: "asc" } } },
+          where: {
+            id: order.inventoryReservationId,
+            organizationId: order.organizationId,
+          },
+        });
+
+        if (
+          !reservation ||
+          reservation.status !== "ACTIVE" ||
+          reservation.consumedByMovementId !== null ||
+          !reservation.expiresAt ||
+          reservation.expiresAt.getTime() > record.cutoff.getTime()
+        ) {
+          return {
+            expiresAt: reservation?.expiresAt ?? null,
+            orderId: order.id,
+            reclaimed: false,
+          };
+        }
+
+        await lockStockKeys(transaction, {
+          lines: reservation.lines,
+          organizationId: reservation.organizationId,
+          stockLocationId: reservation.stockLocationId,
+        });
+
+        const now = record.applicationTime ?? new Date();
+        await transaction.inventoryReservation.update({
+          data: {
+            expiredAt: now,
+            status: "EXPIRED",
+            version: { increment: 1 },
+          },
+          where: { id: reservation.id },
+        });
+
+        await transaction.salesOrder.update({
+          data: {
+            cancelledAt: now,
+            status: "CANCELLED",
+            version: { increment: 1 },
+          },
+          where: { id: order.id },
+        });
+
+        return {
+          expiresAt: reservation.expiresAt,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          reclaimed: true,
+          reservationId: reservation.id,
+          reservationNumber: reservation.reservationNumber,
+        };
+      });
+    } catch (error) {
+      mapSalesOrderIntegrityError(error);
+    }
+  }
+
   private async transitionWithReservationCheck(
     record: {
       expectedVersion: number;
@@ -584,6 +1234,11 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
               "Sales order has no linked reservation.",
             );
           }
+          await lockReservationRow(
+            transaction,
+            order.organizationId,
+            order.inventoryReservationId,
+          );
           const reservation = await transaction.inventoryReservation.findFirst({
             where: {
               id: order.inventoryReservationId,
@@ -597,6 +1252,12 @@ export class PrismaSalesOrderRepository implements SalesOrderRepository {
             throw new BusinessRuleError(
               "Sales order reservation must remain active before confirmation.",
             );
+          }
+          if (
+            reservation.expiresAt &&
+            reservation.expiresAt.getTime() <= Date.now()
+          ) {
+            throw new SalesOrderReservationExpiredError();
           }
           return transaction.salesOrder.update({
             data: {
@@ -666,8 +1327,11 @@ export function createTransactionScopedSalesOrderRepository(
     inventoryMovementLine: transaction.inventoryMovementLine,
     inventoryReservation: transaction.inventoryReservation,
     inventoryReservationLine: transaction.inventoryReservationLine,
+    onlinePaymentAttempt: transaction.onlinePaymentAttempt,
+    paymentBatch: transaction.paymentBatch,
     productVariant: transaction.productVariant,
     salesOrder: transaction.salesOrder,
+    salesOrderCommerceProfile: transaction.salesOrderCommerceProfile,
     salesOrderLine: transaction.salesOrderLine,
   };
   return new PrismaSalesOrderRepository(client);
@@ -773,6 +1437,9 @@ async function loadVariantSnapshots(
         "Archived product variants cannot be ordered.",
       );
     }
+    if (variant.product.status === "ARCHIVED") {
+      throw new BusinessRuleError("Archived products cannot be ordered.");
+    }
     snapshots.set(variant.id, variant);
   }
   return snapshots;
@@ -848,6 +1515,20 @@ async function lockOrderRow(
     SELECT id
     FROM sales_orders
     WHERE id = ${salesOrderId}::uuid
+      AND organization_id = ${organizationId}::uuid
+    FOR UPDATE
+  `;
+}
+
+async function lockReservationRow(
+  transaction: SalesTransaction,
+  organizationId: string,
+  reservationId: string,
+): Promise<void> {
+  await transaction.$executeRaw`
+    SELECT id
+    FROM inventory_reservations
+    WHERE id = ${reservationId}::uuid
       AND organization_id = ${organizationId}::uuid
     FOR UPDATE
   `;

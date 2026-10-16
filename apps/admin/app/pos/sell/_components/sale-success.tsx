@@ -1,4 +1,12 @@
-import { CheckCircle2, Printer, ReceiptText, RotateCcw } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  Printer,
+  ReceiptText,
+  RotateCcw,
+  ShoppingBag,
+  Store,
+} from "lucide-react";
 import Link from "next/link";
 import type { PosCheckoutContract } from "@senvo/contracts";
 import type { FriendlyPosError } from "../_lib/pos-error-messages";
@@ -27,62 +35,110 @@ export function SaleSuccess({
   preparingNext: boolean;
 }) {
   const receiptUrl = `/pos/checkouts/${checkout.id}/receipt`;
+  const outstandingMinor = checkout.outstandingMinor ?? 0;
+  const paidMinor = checkout.paidMinor ?? 0;
+
   return (
-    <main className="pos-sale-page">
-      <section className="pos-sale-success" aria-live="polite">
-        <CheckCircle2 aria-hidden="true" size={38} />
-        <span>Sale completed</span>
-        <h1>{checkout.orderNumber}</h1>
-        <dl>
-          <div>
-            <dt>Total</dt>
-            <dd>{formatBdt(checkout.totalMinor)}</dd>
+    <main className="pos-sale-page pos-sale-success-page">
+      <section className="pos-success-shell" aria-live="polite">
+        <header className="pos-success-hero">
+          <div className="pos-success-mark" aria-hidden="true">
+            <CheckCircle2 size={34} />
           </div>
-          <div>
-            <dt>Amount paid</dt>
-            <dd>{formatBdt(checkout.paidMinor ?? 0)}</dd>
+          <div className="pos-success-copy">
+            <span>Sale completed</span>
+            <h1>{checkout.orderNumber}</h1>
+            <p>
+              The sale is recorded. Payment, order, inventory consumption and
+              receipt records are now part of the transaction history.
+            </p>
           </div>
-          <div>
-            <dt>Remaining due</dt>
-            <dd>{formatBdt(checkout.outstandingMinor ?? 0)}</dd>
+          <div className="pos-success-total">
+            <span>Total</span>
+            <strong>{formatBdt(checkout.totalMinor)}</strong>
+            <small>{statusLabels[checkout.paymentStatus]}</small>
           </div>
+        </header>
+
+        <section
+          className="pos-success-facts"
+          aria-label="Completed sale details"
+        >
+          <article>
+            <ShoppingBag aria-hidden="true" size={18} />
+            <div>
+              <span>Paid</span>
+              <strong>{formatBdt(paidMinor)}</strong>
+            </div>
+          </article>
+          <article
+            className={
+              outstandingMinor > 0 ? "pos-success-fact--due" : undefined
+            }
+          >
+            <Clock3 aria-hidden="true" size={18} />
+            <div>
+              <span>Remaining due</span>
+              <strong>{formatBdt(outstandingMinor)}</strong>
+            </div>
+          </article>
+          <article>
+            <Store aria-hidden="true" size={18} />
+            <div>
+              <span>Sales counter</span>
+              <strong>{checkout.counterName}</strong>
+            </div>
+          </article>
+        </section>
+
+        <section className="pos-success-actions" aria-label="Next actions">
           <div>
-            <dt>Payment status</dt>
-            <dd>{statusLabels[checkout.paymentStatus]}</dd>
+            <span>Next step</span>
+            <h2>Receipt or next customer</h2>
+            <p>
+              Keep the counter moving. Open the receipt when needed, or start
+              the next sale immediately.
+            </p>
           </div>
-          <div>
-            <dt>Sales counter</dt>
-            <dd>{checkout.counterName}</dd>
+          <div className="pos-success-actions__buttons">
+            {canReadReceipt && checkout.receiptId ? (
+              <>
+                <Link className="pos-success-secondary" href={receiptUrl}>
+                  <ReceiptText aria-hidden="true" size={18} />
+                  View receipt
+                </Link>
+                <Link className="pos-success-secondary" href={receiptUrl}>
+                  <Printer aria-hidden="true" size={18} />
+                  Print receipt
+                </Link>
+              </>
+            ) : (
+              <span className="pos-success-restricted">
+                Receipt actions are restricted for this role.
+              </span>
+            )}
+            <button
+              className="pos-success-primary"
+              disabled={preparingNext}
+              onClick={onNextSale}
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={18} />
+              {preparingNext ? "Preparing next sale..." : "Start new sale"}
+            </button>
           </div>
-        </dl>
-        <div className="pos-sale-success__actions">
-          {canReadReceipt && checkout.receiptId ? (
-            <>
-              <Link href={receiptUrl}>
-                <ReceiptText size={18} />
-                View receipt
-              </Link>
-              <Link href={receiptUrl}>
-                <Printer size={18} />
-                Print receipt
-              </Link>
-            </>
-          ) : (
-            <p>Receipt actions are not available for your role.</p>
-          )}
-          <button disabled={preparingNext} onClick={onNextSale} type="button">
-            <RotateCcw size={18} />
-            {preparingNext ? "Preparing..." : "Start new sale"}
-          </button>
-        </div>
+        </section>
+
         {preparationError ? (
-          <div className="pos-form-error" role="alert">
+          <div className="pos-success-retry" role="alert">
             <strong>The completed sale is safe.</strong>
             <span>{preparationError.message}</span>
             {preparationError.requestId ? (
               <small>Support reference: {preparationError.requestId}</small>
             ) : null}
-            <span>Use Start new sale again to retry preparation.</span>
+            <span>
+              Use Start new sale again to retry only the next-sale preparation.
+            </span>
           </div>
         ) : null}
       </section>

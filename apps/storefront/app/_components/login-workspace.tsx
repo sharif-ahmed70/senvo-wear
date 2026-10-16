@@ -104,10 +104,12 @@ export function LoginWorkspace() {
       >
         Continue with Google
       </button>
-      <div className="auth-methods">
-        <Link href="/account/code?channel=email">Email code</Link>
-        <Link href="/account/code?channel=phone">Phone code</Link>
-      </div>
+      {process.env.NEXT_PUBLIC_STOREFRONT_CODE_SIGN_IN === "true" ? (
+        <div className="auth-methods">
+          <Link href="/account/code?channel=email">Email code</Link>
+          <Link href="/account/code?channel=phone">Phone code</Link>
+        </div>
+      ) : null}
       <AuthLinks
         primary={{ href: "/account/register", label: "Create an account" }}
       />

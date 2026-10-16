@@ -77,6 +77,13 @@ export type InventoryReadPageFilter = {
 };
 
 export type InventoryReadRepository = {
+  listProductSummaries(
+    filter: InventoryReadPageFilter & {
+      locationId?: string;
+      search?: string;
+      lowStockThreshold?: number;
+    },
+  ): Promise<InventoryReadPage<ProductInventorySummary>>;
   getVariantAvailability(input: {
     organizationId: string;
     variantId: string;
@@ -97,4 +104,27 @@ export type InventoryReadRepository = {
       type?: InventoryMovementType;
     },
   ): Promise<InventoryReadPage<InventoryMovementHistoryItem>>;
+};
+
+export type InventoryQuantitySummary = {
+  onHand: number;
+  reserved: number;
+  availableToSell: number;
+};
+
+export type ProductInventorySummary = InventoryQuantitySummary & {
+  product: { id: string; name: string; productCode: string };
+  lowStockThreshold: number | null;
+  isLowStock: boolean | null;
+  variants: Array<
+    InventoryQuantitySummary & {
+      variant: InventoryVariantReadItem;
+      locations: Array<
+        InventoryQuantitySummary & { location: InventoryLocationReadItem }
+      >;
+    }
+  >;
+  locations: Array<
+    InventoryQuantitySummary & { location: InventoryLocationReadItem }
+  >;
 };

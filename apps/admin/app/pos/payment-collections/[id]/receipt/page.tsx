@@ -1,4 +1,3 @@
-import { adminFoundationSession } from "../../../../_lib/admin-access";
 import { PaymentReceiptPreview } from "./payment-receipt-preview";
 
 export default async function PaymentReceiptPage({
@@ -7,10 +6,5 @@ export default async function PaymentReceiptPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return (
-    <PaymentReceiptPreview
-      collectionId={id}
-      permissions={adminFoundationSession.permissions}
-    />
-  );
+  return <PaymentReceiptPreview collectionId={id} />;
 }

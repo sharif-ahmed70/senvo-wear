@@ -1,9 +1,5 @@
 import { createServer } from "node:http";
-import {
-  createPostInventoryMovementApiHandler,
-  createSalesOrderApiHandler,
-  createStorefrontApiHandlers,
-} from "@senvo/api";
+import { createDevelopmentApiHandlers } from "./development-handlers.js";
 import {
   createApplicationServices,
   type ApplicationAuthorizationService,
@@ -21,7 +17,10 @@ import { loadGoogleOAuthProvider } from "./google-oauth-provider.js";
 import { createDevelopmentCorsRequestListener } from "./development-cors.js";
 import { loadDevelopmentServerConfig } from "./development-server-config.js";
 import { createSenvoHttpRequestListener } from "./node-http-adapter.js";
-import { DevelopmentHeaderRequestContextFactory } from "./request-context.js";
+import {
+  DevelopmentHeaderRequestContextFactory,
+  WorkforceSessionRequestContextFactory,
+} from "./request-context.js";
 
 const config = loadDevelopmentServerConfig(process.env);
 const passwordHasher = new NodeScryptPasswordHasher();
@@ -63,20 +62,16 @@ const services = createApplicationServices({
     : {}),
 });
 const apiListener = createSenvoHttpRequestListener({
-  contextFactory: new DevelopmentHeaderRequestContextFactory("development"),
-  handlers: {
-    createSalesOrder: createSalesOrderApiHandler({
-      authenticationService,
-      authorizationService,
-      sales: services.sales,
-    }),
-    postInventoryMovement: createPostInventoryMovementApiHandler({
-      authenticationService,
-      authorizationService,
-      inventory: services.inventory,
-    }),
-    storefront: createStorefrontApiHandlers(services.storefront),
-  },
+  contextFactory: services.workforceAuthentication
+    ? new WorkforceSessionRequestContextFactory(
+        services.workforceAuthentication,
+      )
+    : new DevelopmentHeaderRequestContextFactory("development"),
+  handlers: createDevelopmentApiHandlers({
+    authenticationService,
+    authorizationService,
+    services,
+  }),
 });
 const listener = (() => {
   let wrapped = apiListener;
@@ -84,7 +79,7 @@ const listener = (() => {
     wrapped = createWorkforceAuthenticationRequestListener({
       application: services.workforceAuthentication,
       delegate: wrapped,
-      publicOrigin: config.allowedOrigin,
+      publicOrigin: config.allowedOrigins,
       secureCookies: false,
     });
   }
@@ -99,7 +94,7 @@ const listener = (() => {
   return wrapped;
 })();
 const server = createServer(
-  createDevelopmentCorsRequestListener(listener, config.allowedOrigin),
+  createDevelopmentCorsRequestListener(listener, config.allowedOrigins),
 );
 
 server.once("error", (error) => {

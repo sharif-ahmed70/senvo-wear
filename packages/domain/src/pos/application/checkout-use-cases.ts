@@ -30,6 +30,12 @@ export type PosCheckoutSalesOrderRepository = Pick<
   "confirm" | "createDraft" | "findByIdempotencyKey" | "fulfill" | "reserve"
 >;
 
+export type PosCheckoutCustomerInput = {
+  addressLine1?: string | null;
+  name?: string | null;
+  phone?: string | null;
+};
+
 export async function checkoutCart(
   repositories: {
     checkouts: PosCheckoutRepository;
@@ -41,8 +47,10 @@ export async function checkoutCart(
     allowOutstanding: boolean;
     approveOutstanding(): Promise<void>;
     cartId: string;
+    expectedVersion: number;
     checkoutId: string;
     completedAt: Date;
+    customer?: PosCheckoutCustomerInput | null;
     idempotencyKey: string;
     organizationId: string;
     paymentBatchId: string;
@@ -73,6 +81,7 @@ export async function checkoutCart(
   const preparation = await repositories.checkouts.prepare(
     cartId,
     organizationId,
+    staffId,
   );
   if (!preparation) throw new NotFoundError("Cart was not found.");
   if (preparation.checkout) {
@@ -91,6 +100,15 @@ export async function checkoutCart(
     }
     return { checkout: preparation.checkout, replayed: true };
   }
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+    throw new ValidationApplicationError(
+      "expectedVersion must be a positive integer.",
+    );
+  if (
+    preparation.cartVersion !== input.expectedVersion ||
+    preparation.cartStatus !== "ACTIVE"
+  )
+    throw new ConflictError("Cart changed on another screen. Refresh.");
   validatePreparation(preparation, staffId);
   const balance = calculatePaymentBalance(
     checkoutTotal(preparation),
@@ -115,6 +133,9 @@ export async function checkoutCart(
         ? "EVENT_BOOTH"
         : "OFFLINE_STORE",
     currencyCode: "BDT",
+    customerName: input.customer?.name ?? null,
+    customerPhone: input.customer?.phone ?? null,
+    deliveryAddressLine1: input.customer?.addressLine1 ?? null,
     idempotencyKey: orderKey,
     lines,
     note: `POS checkout ${checkoutId}`,
@@ -144,6 +165,7 @@ export async function checkoutCart(
     salesOrderId: draft.id,
   });
   const checkoutRecord = await repositories.checkouts.createCompleted({
+    expectedVersion: input.expectedVersion,
     cartId,
     completedAt: input.completedAt,
     counterId: preparation.counterId,

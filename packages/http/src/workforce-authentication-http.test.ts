@@ -5,7 +5,11 @@ import {
   type WorkforceAuthenticationService,
 } from "@senvo/application";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkforceAuthenticationRequestListener } from "./workforce-authentication-http.js";
+import {
+  createWorkforceAuthenticationRequestListener,
+  workforceCsrfCookie,
+  workforceSessionCookie,
+} from "./workforce-authentication-http.js";
 
 const servers: Server[] = [];
 const publicOrigin = "http://localhost:3000";
@@ -214,16 +218,189 @@ describe("workforce authentication HTTP boundary", () => {
     expect(response.status).toBe(200);
     expect(delegate).toHaveBeenCalled();
   });
+
+  it("rejects unknown origin localhost:3999 in multi-origin setup", async () => {
+    const application = workforceApplication();
+    const url = await start(application, [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]);
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3999",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(application.login).not.toHaveBeenCalled();
+  });
+
+  it("rejects wildcard origin * in multi-origin setup", async () => {
+    const application = workforceApplication();
+    const url = await start(application, [
+      "http://localhost:3000",
+      "http://localhost:3001",
+    ]);
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: "*",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(application.login).not.toHaveBeenCalled();
+  });
+
+  it("sets HttpOnly session cookie on login", async () => {
+    const application = workforceApplication();
+    const url = await startWithOptions({
+      application,
+      delegate: (_req, res) => {
+        (res as { statusCode: number; end: () => void }).statusCode = 404;
+        (res as { end: () => void }).end();
+      },
+      publicOrigin,
+      secureCookies: false,
+    });
+
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: publicOrigin,
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const cookies = response.headers.getSetCookie();
+    expect(
+      cookies.some((c) => c.startsWith(`${workforceSessionCookie}=`)),
+    ).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${workforceCsrfCookie}=`))).toBe(
+      true,
+    );
+  });
+
+  it("omits sessionToken from response body when omitSessionTokenInBody is set", async () => {
+    const application = workforceApplication();
+    const url = await startWithOptions({
+      application,
+      delegate: (_req, res) => {
+        (res as { statusCode: number; end: () => void }).statusCode = 404;
+        (res as { end: () => void }).end();
+      },
+      omitSessionTokenInBody: true,
+      publicOrigin,
+      secureCookies: false,
+    });
+
+    const response = await fetch(url + "/admin/auth/login", {
+      body: JSON.stringify({
+        email: "admin@senvo.test",
+        password: "StrongPass123!",
+      }),
+      headers: {
+        "content-type": "application/json",
+        origin: publicOrigin,
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { csrfToken: string; sessionToken?: string };
+    };
+    expect(body.data.csrfToken).toBe(workforceSession.csrfToken);
+    expect(body.data.sessionToken).toBeUndefined();
+  });
+
+  it("restores session via senvo_workforce_session cookie", async () => {
+    const application = workforceApplication();
+    const url = await start(application);
+
+    const response = await fetch(url + "/admin/auth/session", {
+      headers: {
+        cookie: `${workforceSessionCookie}=${workforceSession.sessionToken}`,
+        origin: publicOrigin,
+      },
+      method: "GET",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { userId: string };
+    };
+    expect(body.data.userId).toBe(authenticatedPrincipal.userId);
+    expect(application.authenticateSession).toHaveBeenCalledWith(
+      workforceSession.sessionToken,
+    );
+  });
+
+  it("requires CSRF validation for cookie-authenticated logout", async () => {
+    const application = workforceApplication();
+    const url = await start(application);
+
+    // Missing CSRF token
+    const unauthenticatedResponse = await fetch(url + "/admin/auth/logout", {
+      body: "{}",
+      headers: {
+        "content-type": "application/json",
+        cookie: `${workforceSessionCookie}=${workforceSession.sessionToken}`,
+        origin: publicOrigin,
+      },
+      method: "POST",
+    });
+
+    expect(unauthenticatedResponse.status).toBe(401);
+    expect(application.logout).not.toHaveBeenCalled();
+
+    // With valid CSRF token header
+    const authenticatedResponse = await fetch(url + "/admin/auth/logout", {
+      body: "{}",
+      headers: {
+        "content-type": "application/json",
+        cookie: `${workforceSessionCookie}=${workforceSession.sessionToken}`,
+        origin: publicOrigin,
+        "x-csrf-token": workforceSession.csrfToken,
+      },
+      method: "POST",
+    });
+
+    expect(authenticatedResponse.status).toBe(200);
+    expect(application.authorizeMutation).toHaveBeenCalledWith(
+      workforceSession.sessionToken,
+      workforceSession.csrfToken,
+    );
+  });
 });
 
 function workforceApplication(
-  overrides: Partial<
-    Record<keyof WorkforceAuthenticationService, ReturnType<typeof vi.fn>>
-  > = {},
-) {
+  overrides: Partial<WorkforceAuthenticationService> = {},
+): WorkforceAuthenticationService & {
+  authenticateSession: ReturnType<typeof vi.fn>;
+  authorizeMutation: ReturnType<typeof vi.fn>;
+  login: ReturnType<typeof vi.fn>;
+  logout: ReturnType<typeof vi.fn>;
+} {
   return {
     authenticateSession: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
-    authorizeMutation: vi.fn(() => Promise.resolve()),
+    authorizeMutation: vi.fn(() => Promise.resolve(authenticatedPrincipal)),
     login: vi.fn(() => Promise.resolve(workforceSession)),
     logout: vi.fn(() => Promise.resolve()),
     ...overrides,
@@ -235,24 +412,47 @@ function workforceApplication(
   };
 }
 
-async function start(application: WorkforceAuthenticationService) {
-  return startWithDelegate(application, (_request, response) => {
-    (response as { statusCode: number }).statusCode = 404;
-    (response as { end: () => void }).end();
-  });
+async function start(
+  application: WorkforceAuthenticationService,
+  origin: string | readonly string[] = publicOrigin,
+) {
+  return startWithDelegate(
+    application,
+    (_request, response) => {
+      (response as { statusCode: number }).statusCode = 404;
+      (response as { end: () => void }).end();
+    },
+    origin,
+  );
 }
 
 async function startWithDelegate(
   application: WorkforceAuthenticationService,
   delegate: (request: unknown, response: unknown) => void,
+  origin: string | readonly string[] = publicOrigin,
 ) {
   const server = createServer(
     createWorkforceAuthenticationRequestListener({
       application,
       delegate,
-      publicOrigin,
+      publicOrigin: origin,
       secureCookies: false,
     }),
+  );
+  servers.push(server);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address() as AddressInfo;
+  return "http://127.0.0.1:" + address.port;
+}
+
+async function startWithOptions(
+  options: Parameters<typeof createWorkforceAuthenticationRequestListener>[0],
+) {
+  const server = createServer(
+    createWorkforceAuthenticationRequestListener(options),
   );
   servers.push(server);
   await new Promise<void>((resolve, reject) => {

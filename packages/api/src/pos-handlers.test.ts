@@ -1,3 +1,4 @@
+import { AuthorizationError, roleAllowsPermission } from "@senvo/domain";
 import type {
   ApplicationAuthenticationService,
   ApplicationAuthorizationService,
@@ -30,6 +31,53 @@ const context: ApiRequestContext = {
 };
 
 describe("POS API handlers", () => {
+  it.each(["STAFF", "MANAGER", "ADMIN", "OWNER"] as const)(
+    "%s can open, but only supervisors can close or settle",
+    async (role) => {
+      const application = new FakePos();
+      const authorizationService: ApplicationAuthorizationService = {
+        authorize: (_context, permission) =>
+          roleAllowsPermission(role, permission)
+            ? Promise.resolve()
+            : Promise.reject(new AuthorizationError("Forbidden")),
+      };
+      const api = createPosApiHandlers({
+        authenticationService,
+        authorizationService,
+        pos: application,
+      });
+      expect(
+        await api.openSession.handle({ context, input: { counterId: userId } }),
+      ).toMatchObject({ success: true });
+      const close = await api.closeSession.handle({
+        context,
+        input: { sessionId: userId, expectedVersion: 1 },
+      });
+      const settle = await api.closeSessionWithSettlement.handle({
+        context,
+        input: {
+          sessionId: userId,
+          expectedVersion: 1,
+          actualCashMinor: 0,
+          actualCardMinor: 0,
+          actualMobileBankingMinor: 0,
+          actualBankTransferMinor: 0,
+        },
+      });
+      const summary = await api.getReconciliationSummary.handle({
+        context,
+        input: { sessionId: userId },
+      });
+      for (const result of [close, settle, summary]) {
+        expect(result).toMatchObject(
+          role === "STAFF"
+            ? { success: false, error: { code: "AUTHORIZATION.FORBIDDEN" } }
+            : { success: true },
+        );
+      }
+    },
+  );
+
   it("validates and authorizes organization-scoped cart reads", async () => {
     const application = new FakePos();
     const authorization = new FakeAuthorization();
@@ -115,7 +163,12 @@ describe("POS API handlers", () => {
     });
     const cartResponse = await handlers(application).addCartItem.handle({
       context,
-      input: { cartId: "bad", productVariantId: "bad", quantity: 0 },
+      input: {
+        expectedVersion: 1,
+        cartId: "bad",
+        productVariantId: "bad",
+        quantity: 0,
+      },
     });
     expect(counterResponse.success).toBe(false);
     expect(cartResponse.success).toBe(false);
@@ -126,6 +179,7 @@ describe("POS API handlers", () => {
     const response = await handlers(application).checkoutCart.handle({
       context,
       input: {
+        expectedVersion: 1,
         cartId: "20000000-0000-4000-8000-000000000001",
         allowOutstanding: false,
         idempotencyKey: "checkout-attempt-001",
@@ -300,6 +354,70 @@ describe("POS API handlers", () => {
       resource: "RECEIPT",
     });
   });
+
+  it("validates and authorizes getReconciliationSummary with APPROVE on POS", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).getReconciliationSummary.handle({
+      context,
+      input: { sessionId: "10000000-0000-4000-8000-000000000050" },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "APPROVE",
+      resource: "POS",
+    });
+    expect(application.context?.organizationId).toBe(organizationId);
+
+    const invalid = await handlers(application).getReconciliationSummary.handle(
+      {
+        context,
+        input: { sessionId: "invalid-uuid" },
+      },
+    );
+    expect(invalid).toMatchObject({ success: false });
+  });
+
+  it("validates and authorizes closeSessionWithSettlement with APPROVE on POS", async () => {
+    const application = new FakePos();
+    const authorization = new FakeAuthorization();
+    const response = await handlers(
+      application,
+      authorization,
+    ).closeSessionWithSettlement.handle({
+      context,
+      input: {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 0,
+        actualCashMinor: 50000,
+        actualMobileBankingMinor: 0,
+        closingNotes: "End of day settlement",
+        expectedVersion: 1,
+        sessionId: "10000000-0000-4000-8000-000000000050",
+      },
+    });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "APPROVE",
+      resource: "POS",
+    });
+    expect(application.context?.organizationId).toBe(organizationId);
+
+    const invalid = await handlers(
+      application,
+    ).closeSessionWithSettlement.handle({
+      context,
+      input: {
+        actualCashMinor: -100, // Invalid minor unit
+        expectedVersion: 1,
+        sessionId: "10000000-0000-4000-8000-000000000050",
+      },
+    });
+    expect(invalid).toMatchObject({ success: false });
+  });
 });
 
 const authenticationService: ApplicationAuthenticationService = {
@@ -331,6 +449,9 @@ class FakeAuthorization implements ApplicationAuthorizationService {
   }
 }
 class FakePos implements PosApplication {
+  startNextCart(context: ApplicationExecutionContext) {
+    return this.result(context, {} as SalesSessionContract);
+  }
   context?: ApplicationExecutionContext;
   private result<T>(context: ApplicationExecutionContext, data: T) {
     this.context = context;
@@ -350,6 +471,12 @@ class FakePos implements PosApplication {
   }
   closeSession(context: ApplicationExecutionContext) {
     return this.result(context, {} as SalesSessionContract);
+  }
+  getReconciliationSummary(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
+  }
+  closeSessionWithSettlement(context: ApplicationExecutionContext) {
+    return this.result(context, {} as never);
   }
   checkoutCart(context: ApplicationExecutionContext) {
     return this.result(context, {} as PosCheckoutContract);

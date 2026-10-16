@@ -1,5 +1,7 @@
 import {
   ConflictError,
+  BusinessRuleError,
+  NotFoundError,
   type PosCart,
   type PosCartLine,
   type PosCartDetails,
@@ -10,7 +12,16 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-type SessionRecord = Prisma.SalesSessionGetPayload<{ include: { cart: true } }>;
+import { assertEmptyActiveCart, bumpCart, lockSession } from "./cart-lock.js";
+
+const sessionInclude = {
+  carts: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] },
+  openedBy: { select: { name: true, email: true } },
+} satisfies Prisma.SalesSessionInclude;
+
+type SessionRecord = Prisma.SalesSessionGetPayload<{
+  include: typeof sessionInclude;
+}>;
 type CartRecord = Prisma.PosCartGetPayload<{
   include: {
     checkout: { select: { id: true } };
@@ -86,18 +97,19 @@ export class PrismaPosRepository implements PosRepository {
 
   async findOpenSessionByCounter(counterId: string, organizationId: string) {
     const record = await this.prisma.salesSession.findFirst({
-      include: { cart: true },
+      include: sessionInclude,
       where: { counterId, organizationId, status: "OPEN" },
     });
     return record ? mapSession(record) : null;
   }
 
-  async listOpenSessionsByUser(organizationId: string, openedByUserId: string) {
+  async listOpenSessionsByUser(organizationId: string, _userId: string) {
+    void _userId;
     return (
       await this.prisma.salesSession.findMany({
-        include: { cart: true },
+        include: sessionInclude,
         orderBy: [{ openedAt: "desc" }, { id: "desc" }],
-        where: { openedByUserId, organizationId, status: "OPEN" },
+        where: { organizationId, status: "OPEN" },
       })
     ).map(mapSession);
   }
@@ -105,7 +117,12 @@ export class PrismaPosRepository implements PosRepository {
   async openSession(record: Parameters<PosRepository["openSession"]>[0]) {
     try {
       const session = await this.prisma.$transaction(async (transaction) => {
-        const created = await transaction.salesSession.create({ data: record });
+        const created = await transaction.salesSession.create({
+          data: {
+            ...record,
+            openingFloatMinor: record.openingFloatMinor ?? 0,
+          },
+        });
         await transaction.posCart.create({
           data: {
             organizationId: record.organizationId,
@@ -113,7 +130,7 @@ export class PrismaPosRepository implements PosRepository {
           },
         });
         return transaction.salesSession.findUniqueOrThrow({
-          include: { cart: true },
+          include: sessionInclude,
           where: { id: created.id },
         });
       });
@@ -129,47 +146,82 @@ export class PrismaPosRepository implements PosRepository {
   async listSessions(organizationId: string) {
     return (
       await this.prisma.salesSession.findMany({
-        include: { cart: true },
+        include: sessionInclude,
         orderBy: [{ openedAt: "desc" }, { id: "desc" }],
         where: { organizationId },
       })
     ).map(mapSession);
   }
 
-  async closeSession(record: Parameters<PosRepository["closeSession"]>[0]) {
-    const result = await this.prisma.salesSession.updateMany({
-      data: {
-        closedAt: record.closedAt,
-        status: "CLOSED",
-        version: { increment: 1 },
-      },
-      where: {
-        id: record.id,
-        organizationId: record.organizationId,
-        status: "OPEN",
-        version: record.expectedVersion,
-      },
+  async startNextCart(sessionId: string, organizationId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await lockSession(tx, sessionId, organizationId);
+      const session = await tx.salesSession.findFirst({
+        where: { id: sessionId, organizationId },
+      });
+      if (!session) throw new NotFoundError("Sales session was not found.");
+      if (session.status !== "OPEN")
+        throw new BusinessRuleError("The sales session is closed.");
+      const active = await tx.posCart.findFirst({
+        where: { salesSessionId: sessionId, organizationId, status: "ACTIVE" },
+      });
+      if (!active)
+        await tx.posCart.create({
+          data: { salesSessionId: sessionId, organizationId },
+        });
+      return mapSession(
+        await tx.salesSession.findUniqueOrThrow({
+          where: { id: sessionId },
+          include: sessionInclude,
+        }),
+      );
     });
-    if (result.count === 0) return null;
-    const session = await this.prisma.salesSession.findFirst({
-      include: { cart: true },
-      where: { id: record.id, organizationId: record.organizationId },
-    });
-    return session ? mapSession(session) : null;
   }
 
-  async findCartById(
-    id: string,
-    organizationId: string,
-    openedByUserId: string,
-  ) {
+  async closeSession(record: Parameters<PosRepository["closeSession"]>[0]) {
+    return this.prisma.$transaction(async (tx) => {
+      await lockSession(tx, record.id, record.organizationId);
+      await assertEmptyActiveCart(tx, record.id, record.organizationId);
+      const result = await tx.salesSession.updateMany({
+        data: {
+          closedAt: record.closedAt,
+          status: "CLOSED",
+          version: { increment: 1 },
+        },
+        where: {
+          id: record.id,
+          organizationId: record.organizationId,
+          status: "OPEN",
+          version: record.expectedVersion,
+        },
+      });
+      if (!result.count) return null;
+      await tx.posCart.updateMany({
+        where: {
+          salesSessionId: record.id,
+          organizationId: record.organizationId,
+          status: "ACTIVE",
+        },
+        data: { status: "ABANDONED", version: { increment: 1 } },
+      });
+      return mapSession(
+        await tx.salesSession.findUniqueOrThrow({
+          where: { id: record.id },
+          include: sessionInclude,
+        }),
+      );
+    });
+  }
+
+  async findCartById(id: string, organizationId: string, _userId: string) {
+    void _userId;
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
         lines: true,
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId, salesSession: { openedByUserId } },
+      where: { id, organizationId },
     });
     return record ? mapCart(record) : null;
   }
@@ -177,8 +229,9 @@ export class PrismaPosRepository implements PosRepository {
   async findCartDetailsById(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    _userId: string,
   ) {
+    void _userId;
     const record = await this.prisma.posCart.findFirst({
       include: {
         checkout: { select: { id: true } },
@@ -192,7 +245,7 @@ export class PrismaPosRepository implements PosRepository {
         },
         salesSession: { select: { status: true } },
       },
-      where: { id, organizationId, salesSession: { openedByUserId } },
+      where: { id, organizationId },
     });
     return record ? mapCartDetails(record) : null;
   }
@@ -208,14 +261,34 @@ export class PrismaPosRepository implements PosRepository {
         sellingPriceMinor: true,
         status: true,
       },
-      where: { id, organizationId },
+      where: { id, organizationId, product: { status: "ACTIVE" } },
     });
     return record;
   }
 
   async addCartLine(record: Parameters<PosRepository["addCartLine"]>[0]) {
     try {
-      return mapLine(await this.prisma.posCartLine.create({ data: record }));
+      return await this.prisma.$transaction(async (tx) => {
+        const { expectedVersion, ...data } = record;
+        await bumpCart(
+          tx,
+          record.cartId,
+          record.organizationId,
+          expectedVersion,
+        );
+        await tx.$queryRaw`SELECT p.id FROM products p JOIN product_variants v ON v.product_id = p.id AND v.organization_id = p.organization_id WHERE v.id = ${record.productVariantId}::uuid AND v.organization_id = ${record.organizationId}::uuid FOR SHARE OF p, v`;
+        const sellable = await tx.productVariant.count({
+          where: {
+            id: record.productVariantId,
+            organizationId: record.organizationId,
+            status: "ACTIVE",
+            product: { status: "ACTIVE" },
+          },
+        });
+        if (!sellable)
+          throw new NotFoundError("Sellable product variant was not found.");
+        return mapLine(await tx.posCartLine.create({ data }));
+      });
     } catch (error) {
       throw mapConflict(error, "This item is already in the cart.");
     }
@@ -229,36 +302,44 @@ export class PrismaPosRepository implements PosRepository {
   }
 
   async updateCartLine(record: Parameters<PosRepository["updateCartLine"]>[0]) {
-    const result = await this.prisma.posCartLine.updateMany({
-      data: {
-        lineSubtotalMinor: record.lineSubtotalMinor,
-        quantity: record.quantity,
-      },
-      where: {
+    return this.prisma.$transaction(async (tx) => {
+      await bumpCart(
+        tx,
+        record.cartId,
+        record.organizationId,
+        record.expectedVersion,
+      );
+      const where = {
         cartId: record.cartId,
         id: record.id,
         organizationId: record.organizationId,
-      },
+      };
+      const result = await tx.posCartLine.updateMany({
+        where,
+        data: {
+          quantity: record.quantity,
+          lineSubtotalMinor: record.lineSubtotalMinor,
+        },
+      });
+      if (!result.count) throw new NotFoundError("Cart item was not found.");
+      return tx.posCartLine.findFirst({ where });
     });
-    if (result.count === 0) return null;
-    const line = await this.prisma.posCartLine.findFirst({
-      where: {
-        cartId: record.cartId,
-        id: record.id,
-        organizationId: record.organizationId,
-      },
-    });
-    return line ? mapLine(line) : null;
   }
 
-  async removeCartLine(id: string, cartId: string, organizationId: string) {
-    return (
-      (
-        await this.prisma.posCartLine.deleteMany({
-          where: { cartId, id, organizationId },
-        })
-      ).count > 0
-    );
+  async removeCartLine(
+    id: string,
+    cartId: string,
+    organizationId: string,
+    expectedVersion: number,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await bumpCart(tx, cartId, organizationId, expectedVersion);
+      const result = await tx.posCartLine.deleteMany({
+        where: { id, cartId, organizationId },
+      });
+      if (!result.count) throw new NotFoundError("Cart item was not found.");
+      return true;
+    });
   }
 }
 
@@ -269,15 +350,19 @@ function mapLine(record: PosCartLine): PosCartLine {
   return record;
 }
 function mapSession(record: SessionRecord): SalesSession {
-  if (!record.cart) throw new Error("Sales session cart is missing.");
+  const cart =
+    record.carts.find((cart) => cart.status === "ACTIVE") ?? record.carts[0];
+  if (!cart) throw new Error("Sales session cart is missing.");
   return {
-    cartId: record.cart.id,
+    cartId: cart.id,
     closedAt: record.closedAt,
     counterId: record.counterId,
     createdAt: record.createdAt,
     id: record.id,
     openedAt: record.openedAt,
     openedByUserId: record.openedByUserId,
+    openedByName: record.openedBy.name ?? record.openedBy.email,
+    openingFloatMinor: record.openingFloatMinor ?? 0,
     organizationId: record.organizationId,
     status: record.status,
     updatedAt: record.updatedAt,
@@ -286,6 +371,8 @@ function mapSession(record: SessionRecord): SalesSession {
 }
 function mapCart(record: CartRecord): PosCart {
   return {
+    status: record.status,
+    version: record.version,
     checkoutId: record.checkout?.id ?? null,
     createdAt: record.createdAt,
     id: record.id,
@@ -298,6 +385,8 @@ function mapCart(record: CartRecord): PosCart {
 }
 function mapCartDetails(record: CartDetailsRecord): PosCartDetails {
   return {
+    status: record.status,
+    version: record.version,
     checkoutId: record.checkout?.id ?? null,
     createdAt: record.createdAt,
     id: record.id,

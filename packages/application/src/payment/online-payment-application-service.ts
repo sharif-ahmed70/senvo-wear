@@ -6,6 +6,7 @@ import {
   BusinessRuleError,
   ConflictError,
   NotFoundError,
+  SalesOrderReservationExpiredError,
   ValidationApplicationError,
   confirmSalesOrder,
   type OnlinePaymentAttempt,
@@ -655,6 +656,10 @@ export class OnlinePaymentApplicationService {
         }
         return true;
       }
+      await repository.lockOrderLifecycle(
+        attempt.organizationId,
+        attempt.salesOrderId,
+      );
       const facts = await repository.getOrderFacts(
         attempt.organizationId,
         attempt.salesOrderId,
@@ -670,11 +675,20 @@ export class OnlinePaymentApplicationService {
       let operationalReason: string | null =
         observation.riskLevel === 1 ? "PROVIDER_RISK_REVIEW" : null;
       if (facts.salesOrderStatus === "RESERVED" && reservationAvailable) {
-        await confirmSalesOrder(sales, {
-          expectedVersion: facts.salesOrderVersion,
-          organizationId: attempt.organizationId,
-          salesOrderId: attempt.salesOrderId,
-        });
+        try {
+          await confirmSalesOrder(sales, {
+            expectedVersion: facts.salesOrderVersion,
+            organizationId: attempt.organizationId,
+            salesOrderId: attempt.salesOrderId,
+          });
+        } catch (error) {
+          if (!(error instanceof SalesOrderReservationExpiredError)) {
+            throw error;
+          }
+
+          resolutionStatus = "REFUND_REQUIRED";
+          operationalReason = "LATE_SUCCESS_RESERVATION_UNAVAILABLE";
+        }
       } else if (
         facts.salesOrderStatus !== "CONFIRMED" &&
         facts.salesOrderStatus !== "FULFILLED"

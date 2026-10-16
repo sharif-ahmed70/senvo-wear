@@ -1,3 +1,20 @@
+import {
+  closeSalesSessionWithSettlementServiceInputSchema,
+  courierConsignmentContractSchema,
+  courierProviderSchema,
+  createProductVariantServiceInputSchema,
+  dispatchSalesOrderServiceInputSchema,
+  openSalesSessionServiceInputSchema,
+  posRegisterSettlementContractSchema,
+  posSessionReconciliationSummaryContractSchema,
+  productVariantContractSchema,
+  salesSessionContractSchema,
+  shipmentStatusSchema,
+  storefrontOrderTrackingContractSchema,
+  trackStorefrontOrderInputSchema,
+  updateShipmentStatusServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
+} from "./index.js";
 import { describe, expect, it } from "vitest";
 import {
   apiErrorCodeSchema,
@@ -24,6 +41,7 @@ import {
   customerResetPasswordInputSchema,
   createInventoryAllocationPolicyInputSchema,
   createInventoryMovementInputSchema,
+  createInventoryMovementServiceInputSchema,
   createColorInputSchema,
   createColorServiceInputSchema,
   createPosCounterInputSchema,
@@ -108,6 +126,15 @@ import {
   updateBranchMetadataInputSchema,
   updatePosCounterMetadataInputSchema,
   updateStockLocationMetadataInputSchema,
+  createSupplierPaymentServiceInputSchema,
+  getSupplierLedgerServiceInputSchema,
+  listSupplierPaymentsServiceInputSchema,
+  supplierBalanceSummaryContractSchema,
+  supplierLedgerDirectionSchema,
+  supplierLedgerEntryContractSchema,
+  supplierLedgerEntryTypeSchema,
+  supplierPaymentContractSchema,
+  supplierPaymentMethodSchema,
 } from "./index.js";
 
 describe("catalog media contracts", () => {
@@ -203,6 +230,60 @@ describe("customer authentication contracts", () => {
 });
 
 describe("API contracts", () => {
+  it("limits the new draft service boundary to complete receipt inputs", () => {
+    const receipt = {
+      destinationLocationId: "10000000-0000-4000-8000-000000000001",
+      idempotencyKey: "receipt-contract-1",
+      lines: [
+        {
+          productVariantId: "10000000-0000-4000-8000-000000000002",
+          quantity: 5,
+        },
+      ],
+      movementNumber: "REC-1",
+      occurredAt: "2026-09-25T12:00:00.000Z",
+      type: "RECEIPT",
+    };
+    expect(
+      createInventoryMovementServiceInputSchema.safeParse(receipt).success,
+    ).toBe(true);
+    for (const type of [
+      "OPENING",
+      "ISSUE",
+      "TRANSFER",
+      "ADJUSTMENT_IN",
+      "ADJUSTMENT_OUT",
+    ]) {
+      expect(
+        createInventoryMovementServiceInputSchema.safeParse({
+          ...receipt,
+          type,
+        }).success,
+      ).toBe(false);
+      expect(
+        createInventoryMovementInputSchema.safeParse({
+          ...receipt,
+          type,
+          organizationId: receipt.destinationLocationId,
+        }).success,
+      ).toBe(true);
+    }
+    for (const patch of [
+      { destinationLocationId: undefined },
+      { destinationLocationId: null },
+      { occurredAt: undefined },
+      { sourceLocationId: receipt.destinationLocationId },
+      { organizationId: receipt.destinationLocationId },
+    ]) {
+      expect(
+        createInventoryMovementServiceInputSchema.safeParse({
+          ...receipt,
+          ...patch,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts safe storefront discovery filters and valid product slugs", () => {
     expect(
       storefrontCatalogQuerySchema.parse({
@@ -289,6 +370,7 @@ describe("API contracts", () => {
       allowOutstanding: false,
       cartId: "10000000-0000-4000-8000-000000000001",
       idempotencyKey: "checkout-contract-001",
+      expectedVersion: 1,
       payments: [
         { amountMinor: 1200, method: "CASH" },
         { amountMinor: 1300, method: "CARD", reference: "CARD-123" },
@@ -326,6 +408,40 @@ describe("API contracts", () => {
         payments: [],
       }).success,
     ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          addressLine1: "House 12, Road 4, Banani",
+          name: "Ahmed Sharif",
+          phone: "+8801711111111",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          addressLine1: null,
+          name: "Ahmed Sharif",
+          phone: null,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      checkoutPosCartServiceInputSchema.safeParse({
+        ...valid,
+        customer: {
+          phone: "invalid-phone",
+        },
+      }).success,
+    ).toBe(false);
   });
   it("creates a discriminated success response", () => {
     expect(createApiSuccess({ ready: true }, "req_contract_1")).toEqual({
@@ -916,6 +1032,30 @@ describe("API contracts", () => {
         movementNumber: "OPEN-1",
         organizationId,
         type: "OPENING",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createInventoryMovementServiceInputSchema.parse({
+        destinationLocationId,
+        idempotencyKey: "admin-receive:123",
+        lines: [{ productVariantId, quantity: 10 }],
+        movementNumber: "REC-1",
+        note: "Incoming delivery",
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        referenceType: "ADMIN_RECEIPT",
+        type: "RECEIPT",
+      }),
+    ).toMatchObject({ movementNumber: "REC-1", type: "RECEIPT" });
+    expect(
+      createInventoryMovementServiceInputSchema.safeParse({
+        destinationLocationId,
+        idempotencyKey: "admin-receive:123",
+        lines: [{ productVariantId, quantity: 10 }],
+        movementNumber: "REC-1",
+        occurredAt: "2026-07-03T00:00:00.000Z",
+        organizationId,
+        type: "RECEIPT",
       }).success,
     ).toBe(false);
 
@@ -1893,6 +2033,544 @@ describe("API contracts", () => {
           payloadSignature: "{}",
         }),
       ],
+    });
+  });
+});
+
+describe("variant selling price contracts", () => {
+  const variantId = "10000000-0000-4000-8000-000000000001";
+  const create = {
+    colorId: variantId,
+    sizeId: variantId,
+    productId: variantId,
+    sku: "TEST-PRICE",
+  };
+  it("accepts positive minor units and omitted legacy creation prices", () => {
+    expect(
+      createProductVariantServiceInputSchema.parse({
+        ...create,
+        sellingPriceMinor: 12550,
+      }).sellingPriceMinor,
+    ).toBe(12550);
+    expect(
+      createProductVariantServiceInputSchema.safeParse(create).success,
+    ).toBe(true);
+    expect(
+      updateVariantPriceServiceInputSchema.safeParse({
+        variantId,
+        sellingPriceMinor: 1,
+        expectedSellingPriceMinor: 0,
+      }).success,
+    ).toBe(true);
+    expect(
+      productVariantContractSchema.shape.sellingPriceMinor.safeParse(0).success,
+    ).toBe(true);
+  });
+  it.each([0, -1, 125.5, 2_147_483_648, NaN, Infinity])(
+    "rejects invalid new prices: %s",
+    (sellingPriceMinor) => {
+      expect(
+        createProductVariantServiceInputSchema.safeParse({
+          ...create,
+          sellingPriceMinor,
+        }).success,
+      ).toBe(false);
+      expect(
+        updateVariantPriceServiceInputSchema.safeParse({
+          variantId,
+          sellingPriceMinor,
+          expectedSellingPriceMinor: 0,
+        }).success,
+      ).toBe(false);
+    },
+  );
+  it("rejects trusted organization injection", () => {
+    expect(
+      updateVariantPriceServiceInputSchema.safeParse({
+        variantId,
+        organizationId: variantId,
+        sellingPriceMinor: 12550,
+        expectedSellingPriceMinor: 0,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("supplier payment and ledger contracts", () => {
+  const supplierId = "10000000-0000-4000-8000-000000000001";
+  const purchaseId = "20000000-0000-4000-8000-000000000002";
+  const orgId = "30000000-0000-4000-8000-000000000003";
+
+  it("validates payment methods and entry types", () => {
+    expect(supplierPaymentMethodSchema.safeParse("CASH").success).toBe(true);
+    expect(supplierPaymentMethodSchema.safeParse("BANK_TRANSFER").success).toBe(
+      true,
+    );
+    expect(supplierPaymentMethodSchema.safeParse("CHEQUE").success).toBe(true);
+    expect(
+      supplierPaymentMethodSchema.safeParse("MOBILE_BANKING").success,
+    ).toBe(true);
+    expect(supplierPaymentMethodSchema.safeParse("CRYPTO").success).toBe(false);
+
+    expect(supplierLedgerEntryTypeSchema.safeParse("BILL").success).toBe(true);
+    expect(supplierLedgerEntryTypeSchema.safeParse("PAYMENT").success).toBe(
+      true,
+    );
+    expect(
+      supplierLedgerEntryTypeSchema.safeParse("RETURN_CREDIT").success,
+    ).toBe(true);
+    expect(
+      supplierLedgerEntryTypeSchema.safeParse("OPENING_BALANCE").success,
+    ).toBe(true);
+    expect(supplierLedgerEntryTypeSchema.safeParse("ADJUSTMENT").success).toBe(
+      true,
+    );
+    expect(supplierLedgerEntryTypeSchema.safeParse("OTHER").success).toBe(
+      false,
+    );
+
+    expect(supplierLedgerDirectionSchema.safeParse("DEBIT").success).toBe(true);
+    expect(supplierLedgerDirectionSchema.safeParse("CREDIT").success).toBe(
+      true,
+    );
+    expect(supplierLedgerDirectionSchema.safeParse("NONE").success).toBe(false);
+  });
+
+  it("validates createSupplierPaymentServiceInputSchema accepts positive minor numbers or strings", () => {
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 25000,
+        paymentDate: "2026-09-15T10:00:00.000Z",
+        paymentMethod: "CASH",
+        purchaseId,
+        reference: "REC-123",
+        supplierId,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: "100000000000000000",
+        paymentMethod: "BANK_TRANSFER",
+        supplierId,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 0,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: -500,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: "0",
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      createSupplierPaymentServiceInputSchema.safeParse({
+        amountMinor: 1000,
+        organizationId: orgId,
+        paymentMethod: "CASH",
+        supplierId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates supplier payment, ledger entry, and balance summary response contracts", () => {
+    const payment = {
+      amountMinor: "50000",
+      createdAt: "2026-09-15T12:00:00.000Z",
+      id: "40000000-0000-4000-8000-000000000004",
+      idempotencyKey: "pay-idem-001",
+      notes: "First payment",
+      organizationId: orgId,
+      paymentDate: "2026-09-15T12:00:00.000Z",
+      paymentMethod: "BANK_TRANSFER",
+      purchaseId,
+      reference: "TXN-001",
+      supplierId,
+      updatedAt: "2026-09-15T12:00:00.000Z",
+    };
+    expect(supplierPaymentContractSchema.safeParse(payment).success).toBe(true);
+
+    const ledgerEntry = {
+      amountMinor: "50000",
+      balanceAfterMinor: "25000",
+      createdAt: "2026-09-15T12:00:00.000Z",
+      direction: "DEBIT",
+      entryDate: "2026-09-15T12:00:00.000Z",
+      entryType: "PAYMENT",
+      id: "50000000-0000-4000-8000-000000000005",
+      notes: null,
+      organizationId: orgId,
+      referenceId: payment.id,
+      referenceType: "SUPPLIER_PAYMENT",
+      supplierId,
+    };
+    expect(
+      supplierLedgerEntryContractSchema.safeParse(ledgerEntry).success,
+    ).toBe(true);
+
+    const balanceSummary = {
+      lastBillDate: "2026-09-10T00:00:00.000Z",
+      lastPaymentDate: "2026-09-15T12:00:00.000Z",
+      organizationId: orgId,
+      outstandingBalanceMinor: "25000",
+      supplierId,
+      totalAdjustedMinor: "0",
+      totalBilledMinor: "75000",
+      totalPaidMinor: "50000",
+    };
+    expect(
+      supplierBalanceSummaryContractSchema.safeParse(balanceSummary).success,
+    ).toBe(true);
+  });
+
+  it("validates ledger and payment query schemas", () => {
+    expect(
+      getSupplierLedgerServiceInputSchema.safeParse({
+        from: "2026-09-01T00:00:00.000Z",
+        limit: 50,
+        offset: 0,
+        supplierId,
+        to: "2026-09-30T00:00:00.000Z",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      listSupplierPaymentsServiceInputSchema.safeParse({
+        limit: 20,
+        offset: 0,
+        purchaseId,
+        supplierId,
+      }).success,
+    ).toBe(true);
+  });
+
+  describe("POS register settlement and reconciliation contracts", () => {
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const counterId = "22222222-2222-4222-8222-222222222222";
+    const orgId = "33333333-3333-4333-8333-333333333333";
+    const userId = "44444444-4444-4444-8444-444444444444";
+    const settlementId = "55555555-5555-4555-8555-555555555555";
+    const now = "2026-09-28T12:00:00.000Z";
+
+    it("validates openSalesSession with optional openingFloatMinor", () => {
+      expect(
+        openSalesSessionServiceInputSchema.parse({
+          counterId,
+        }),
+      ).toEqual({ counterId });
+
+      expect(
+        openSalesSessionServiceInputSchema.parse({
+          counterId,
+          openingFloatMinor: 500000,
+        }),
+      ).toEqual({ counterId, openingFloatMinor: 500000 });
+
+      expect(
+        openSalesSessionServiceInputSchema.safeParse({
+          counterId,
+          openingFloatMinor: -10,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates salesSessionContractSchema with openingFloatMinor", () => {
+      const session = {
+        cartId: "66666666-6666-4666-8666-666666666666",
+        closedAt: null,
+        counterId,
+        createdAt: now,
+        id: sessionId,
+        openedAt: now,
+        openedByUserId: userId,
+        openingFloatMinor: 200000,
+        status: "OPEN" as const,
+        updatedAt: now,
+        version: 1,
+      };
+      expect(salesSessionContractSchema.parse(session).openingFloatMinor).toBe(
+        200000,
+      );
+    });
+
+    it("validates posSessionReconciliationSummaryContractSchema", () => {
+      const summary = {
+        bankTransferSalesMinor: 0,
+        cardSalesMinor: 150000,
+        cashCollectionsMinor: 50000,
+        cashRefundsMinor: 20000,
+        cashSalesMinor: 300000,
+        counterId,
+        counterName: "Main Counter 1",
+        digitalRefundsMinor: 0,
+        expectedBankTransferMinor: 0,
+        expectedCardMinor: 150000,
+        expectedCashMinor: 430000,
+        expectedMobileBankingMinor: 250000,
+        expectedTotalMinor: 830000,
+        grossSalesMinor: 700000,
+        mobileBankingSalesMinor: 250000,
+        openedAt: now,
+        openingFloatMinor: 100000,
+        salesCount: 12,
+        sessionId,
+      };
+      expect(
+        posSessionReconciliationSummaryContractSchema.safeParse(summary)
+          .success,
+      ).toBe(true);
+    });
+
+    it("validates closeSalesSessionWithSettlementServiceInputSchema", () => {
+      const input = {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 150000,
+        actualCashMinor: 425000,
+        actualMobileBankingMinor: 250000,
+        closingNotes: "End of day shift 1",
+        denominationBreakdown: { "100": 25, "1000": 4, "500": 0 },
+        discrepancyReason: "Minor cash difference ৳50 short",
+        expectedVersion: 1,
+        sessionId,
+      };
+      expect(
+        closeSalesSessionWithSettlementServiceInputSchema.safeParse(input)
+          .success,
+      ).toBe(true);
+    });
+
+    it("validates posRegisterSettlementContractSchema with negative/positive discrepancy", () => {
+      const settlement = {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 150000,
+        actualCashMinor: 425000,
+        actualMobileBankingMinor: 250000,
+        actualTotalMinor: 825000,
+        approvedByUserId: null,
+        bankTransferDiscrepancyMinor: 0,
+        cardDiscrepancyMinor: 0,
+        cashDiscrepancyMinor: -5000,
+        closedAt: now,
+        closedByUserId: userId,
+        closingNotes: "Closing confirmed",
+        counterId,
+        counterName: "Counter A",
+        createdAt: now,
+        denominationBreakdown: { "100": 25, "1000": 4 },
+        discrepancyReason: "Shortage of 50 BDT",
+        expectedBankTransferMinor: 0,
+        expectedCardMinor: 150000,
+        expectedCashMinor: 430000,
+        expectedMobileBankingMinor: 250000,
+        expectedTotalMinor: 830000,
+        id: settlementId,
+        mobileBankingDiscrepancyMinor: 0,
+        openingFloatMinor: 100000,
+        organizationId: orgId,
+        salesSessionId: sessionId,
+        status: "SHORTAGE" as const,
+        totalDiscrepancyMinor: -5000,
+      };
+      expect(
+        posRegisterSettlementContractSchema.safeParse(settlement).success,
+      ).toBe(true);
+    });
+  });
+
+  describe("shipping and courier consignment contracts", () => {
+    const orgId = "11111111-1111-4111-8111-111111111111";
+    const orderId = "22222222-2222-4222-8222-222222222222";
+    const consignmentId = "33333333-3333-4333-8333-333333333333";
+    const now = "2026-09-29T10:00:00.000Z";
+
+    it("validates courier provider enum options", () => {
+      expect(courierProviderSchema.parse("STEADFAST")).toBe("STEADFAST");
+      expect(courierProviderSchema.parse("PATHAO")).toBe("PATHAO");
+      expect(courierProviderSchema.parse("REDX")).toBe("REDX");
+      expect(courierProviderSchema.parse("PAPERFLY")).toBe("PAPERFLY");
+      expect(courierProviderSchema.parse("IN_HOUSE")).toBe("IN_HOUSE");
+      expect(courierProviderSchema.safeParse("FEDEX").success).toBe(false);
+    });
+
+    it("validates shipment status lifecycle enums", () => {
+      const validStatuses = [
+        "DRAFT",
+        "BOOKED",
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "DELIVERED",
+        "RETURNED_TO_ORIGIN",
+        "CANCELLED",
+      ];
+      for (const status of validStatuses) {
+        expect(shipmentStatusSchema.safeParse(status).success).toBe(true);
+      }
+      expect(shipmentStatusSchema.safeParse("UNKNOWN").success).toBe(false);
+    });
+
+    it("validates courierConsignmentContractSchema with complete snapshot", () => {
+      const consignment = {
+        cancelledAt: null,
+        codAmountMinor: "150000",
+        consignmentNumber: "CNS-2026-0001",
+        courierProvider: "STEADFAST" as const,
+        createdAt: now,
+        deliveredAt: null,
+        deliveryAddressLine1: "House 12, Road 4, Sector 3, Uttara",
+        deliveryAddressLine2: null,
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryFeeMinor: "6000",
+        deliveryPostalCode: "1230",
+        dispatchedAt: now,
+        id: consignmentId,
+        itemWeightGram: 500,
+        note: "Handle with care",
+        organizationId: orgId,
+        recipientEmail: "customer@example.com",
+        recipientName: "Ahmed Sharif",
+        recipientPhone: "+8801700000000",
+        returnedAt: null,
+        salesOrderId: orderId,
+        status: "IN_TRANSIT" as const,
+        trackingCode: "ST-887412",
+        trackingUrl: "https://steadfast.com.bd/t/ST-887412",
+        updatedAt: now,
+        version: 1,
+      };
+      expect(
+        courierConsignmentContractSchema.safeParse(consignment).success,
+      ).toBe(true);
+    });
+
+    it("validates dispatchSalesOrderServiceInputSchema with optional overrides", () => {
+      const input = {
+        codAmountMinor: 150000,
+        courierProvider: "PATHAO" as const,
+        deliveryAddressLine1: "Flat 4B, Dhanmondi 27",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryFeeMinor: 8000,
+        itemWeightGram: 350,
+        note: "Call before arriving",
+        recipientName: "Sultana Razia",
+        recipientPhone: "+8801800000000",
+        salesOrderId: orderId,
+        trackingCode: "PT-998811",
+      };
+      expect(
+        dispatchSalesOrderServiceInputSchema.safeParse(input).success,
+      ).toBe(true);
+
+      // Rejects non-numeric codAmountMinor
+      expect(
+        dispatchSalesOrderServiceInputSchema.safeParse({
+          ...input,
+          codAmountMinor: -50,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates updateShipmentStatusServiceInputSchema", () => {
+      const input = {
+        consignmentId,
+        expectedVersion: 1,
+        note: "Delivered to recipient",
+        status: "DELIVERED" as const,
+        trackingCode: "ST-887412",
+      };
+      expect(
+        updateShipmentStatusServiceInputSchema.safeParse(input).success,
+      ).toBe(true);
+
+      expect(
+        updateShipmentStatusServiceInputSchema.safeParse({
+          ...input,
+          status: "INVALID_STATUS",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("validates trackStorefrontOrderInputSchema and storefrontOrderTrackingContractSchema", () => {
+      const trackInput = {
+        orderNumber: "ORD-2026-0001",
+        phone: "+8801700000000",
+      };
+      expect(
+        trackStorefrontOrderInputSchema.safeParse(trackInput).success,
+      ).toBe(true);
+
+      // Rejects invalid phone
+      expect(
+        trackStorefrontOrderInputSchema.safeParse({
+          orderNumber: "ORD-2026-0001",
+          phone: "abc",
+        }).success,
+      ).toBe(false);
+
+      const trackingResponse = {
+        createdAt: now,
+        currencyCode: "BDT" as const,
+        customerName: "Ahmed Sharif",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        orderNumber: "ORD-2026-0001",
+        paymentStatus: "PAID",
+        shipments: [
+          {
+            cancelledAt: null,
+            codAmountMinor: "0",
+            consignmentNumber: "CNS-2026-0001",
+            courierProvider: "STEADFAST" as const,
+            createdAt: now,
+            deliveredAt: null,
+            deliveryAddressLine1: "House 12, Uttara",
+            deliveryAddressLine2: null,
+            deliveryCity: "Dhaka",
+            deliveryDistrict: "Dhaka",
+            deliveryFeeMinor: "6000",
+            deliveryPostalCode: "1230",
+            dispatchedAt: now,
+            id: consignmentId,
+            itemWeightGram: null,
+            note: null,
+            organizationId: orgId,
+            recipientEmail: null,
+            recipientName: "Ahmed Sharif",
+            recipientPhone: "+8801700000000",
+            returnedAt: null,
+            salesOrderId: orderId,
+            status: "IN_TRANSIT" as const,
+            trackingCode: "ST-887412",
+            trackingUrl: null,
+            updatedAt: now,
+            version: 1,
+          },
+        ],
+        status: "CONFIRMED" as const,
+        totalMinor: "250000",
+      };
+      expect(
+        storefrontOrderTrackingContractSchema.safeParse(trackingResponse)
+          .success,
+      ).toBe(true);
     });
   });
 });

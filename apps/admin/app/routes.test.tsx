@@ -1,6 +1,19 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+    push: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 import CatalogPage from "./catalog/page";
 import CategoriesPage from "./catalog/categories/page";
 import CollectionsPage from "./catalog/collections/page";
@@ -25,7 +38,7 @@ import SalesOrdersPage from "./sales-orders/page";
 import SalesManagementPage from "./sales/orders/page";
 import SalesBoothsPage from "./sales/booths/page";
 import SalesChannelsPage from "./sales/channels/page";
-import { SalesSourceWorkspace } from "./sales/_components/sales-source-workspace";
+import { SalesSourcesOverview } from "./sales/channels/_components/sales-sources-overview";
 import {
   SalesOrderDetailsPanel,
   SalesOrdersWorkspace,
@@ -35,6 +48,7 @@ import type {
   SalesOrderDetailsReadContract,
 } from "@senvo/contracts";
 import UsersPage from "./users/page";
+import SuppliersPage from "./procurement/suppliers/page";
 import SalesCountersPage from "./pos/counters/page";
 import SalesSessionsPage from "./pos/sessions/page";
 import PosCheckoutsPage from "./pos/checkouts/page";
@@ -52,6 +66,14 @@ import { ReturnReceiptPreview } from "./pos/returns/[id]/receipt/return-receipt-
 import { CheckoutRefundWorkspace } from "./pos/checkouts/[id]/checkout-refund-workspace";
 import { RefundReceiptPreview } from "./pos/refunds/[id]/receipt/refund-receipt-preview";
 import { AdminApiError } from "./_lib/api-client";
+import { AdminLoginForm } from "./login/_components/admin-login-form";
+import { UnauthorizedAdminState } from "./_components/admin-app-frame";
+import {
+  AdminSessionProvider,
+  AdminShellView,
+  computeAdminRedirect,
+} from "./admin-shell";
+import type { AdminSession } from "./_lib/admin-access";
 
 describe("admin routes", () => {
   it("renders ordered media controls only with catalog update access", () => {
@@ -101,32 +123,46 @@ describe("admin routes", () => {
     expect(readonly).toContain("view-only catalog access");
   });
   it("renders sales source and booth history routes", () => {
-    expect(renderToStaticMarkup(<SalesChannelsPage />)).toContain(
-      "Sales Sources",
-    );
-    expect(renderToStaticMarkup(<SalesBoothsPage />)).toContain(
-      "Booth History",
+    const channelsHtml = renderToStaticMarkup(<SalesChannelsPage />);
+    // SalesChannelsPage is a client workspace: initial static render shows the
+    // loading state ("Loading sales sources") before the effect fetches data.
+    // Accept either the loaded heading or the loading heading.
+    expect(channelsHtml.toLowerCase()).toContain("sales sources");
+    expect(renderToStaticMarkup(<SalesBoothsPage />).toLowerCase()).toContain(
+      "booth history",
     );
   });
 
   it("hides sales source management without sales access", () => {
     const html = renderToStaticMarkup(
-      <SalesSourceWorkspace permissions={[]} view="booths" />,
+      <SalesSourcesOverview permissions={[]} />,
     );
-    expect(html).toContain("Sales access needed");
+    expect(html).toContain("Sales sources are restricted");
     expect(html).not.toContain("New booth");
   });
   it("renders POS routes and hides controls without POS access", () => {
-    expect(renderToStaticMarkup(<PosSellPage />)).toContain("New Sale");
-    expect(renderToStaticMarkup(<SalesCountersPage />)).toContain(
-      "Sales Counters",
-    );
-    expect(renderToStaticMarkup(<SalesSessionsPage />)).toContain(
-      "Sales Sessions",
-    );
-    expect(renderToStaticMarkup(<PosCheckoutsPage />)).toContain(
-      "Checkout History",
-    );
+    const fullSession: AdminSession = {
+      displayName: "POS Operator",
+      organizationName: "SENVO Wear",
+      permissions: [
+        "POS:READ",
+        "POS:CREATE",
+        "POS:UPDATE",
+        "SALES:CREATE",
+        "PAYMENT:CREATE",
+      ],
+      role: "STAFF",
+      userId: "user-pos-1",
+    };
+    const wrap = (el: React.ReactElement) =>
+      renderToStaticMarkup(
+        createElement(AdminSessionProvider, { session: fullSession }, el),
+      );
+
+    expect(wrap(<PosSellPage />)).toContain("New Sale");
+    expect(wrap(<SalesCountersPage />)).toContain("Sales Counters");
+    expect(wrap(<SalesSessionsPage />)).toContain("Sales Sessions");
+    expect(wrap(<PosCheckoutsPage />)).toContain("Checkout History");
     const restricted = renderToStaticMarkup(
       <PosManagementWorkspace permissions={[]} view="counters" />,
     );
@@ -251,7 +287,7 @@ describe("admin routes", () => {
     expect(html).not.toContain(">Refunded<");
   });
   it.each([
-    ["Dashboard", AdminPage],
+    ["Operations overview", AdminPage],
     ["Catalog", CatalogPage],
     ["Barcodes", BarcodesPage],
     ["Categories", CategoriesPage],
@@ -259,9 +295,9 @@ describe("admin routes", () => {
     ["Colors", ColorsPage],
     ["Products", ProductsPage],
     ["Sizes", SizesPage],
-    ["Inventory overview", InventoryPage],
-    ["Stock locations", InventoryLocationsPage],
-    ["Movement history", InventoryMovementsPage],
+    ["Inventory", InventoryPage],
+    ["Stock Locations", InventoryLocationsPage],
+    ["Movement History", InventoryMovementsPage],
     ["Sales Orders", SalesOrdersPage],
     ["Sales Orders", SalesManagementPage],
     ["Organization", OrganizationPage],
@@ -269,18 +305,59 @@ describe("admin routes", () => {
     ["Team", TeamPage],
     ["Roles", RolesPage],
     ["Users & Roles", UsersPage],
+    ["Suppliers", SuppliersPage],
   ])("renders the %s route", (title, Page) => {
-    const html = renderToStaticMarkup(createElement(Page));
+    const fullSession: AdminSession = {
+      displayName: "Owner",
+      organizationName: "SENVO Wear",
+      permissions: [
+        "CATALOG:READ",
+        "CATALOG:CREATE",
+        "CATALOG:UPDATE",
+        "INVENTORY:READ",
+        "INVENTORY:CREATE",
+        "INVENTORY:UPDATE",
+        "SALES_ORDER:READ",
+        "SALES_ORDER:UPDATE",
+        "SALES:READ",
+        "SALES:CREATE",
+        "SALES:UPDATE",
+        "ORGANIZATION:READ",
+        "ORGANIZATION:UPDATE",
+        "TEAM:READ",
+        "TEAM:UPDATE",
+        "POS:READ",
+        "POS:CREATE",
+        "POS:UPDATE",
+        "PAYMENT:READ",
+        "PAYMENT:CREATE",
+        "PAYMENT:APPROVE",
+        "RECEIPT:READ",
+        "PROCUREMENT:READ",
+        "PROCUREMENT:CREATE",
+        "PROCUREMENT:UPDATE",
+      ],
+      role: "OWNER",
+      userId: "owner-1",
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session: fullSession },
+        createElement(Page),
+      ),
+    );
 
-    expect(html).toContain(title.replace("&", "&amp;"));
+    expect(html.toLowerCase()).toContain(
+      title.toLowerCase().replace("&", "&amp;"),
+    );
   });
 
   it("keeps barcode data hidden without catalog read access", () => {
-    const html = renderToStaticMarkup(
-      createElement(BarcodeWorkspace, { permissions: [] }),
-    );
+    const html = renderToStaticMarkup(<BarcodeWorkspace permissions={[]} />);
 
     expect(html).toContain("Catalog access is restricted");
+
     expect(html).not.toContain("Add barcode");
     expect(html).not.toContain("Test a Scan Code");
   });
@@ -452,3 +529,232 @@ function salesOrderDetails(
     version: 1,
   };
 }
+
+describe("auth routes", () => {
+  it("renders AdminLoginForm with email and password inputs", () => {
+    const html = renderToStaticMarkup(createElement(AdminLoginForm));
+    expect(html.toLowerCase()).toContain("sign in");
+    expect(html).toContain('type="email"');
+    expect(html).toContain('type="password"');
+    expect(html.toLowerCase()).toContain("remember me");
+  });
+
+  it("renders UnauthorizedAdminState access-required message", () => {
+    const html = renderToStaticMarkup(createElement(UnauthorizedAdminState));
+    expect(html.toLowerCase()).toContain("access required");
+    expect(html.toLowerCase()).toContain("sign in");
+  });
+});
+
+describe("real session runtime permission authority", () => {
+  function makeSession(permissions: AdminSession["permissions"]): AdminSession {
+    return {
+      displayName: "Test Principal",
+      organizationName: "SENVO Wear",
+      permissions,
+      role: "STAFF",
+      userId: "user-test-1",
+    };
+  }
+
+  it("TeamPage denies access when real session lacks TEAM:READ", () => {
+    const session = makeSession(["ORGANIZATION:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(AdminSessionProvider, { session }, createElement(TeamPage)),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).toContain("This area is not available");
+    expect(html).not.toContain("Team members");
+  });
+
+  it("TeamPage grants access when real session includes TEAM:READ", () => {
+    const session = makeSession(["TEAM:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(AdminSessionProvider, { session }, createElement(TeamPage)),
+    );
+    expect(html).toContain("Team members");
+    expect(html).not.toContain("Access restricted");
+  });
+
+  it("RolesPage denies access when real session lacks TEAM:READ", () => {
+    const session = makeSession(["ORGANIZATION:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(RolesPage),
+      ),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).not.toContain("Business roles");
+  });
+
+  it("RolesPage grants access when real session includes TEAM:READ", () => {
+    const session = makeSession(["TEAM:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(RolesPage),
+      ),
+    );
+    expect(html).toContain("Business roles");
+    expect(html).not.toContain("Access restricted");
+  });
+
+  it("OrganizationPage denies access when real session lacks ORGANIZATION:READ", () => {
+    const session = makeSession(["TEAM:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(OrganizationPage),
+      ),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).not.toContain("Business profile");
+  });
+
+  it("OrganizationPage grants access when real session includes ORGANIZATION:READ", () => {
+    const session = makeSession(["ORGANIZATION:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(OrganizationPage),
+      ),
+    );
+    expect(html).toContain("Business profile");
+    expect(html).not.toContain("Access restricted");
+  });
+
+  it("StoreLocationsPage denies access when real session lacks ORGANIZATION:READ", () => {
+    const session = makeSession(["TEAM:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(StoreLocationsPage),
+      ),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).not.toContain("Store locations");
+  });
+
+  it("StoreLocationsPage grants access when real session includes ORGANIZATION:READ", () => {
+    const session = makeSession(["ORGANIZATION:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(StoreLocationsPage),
+      ),
+    );
+    expect(html).toContain("Store locations");
+    expect(html).not.toContain("Access restricted");
+  });
+
+  it("unauthenticated session (null) defaults to empty permissions and restricts access", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session: null },
+        createElement(TeamPage),
+      ),
+    );
+    expect(html).toContain("Access restricted");
+    expect(html).not.toContain("Team members");
+  });
+
+  it("CatalogWorkspace does not render create action when session lacks CATALOG:CREATE", () => {
+    const session = makeSession(["CATALOG:READ"]);
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminSessionProvider,
+        { session },
+        createElement(CatalogPage),
+      ),
+    );
+    expect(html).not.toContain("Add Product");
+  });
+
+  it("LoginPage renders without requiring an authenticated session", () => {
+    const html = renderToStaticMarkup(createElement(AdminLoginForm));
+    expect(html).toContain("Sign in");
+    expect(html).toContain("Email");
+    expect(html).toContain("Password");
+  });
+});
+
+describe("AdminShell state and route gating", () => {
+  it("computes correct redirect path for unauthenticated and authenticated users", () => {
+    expect(computeAdminRedirect("unauthenticated", true, "/login")).toBeNull();
+    expect(computeAdminRedirect("unauthenticated", false, "/")).toBe("/login");
+    expect(computeAdminRedirect("unauthenticated", false, "/pos/sell")).toBe(
+      "/login?returnTo=%2Fpos%2Fsell",
+    );
+    expect(computeAdminRedirect("authenticated", true, "/login")).toBe("/");
+    expect(computeAdminRedirect("authenticated", false, "/catalog")).toBeNull();
+    expect(computeAdminRedirect("restoring", false, "/")).toBeNull();
+  });
+
+  it("renders public login children when unauthenticated on /login without redirecting", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: true,
+          state: { kind: "unauthenticated" },
+        },
+        createElement("div", { id: "login-child" }, "Public Login Content"),
+      ),
+    );
+    expect(html).toContain("Public Login Content");
+    expect(html).not.toContain("Operations overview");
+  });
+
+  it("renders nothing / redirects when unauthenticated on a protected route", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: false,
+          state: { kind: "unauthenticated" },
+        },
+        createElement("div", { id: "protected-child" }, "Secret POS Content"),
+      ),
+    );
+    expect(html).not.toContain("Secret POS Content");
+  });
+
+  it("renders AdminAppFrame and children when authenticated on protected route", () => {
+    const session: AdminSession = {
+      displayName: "Store Admin",
+      organizationName: "SENVO Wear",
+      permissions: ["CATALOG:READ"],
+      role: "STAFF",
+      userId: "u-1",
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        AdminShellView,
+        {
+          isPublicAuthRoute: false,
+          state: {
+            credentials: {
+              csrfToken: "csrf-1",
+              expiresAt: "2099-01-01T00:00:00.000Z",
+              rememberMe: false,
+              sessionToken: "tok-1",
+            },
+            kind: "authenticated",
+            session,
+          },
+        },
+        createElement("div", { id: "dash-child" }, "Protected Dashboard"),
+      ),
+    );
+    expect(html).toContain("Protected Dashboard");
+    expect(html).toContain("Store Admin");
+  });
+});

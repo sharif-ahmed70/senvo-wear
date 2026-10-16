@@ -138,6 +138,7 @@ export async function openSalesSession(
   input: {
     counterId: string;
     openedAt: Date;
+    openingFloatMinor?: number;
     organizationId: string;
     userId: string;
   },
@@ -162,6 +163,7 @@ export async function openSalesSession(
     counterId: counter.id,
     openedAt: input.openedAt,
     openedByUserId: input.userId,
+    openingFloatMinor: normalizeOpeningFloat(input.openingFloatMinor),
     organizationId,
   });
 }
@@ -269,6 +271,7 @@ export async function addPosCartItem(
   },
   input: {
     cartId: string;
+    expectedVersion: number;
     organizationId: string;
     productVariantId: string;
     quantity: number;
@@ -280,6 +283,7 @@ export async function addPosCartItem(
     input.cartId,
     input.organizationId,
     input.userId,
+    input.expectedVersion,
   );
   const variant = await repositories.pos.findSellableVariant(
     assertId(input.productVariantId, "productVariantId"),
@@ -301,6 +305,7 @@ export async function addPosCartItem(
     throw new BusinessRuleError("Requested quantity is unavailable.");
   }
   return repositories.pos.addCartLine({
+    expectedVersion: normalizeVersion(input.expectedVersion),
     cartId: cart.id,
     lineSubtotalMinor: subtotal(variant.sellingPriceMinor, quantity),
     organizationId: cart.organizationId,
@@ -314,6 +319,7 @@ export async function updatePosCartItem(
   repository: PosRepository,
   input: {
     cartId: string;
+    expectedVersion: number;
     itemId: string;
     organizationId: string;
     quantity: number;
@@ -325,6 +331,7 @@ export async function updatePosCartItem(
     input.cartId,
     input.organizationId,
     input.userId,
+    input.expectedVersion,
   );
   const line = await repository.findCartLineById(
     assertId(input.itemId, "itemId"),
@@ -334,6 +341,7 @@ export async function updatePosCartItem(
   if (!line) throw new NotFoundError("Cart item was not found.");
   const quantity = normalizeQuantity(input.quantity);
   const updated = await repository.updateCartLine({
+    expectedVersion: normalizeVersion(input.expectedVersion),
     cartId: cart.id,
     id: line.id,
     lineSubtotalMinor: subtotal(line.unitPriceMinor, quantity),
@@ -348,6 +356,7 @@ export async function removePosCartItem(
   repository: PosRepository,
   input: {
     cartId: string;
+    expectedVersion: number;
     itemId: string;
     organizationId: string;
     userId: string;
@@ -358,12 +367,14 @@ export async function removePosCartItem(
     input.cartId,
     input.organizationId,
     input.userId,
+    input.expectedVersion,
   );
   if (
     !(await repository.removeCartLine(
       assertId(input.itemId, "itemId"),
       cart.id,
       cart.organizationId,
+      normalizeVersion(input.expectedVersion),
     ))
   )
     throw new NotFoundError("Cart item was not found.");
@@ -374,6 +385,7 @@ async function requireOpenCart(
   cartId: string,
   organizationId: string,
   userId: string,
+  expectedVersion: number,
 ) {
   const cart = await repository.findCartById(
     assertId(cartId, "cartId"),
@@ -383,7 +395,9 @@ async function requireOpenCart(
   if (!cart) throw new NotFoundError("Cart was not found.");
   if (cart.sessionStatus !== "OPEN")
     throw new BusinessRuleError("The sales session is closed.");
-  if (cart.checkoutId)
+  if (cart.version !== normalizeVersion(expectedVersion))
+    throw new ConflictError("Cart changed on another screen. Refresh.");
+  if (cart.status !== "ACTIVE" || cart.checkoutId)
     throw new BusinessRuleError("This sale has already been completed.");
   return cart;
 }
@@ -417,6 +431,15 @@ function normalizeVersion(value: number) {
     throw new ValidationApplicationError(
       "expectedVersion must be a positive integer.",
     );
+  return value;
+}
+function normalizeOpeningFloat(value?: number) {
+  if (value === undefined) return 0;
+  if (!Number.isInteger(value) || value < 0 || value > 2147483647) {
+    throw new ValidationApplicationError(
+      "openingFloatMinor must be a non-negative integer.",
+    );
+  }
   return value;
 }
 function subtotal(price: number, quantity: number) {

@@ -4,6 +4,7 @@ import type {
   InventoryMovementHistoryItem,
   InventoryReadPage,
   InventoryReadRepository,
+  ProductInventorySummary,
   StockLocationReadItem,
   VariantInventoryAvailability,
 } from "../repositories/inventory-read-repository.js";
@@ -142,4 +143,33 @@ function assertId(value: string, field: string): string {
     throw new ValidationApplicationError(`${field} must be a valid UUID.`);
   }
   return value;
+}
+
+export type ListProductInventorySummariesInput =
+  ListInventoryAvailabilityInput & {
+    lowStockThreshold?: number;
+  };
+
+export function listProductInventorySummaries(
+  repository: InventoryReadRepository,
+  input: ListProductInventorySummariesInput,
+): Promise<InventoryReadPage<ProductInventorySummary>> {
+  if (
+    input.lowStockThreshold !== undefined &&
+    (!Number.isInteger(input.lowStockThreshold) ||
+      input.lowStockThreshold < 0 ||
+      input.lowStockThreshold > 2_147_483_647)
+  ) {
+    throw new ValidationApplicationError(
+      "lowStockThreshold must be a nonnegative inventory quantity.",
+    );
+  }
+  return repository.listProductSummaries({
+    cursor: normalizeCursor(input.cursor),
+    locationId: normalizeOptionalId(input.locationId, "locationId"),
+    organizationId: assertId(input.organizationId, "organizationId"),
+    pageSize: normalizePageSize(input.pageSize),
+    search: normalizeSearch(input.search),
+    lowStockThreshold: input.lowStockThreshold,
+  });
 }

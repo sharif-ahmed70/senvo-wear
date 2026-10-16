@@ -12,6 +12,10 @@ const sensitiveMetadataKeyPattern =
   /(?:authorization|cookie|credential|password|secret|token)/iu;
 
 export const auditActions = [
+  "PRODUCT_UPDATED",
+  "PRODUCT_ARCHIVED",
+  "PRODUCT_RESTORED",
+  "PRODUCT_DELETED",
   "INVENTORY_MOVEMENT_POSTED",
   "POS_CHECKOUT_COMPLETED",
   "POS_PAYMENT_RECORDED",
@@ -24,9 +28,21 @@ export const auditActions = [
   "SALES_RECEIPT_ISSUED",
   "SALES_ORDER_CREATED",
   "STOREFRONT_ORDER_PLACED",
+  "STOREFRONT_RESERVATION_EXPIRED",
+  "STOREFRONT_RESERVATION_EXPIRY_NORMALIZED",
+  "WORKFORCE_PASSWORD_SET",
+  "POS_REGISTER_SETTLED",
+  "ORDER_DISPATCHED",
+  "SHIPMENT_STATUS_UPDATED",
+  "STOCK_INTAKE_RECORDED",
+  "TEAM_MEMBER_ROLE_CHANGED",
+  "TEAM_MEMBER_STATUS_CHANGED",
+  "TEAM_MEMBER_PASSWORD_SET",
+  "TEAM_MEMBER_PASSWORD_RESET",
 ] as const satisfies readonly AuditAction[];
 
 export const auditResources = [
+  "PRODUCT",
   "INVENTORY_MOVEMENT",
   "PAYMENT",
   "PAYMENT_COLLECTION",
@@ -37,6 +53,11 @@ export const auditResources = [
   "POS_RETURN",
   "SALES_ORDER",
   "SALES_RECEIPT",
+  "USER_CREDENTIAL",
+  "POS_SESSION",
+  "COURIER_CONSIGNMENT",
+  "PURCHASE",
+  "ORGANIZATION_MEMBERSHIP",
 ] as const satisfies readonly AuditResource[];
 
 export function assertAuditId(value: string, field: string): string {

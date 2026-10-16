@@ -1,4 +1,7 @@
 import type {
+  EditProductServiceInputContract,
+  ProductLifecycleInputContract,
+  ProductDeletableContract,
   ApiErrorCode,
   BarcodeLookupContract,
   ApiFailure,
@@ -9,19 +12,27 @@ import type {
   AssignTeamMemberRoleServiceInputContract,
   CreateStoreServiceInputContract,
   CreateTeamMemberServiceInputContract,
+  DashboardSummaryContract,
+  ResetTeamMemberPasswordServiceInputContract,
   CreateCategoryServiceInputContract,
   CreateVariantBarcodeServiceInputContract,
   CreateCollectionServiceInputContract,
   CreateColorServiceInputContract,
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
+  UpdateVariantPriceServiceInputContract,
   CreateSizeServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryAvailabilityReadContract,
+  InventoryMovementContract,
   InventoryMovementHistoryContract,
   InventoryReadPageContract,
+  CreateInventoryMovementServiceInputContract,
+  PostInventoryMovementServiceInputContract,
   ListInventoryAvailabilityServiceInputContract,
   ListInventoryMovementsServiceInputContract,
+  ListProductInventorySummariesServiceInputContract,
+  ProductInventorySummaryContract,
   ListStockLocationsServiceInputContract,
   ProductContract,
   ProductDetailsContract,
@@ -36,6 +47,9 @@ import type {
   PublicErrorDetails,
   SizeContract,
   RoleVisibilityContract,
+  CourierConsignmentContract,
+  DispatchSalesOrderServiceInputContract,
+  UpdateShipmentStatusServiceInputContract,
   SalesOrderDetailsReadContract,
   SalesOrderListReadPageContract,
   SalesOrderManagementActionInputContract,
@@ -44,6 +58,22 @@ import type {
   SalesSourceSummaryContract,
   CreateSalesBoothServiceInputContract,
   StockLocationReadContract,
+  ConfirmPurchaseServiceInputContract,
+  CreatePurchaseDraftServiceInputContract,
+  ListPurchasesServiceInputContract,
+  PurchaseContract,
+  CreateStockIntakeServiceInputContract,
+  CreateSupplierServiceInputContract,
+  CreateSupplierPaymentServiceInputContract,
+  CreateSupplierAdjustmentServiceInputContract,
+  ListSupplierPaymentsServiceInputContract,
+  ListSuppliersServiceInputContract,
+  SupplierBalanceSummaryContract,
+  SupplierContract,
+  SupplierLedgerEntryContract,
+  StockIntakeContract,
+  SupplierPaymentContract,
+  UpdateSupplierServiceInputContract,
   StoreManagementContract,
   TeamMemberContract,
   UpdateCategoryStatusServiceInputContract,
@@ -83,6 +113,9 @@ import type {
   OnlinePaymentAdminResultContract,
   ProviderRefundContract,
   CloseSalesSessionServiceInputContract,
+  CloseSalesSessionWithSettlementServiceInputContract,
+  PosSessionReconciliationSummaryContract,
+  PosRegisterSettlementContract,
   AddPosCartItemServiceInputContract,
   UpdatePosCartItemServiceInputContract,
   RemovePosCartItemServiceInputContract,
@@ -91,7 +124,14 @@ import type {
 export type AdminApiClientOptions = {
   baseUrl?: string;
   createRequestId?: () => string;
+  credentials?: RequestCredentials;
   fetcher?: typeof fetch;
+  /** Custom CSRF token resolver (defaults to reading from stored credentials or cookie). */
+  getCsrfToken?: () => string | null | undefined;
+  /** Custom session token resolver (defaults to reading from stored credentials). */
+  getSessionToken?: () => string | null | undefined;
+  /** When set, every request automatically includes Authorization: Bearer <sessionToken>. */
+  sessionToken?: string;
 };
 
 export type AdminApiRequest = {
@@ -134,16 +174,122 @@ export class AdminApiError extends Error {
   }
 }
 
+function defaultGetSessionToken(): string | undefined {
+  try {
+    const session =
+      typeof globalThis !== "undefined" && globalThis.sessionStorage
+        ? globalThis.sessionStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.sessionStorage
+          ? window.sessionStorage.getItem("senvo.admin.session")
+          : null;
+    const local =
+      typeof globalThis !== "undefined" && globalThis.localStorage
+        ? globalThis.localStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("senvo.admin.session")
+          : null;
+    const raw = session ?? local;
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { sessionToken?: unknown };
+    return typeof parsed?.sessionToken === "string"
+      ? parsed.sessionToken
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultGetCsrfToken(): string | undefined {
+  try {
+    const session =
+      typeof globalThis !== "undefined" && globalThis.sessionStorage
+        ? globalThis.sessionStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.sessionStorage
+          ? window.sessionStorage.getItem("senvo.admin.session")
+          : null;
+    const local =
+      typeof globalThis !== "undefined" && globalThis.localStorage
+        ? globalThis.localStorage.getItem("senvo.admin.session")
+        : typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("senvo.admin.session")
+          : null;
+    const raw = session ?? local;
+    if (raw) {
+      const parsed = JSON.parse(raw) as { csrfToken?: unknown };
+      if (typeof parsed?.csrfToken === "string" && parsed.csrfToken) {
+        return parsed.csrfToken;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (typeof document !== "undefined") {
+    const match = /(?:^|;\s*)senvo_workforce_csrf=([^;]*)/u.exec(
+      document.cookie,
+    );
+    if (match && match[1]) {
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
+    }
+  }
+  return undefined;
+}
+
+function defaultAdminApiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_SENVO_API_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/$/u, "");
+  }
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:4000";
+  }
+  return "";
+}
+
 export class AdminApiClient {
   private readonly baseUrl: string;
   private readonly createRequestId: () => string;
+  private readonly credentials: RequestCredentials;
   private readonly fetcher: typeof fetch;
+  private readonly getCsrfToken: (() => string | null | undefined) | undefined;
+  private readonly getSessionToken:
+    (() => string | null | undefined) | undefined;
+  private readonly sessionToken: string | undefined;
 
   constructor(options: AdminApiClientOptions = {}) {
-    this.baseUrl = options.baseUrl?.replace(/\/$/u, "") ?? "";
+    this.baseUrl = options.baseUrl?.trim()
+      ? options.baseUrl.trim().replace(/\/$/u, "")
+      : defaultAdminApiBaseUrl();
     this.createRequestId =
       options.createRequestId ?? (() => crypto.randomUUID());
-    this.fetcher = options.fetcher ?? fetch;
+    this.credentials = options.credentials ?? "include";
+    this.fetcher = options.fetcher ?? ((...args) => fetch(...args));
+    this.getCsrfToken =
+      options.getCsrfToken !== undefined
+        ? options.getCsrfToken
+        : defaultGetCsrfToken;
+    this.getSessionToken =
+      options.getSessionToken ??
+      (options.sessionToken !== undefined ? undefined : defaultGetSessionToken);
+    this.sessionToken = options.sessionToken;
+  }
+
+  /**
+   * Return a new AdminApiClient instance that automatically attaches
+   * Authorization: Bearer <token> on every request.
+   */
+  withSession(sessionToken: string): AdminApiClient {
+    return new AdminApiClient({
+      baseUrl: this.baseUrl,
+      createRequestId: this.createRequestId,
+      credentials: this.credentials,
+      fetcher: this.fetcher,
+      getCsrfToken: this.getCsrfToken,
+      sessionToken,
+    });
   }
 
   async request<T>(
@@ -157,14 +303,27 @@ export class AdminApiClient {
     if (request.body !== undefined) {
       headers.set("content-type", "application/json");
     }
+    const method = request.method ?? "GET";
+    const effectiveToken =
+      this.sessionToken ?? this.getSessionToken?.() ?? undefined;
+    if (effectiveToken && !headers.has("authorization")) {
+      headers.set("authorization", `Bearer ${effectiveToken}`);
+    }
+    if (method !== "GET" && !headers.has("x-csrf-token")) {
+      const csrf = this.getCsrfToken?.();
+      if (csrf) {
+        headers.set("x-csrf-token", csrf);
+      }
+    }
 
     let response: Response;
     try {
       response = await this.fetcher(`${this.baseUrl}${path}`, {
         body:
           request.body === undefined ? undefined : JSON.stringify(request.body),
+        credentials: this.credentials,
         headers,
-        method: request.method ?? "GET",
+        method,
         signal: request.signal,
       });
     } catch {
@@ -314,9 +473,39 @@ export class AdminApiClient {
     });
   }
 
+  getProductDeletable(productId: string) {
+    return this.request<ProductDeletableContract>(
+      `/catalog/products/${productId}/deletable`,
+    );
+  }
+  editProduct(input: EditProductServiceInputContract) {
+    const { productId, ...body } = input;
+    return this.request<ProductContract>(`/catalog/products/${productId}`, {
+      method: "PATCH",
+      body,
+    });
+  }
+  changeProductLifecycle(
+    operation: "archive" | "restore" | "delete",
+    input: ProductLifecycleInputContract,
+  ) {
+    const { productId, ...body } = input;
+    return this.request<ProductContract | null>(
+      `/catalog/products/${productId}${operation === "delete" ? "" : `/${operation}`}`,
+      { method: operation === "delete" ? "DELETE" : "POST", body },
+    );
+  }
+
   getProduct(productId: string, request?: AdminApiRequest) {
     return this.request<ProductDetailsContract>(
       `/catalog/products/${productId}`,
+      request,
+    );
+  }
+
+  getPrimaryProductImage(productId: string, request?: AdminApiRequest) {
+    return this.request<PrimaryProductImageContract>(
+      `/catalog/products/${productId}/primary-image`,
       request,
     );
   }
@@ -419,6 +608,17 @@ export class AdminApiClient {
     );
   }
 
+  updateVariantPrice(
+    input: UpdateVariantPriceServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { variantId, ...body } = input;
+    return this.request<ProductVariantContract>(
+      `/catalog/variants/${variantId}/price`,
+      { ...request, body, method: "PATCH" },
+    );
+  }
+
   listVariants(productId: string, request?: AdminApiRequest) {
     return this.request<ProductVariantContract[]>(
       `/catalog/products/${productId}/variants`,
@@ -481,6 +681,181 @@ export class AdminApiClient {
     >(`/inventory/availability${queryString(input)}`, request);
   }
 
+  listInventoryProducts(
+    input: ListProductInventorySummariesServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >(`/inventory/products${queryString(input)}`, request);
+  }
+
+  /**
+   * Records a whole supplier delivery (catalog, barcodes, stock, cost,
+   * supplier bill and optional payment) in one server transaction. Reuse the
+   * same idempotencyKey when retrying an uncertain submission.
+   */
+  createStockIntake(
+    input: CreateStockIntakeServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<StockIntakeContract>("/inventory/stock-intakes", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  listSuppliers(
+    input: ListSuppliersServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierContract[]>(
+      `/procurement/suppliers${queryString(input)}`,
+      request,
+    );
+  }
+
+  getSupplier(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}`,
+      request,
+    );
+  }
+
+  createSupplier(
+    input: CreateSupplierServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierContract>("/procurement/suppliers", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  updateSupplier(
+    input: UpdateSupplierServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { supplierId, ...body } = input;
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}`,
+      {
+        ...request,
+        body,
+        method: "PATCH",
+      },
+    );
+  }
+
+  deactivateSupplier(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierContract>(
+      `/procurement/suppliers/${supplierId}/deactivate`,
+      {
+        ...request,
+        method: "POST",
+      },
+    );
+  }
+
+  getSupplierBalance(supplierId: string, request?: AdminApiRequest) {
+    return this.request<SupplierBalanceSummaryContract>(
+      `/procurement/suppliers/${supplierId}/balance`,
+      request,
+    );
+  }
+
+  getSupplierLedger(
+    supplierId: string,
+    input: { limit?: number; offset?: number } = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierLedgerEntryContract[]>(
+      `/procurement/suppliers/${supplierId}/ledger${queryString(input)}`,
+      request,
+    );
+  }
+
+  listSupplierPayments(
+    input: ListSupplierPaymentsServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierPaymentContract[]>(
+      `/procurement/payments${queryString(input)}`,
+      request,
+    );
+  }
+
+  recordSupplierPayment(
+    input: CreateSupplierPaymentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<SupplierPaymentContract>("/procurement/payments", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  recordSupplierAdjustment(
+    input: CreateSupplierAdjustmentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { supplierId, ...body } = input;
+    return this.request<SupplierLedgerEntryContract>(
+      `/procurement/suppliers/${supplierId}/adjustments`,
+      {
+        ...request,
+        body,
+        method: "POST",
+      },
+    );
+  }
+
+  listPurchases(
+    input: ListPurchasesServiceInputContract = {},
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract[]>(
+      `/procurement/purchases${queryString(input)}`,
+      request,
+    );
+  }
+
+  getPurchase(purchaseId: string, request?: AdminApiRequest) {
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}`,
+      request,
+    );
+  }
+
+  createPurchaseDraft(
+    input: CreatePurchaseDraftServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract>("/procurement/purchases", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
+  confirmPurchase(
+    input: ConfirmPurchaseServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}/confirm`,
+      {
+        ...request,
+        body,
+        method: "POST",
+      },
+    );
+  }
+
   listStockLocations(
     input: ListStockLocationsServiceInputContract = {},
     request?: AdminApiRequest,
@@ -500,12 +875,45 @@ export class AdminApiClient {
     >(`/inventory/movements${queryString(input)}`, request);
   }
 
+  createInventoryMovementDraft(
+    input: CreateInventoryMovementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<InventoryMovementContract>(
+      "/inventory/movement-drafts",
+      {
+        ...request,
+        body: input,
+        method: "POST",
+      },
+    );
+  }
+
+  postInventoryMovement(
+    input: PostInventoryMovementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<InventoryMovementContract>("/inventory/movements", {
+      ...request,
+      body: input,
+      method: "POST",
+    });
+  }
+
   getVariantAvailability(
     input: GetVariantAvailabilityServiceInputContract,
     request?: AdminApiRequest,
   ) {
     return this.request<VariantInventoryAvailabilityContract>(
       `/inventory/variants/${input.variantId}/availability`,
+      request,
+    );
+  }
+
+  /** Read-only dashboard; `financials` is present only for POS APPROVE roles. */
+  getDashboardSummary(request?: AdminApiRequest) {
+    return this.request<DashboardSummaryContract>(
+      "/reports/dashboard",
       request,
     );
   }
@@ -626,6 +1034,48 @@ export class AdminApiClient {
     return this.salesOrderAction("cancel", input, request);
   }
 
+  dispatchSalesOrder(
+    input: DispatchSalesOrderServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CourierConsignmentContract>(
+      `/sales/orders/${encodeURIComponent(input.salesOrderId)}/dispatch`,
+      {
+        ...request,
+        body: input,
+        method: "POST",
+      },
+    );
+  }
+
+  getOrderShipments(salesOrderId: string, request?: AdminApiRequest) {
+    return this.request<CourierConsignmentContract[]>(
+      `/sales/orders/${encodeURIComponent(salesOrderId)}/shipment`,
+      request,
+    );
+  }
+
+  getConsignment(consignmentId: string, request?: AdminApiRequest) {
+    return this.request<CourierConsignmentContract>(
+      `/shipping/consignments/${encodeURIComponent(consignmentId)}`,
+      request,
+    );
+  }
+
+  updateShipmentStatus(
+    input: UpdateShipmentStatusServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CourierConsignmentContract>(
+      `/shipping/consignments/${encodeURIComponent(input.consignmentId)}/status`,
+      {
+        ...request,
+        body: input,
+        method: "PATCH",
+      },
+    );
+  }
+
   getOrganizationProfile(request?: AdminApiRequest) {
     return this.request<OrganizationProfileContract>("/organization", request);
   }
@@ -722,6 +1172,18 @@ export class AdminApiClient {
     );
   }
 
+  /** Sets another member's password; the server signs them out everywhere. */
+  resetTeamMemberPassword(
+    input: ResetTeamMemberPasswordServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { teamMemberId, ...body } = input;
+    return this.request<TeamMemberContract>(
+      `/organization/team/${teamMemberId}/password`,
+      { ...request, body, method: "PUT" },
+    );
+  }
+
   listRoles(request?: AdminApiRequest) {
     return this.request<RoleVisibilityContract[]>(
       "/organization/roles",
@@ -777,6 +1239,13 @@ export class AdminApiClient {
     });
   }
 
+  startNextPosCart(sessionId: string, request?: AdminApiRequest) {
+    return this.request<SalesSessionContract>(
+      `/pos/sessions/${sessionId}/carts`,
+      { ...request, body: {}, method: "POST" },
+    );
+  }
+
   closeSalesSession(
     input: CloseSalesSessionServiceInputContract,
     request?: AdminApiRequest,
@@ -784,6 +1253,27 @@ export class AdminApiClient {
     const { sessionId, ...body } = input;
     return this.request<SalesSessionContract>(
       `/pos/sessions/${sessionId}/close`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  getSessionReconciliationSummary(
+    sessionId: string,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PosSessionReconciliationSummaryContract>(
+      `/pos/sessions/${sessionId}/reconciliation`,
+      request,
+    );
+  }
+
+  closeSessionWithSettlement(
+    input: CloseSalesSessionWithSettlementServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { sessionId, ...body } = input;
+    return this.request<PosRegisterSettlementContract>(
+      `/pos/sessions/${sessionId}/settlement`,
       { ...request, body, method: "POST" },
     );
   }
@@ -831,7 +1321,11 @@ export class AdminApiClient {
   ) {
     return this.request<null>(
       `/pos/carts/${input.cartId}/items/${input.itemId}`,
-      { ...request, method: "DELETE" },
+      {
+        ...request,
+        body: { expectedVersion: input.expectedVersion },
+        method: "DELETE",
+      },
     );
   }
 

@@ -86,6 +86,29 @@ describe("POS checkout", () => {
     });
   });
 
+  it("attaches optional customer details to the sales order and receipt when provided", async () => {
+    const checkouts = new FakeCheckoutRepository(preparation());
+    const dependencies = repositories(checkouts);
+    const result = await checkoutCart(dependencies, {
+      ...input(),
+      customer: {
+        addressLine1: "House 12, Road 4, Banani",
+        name: "Ahmed Sharif",
+        phone: "+8801711111111",
+      },
+    });
+    expect(result.replayed).toBe(false);
+    expect(dependencies.salesOrders.created).toMatchObject({
+      customerName: "Ahmed Sharif",
+      customerPhone: "+8801711111111",
+      deliveryAddressLine1: "House 12, Road 4, Banani",
+    });
+    expect(dependencies.receipts.created).toMatchObject({
+      customerName: "Ahmed Sharif",
+      customerPhone: "+8801711111111",
+    });
+  });
+
   it.each([
     ["empty cart", { lines: [] }],
     ["closed session", { sessionStatus: "CLOSED" }],
@@ -165,6 +188,7 @@ describe("POS checkout", () => {
 
 function input() {
   return {
+    expectedVersion: 1,
     cartId: ids.cart,
     allowOutstanding: false,
     approveOutstanding: () => Promise.resolve(),
@@ -181,6 +205,8 @@ function input() {
 
 function preparation(): PosCheckoutPreparation {
   return {
+    cartStatus: "ACTIVE",
+    cartVersion: 1,
     allocationPolicyId: ids.allocation,
     boothId: null,
     branchId: "10000000-0000-4000-8000-000000000010",

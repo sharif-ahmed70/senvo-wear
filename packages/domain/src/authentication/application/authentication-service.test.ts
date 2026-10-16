@@ -142,6 +142,10 @@ class FakeCredentialRepository implements UserCredentialRepository {
     return Promise.reject(new Error("Unexpected changeStatus call."));
   }
 
+  replacePassword(): Promise<UserCredential | null> {
+    return Promise.reject(new Error("Unexpected replacePassword call."));
+  }
+
   create(record: CreateUserCredentialRecord): Promise<UserCredential> {
     const timestamp = new Date("2026-07-15T00:00:00.000Z");
     const credential = {

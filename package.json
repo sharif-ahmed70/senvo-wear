@@ -3,15 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.11.0",
   "engines": {
     "node": ">=22.13",
-    "pnpm": ">=11.9.0"
+    "pnpm": ">=11.11.0"
   },
   "scripts": {
     "dev": "turbo dev --parallel",
     "dev:storefront": "pnpm --filter @senvo/storefront dev",
     "dev:api": "pnpm --filter @senvo/http... build && node packages/http/dist/development-server.js",
+    "start:api": "pnpm --filter @senvo/http... build && node packages/http/dist/production-server.js",
     "dev:admin": "pnpm --filter @senvo/admin dev",
     "dev:pos": "pnpm --filter @senvo/pos dev",
     "build": "turbo build",
@@ -50,13 +51,13 @@
     "@tailwindcss/postcss": "4.3.2",
     "@types/node": "latest",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.11",
-    "pnpm": "11.9.0",
+    "eslint-config-next": "16.3.3",
+    "pnpm": "11.11.0",
     "prettier": "3.9.4",
     "tailwindcss": "4.3.2",
     "turbo": "2.10.2",
     "typescript": "6.0.3",
     "typescript-eslint": "8.62.1",
-    "vitest": "4.1.9"
+    "vitest": "4.1.11"
   }
 }

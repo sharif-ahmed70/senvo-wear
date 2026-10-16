@@ -1,0 +1,298 @@
+.page {
+  padding: 2rem;
+  background: #f1f5f9;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  color: #0f172a;
+}
+
+.actions {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.leftActions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.backLink {
+  color: #475569;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.backLink:hover {
+  color: #0f172a;
+}
+
+.formatToggle {
+  display: flex;
+  background: #e2e8f0;
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.formatBtn {
+  background: transparent;
+  border: none;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.formatBtnActive {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.printBtn {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.625rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  transition: background 0.15s ease;
+}
+
+.printBtn:hover {
+  background: #1e293b;
+}
+
+.labelContainer {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-radius: 6px;
+  width: 100%;
+  max-width: 420px;
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.labelContainerA4 {
+  max-width: 600px;
+  padding: 2.25rem;
+}
+
+.labelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.brandTitle {
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.brandTagline {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+.courierBadge {
+  text-align: right;
+}
+
+.courierName {
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.routingZone {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #0f172a;
+  color: #ffffff;
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  margin-top: 0.25rem;
+  letter-spacing: 0.04em;
+}
+
+.barcodeSection {
+  text-align: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.barcodeSvg {
+  max-width: 100%;
+  height: 48px;
+  display: block;
+  margin: 0 auto;
+}
+
+.trackingCode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-top: 0.35rem;
+}
+
+.orderReference {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+.recipientSection {
+  padding: 0.85rem 0;
+  border-bottom: 2px solid #0f172a;
+}
+
+.sectionLabel {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.customerName {
+  font-size: 1.1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.customerPhone {
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #0f172a;
+  margin: 0.25rem 0;
+}
+
+.deliveryAddress {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #1e293b;
+  margin-top: 0.35rem;
+  word-break: break-word;
+}
+
+.codBanner {
+  margin: 0.85rem 0;
+  padding: 0.75rem;
+  border: 2px solid #0f172a;
+  border-radius: 4px;
+  text-align: center;
+  background: #f8fafc;
+}
+
+.codBannerActive {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.codLabel {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.codAmount {
+  font-size: 1.45rem;
+  font-weight: 900;
+  margin-top: 0.15rem;
+  letter-spacing: 0.02em;
+}
+
+.prepaidBanner {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 2px dashed #64748b;
+}
+
+.itemsSummary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed #cbd5e1;
+  color: #475569;
+}
+
+.returnSection {
+  padding-top: 0.65rem;
+  font-size: 0.65rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.returnTitle {
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #334155;
+}
+
+@media print {
+  body {
+    background: transparent !important;
+  }
+  .page {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .actions {
+    display: none !important;
+  }
+  .labelContainer {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    padding: 0.25rem !important;
+    width: 80mm !important;
+  }
+  .labelContainerA4 {
+    width: 140mm !important;
+    max-width: 100% !important;
+    padding: 0.5rem !important;
+    border: 1px dashed #000 !important;
+  }
+}

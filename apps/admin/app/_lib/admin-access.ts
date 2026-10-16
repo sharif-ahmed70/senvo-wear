@@ -2,8 +2,10 @@ export const adminPermissionKeys = [
   "CATALOG:READ",
   "CATALOG:CREATE",
   "CATALOG:UPDATE",
+  "CATALOG:DELETE",
   "INVENTORY:READ",
   "INVENTORY:CREATE",
+  "INVENTORY:UPDATE",
   "SALES_ORDER:READ",
   "SALES_ORDER:UPDATE",
   "SALES:READ",
@@ -16,10 +18,14 @@ export const adminPermissionKeys = [
   "POS:READ",
   "POS:CREATE",
   "POS:UPDATE",
+  "POS:APPROVE",
   "PAYMENT:READ",
   "PAYMENT:CREATE",
   "PAYMENT:APPROVE",
   "RECEIPT:READ",
+  "PROCUREMENT:READ",
+  "PROCUREMENT:CREATE",
+  "PROCUREMENT:UPDATE",
 ] as const;
 
 export type AdminPermissionKey = (typeof adminPermissionKeys)[number];
@@ -49,7 +55,10 @@ export type AdminNavigationItem = {
     | "newSale"
     | "counter"
     | "sessions"
-    | "checkouts";
+    | "checkouts"
+    | "suppliers"
+    | "purchases"
+    | "payments";
   label: string;
   permission?: AdminPermissionKey;
   permissions?: readonly AdminPermissionKey[];
@@ -74,6 +83,24 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
     icon: "inventory",
     label: "Inventory",
     permission: "INVENTORY:READ",
+  },
+  {
+    href: "/procurement/suppliers",
+    icon: "suppliers",
+    label: "Suppliers",
+    permission: "PROCUREMENT:READ",
+  },
+  {
+    href: "/procurement/purchases",
+    icon: "purchases",
+    label: "Purchases",
+    permission: "PROCUREMENT:READ",
+  },
+  {
+    href: "/procurement/payments",
+    icon: "payments",
+    label: "Supplier Payments",
+    permission: "PROCUREMENT:READ",
   },
   {
     href: "/sales/orders",
@@ -149,7 +176,12 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
   },
 ];
 
-// Placeholder only: a future authenticated server boundary will supply this state.
+// ---------------------------------------------------------------------------
+// Placeholder only — kept for compatibility during the auth transition.
+// This constant is no longer used at runtime. The real AdminSession is
+// constructed from the backend principal by adminSessionFromPrincipal().
+// @deprecated Use adminSessionFromPrincipal(principal) instead.
+// ---------------------------------------------------------------------------
 export const adminFoundationSession: AdminSession = {
   displayName: "Admin preview",
   organizationName: "SENVO Wear",
@@ -168,4 +200,127 @@ export function visibleAdminNavigation(
       (!item.permissions ||
         item.permissions.every((key) => permissions.has(key))),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Backend-principal → AdminSession mapping
+// ---------------------------------------------------------------------------
+
+type BackendPermission = { resource: string; action: string };
+type WorkforcePrincipal = {
+  displayName: string;
+  organizationId: string;
+  organizationName: string;
+  permissions: BackendPermission[];
+  role: AdminSession["role"];
+  userId: string;
+};
+
+/**
+ * Map backend { resource, action }[] to AdminPermissionKey[].
+ *
+ * Only permissions whose composed key ("RESOURCE:ACTION") exists in the
+ * adminPermissionKeys allowlist are included. No inference from role is
+ * performed — unsupported UI permission resources (SALES, TEAM, POS,
+ * PAYMENT, RECEIPT) remain absent unless the backend explicitly supplies them.
+ */
+export function permissionsFromPrincipal(
+  principal: WorkforcePrincipal,
+): AdminPermissionKey[] {
+  const adminKeySet = new Set<AdminPermissionKey>(adminPermissionKeys);
+  return principal.permissions
+    .map(
+      (p) =>
+        `${p.resource.toUpperCase()}:${p.action.toUpperCase()}` as AdminPermissionKey,
+    )
+    .filter((key) => adminKeySet.has(key));
+}
+
+/** Build a typed AdminSession from a backend workforce principal. */
+export function adminSessionFromPrincipal(
+  principal: WorkforcePrincipal,
+): AdminSession {
+  return {
+    displayName: principal.displayName,
+    organizationName: principal.organizationName,
+    permissions: permissionsFromPrincipal(principal),
+    role: principal.role,
+    userId: principal.userId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Route access
+// ---------------------------------------------------------------------------
+
+/**
+ * Permissions a page needs, matched by the longest route prefix. The backend
+ * still authorizes every call; this only keeps people from landing on a page
+ * that cannot work for them.
+ */
+const routePermissions: ReadonlyArray<
+  readonly [prefix: string, permissions: readonly AdminPermissionKey[]]
+> = [
+  ["/catalog", ["CATALOG:READ"]],
+  ["/catalog/products/new", ["CATALOG:CREATE"]],
+  ["/catalog/barcodes/generate", ["CATALOG:CREATE"]],
+  ["/inventory", ["INVENTORY:READ"]],
+  ["/inventory/receive", ["INVENTORY:CREATE"]],
+  ["/inventory/adjustment", ["INVENTORY:CREATE"]],
+  ["/inventory/transfer", ["INVENTORY:CREATE"]],
+  [
+    "/inventory/intake",
+    [
+      "CATALOG:CREATE",
+      "CATALOG:UPDATE",
+      "INVENTORY:CREATE",
+      "INVENTORY:UPDATE",
+      "PROCUREMENT:CREATE",
+    ],
+  ],
+  ["/procurement", ["PROCUREMENT:READ"]],
+  ["/procurement/purchases/new", ["PROCUREMENT:CREATE"]],
+  ["/procurement/payments/new", ["PROCUREMENT:CREATE"]],
+  ["/sales/orders", ["SALES_ORDER:READ"]],
+  ["/sales-orders", ["SALES_ORDER:READ"]],
+  ["/sales/channels", ["SALES:READ"]],
+  ["/sales/booths", ["SALES:READ"]],
+  ["/pos", ["POS:READ"]],
+  [
+    "/pos/sell",
+    ["POS:READ", "POS:CREATE", "POS:UPDATE", "SALES:CREATE", "PAYMENT:CREATE"],
+  ],
+  ["/organization", ["ORGANIZATION:READ"]],
+  ["/store-locations", ["ORGANIZATION:READ"]],
+  ["/team", ["TEAM:READ"]],
+  ["/roles", ["TEAM:READ"]],
+  ["/users", ["TEAM:READ"]],
+];
+
+export function requiredPermissionsForPath(
+  pathname: string,
+): readonly AdminPermissionKey[] {
+  let best: (typeof routePermissions)[number] | undefined;
+  for (const entry of routePermissions) {
+    const [prefix] = entry;
+    const matches = pathname === prefix || pathname.startsWith(`${prefix}/`);
+    if (matches && (!best || prefix.length > best[0].length)) best = entry;
+  }
+  return best ? best[1] : [];
+}
+
+export function canAccessPath(
+  permissions: readonly AdminPermissionKey[],
+  pathname: string,
+): boolean {
+  return requiredPermissionsForPath(pathname).every((key) =>
+    permissions.includes(key),
+  );
+}
+
+export function hasPermission(
+  permissions: readonly AdminPermissionKey[],
+  key: AdminPermissionKey,
+): boolean {
+  return permissions.includes(key);
 }

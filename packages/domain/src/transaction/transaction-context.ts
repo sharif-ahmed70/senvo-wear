@@ -1,3 +1,4 @@
+import type { ProductLifecycleRepository } from "../catalog/repositories/product-lifecycle-repository.js";
 import type { AuditWriter } from "../audit/application/audit-writer.js";
 import type {
   InventoryMovementPostingRepository,
@@ -14,13 +15,30 @@ import type { PaymentRepository } from "../payment/repositories/payment-reposito
 import type { ReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnReceiptRepository } from "../receipt/repositories/receipt-repository.js";
 import type { PosReturnRepository } from "../pos/repositories/pos-return-repository.js";
+import type { PosSettlementRepository } from "../pos/repositories/pos-settlement-repository.js";
 import type {
   PaymentRefundReceiptRepository,
   PaymentRefundRepository,
 } from "../payment/repositories/payment-refund-repository.js";
 import type { CatalogMediaRepository } from "../catalog/repositories/catalog-media-repository.js";
-import type { CatalogProductManagementRepository } from "../catalog/repositories/catalog-repositories.js";
+import type {
+  BarcodeRepository,
+  CatalogProductManagementRepository,
+  CatalogProductVariantManagementRepository,
+  CategoryRepository,
+  ColorRepository,
+  OrganizationRepository,
+  SizeRepository,
+} from "../catalog/repositories/catalog-repositories.js";
+import type { StockIntakeRepository } from "../procurement/repositories/stock-intake-repository.js";
+import type { SupplierRepository } from "../procurement/repositories/supplier-repository.js";
 import type { OnlinePaymentRepository } from "../payment/repositories/online-payment-repository.js";
+import type { PurchaseRepository } from "../procurement/repositories/purchase-repository.js";
+import type { CostRepository } from "../procurement/repositories/cost-repository.js";
+import type {
+  SupplierLedgerRepository,
+  SupplierPaymentRepository,
+} from "../procurement/repositories/supplier-payment-repository.js";
 
 type TransactionalInventoryMovementRepository =
   InventoryMovementPostingRepository &
@@ -29,21 +47,35 @@ type TransactionalInventoryMovementRepository =
 export type TransactionContext<TApplicationContext> = {
   applicationContext: TApplicationContext;
   auditWriter: Pick<AuditWriter, "recordWithinTransaction">;
+  productLifecycleRepository?: ProductLifecycleRepository;
   catalogMediaRepository?: CatalogMediaRepository;
   catalogProductRepository?: CatalogProductManagementRepository;
+  costRepository?: CostRepository;
   inventoryMovementRepository: TransactionalInventoryMovementRepository;
   onlinePaymentRepository?: OnlinePaymentRepository;
   posCheckoutRepository?: PosCheckoutRepository;
   paymentRepository?: PaymentRepository;
   paymentRefundRepository?: PaymentRefundRepository;
   paymentRefundReceiptRepository?: PaymentRefundReceiptRepository;
-  receiptRepository?: ReceiptRepository;
+  posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
   posReturnRepository?: PosReturnRepository;
-  posCheckoutSalesOrderRepository?: PosCheckoutSalesOrderRepository;
-  salesOrderRepository: SalesOrderCreationRepository;
+  posSettlementRepository?: PosSettlementRepository;
+  purchaseRepository?: PurchaseRepository;
+  receiptRepository?: ReceiptRepository;
   salesOrderLifecycleRepository?: SalesOrderRepository;
+  salesOrderRepository: SalesOrderCreationRepository;
   storefrontRepository?: StorefrontRepository;
+  supplierLedgerRepository?: SupplierLedgerRepository;
+  supplierPaymentRepository?: SupplierPaymentRepository;
+  barcodeRepository?: BarcodeRepository;
+  categoryRepository?: CategoryRepository;
+  colorRepository?: ColorRepository;
+  organizationRepository?: OrganizationRepository;
+  productVariantRepository?: CatalogProductVariantManagementRepository;
+  sizeRepository?: SizeRepository;
+  stockIntakeRepository?: StockIntakeRepository;
+  supplierRepository?: SupplierRepository;
 };
 
 export type TransactionManager<TApplicationContext> = {

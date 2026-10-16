@@ -224,6 +224,35 @@ export class PrismaOnlinePaymentRepository implements OnlinePaymentRepository {
       throw new NotFoundError("Payment attempt was not found.");
   }
 
+  async lockOrderLifecycle(
+    organizationId: string,
+    salesOrderId: string,
+  ): Promise<void> {
+    const orderRows = await this.prisma.$queryRaw<
+      Array<{ id: string; inventory_reservation_id: string | null }>
+    >`
+      SELECT "id", "inventory_reservation_id" FROM "sales_orders"
+      WHERE "id" = ${salesOrderId}::uuid AND "organization_id" = ${organizationId}::uuid
+      FOR UPDATE
+    `;
+    if (orderRows.length === 0) {
+      throw new NotFoundError("Sales order was not found.");
+    }
+    const reservationId = orderRows[0]?.inventory_reservation_id;
+    if (reservationId) {
+      const reservationRows = await this.prisma.$queryRaw<
+        Array<{ id: string }>
+      >`
+        SELECT "id" FROM "inventory_reservations"
+        WHERE "id" = ${reservationId}::uuid AND "organization_id" = ${organizationId}::uuid
+        FOR UPDATE
+      `;
+      if (reservationRows.length === 0) {
+        throw new NotFoundError("Inventory reservation was not found.");
+      }
+    }
+  }
+
   async recordNotification(
     record: Parameters<OnlinePaymentRepository["recordNotification"]>[0],
   ) {

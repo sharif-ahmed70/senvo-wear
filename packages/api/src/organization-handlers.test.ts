@@ -105,6 +105,72 @@ describe("organization management API handlers", () => {
     });
   });
 
+  it("requires TEAM.UPDATE for a password reset", async () => {
+    const authorization = new FakeAuthorization();
+    const application = new FakeOrganization();
+    const input = {
+      expectedVersion: 2,
+      newPassword: "New-pass-456",
+      teamMemberId: "30000000-0000-4000-8000-000000000001",
+    };
+    const response = await handlers(
+      application,
+      authorization,
+    ).resetTeamMemberPassword.handle({ context, input });
+    expect(response.success).toBe(true);
+    expect(authorization.permission).toEqual({
+      action: "UPDATE",
+      resource: "TEAM",
+    });
+    expect(application.payload).toEqual(input);
+  });
+
+  it("gives STAFF without TEAM.UPDATE a 403 on password reset", async () => {
+    const application = new FakeOrganization();
+    const staffContext: ApiRequestContext = {
+      ...context,
+      permissions: [
+        { action: "READ", resource: "POS" },
+        { action: "CREATE", resource: "SALES" },
+      ],
+    };
+    const response = await handlers(
+      application,
+      new PermissionListAuthorization(),
+    ).resetTeamMemberPassword.handle({
+      context: staffContext,
+      input: {
+        expectedVersion: 1,
+        newPassword: "New-pass-456",
+        teamMemberId: "30000000-0000-4000-8000-000000000001",
+      },
+    });
+    expect(response).toMatchObject({
+      error: { code: "AUTHORIZATION.FORBIDDEN" },
+      success: false,
+    });
+    expect(application.context).toBeUndefined();
+  });
+
+  it("rejects short passwords before the application runs", async () => {
+    const application = new FakeOrganization();
+    const response = await handlers(application).resetTeamMemberPassword.handle(
+      {
+        context,
+        input: {
+          expectedVersion: 1,
+          newPassword: "short",
+          teamMemberId: "30000000-0000-4000-8000-000000000001",
+        },
+      },
+    );
+    expect(response).toMatchObject({
+      error: { code: "VALIDATION.INVALID_INPUT" },
+      success: false,
+    });
+    expect(application.context).toBeUndefined();
+  });
+
   it("returns a safe forbidden response", async () => {
     const authorization = new FakeAuthorization();
     authorization.reject = true;
@@ -133,7 +199,7 @@ const authenticationService: ApplicationAuthenticationService = {
 };
 function handlers(
   application: FakeOrganization,
-  authorization = new FakeAuthorization(),
+  authorization: ApplicationAuthorizationService = new FakeAuthorization(),
 ) {
   return createOrganizationManagementApiHandlers({
     authenticationService,
@@ -152,6 +218,22 @@ class FakeAuthorization implements ApplicationAuthorizationService {
     return this.reject
       ? Promise.reject(new AuthorizationError("Denied."))
       : Promise.resolve();
+  }
+}
+/** Allows only what the request context's permission list contains. */
+class PermissionListAuthorization implements ApplicationAuthorizationService {
+  authorize(
+    context: ApplicationExecutionContext,
+    permission: { action: string; resource: string },
+  ) {
+    const allowed = (context.permissions ?? []).some(
+      (item) =>
+        item.action === permission.action &&
+        item.resource === permission.resource,
+    );
+    return allowed
+      ? Promise.resolve()
+      : Promise.reject(new AuthorizationError("Denied."));
   }
 }
 class FakeOrganization implements OrganizationManagementApplication {
@@ -186,6 +268,12 @@ class FakeOrganization implements OrganizationManagementApplication {
   }
   listTeam(context: ApplicationExecutionContext, payload: unknown) {
     return this.success(context, payload, [] as TeamMemberContract[]);
+  }
+  resetTeamMemberPassword(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.success(context, payload, {} as TeamMemberContract);
   }
   updateProfile(context: ApplicationExecutionContext, payload: unknown) {
     return this.success(context, payload, {} as OrganizationProfileContract);

@@ -1059,10 +1059,23 @@ button:disabled {
   bottom: auto;
   max-height: calc(100vh - 108px);
   overflow: auto;
-  transform: translateY(-110%);
+  /* Fully off-screen (including its shadow) and not hit-testable while closed. */
+  transform: translateY(calc(-100% - 160px));
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow: none;
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.35s;
 }
 .search-panel.open {
   transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.18);
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
 }
 .search-panel .panel-header {
   max-width: 920px;

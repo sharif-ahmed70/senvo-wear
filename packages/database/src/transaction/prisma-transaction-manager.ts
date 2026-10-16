@@ -1,3 +1,4 @@
+import { PrismaProductLifecycleRepository } from "../catalog/product-lifecycle-repository.js";
 import {
   BusinessRuleError,
   RepositoryAuditWriter,
@@ -15,10 +16,27 @@ import { PrismaPaymentRepository } from "../payment/repository.js";
 import { PrismaPaymentRefundRepository } from "../payment/refund-repository.js";
 import { PrismaReceiptRepository } from "../receipt/repository.js";
 import { PrismaPosReturnRepository } from "../pos/return-repository.js";
+import { PrismaPosSettlementRepository } from "../pos/settlement-repository.js";
 import { PrismaStorefrontRepository } from "../storefront/repository.js";
 import { PrismaCatalogMediaRepository } from "../catalog/media-repository.js";
-import { PrismaProductRepository } from "../catalog/repositories.js";
+import {
+  PrismaCategoryRepository,
+  PrismaColorRepository,
+  PrismaOrganizationRepository,
+  PrismaProductRepository,
+  PrismaProductVariantRepository,
+  PrismaSizeRepository,
+} from "../catalog/repositories.js";
+import { PrismaBarcodeRepository } from "../catalog/barcode-repository.js";
+import { PrismaStockIntakeRepository } from "../procurement/stock-intake-repository.js";
+import { PrismaSupplierRepository } from "../procurement/supplier-repository.js";
 import { PrismaOnlinePaymentRepository } from "../payment/online-payment-repository.js";
+import { PrismaPurchaseRepository } from "../procurement/purchase-repository.js";
+import { PrismaCostRepository } from "../procurement/cost-repository.js";
+import {
+  PrismaSupplierLedgerRepository,
+  PrismaSupplierPaymentRepository,
+} from "../procurement/supplier-payment-repository.js";
 
 type TransactionCapablePrismaClient = Pick<PrismaClient, "$transaction">;
 type TransactionActorContext = {
@@ -46,8 +64,12 @@ export class PrismaTransactionManager<
             new PrismaAuditEntryRepository(transaction),
           ),
         ),
+        productLifecycleRepository: new PrismaProductLifecycleRepository(
+          transaction,
+        ),
         catalogMediaRepository: new PrismaCatalogMediaRepository(transaction),
         catalogProductRepository: new PrismaProductRepository(transaction),
+        costRepository: new PrismaCostRepository(transaction),
         inventoryMovementRepository:
           new PrismaTransactionalInventoryMovementPostingRepository(
             transaction,
@@ -62,13 +84,31 @@ export class PrismaTransactionManager<
         receiptRepository: new PrismaReceiptRepository(transaction),
         posReturnReceiptRepository: new PrismaReceiptRepository(transaction),
         posReturnRepository: new PrismaPosReturnRepository(transaction),
+        posSettlementRepository: new PrismaPosSettlementRepository(transaction),
         posCheckoutSalesOrderRepository:
           createTransactionScopedSalesOrderRepository(transaction),
+        purchaseRepository: new PrismaPurchaseRepository(transaction),
         salesOrderRepository:
           new PrismaTransactionalSalesOrderCreationRepository(transaction),
         salesOrderLifecycleRepository:
           createTransactionScopedSalesOrderRepository(transaction),
         storefrontRepository: new PrismaStorefrontRepository(transaction),
+        supplierLedgerRepository: new PrismaSupplierLedgerRepository(
+          transaction,
+        ),
+        supplierPaymentRepository: new PrismaSupplierPaymentRepository(
+          transaction,
+        ),
+        barcodeRepository: new PrismaBarcodeRepository(transaction),
+        categoryRepository: new PrismaCategoryRepository(transaction),
+        colorRepository: new PrismaColorRepository(transaction),
+        organizationRepository: new PrismaOrganizationRepository(transaction),
+        productVariantRepository: new PrismaProductVariantRepository(
+          transaction,
+        ),
+        sizeRepository: new PrismaSizeRepository(transaction),
+        stockIntakeRepository: new PrismaStockIntakeRepository(transaction),
+        supplierRepository: new PrismaSupplierRepository(transaction),
       }),
     );
   }

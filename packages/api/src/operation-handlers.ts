@@ -5,6 +5,9 @@ import type {
   ApplicationServiceResult,
 } from "@senvo/application";
 import {
+  editProductServiceInputSchema,
+  productLifecycleInputSchema,
+  type ProductDeletableContract,
   createCategoryServiceInputSchema,
   createVariantBarcodeServiceInputSchema,
   createCollectionServiceInputSchema,
@@ -12,6 +15,8 @@ import {
   createSalesOrderServiceInputSchema,
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
+  updateVariantPriceServiceInputSchema,
+  type UpdateVariantPriceServiceInputContract,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
   addProductMediaServiceInputSchema,
@@ -33,6 +38,10 @@ import {
   listProductVariantsServiceInputSchema,
   listVariantBarcodesServiceInputSchema,
   lookupBarcodeServiceInputSchema,
+  listProductInventorySummariesServiceInputSchema,
+  type ListProductInventorySummariesServiceInputContract,
+  type ProductInventorySummaryContract,
+  createInventoryMovementServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
   updateBarcodeStatusServiceInputSchema,
@@ -50,6 +59,7 @@ import {
   type CreateProductVariantServiceInputContract,
   type CreateSizeServiceInputContract,
   type CreateSalesOrderServiceInputContract,
+  type CreateInventoryMovementServiceInputContract,
   type InventoryMovementContract,
   type InventoryAvailabilityReadContract,
   type InventoryMovementHistoryContract,
@@ -142,6 +152,13 @@ export type SalesOrderManagementApiHandlers = {
   reserve: ApiHandler<SalesOrderServiceContract>;
 };
 
+export type InventoryMovementDraftCreationApplication = {
+  createMovementDraft(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<InventoryMovementContract>>;
+};
+
 export type InventoryMovementPostingApplication = {
   postMovement(
     context: ApplicationExecutionContext,
@@ -150,6 +167,14 @@ export type InventoryMovementPostingApplication = {
 };
 
 export type InventoryReadApplication = {
+  listProductInventorySummaries(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<
+    ApplicationServiceResult<
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >
+  >;
   getVariantAvailability(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -181,6 +206,9 @@ export type InventoryReadApplication = {
 };
 
 export type InventoryReadApiHandlers = {
+  listProductSummaries: ApiHandler<
+    InventoryReadPageContract<ProductInventorySummaryContract>
+  >;
   getVariantAvailability: ApiHandler<VariantInventoryAvailabilityContract>;
   listAvailability: ApiHandler<
     InventoryReadPageContract<InventoryAvailabilityReadContract>
@@ -194,6 +222,27 @@ export type InventoryReadApiHandlers = {
 };
 
 export type CatalogManagementApplication = {
+  editProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  archiveProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  restoreProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  deleteProduct(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductContract | null>>;
+  getProductDeletable(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductDeletableContract>>;
+
   createVariantBarcode(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -218,6 +267,10 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductContract>>;
+  updateVariantPrice(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract>>;
   createVariant(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -321,6 +374,12 @@ export type CatalogManagementApplication = {
 };
 
 export type CatalogApiHandlers = {
+  editProduct: ApiHandler<ProductContract | null>;
+  archiveProduct: ApiHandler<ProductContract | null>;
+  restoreProduct: ApiHandler<ProductContract | null>;
+  deleteProduct: ApiHandler<ProductContract | null>;
+  getProductDeletable: ApiHandler<ProductDeletableContract>;
+
   addProductMedia: ApiHandler<ProductMediaContract>;
   archiveProductMedia: ApiHandler<null>;
   createVariantBarcode: ApiHandler<VariantBarcodeContract>;
@@ -329,6 +388,7 @@ export type CatalogApiHandlers = {
   createColor: ApiHandler<ColorContract>;
   createProduct: ApiHandler<ProductContract>;
   createVariant: ApiHandler<ProductVariantContract>;
+  updateVariantPrice: ApiHandler<ProductVariantContract>;
   createSize: ApiHandler<SizeContract>;
   getProduct: ApiHandler<ProductDetailsContract>;
   getPrimaryProductImage: ApiHandler<PrimaryProductImageContract | null>;
@@ -360,7 +420,7 @@ export function createCatalogApiHandlers(
   },
 ): CatalogApiHandlers {
   const protectedHandler = <TInput, TOutput>(options: {
-    action: "CREATE" | "READ" | "UPDATE";
+    action: "CREATE" | "READ" | "UPDATE" | "DELETE";
     execute: (
       context: ApplicationExecutionContext,
       input: TInput,
@@ -378,6 +438,32 @@ export function createCatalogApiHandlers(
     });
 
   return {
+    editProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: editProductServiceInputSchema,
+      execute: (ctx, input) => dependencies.catalog.editProduct(ctx, input),
+    }),
+    archiveProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.archiveProduct(ctx, input),
+    }),
+    restoreProduct: protectedHandler({
+      action: "UPDATE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.restoreProduct(ctx, input),
+    }),
+    deleteProduct: protectedHandler({
+      action: "DELETE",
+      inputSchema: productLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.deleteProduct(ctx, input),
+    }),
+    getProductDeletable: protectedHandler({
+      action: "READ",
+      inputSchema: getProductServiceInputSchema,
+      execute: (ctx, input) =>
+        dependencies.catalog.getProductDeletable(ctx, input),
+    }),
     addProductMedia: protectedHandler<
       AddProductMediaServiceInputContract,
       ProductMediaContract
@@ -446,6 +532,15 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.createSize(context, input),
       inputSchema: createSizeServiceInputSchema,
+    }),
+    updateVariantPrice: protectedHandler<
+      UpdateVariantPriceServiceInputContract,
+      ProductVariantContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateVariantPrice(context, input),
+      inputSchema: updateVariantPriceServiceInputSchema,
     }),
     createVariant: protectedHandler<
       CreateProductVariantServiceInputContract,
@@ -745,6 +840,24 @@ export function createSalesOrderManagementApiHandlers(
   };
 }
 
+export function createInventoryMovementDraftApiHandler(
+  dependencies: SecurityDependencies & {
+    inventory: InventoryMovementDraftCreationApplication;
+  },
+): ApiHandler<InventoryMovementContract> {
+  return createProtectedApiHandler<
+    CreateInventoryMovementServiceInputContract,
+    InventoryMovementContract
+  >({
+    authenticationService: dependencies.authenticationService,
+    authorizationService: dependencies.authorizationService,
+    execute: (context, input) =>
+      dependencies.inventory.createMovementDraft(context, input),
+    inputSchema: createInventoryMovementServiceInputSchema,
+    permission: { action: "CREATE", resource: "INVENTORY" },
+  });
+}
+
 export function createPostInventoryMovementApiHandler(
   dependencies: SecurityDependencies & {
     inventory: InventoryMovementPostingApplication;
@@ -786,6 +899,14 @@ export function createInventoryReadApiHandlers(
     });
 
   return {
+    listProductSummaries: protectedReadHandler<
+      ListProductInventorySummariesServiceInputContract,
+      InventoryReadPageContract<ProductInventorySummaryContract>
+    >({
+      execute: (context, input) =>
+        dependencies.inventory.listProductInventorySummaries(context, input),
+      inputSchema: listProductInventorySummariesServiceInputSchema,
+    }),
     getVariantAvailability: protectedReadHandler<
       GetVariantAvailabilityServiceInputContract,
       VariantInventoryAvailabilityContract

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   allocateAndCreateInventoryReservation,
   changeInventoryAllocationPolicyStatus,
@@ -2178,6 +2179,172 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
     expect(indexes).toHaveLength(5);
   });
 
+  it("rejects direct inventory mutation (release, expire, confirm, consume) for SALES_ORDER-linked reservations", async () => {
+    const base = await createInventoryBase("SALES_LINKED_GUARD");
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 10,
+    });
+
+    // 1. Create real sales order as DRAFT
+    const salesOrder = await prisma.salesOrder.create({
+      data: {
+        channel: "ONLINE",
+        currencyCode: "BDT",
+        customerName: "Real Customer",
+        customerPhone: "01712345678",
+        deliveryCity: "Dhaka",
+        deliveryDistrict: "Dhaka",
+        deliveryAddressLine1: "Road 1",
+        idempotencyKey: `idem-so-${randomUUID()}`,
+        orderNumber: `SO-${randomUUID().slice(0, 8)}`,
+        organizationId: base.organization.id,
+        payloadSignature: "{}",
+        status: "DRAFT",
+        subtotalMinor: 1000,
+        totalMinor: 1000,
+        inventoryReservationId: null,
+        reservedAt: null,
+        confirmedAt: null,
+        cancelledAt: null,
+        fulfilledAt: null,
+      },
+    });
+    const salesOrderId = salesOrder.id;
+
+    // 2. Create the real inventory reservation with referenceType = "SALES_ORDER"
+    const reservation = await reserve(base, {
+      quantity: 4,
+      referenceId: salesOrderId,
+      referenceType: "SALES_ORDER",
+      reservationNumber: "RSV-SALES-GUARD",
+    });
+
+    // 3. Transition/link the order in ONE valid database update
+    await prisma.salesOrder.update({
+      where: { id: salesOrderId },
+      data: {
+        status: "RESERVED",
+        inventoryReservationId: reservation.id,
+        reservedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+
+    // 4. Re-read both rows
+    const initialOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: salesOrderId },
+    });
+    const initialReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+
+    // Assert BOTH relationship directions and statuses:
+    expect(initialOrder.inventoryReservationId).toBe(reservation.id);
+    expect(initialReservation.referenceType).toBe("SALES_ORDER");
+    expect(initialReservation.referenceId).toBe(initialOrder.id);
+    expect(initialOrder.status).toBe("RESERVED");
+    expect(initialReservation.status).toBe("ACTIVE");
+
+    // Capture initial state
+    const orderInitialVersion = initialOrder.version;
+    const reservationInitialVersion = initialReservation.version;
+    await expectAvailability(base, 10, 4, 6);
+
+    const initialIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
+    });
+    const initialMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
+
+    // 1. Direct release must reject
+    await expect(
+      releaseInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 2. Direct expire must reject
+    await expect(
+      expireInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 3. Direct confirm must reject
+    await expect(
+      confirmInventoryReservation(reservations, {
+        expectedVersion: reservationInitialVersion,
+        organizationId: base.organization.id,
+        reservationId: reservation.id,
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be transitioned through sales order lifecycle.",
+    );
+
+    // 4. Direct consume must reject
+    await expect(
+      consume(base, reservation, {
+        expectedReservationVersion: reservationInitialVersion,
+        idempotencyKey: "idem-direct-consume",
+        movementNumber: "MV-DIRECT-CONSUME",
+      }),
+    ).rejects.toThrow(
+      "Sales-linked inventory reservations must be consumed through sales order fulfillment.",
+    );
+
+    // Real sales order remains RESERVED with version unchanged
+    const finalOrder = await prisma.salesOrder.findUniqueOrThrow({
+      where: { id: salesOrderId },
+    });
+    expect(finalOrder.status).toBe("RESERVED");
+    expect(finalOrder.version).toBe(orderInitialVersion);
+
+    // Reservation remains ACTIVE with version unchanged and consumedByMovementId null
+    const finalReservation =
+      await prisma.inventoryReservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      });
+    expect(finalReservation.status).toBe("ACTIVE");
+    expect(finalReservation.version).toBe(reservationInitialVersion);
+    expect(finalReservation.consumedByMovementId).toBeNull();
+
+    // Availability remains unchanged (10 on hand, 4 reserved, 6 available)
+    await expectAvailability(base, 10, 4, 6);
+
+    // No new ISSUE movement created
+    const finalIssueMovementCount = await prisma.inventoryMovement.count({
+      where: {
+        organizationId: base.organization.id,
+        type: "ISSUE",
+      },
+    });
+    expect(finalIssueMovementCount).toBe(initialIssueMovementCount);
+
+    // No new consumption ledger mutation
+    const finalMovementLineCount = await prisma.inventoryMovementLine.count({
+      where: {
+        movement: { organizationId: base.organization.id },
+      },
+    });
+    expect(finalMovementLineCount).toBe(initialMovementLineCount);
+  });
+
   async function createPolicy(
     base: Awaited<ReturnType<typeof createInventoryBase>>,
     code: string,
@@ -2261,6 +2428,195 @@ describeWithDatabase("Prisma inventory ledger repositories", () => {
       },
     });
   }
+
+  it("summarizes whole products with zero stock, reservations, locations and product pagination", async () => {
+    const base = await createInventoryBase("SUMMARY");
+    const other = await createInventoryBase("OTHER-SUMMARY");
+    const size = await prisma.size.create({
+      data: {
+        organizationId: base.organization.id,
+        code: "SUMMARY-SIZE",
+        name: "Second size",
+        sortOrder: 2,
+      },
+    });
+    const secondVariant = await prisma.productVariant.create({
+      data: {
+        organizationId: base.organization.id,
+        productId: base.product.id,
+        colorId: base.variant.colorId,
+        sizeId: size.id,
+        sku: "SUMMARY-SECOND",
+      },
+    });
+    const zeroProduct = await prisma.product.create({
+      data: {
+        organizationId: base.organization.id,
+        categoryId: base.product.categoryId,
+        productCode: "ZERO-PRODUCT",
+        name: "Never stocked",
+        slug: "never-stocked",
+      },
+    });
+    const zeroVariant = await prisma.productVariant.create({
+      data: {
+        organizationId: base.organization.id,
+        productId: zeroProduct.id,
+        colorId: base.variant.colorId,
+        sizeId: base.variant.sizeId,
+        sku: "ZERO-SKU",
+      },
+    });
+    const emptyProduct = await prisma.product.create({
+      data: {
+        organizationId: base.organization.id,
+        categoryId: base.product.categoryId,
+        productCode: "ZZ-EMPTY",
+        name: "No variants",
+        slug: "no-variants",
+      },
+    });
+    await createAndPost("OPENING", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 20,
+    });
+    await createAndPost("RECEIPT", base, {
+      destinationLocationId: base.primaryLocation.id,
+      quantity: 7,
+      variantId: secondVariant.id,
+    });
+    await createAndPost("TRANSFER", base, {
+      sourceLocationId: base.primaryLocation.id,
+      destinationLocationId: base.secondaryLocation.id,
+      quantity: 4,
+    });
+    await reserve(base, { quantity: 5 });
+    const released = await reserve(base, {
+      quantity: 2,
+      idempotencyKey: "summary-released",
+      reservationNumber: "SUMMARY-RELEASED",
+    });
+    await releaseInventoryReservation(reservations, {
+      organizationId: base.organization.id,
+      reservationId: released.id,
+      expectedVersion: released.version,
+    });
+    await createInventoryMovement(movements, {
+      organizationId: base.organization.id,
+      destinationLocationId: base.primaryLocation.id,
+      type: "RECEIPT",
+      movementNumber: "DRAFT-SUMMARY",
+      idempotencyKey: "draft-summary",
+      lines: [{ productVariantId: base.variant.id, quantity: 999 }],
+    });
+    const filter = {
+      organizationId: base.organization.id,
+      pageSize: 1,
+      lowStockThreshold: 22,
+    };
+    const first = await inventoryRead.listProductSummaries(filter);
+    expect(first.hasMore).toBe(true);
+    expect(first.items).toHaveLength(1);
+    const summary = first.items[0]!;
+    expect(summary).toMatchObject({
+      product: { id: base.product.id },
+      onHand: 27,
+      reserved: 5,
+      availableToSell: 22,
+      isLowStock: true,
+    });
+    expect(summary.variants).toHaveLength(2);
+    expect(
+      summary.variants.find((item) => item.variant.id === base.variant.id),
+    ).toMatchObject({ onHand: 20, reserved: 5, availableToSell: 15 });
+    expect(
+      summary.locations.find(
+        (item) => item.location.id === base.primaryLocation.id,
+      ),
+    ).toMatchObject({ onHand: 23, reserved: 5, availableToSell: 18 });
+    expect(
+      summary.locations.find(
+        (item) => item.location.id === base.secondaryLocation.id,
+      ),
+    ).toMatchObject({ onHand: 4, reserved: 0, availableToSell: 4 });
+    const legacy = await inventoryRead.listAvailability({
+      ...filter,
+      pageSize: 100,
+    });
+    expect(
+      legacy.items.reduce((total, item) => total + item.availableToSell, 0),
+    ).toBe(summary.availableToSell);
+    const second = await inventoryRead.listProductSummaries({
+      ...filter,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items[0]).toMatchObject({
+      product: { id: zeroProduct.id },
+      onHand: 0,
+      reserved: 0,
+      availableToSell: 0,
+      isLowStock: true,
+      variants: [{ variant: { id: zeroVariant.id }, onHand: 0, locations: [] }],
+      locations: [],
+    });
+    const third = await inventoryRead.listProductSummaries({
+      ...filter,
+      cursor: second.nextCursor!,
+    });
+    expect(third).toMatchObject({
+      hasMore: false,
+      nextCursor: null,
+      items: [{ product: { id: emptyProduct.id }, variants: [], onHand: 0 }],
+    });
+    const scoped = await inventoryRead.listProductSummaries({
+      ...filter,
+      locationId: base.secondaryLocation.id,
+      lowStockThreshold: 3,
+    });
+    expect(scoped.items[0]).toMatchObject({
+      onHand: 4,
+      reserved: 0,
+      availableToSell: 4,
+      isLowStock: false,
+    });
+    expect(
+      scoped.items[0]!.variants.find(
+        (item) => item.variant.id === secondVariant.id,
+      ),
+    ).toMatchObject({ onHand: 0, locations: [] });
+    const searched = await inventoryRead.listProductSummaries({
+      organizationId: base.organization.id,
+      pageSize: 25,
+      search: secondVariant.sku,
+    });
+    expect(searched.items).toHaveLength(1);
+    expect(searched.items[0]).toMatchObject({
+      onHand: 27,
+      isLowStock: null,
+    });
+    expect(searched.items[0]!.variants).toHaveLength(2);
+    const foreignLocation = await inventoryRead.listProductSummaries({
+      ...filter,
+      locationId: other.primaryLocation.id,
+    });
+    expect(foreignLocation.items[0]).toMatchObject({
+      onHand: 0,
+      locations: [],
+    });
+    const foreign = await inventoryRead.listProductSummaries({
+      organizationId: other.organization.id,
+      pageSize: 25,
+    });
+    expect(foreign.items.map((item) => item.product.id)).toEqual([
+      other.product.id,
+    ]);
+    await expect(
+      inventoryRead.listProductSummaries({
+        ...filter,
+        cursor: "inventory-products-v1|%ZZ|" + base.product.id,
+      }),
+    ).rejects.toThrow("cursor is invalid");
+  });
 
   async function createAndPost(
     type: InventoryMovementType,

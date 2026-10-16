@@ -17,11 +17,13 @@ import {
   PrismaPosRepository,
   PrismaPosCheckoutRepository,
   PrismaPosReturnRepository,
+  PrismaPosSettlementRepository,
   PrismaPaymentRepository,
   PrismaPaymentRefundRepository,
   PrismaOnlinePaymentRepository,
   PrismaReceiptRepository,
   PrismaSizeRepository,
+  PrismaTeamMembershipTransactionManager,
   PrismaTransactionManager,
   PrismaStorefrontRepository,
   PrismaRolePermissionRepository,
@@ -29,6 +31,11 @@ import {
   PrismaUserCredentialRepository,
   PrismaCustomerAuthenticationRepository,
   PrismaWorkforceAuthenticationRepository,
+  PrismaSupplierRepository,
+  PrismaPurchaseRepository,
+  PrismaCostRepository,
+  PrismaCourierConsignmentRepository,
+  PrismaDashboardReadRepository,
   createPrismaClient,
   getPrismaClient,
 } from "@senvo/database";
@@ -54,6 +61,7 @@ import type {
   PosRepository,
   PosCheckoutRepository,
   PosReturnRepository,
+  PosSettlementRepository,
   PaymentRepository,
   PaymentRefundRepository,
   PaymentRefundReceiptRepository,
@@ -62,6 +70,8 @@ import type {
   ReceiptRepository,
   PosReturnReceiptRepository,
   RolePermissionRepository,
+  DashboardReadRepository,
+  TeamMembershipTransactionManager,
   UserRepository,
   AuthenticationMessageProvider,
   AuthenticationSecretService,
@@ -69,6 +79,10 @@ import type {
   PasswordHasher,
   GoogleOAuthProvider,
   StorefrontRepository,
+  SupplierRepository,
+  PurchaseRepository,
+  CostRepository,
+  CourierConsignmentRepository,
   UserCredentialRepository,
   WorkforceAuthenticationRepository,
 } from "@senvo/domain";
@@ -89,12 +103,17 @@ import { CatalogApplicationService } from "../catalog/catalog-application-servic
 import { CatalogMediaApplicationService } from "../catalog/catalog-media-application-service.js";
 import { InventoryApplicationService } from "../inventory/inventory-application-service.js";
 import { OrganizationApplicationService } from "../organization/organization-application-service.js";
+import { ProcurementApplicationService } from "../procurement/procurement-application-service.js";
+import { StockIntakeApplicationService } from "../procurement/stock-intake-application-service.js";
 import { SalesApplicationService } from "../sales/sales-application-service.js";
 import { PosApplicationService } from "../pos/pos-application-service.js";
 import { StorefrontApplicationService } from "../storefront/storefront-application-service.js";
+import { StorefrontReservationMaintenanceService } from "../storefront/storefront-reservation-maintenance-service.js";
 import { OnlinePaymentApplicationService } from "../payment/online-payment-application-service.js";
 import { CustomerAuthenticationService } from "../authentication/customer-authentication-service.js";
 import { WorkforceAuthenticationService } from "../workforce/workforce-authentication-service.js";
+import { ShippingApplicationService } from "../shipping/shipping-application-service.js";
+import { ReportingApplicationService } from "../reporting/reporting-application-service.js";
 
 type PrismaClientHandle = ReturnType<typeof createPrismaClient>;
 
@@ -125,9 +144,12 @@ export type CreateApplicationServicesOptions = {
   receiptRepository?: ReceiptRepository;
   posReturnRepository?: PosReturnRepository;
   posReturnReceiptRepository?: PosReturnReceiptRepository;
+  posSettlementRepository?: PosSettlementRepository;
   prismaClient?: PrismaClientHandle;
   requestIdGenerator?: () => string;
   rolePermissionRepository?: RolePermissionRepository;
+  dashboardReadRepository?: DashboardReadRepository;
+  teamMembershipTransactionManager?: TeamMembershipTransactionManager;
   productRepository?: CatalogProductManagementRepository;
   productVariantRepository?: CatalogProductVariantManagementRepository;
   salesOrderRepository?: SalesOrderRepository;
@@ -138,6 +160,10 @@ export type CreateApplicationServicesOptions = {
   storefrontRepository?: StorefrontRepository;
   sizeRepository?: CatalogSizeManagementRepository;
   storageProvider?: ObjectStorageProvider;
+  supplierRepository?: SupplierRepository;
+  purchaseRepository?: PurchaseRepository;
+  costRepository?: CostRepository;
+  courierConsignmentRepository?: CourierConsignmentRepository;
   useSharedPrismaClient?: boolean;
   userRepository?: UserRepository;
   customerAuthenticationRepository?: CustomerAuthenticationRepository;
@@ -152,12 +178,17 @@ export type CreateApplicationServicesOptions = {
 
 export type ApplicationServices = {
   catalog: CatalogApplicationService;
+  checkReadiness?(): Promise<boolean>;
   disconnect(): Promise<void>;
   inventory: InventoryApplicationService;
   organization: OrganizationApplicationService;
   pos: PosApplicationService;
+  procurement: ProcurementApplicationService;
   onlinePayments?: OnlinePaymentApplicationService;
   sales: SalesApplicationService;
+  shipping: ShippingApplicationService;
+  reporting?: ReportingApplicationService;
+  stockIntake?: StockIntakeApplicationService;
   storefront: StorefrontApplicationService;
   customerAuthentication?: CustomerAuthenticationService;
   workforceAuthentication?: WorkforceAuthenticationService;
@@ -200,6 +231,9 @@ export function createApplicationServices(
   let posReturnReceiptRepository = options.posReturnReceiptRepository;
   let sizeRepository = options.sizeRepository;
   let storefrontRepository = options.storefrontRepository;
+  let supplierRepository = options.supplierRepository;
+  let purchaseRepository = options.purchaseRepository;
+  let costRepository = options.costRepository;
   let customerAuthenticationRepository =
     options.customerAuthenticationRepository;
   let workforceAuthenticationRepository =
@@ -228,7 +262,8 @@ export function createApplicationServices(
     !paymentRepository ||
     !receiptRepository ||
     !sizeRepository ||
-    !storefrontRepository
+    !storefrontRepository ||
+    !supplierRepository
   ) {
     if (!prismaClient) {
       const useSharedPrismaClient =
@@ -326,6 +361,15 @@ export function createApplicationServices(
   sizeRepository ??= new PrismaSizeRepository(
     requirePrismaClient(prismaClient),
   );
+  supplierRepository ??= new PrismaSupplierRepository(
+    requirePrismaClient(prismaClient),
+  );
+  if (!purchaseRepository && prismaClient) {
+    purchaseRepository = new PrismaPurchaseRepository(prismaClient);
+  }
+  if (!costRepository && prismaClient) {
+    costRepository = new PrismaCostRepository(prismaClient);
+  }
   posRepository ??= new PrismaPosRepository(requirePrismaClient(prismaClient));
   posCheckoutRepository ??= new PrismaPosCheckoutRepository(
     requirePrismaClient(prismaClient),
@@ -346,6 +390,15 @@ export function createApplicationServices(
     posReturnRepository = new PrismaPosReturnRepository(prismaClient);
   if (!posReturnReceiptRepository && prismaClient)
     posReturnReceiptRepository = new PrismaReceiptRepository(prismaClient);
+  let posSettlementRepository = options.posSettlementRepository;
+  if (!posSettlementRepository && prismaClient)
+    posSettlementRepository = new PrismaPosSettlementRepository(prismaClient);
+
+  let courierConsignmentRepository = options.courierConsignmentRepository;
+  if (!courierConsignmentRepository && prismaClient)
+    courierConsignmentRepository = new PrismaCourierConsignmentRepository(
+      prismaClient,
+    );
 
   if (!workforceAuthenticationRepository && prismaClient)
     workforceAuthenticationRepository =
@@ -409,16 +462,32 @@ export function createApplicationServices(
     options.passwordHasher
       ? new WorkforceAuthenticationService({
           credentials: userCredentialRepository,
+          fallbackPasswordHash: options.fallbackPasswordHash,
           memberships: membershipRepository,
           organizationResolver: {
             findOrganizationById: async (id: string) => {
               const organization = await organizationRepository.findById(id);
               return organization
-                ? { id: organization.id, name: organization.name }
+                ? {
+                    id: organization.id,
+                    name: organization.name,
+                    status: organization.status,
+                  }
                 : null;
+            },
+            findOrganizationIdByCode: async (code: string) => {
+              const org = await organizationRepository.findByCode(code);
+              return org?.id ?? null;
             },
           },
           passwords: options.passwordHasher,
+          rateLimiter: customerAuthenticationRepository
+            ? {
+                consumeRateLimit: (input) =>
+                  customerAuthenticationRepository.consumeRateLimit(input),
+              }
+            : undefined,
+          rolePermissions: rolePermissionRepository,
           secrets: options.authenticationSecrets,
           users: userRepository,
           workforceSessions: workforceAuthenticationRepository,
@@ -440,6 +509,21 @@ export function createApplicationServices(
       sizes: sizeRepository,
       transactionManager,
     }),
+    checkReadiness: async () => {
+      try {
+        if (prismaClient) {
+          await (
+            prismaClient as {
+              $queryRaw(query: TemplateStringsArray): Promise<unknown>;
+            }
+          ).$queryRaw`SELECT 1`;
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
     disconnect: async () => {
       if (ownsPrismaClient) {
         await prismaClient?.$disconnect();
@@ -460,9 +544,23 @@ export function createApplicationServices(
       branches: branchRepository,
       memberships: membershipRepository,
       organizations: organizationProfileRepository,
+      passwords: options.passwordHasher ?? unavailablePasswordHasher,
       requestIdGenerator: options.requestIdGenerator,
       rolePermissions: rolePermissionRepository,
+      teamMembershipTransactions:
+        options.teamMembershipTransactionManager ??
+        (prismaClient
+          ? new PrismaTeamMembershipTransactionManager(prismaClient)
+          : unavailableTeamMembershipTransactions),
       users: userRepository,
+    }),
+    procurement: new ProcurementApplicationService({
+      authorizationService: options.authorizationService,
+      costRepository,
+      purchases: purchaseRepository,
+      requestIdGenerator: options.requestIdGenerator,
+      suppliers: supplierRepository,
+      transactionManager,
     }),
     pos: new PosApplicationService({
       authenticationService: options.authenticationService,
@@ -484,6 +582,7 @@ export function createApplicationServices(
       salesSources:
         salesSourceRepository ??
         new PrismaSalesSourceRepository(requirePrismaClient(prismaClient)),
+      settlements: posSettlementRepository,
       transactionManager,
       users: userRepository,
     }),
@@ -498,7 +597,44 @@ export function createApplicationServices(
       salesSourceRepository,
       transactionManager,
     }),
+    shipping: new ShippingApplicationService({
+      authorizationService: options.authorizationService,
+      consignments:
+        courierConsignmentRepository ??
+        (prismaClient
+          ? new PrismaCourierConsignmentRepository(prismaClient)
+          : fakeCourierConsignmentRepository),
+      requestIdGenerator: options.requestIdGenerator,
+      salesOrders: salesOrderRepository,
+      transactionManager,
+    }),
+    ...(options.dashboardReadRepository || prismaClient
+      ? {
+          reporting: new ReportingApplicationService({
+            authorizationService: options.authorizationService,
+            clock,
+            dashboards:
+              options.dashboardReadRepository ??
+              new PrismaDashboardReadRepository(
+                requirePrismaClient(prismaClient),
+              ),
+            requestIdGenerator: options.requestIdGenerator,
+          }),
+        }
+      : {}),
+    stockIntake: new StockIntakeApplicationService({
+      authorizationService: options.authorizationService,
+      requestIdGenerator: options.requestIdGenerator,
+      transactionManager,
+    }),
     storefront: new StorefrontApplicationService({
+      clock,
+      maintenanceService: new StorefrontReservationMaintenanceService({
+        clock,
+        requestIdGenerator: options.requestIdGenerator,
+        salesOrders: salesOrderRepository,
+        transactionManager,
+      }),
       mediaService,
       onlinePayments,
       organizationCode:
@@ -536,3 +672,34 @@ function resolveStorageProvider(
     process.env.MEDIA_STORAGE_ROOT ?? ".senvo-media",
   );
 }
+
+const fakeCourierConsignmentRepository: CourierConsignmentRepository = {
+  create: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
+  findActiveBySalesOrderId: () => Promise.resolve(null),
+  findByConsignmentNumber: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  listBySalesOrderId: () => Promise.resolve([]),
+  update: () =>
+    Promise.reject(new Error("No courier consignment repository configured.")),
+};
+
+/** Fails closed: team role/status changes need a real transaction. */
+const unavailableTeamMembershipTransactions: TeamMembershipTransactionManager =
+  {
+    execute: () =>
+      Promise.reject(
+        new Error(
+          "Team membership changes require a database transaction manager.",
+        ),
+      ),
+  };
+
+/** Fails closed: team passwords need the real workforce password hasher. */
+const unavailablePasswordHasher: PasswordHasher = {
+  hash: () =>
+    Promise.reject(
+      new Error("Team passwords require a workforce password hasher."),
+    ),
+  verify: () => Promise.resolve(false),
+};

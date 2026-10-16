@@ -129,6 +129,22 @@ export class BusinessRuleError extends ApplicationError {
   }
 }
 
+export class SalesOrderReservationExpiredError extends ApplicationError {
+  constructor(
+    message = "Sales order reservation has expired.",
+    cause?: unknown,
+  ) {
+    super({
+      category: "BUSINESS_RULE",
+      cause,
+      code: "BUSINESS_RULE.SALES_ORDER_RESERVATION_EXPIRED",
+      message,
+      publicMessage: "The request cannot be completed.",
+    });
+    this.name = "SalesOrderReservationExpiredError";
+  }
+}
+
 export class ConcurrencyError extends ApplicationError {
   constructor(
     message = "The resource was changed by another process.",

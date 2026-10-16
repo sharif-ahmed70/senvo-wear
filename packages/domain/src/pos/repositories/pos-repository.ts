@@ -8,7 +8,12 @@ import type {
 } from "../domain/models.js";
 
 export type PosRepository = {
+  startNextCart?(
+    sessionId: string,
+    organizationId: string,
+  ): Promise<SalesSession>;
   addCartLine(record: {
+    expectedVersion: number;
     cartId: string;
     lineSubtotalMinor: number;
     organizationId: string;
@@ -34,12 +39,12 @@ export type PosRepository = {
   findCartById(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<PosCart | null>;
   findCartDetailsById?(
     id: string,
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<PosCartDetails | null>;
   findCartLineById(
     id: string,
@@ -60,7 +65,7 @@ export type PosRepository = {
   ): Promise<SalesSession | null>;
   listOpenSessionsByUser(
     organizationId: string,
-    openedByUserId: string,
+    userId: string,
   ): Promise<SalesSession[]>;
   findSellableVariant(
     id: string,
@@ -72,14 +77,17 @@ export type PosRepository = {
     counterId: string;
     openedAt: Date;
     openedByUserId: string;
+    openingFloatMinor?: number;
     organizationId: string;
   }): Promise<SalesSession>;
   removeCartLine(
     id: string,
     cartId: string,
     organizationId: string,
+    expectedVersion: number,
   ): Promise<boolean>;
   updateCartLine(record: {
+    expectedVersion: number;
     cartId: string;
     id: string;
     lineSubtotalMinor: number;

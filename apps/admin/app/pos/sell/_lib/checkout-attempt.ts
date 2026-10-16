@@ -43,7 +43,10 @@ export function validatePayments(
     }
     const reference = draft.reference.trim().replace(/\s+/gu, " ");
     if (draft.method !== "CASH" && !reference) {
-      errors[`${index}.reference`] = "Enter the transaction reference.";
+      errors[`${index}.reference`] =
+        draft.method === "MOBILE_BANKING"
+          ? "Enter the bKash/Nagad TrxID."
+          : "Enter the transaction reference.";
     }
     if (reference.length > 120) {
       errors[`${index}.reference`] = "Use 120 characters or fewer.";
@@ -90,10 +93,18 @@ export function remainingPayment(
 
 export function normalizedCheckoutSignature(input: {
   allowOutstanding: boolean;
+  customer?: CheckoutPosCartServiceInputContract["customer"];
   payments: CheckoutPosCartServiceInputContract["payments"];
 }): string {
   return JSON.stringify({
     allowOutstanding: input.allowOutstanding,
+    customer: input.customer
+      ? {
+          addressLine1: input.customer.addressLine1?.trim() || null,
+          name: input.customer.name?.trim() || null,
+          phone: input.customer.phone?.trim() || null,
+        }
+      : null,
     payments: input.payments.map((payment) => ({
       amountMinor: payment.amountMinor,
       method: payment.method,
@@ -106,6 +117,7 @@ export function prepareCheckoutAttempt(
   previous: CheckoutAttempt | null,
   input: {
     allowOutstanding: boolean;
+    customer?: CheckoutPosCartServiceInputContract["customer"];
     payments: CheckoutPosCartServiceInputContract["payments"];
   },
   createKey: () => string = () => crypto.randomUUID(),

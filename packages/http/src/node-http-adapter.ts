@@ -12,8 +12,12 @@ import type {
   OrganizationManagementApiHandlers,
   OnlinePaymentApiHandlers,
   PosApiHandlers,
+  ProcurementApiHandlers,
   SalesOrderManagementApiHandlers,
+  ReportingApiHandlers,
   SalesSourceApiHandlers,
+  ShippingApiHandlers,
+  StockIntakeApiHandlers,
   StorefrontApiHandlers,
 } from "@senvo/api";
 import {
@@ -60,9 +64,14 @@ export type SenvoHttpHandlers = {
   organizationManagement?: OrganizationManagementApiHandlers;
   onlinePayments?: OnlinePaymentApiHandlers;
   pos?: PosApiHandlers;
+  procurement?: ProcurementApiHandlers;
+  createInventoryMovementDraft?: ApiHandler<unknown>;
   postInventoryMovement: ApiHandler<unknown>;
   salesManagement?: SalesOrderManagementApiHandlers;
+  reporting?: ReportingApiHandlers;
   salesSource?: SalesSourceApiHandlers;
+  shipping?: ShippingApiHandlers;
+  stockIntake?: StockIntakeApiHandlers;
   storefront?: StorefrontApiHandlers;
 };
 
@@ -178,6 +187,17 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       path: /^\/inventory\/movements$/u,
       successStatus: 200,
     },
+    ...(handlers.createInventoryMovementDraft
+      ? [
+          {
+            handler: handlers.createInventoryMovementDraft,
+            input: bodyInput,
+            method: "POST" as const,
+            path: /^\/inventory\/movement-drafts$/u,
+            successStatus: 201,
+          },
+        ]
+      : []),
   ];
   if (handlers.catalog) {
     routes.push(
@@ -260,6 +280,41 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "GET",
         /^\/catalog\/products\/(?<id>[0-9a-f-]+)$/iu,
         handlers.catalog.getProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.editProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/archive$/iu,
+        handlers.catalog.archiveProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/restore$/iu,
+        handlers.catalog.restoreProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "DELETE",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.deleteProduct,
+        200,
+        "productId",
+      ),
+      catalogRoute(
+        "GET",
+        /^\/catalog\/products\/(?<id>[0-9a-f-]+)\/deletable$/iu,
+        handlers.catalog.getProductDeletable,
         200,
         "productId",
       ),
@@ -367,6 +422,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         201,
         "productId",
       ),
+      catalogRoute(
+        "PATCH",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/price$/iu,
+        handlers.catalog.updateVariantPrice,
+        200,
+        "variantId",
+      ),
     );
   }
   if (handlers.storefront) {
@@ -468,6 +530,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
   if (handlers.inventoryRead) {
     routes.push(
       {
+        handler: handlers.inventoryRead.listProductSummaries,
+        input: queryInput,
+        method: "GET",
+        path: /^\/inventory\/products$/u,
+        successStatus: 200,
+      },
+      {
         handler: handlers.inventoryRead.listAvailability,
         input: queryInput,
         method: "GET",
@@ -557,6 +626,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "teamMemberId",
       ),
       organizationRoute(
+        "PUT",
+        /^\/organization\/team\/(?<id>[0-9a-f-]+)\/password$/iu,
+        organization.resetTeamMemberPassword,
+        200,
+        "teamMemberId",
+      ),
+      organizationRoute(
         "GET",
         /^\/organization\/roles$/u,
         organization.listRoles,
@@ -596,6 +672,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         handlers.salesManagement.cancel,
       ),
     );
+  }
+  if (handlers.reporting) {
+    routes.push({
+      handler: handlers.reporting.getDashboardSummary,
+      input: emptyInput,
+      method: "GET",
+      path: /^\/reports\/dashboard$/u,
+      successStatus: 200,
+    });
   }
   if (handlers.salesSource) {
     routes.push(
@@ -674,10 +759,31 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         successStatus: 201,
       },
       {
+        handler: handlers.pos.startNextCart,
+        input: pathBodyInput("sessionId"),
+        method: "POST",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/carts$/iu,
+        successStatus: 200,
+      },
+      {
         handler: handlers.pos.closeSession,
         input: pathBodyInput("sessionId"),
         method: "POST",
         path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/close$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.getReconciliationSummary,
+        input: (_body, match) => ({ sessionId: match.groups?.id }),
+        method: "GET",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/reconciliation$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: handlers.pos.closeSessionWithSettlement,
+        input: pathBodyInput("sessionId"),
+        method: "POST",
+        path: /^\/pos\/sessions\/(?<id>[0-9a-f-]+)\/settlement$/iu,
         successStatus: 200,
       },
       {
@@ -807,12 +913,171 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       },
       {
         handler: handlers.pos.removeCartItem,
-        input: (_body, match) => ({
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
           cartId: match.groups?.cartId,
           itemId: match.groups?.itemId,
         }),
         method: "DELETE",
         path: /^\/pos\/carts\/(?<cartId>[0-9a-f-]+)\/items\/(?<itemId>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+    );
+  }
+  if (handlers.procurement) {
+    const procurement = handlers.procurement;
+    routes.push(
+      {
+        handler: procurement.listSuppliers,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/suppliers$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.createSupplier,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/suppliers$/u,
+        successStatus: 201,
+      },
+      {
+        handler: procurement.getSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.updateSupplier,
+        input: pathBodyInput("supplierId"),
+        method: "PATCH",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.deactivateSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "POST",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/deactivate$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.deactivateSupplier,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "DELETE",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.listPurchases,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/purchases$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.createPurchaseDraft,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/purchases$/u,
+        successStatus: 201,
+      },
+      {
+        handler: procurement.getPurchase,
+        input: (_body, match) => ({ purchaseId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.confirmPurchase,
+        input: pathBodyInput("purchaseId"),
+        method: "POST",
+        path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/confirm$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.getSupplierBalance,
+        input: (_body, match) => ({ supplierId: match.groups?.id }),
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/balance$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.listSupplierLedger,
+        input: supplierLedgerInput,
+        method: "GET",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/ledger$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.listSupplierPayments,
+        input: queryInput,
+        method: "GET",
+        path: /^\/procurement\/payments$/u,
+        successStatus: 200,
+      },
+      {
+        handler: procurement.recordSupplierPayment,
+        input: bodyInput,
+        method: "POST",
+        path: /^\/procurement\/payments$/u,
+        successStatus: 201,
+      },
+      {
+        handler: procurement.recordSupplierAdjustment,
+        input: pathBodyInput("supplierId"),
+        method: "POST",
+        path: /^\/procurement\/suppliers\/(?<id>[0-9a-f-]+)\/adjustments$/iu,
+        successStatus: 201,
+      },
+    );
+  }
+  if (handlers.stockIntake) {
+    routes.push({
+      handler: handlers.stockIntake.recordStockIntake,
+      input: bodyInput,
+      method: "POST",
+      path: /^\/inventory\/stock-intakes$/u,
+      successStatus: 201,
+    });
+  }
+  if (handlers.shipping) {
+    const shipping = handlers.shipping;
+    routes.push(
+      {
+        handler: shipping.dispatch,
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
+          salesOrderId: match.groups?.id,
+        }),
+        method: "POST",
+        path: /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/dispatch$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.getShipmentByOrder,
+        input: (_body, match) => ({ salesOrderId: match.groups?.id }),
+        method: "GET",
+        path: /^\/sales\/orders\/(?<id>[0-9a-f-]+)\/shipment$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.updateStatus,
+        input: (body, match) => ({
+          ...(isObject(body) ? body : {}),
+          consignmentId: match.groups?.id,
+        }),
+        method: "PATCH",
+        path: /^\/shipping\/consignments\/(?<id>[0-9a-f-]+)\/status$/iu,
+        successStatus: 200,
+      },
+      {
+        handler: shipping.getConsignment,
+        input: (_body, match) => ({ consignmentId: match.groups?.id }),
+        method: "GET",
+        path: /^\/shipping\/consignments\/(?<id>[0-9a-f-]+)$/iu,
         successStatus: 200,
       },
     );
@@ -923,6 +1188,17 @@ function variantAvailabilityInput(
   return {
     ...queryInput(body, match, request),
     variantId: match.groups?.id,
+  };
+}
+
+function supplierLedgerInput(
+  body: unknown,
+  match: RegExpMatchArray,
+  request: IncomingMessage,
+): Record<string, unknown> {
+  return {
+    ...queryInput(body, match, request),
+    supplierId: match.groups?.id,
   };
 }
 
@@ -1065,26 +1341,29 @@ function writeAdapterFailure(
     });
     return;
   }
-  if (
-    error instanceof SyntaxError ||
-    error instanceof HttpRequestContextError
-  ) {
+  if (error instanceof HttpRequestContextError) {
     writeJson(response, {
       response: createApiFailure({
-        code:
-          error instanceof SyntaxError
-            ? "VALIDATION.INVALID_JSON"
-            : "VALIDATION.INVALID_CONTEXT",
-        message:
-          error instanceof SyntaxError
-            ? "Request body must contain valid JSON."
-            : "Request context is invalid.",
+        code: "AUTHENTICATION.REQUIRED",
+        message: "Authentication is required.",
+        requestId,
+      }),
+      status: 401,
+    });
+    return;
+  }
+  if (error instanceof SyntaxError) {
+    writeJson(response, {
+      response: createApiFailure({
+        code: "VALIDATION.INVALID_JSON",
+        message: "Request body must contain valid JSON.",
         requestId,
       }),
       status: 400,
     });
     return;
   }
+
   writeJson(response, {
     response: createApiFailure({
       code: "INTERNAL.UNEXPECTED",

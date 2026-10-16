@@ -7,6 +7,35 @@ export {
 } from "./authentication/customer-authentication-service.js";
 export { StorefrontApplicationService } from "./storefront/storefront-application-service.js";
 export {
+  StorefrontReservationMaintenanceService,
+  STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS,
+  STOREFRONT_COD_RESERVATION_TTL_MS,
+  DEFAULT_STOREFRONT_RESERVATION_MAINTENANCE_BATCH_SIZE,
+  type StorefrontReservationMaintenanceDependencies,
+  type ReclaimDueReservationsInput,
+  type ReclaimDueReservationsResult,
+} from "./storefront/storefront-reservation-maintenance-service.js";
+export {
+  StorefrontReservationNormalizationService,
+  DEFAULT_NORMALIZATION_BATCH_SIZE,
+  MAX_NORMALIZATION_BATCH_SIZE,
+  NORMALIZATION_POLICY_VERSION,
+  assertValidBatchSize,
+  assertValidOrganizationId,
+  type CandidateManifest,
+  type CandidateManifestEntry,
+  type DryRunInput,
+  type DryRunReport,
+  type ExecuteApprovedManifestInput,
+  type ExecutionReport,
+  type StorefrontReservationNormalizationDependencies,
+} from "./storefront/storefront-reservation-normalization-service.js";
+export {
+  parseCliArgs,
+  runNormalizationCli,
+  type CliArgs,
+} from "./cli/normalize-storefront-reservations.js";
+export {
   OnlinePaymentApplicationService,
   type OnlinePaymentApplicationServiceDependencies,
 } from "./payment/online-payment-application-service.js";
@@ -68,6 +97,7 @@ export type {
 } from "./errors/application-error.js";
 export { InventoryApplicationService } from "./inventory/inventory-application-service.js";
 export type {
+  CreateInventoryMovementServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryApplicationServiceDependencies,
   ListInventoryAvailabilityServiceInputContract,
@@ -97,3 +127,24 @@ export type {
   ReserveSalesOrderServiceInputContract,
   UpdateDraftSalesOrderMetadataServiceInputContract,
 } from "./sales/sales-application-service.js";
+export {
+  ProcurementApplicationService,
+  type ProcurementApplicationServiceDependencies,
+} from "./procurement/procurement-application-service.js";
+export {
+  StockIntakeApplicationService,
+  stockIntakePermissionsFor,
+  stockIntakeRequiredPermissions,
+  stockIntakeSupplierUpdatePermission,
+  type StockIntakeApplicationServiceDependencies,
+} from "./procurement/stock-intake-application-service.js";
+export {
+  ShippingApplicationService,
+  type ShippingApplicationServiceDependencies,
+  type ShippingAuditWriter,
+} from "./shipping/shipping-application-service.js";
+export { mapCourierConsignment } from "./shipping/mappers.js";
+export {
+  ReportingApplicationService,
+  type ReportingApplicationServiceDependencies,
+} from "./reporting/reporting-application-service.js";

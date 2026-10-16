@@ -1,7 +1,9 @@
 "use client";
 
+import { ProductLifecycleActions } from "./product-lifecycle-actions";
 import type {
   ProductDetailsContract,
+  ProductVariantContract,
   VariantInventoryAvailabilityContract,
 } from "@senvo/contracts";
 import {
@@ -15,22 +17,30 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import {
+  parseVariantPrice,
+  formatVariantPrice,
+} from "../../_lib/variant-price";
+import { useAdminPermissions } from "../../../admin-shell";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
 });
 
 export function ProductInventoryDetail({
-  permissions,
+  permissions: propsPermissions,
   productId,
 }: {
-  permissions: readonly AdminPermissionKey[];
+  permissions?: readonly AdminPermissionKey[];
   productId: string;
 }) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const [product, setProduct] = useState<ProductDetailsContract | null>(null);
+
   const [availability, setAvailability] = useState<
     VariantInventoryAvailabilityContract[]
   >([]);
@@ -126,6 +136,11 @@ export function ProductInventoryDetail({
           {humanize(product.product.status)}
         </span>
       </header>
+      <ProductLifecycleActions
+        product={product.product}
+        permissions={permissions}
+        onSaved={(updated) => setProduct({ ...product, product: updated })}
+      />
       <ProductMedia
         canUpdate={permissions.includes("CATALOG:UPDATE")}
         details={product}
@@ -161,6 +176,7 @@ export function ProductInventoryDetail({
               <tr>
                 <th>SKU</th>
                 <th>Barcode</th>
+                <th>Selling price (BDT)</th>
               </tr>
             </thead>
             <tbody>
@@ -181,6 +197,24 @@ export function ProductInventoryDetail({
                           ? "Inactive"
                           : "Not assigned"}
                     </span>
+                  </td>
+                  <td>
+                    <VariantPriceEditor
+                      variant={variant}
+                      canUpdate={permissions.includes("CATALOG:UPDATE")}
+                      onSaved={(updated) =>
+                        setProduct((current) =>
+                          current
+                            ? {
+                                ...current,
+                                variants: current.variants.map((item) =>
+                                  item.id === updated.id ? updated : item,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
                   </td>
                 </tr>
               ))}
@@ -252,6 +286,102 @@ export function ProductInventoryDetail({
         )}
       </section>
     </main>
+  );
+}
+
+export function VariantPriceEditor({
+  variant,
+  canUpdate,
+  onSaved,
+}: {
+  variant: ProductVariantContract;
+  canUpdate: boolean;
+  onSaved: (variant: ProductVariantContract) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [expectedPrice, setExpectedPrice] = useState(variant.sellingPriceMinor);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+
+  async function save() {
+    if (!canUpdate || pending.current) return;
+    const sellingPriceMinor = parseVariantPrice(draft);
+    if (sellingPriceMinor === null) {
+      setError(
+        "Enter a positive selling price in BDT with at most two decimal places (maximum 21474836.47).",
+      );
+      return;
+    }
+    pending.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const result = await client.updateVariantPrice({
+        variantId: variant.id,
+        expectedSellingPriceMinor: expectedPrice,
+        sellingPriceMinor,
+      });
+      onSaved(result.data);
+      setEditing(false);
+    } catch (caught) {
+      setError(messageForError(caught));
+    } finally {
+      pending.current = false;
+      setSaving(false);
+    }
+  }
+
+  if (!editing || !canUpdate)
+    return (
+      <div>
+        <span>{formatVariantPrice(variant.sellingPriceMinor)}</span>{" "}
+        {canUpdate ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(
+                variant.sellingPriceMinor === 0
+                  ? ""
+                  : (variant.sellingPriceMinor / 100).toFixed(2),
+              );
+              setExpectedPrice(variant.sellingPriceMinor);
+              setError("");
+              setEditing(true);
+            }}
+          >
+            Edit price
+          </button>
+        ) : null}
+      </div>
+    );
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <label>
+        <span>Selling price for {variant.sku} (BDT)</span>
+        <input
+          inputMode="decimal"
+          required
+          value={draft}
+          disabled={saving}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      </label>
+      <button type="submit" disabled={saving}>
+        {saving ? "Saving price..." : "Save price"}
+      </button>
+      <button type="button" disabled={saving} onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
+    </form>
   );
 }
 
@@ -406,6 +536,7 @@ export function ProductMedia({
           ) : (
             media.map((image, index) => (
               <article className="product-media-item" key={image.linkId}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- admin media uses backend-provided URLs without next/image optimization config */}
                 <img
                   alt={image.altText}
                   height={120}

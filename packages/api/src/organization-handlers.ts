@@ -9,6 +9,7 @@ import {
   createStoreServiceInputSchema,
   createTeamMemberServiceInputSchema,
   organizationManagementEmptyInputSchema,
+  resetTeamMemberPasswordServiceInputSchema,
   updateOrganizationProfileServiceInputSchema,
   updateStoreServiceInputSchema,
   updateStoreStatusServiceInputSchema,
@@ -17,6 +18,7 @@ import {
   type CreateStoreServiceInputContract,
   type CreateTeamMemberServiceInputContract,
   type OrganizationProfileContract,
+  type ResetTeamMemberPasswordServiceInputContract,
   type RoleVisibilityContract,
   type StoreManagementContract,
   type TeamMemberContract,
@@ -61,6 +63,10 @@ export type OrganizationManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<TeamMemberContract[]>>;
+  resetTeamMemberPassword(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<TeamMemberContract>>;
   updateProfile(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -87,6 +93,7 @@ export type OrganizationManagementApiHandlers = {
   listRoles: ApiHandler<RoleVisibilityContract[]>;
   listStores: ApiHandler<StoreManagementContract[]>;
   listTeam: ApiHandler<TeamMemberContract[]>;
+  resetTeamMemberPassword: ApiHandler<TeamMemberContract>;
   updateProfile: ApiHandler<OrganizationProfileContract>;
   updateStore: ApiHandler<StoreManagementContract>;
   updateStoreStatus: ApiHandler<StoreManagementContract>;
@@ -126,6 +133,16 @@ export function createOrganizationManagementApiHandlers(
       execute: (context, input) =>
         dependencies.organization.assignTeamMemberRole(context, input),
       inputSchema: assignTeamMemberRoleServiceInputSchema,
+      resource: "TEAM",
+    }),
+    resetTeamMemberPassword: handler<
+      ResetTeamMemberPasswordServiceInputContract,
+      TeamMemberContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.organization.resetTeamMemberPassword(context, input),
+      inputSchema: resetTeamMemberPasswordServiceInputSchema,
       resource: "TEAM",
     }),
     createStore: handler<

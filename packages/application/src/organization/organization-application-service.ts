@@ -5,17 +5,23 @@ import {
   ConflictError,
   ConcurrencyError,
   NotFoundError,
+  OWNER_ONLY_MEMBERSHIP_MESSAGE,
+  TeamMembershipRuleError,
   ValidationApplicationError,
-  assignOrganizationMembershipRole,
+  assertTeamMembershipChangeAllowed,
   changeBranchStatus,
+  changeTeamMemberRole,
+  changeTeamMemberStatus,
+  createTeamMemberWithPassword,
+  CUSTOMER_ACCOUNT_MESSAGE,
+  EXISTING_LOGIN_MESSAGE,
+  OWNER_ONLY_PASSWORD_MESSAGE,
+  resetTeamMemberPassword,
   createBranch,
-  createOrganizationMembership,
-  createUser,
   getOrganizationProfile,
   listBranches,
   listOrganizationTeam,
   updateBranchMetadata,
-  updateOrganizationMembershipStatus,
   updateOrganizationProfile,
   type Branch,
   type BranchRepository,
@@ -25,7 +31,9 @@ import {
   type OrganizationTeamMember,
   type OrganizationTeamReadRepository,
   type Role,
+  type PasswordHasher,
   type RolePermissionRepository,
+  type TeamMembershipTransactionManager,
   type UserRepository,
 } from "@senvo/domain";
 import {
@@ -34,6 +42,7 @@ import {
   createTeamMemberServiceInputSchema,
   organizationManagementEmptyInputSchema,
   organizationProfileContractSchema,
+  resetTeamMemberPasswordServiceInputSchema,
   roleVisibilityContractSchema,
   storeManagementContractSchema,
   teamMemberContractSchema,
@@ -86,7 +95,14 @@ export type OrganizationApplicationServiceDependencies = {
   memberships: MembershipRepositories;
   organizations: OrganizationProfileRepository;
   requestIdGenerator?: () => string;
+  /** Workforce password hasher (scrypt in production). */
+  passwords: PasswordHasher;
   rolePermissions: RolePermissionRepository;
+  /**
+   * Runs role and status changes in one transaction (owner-count lock,
+   * session revocation, audit). Required in production composition.
+   */
+  teamMembershipTransactions: TeamMembershipTransactionManager;
   users: UserRepository;
 };
 
@@ -228,28 +244,62 @@ export class OrganizationApplicationService {
     return this.execute<TeamMemberContract>(context, async (trusted) => {
       const input = parsePayload(createTeamMemberServiceInputSchema, payload);
       await this.authorize(trusted, "TEAM", "UPDATE");
-      const user =
-        (await this.dependencies.users.findByEmail(
-          input.email.toLowerCase(),
-        )) ?? (await createUser(this.dependencies.users, input));
-      const teamMember = await createOrganizationMembership(
+      // Only an owner can add owners or admins; checked again under lock.
+      assertTeamMembershipChangeAllowed({
+        actor: await this.requireActorMembership(trusted),
+        change: { kind: "create", role: input.role },
+        members: [],
+        target: null,
+      });
+      const { membership, user } = await createTeamMemberWithPassword(
+        this.dependencies.teamMembershipTransactions,
         {
-          memberships: this.dependencies.memberships,
-          organizations: this.dependencies.organizations,
-          users: this.dependencies.users,
-        },
-        {
+          actorUserId: requireActorUserId(trusted),
+          email: input.email,
+          name: input.name,
           organizationId: trusted.organizationId,
+          passwordHash: await this.dependencies.passwords.hash(
+            input.temporaryPassword,
+          ),
           role: input.role,
-          userId: user.id,
         },
       );
       return mapTeamMember({
-        ...teamMember,
+        ...membership,
         email: user.email,
         name: user.name,
         userStatus: user.status,
       });
+    });
+  }
+
+  /**
+   * Sets a new password for another team member and signs them out
+   * everywhere. The password is hashed here and never returned or logged.
+   */
+  resetTeamMemberPassword(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.execute<TeamMemberContract>(context, async (trusted) => {
+      const input = parsePayload(
+        resetTeamMemberPasswordServiceInputSchema,
+        payload,
+      );
+      await this.authorize(trusted, "TEAM", "UPDATE");
+      await resetTeamMemberPassword(
+        this.dependencies.teamMembershipTransactions,
+        {
+          actorUserId: requireActorUserId(trusted),
+          expectedVersion: input.expectedVersion,
+          membershipId: input.teamMemberId,
+          organizationId: trusted.organizationId,
+          passwordHash: await this.dependencies.passwords.hash(
+            input.newPassword,
+          ),
+        },
+      );
+      return this.requireTeamMember(trusted.organizationId, input.teamMemberId);
     });
   }
 
@@ -263,12 +313,16 @@ export class OrganizationApplicationService {
         payload,
       );
       await this.authorize(trusted, "TEAM", "UPDATE");
-      await updateOrganizationMembershipStatus(this.dependencies.memberships, {
-        expectedVersion: input.expectedVersion,
-        membershipId: input.teamMemberId,
-        organizationId: trusted.organizationId,
-        status: input.status,
-      });
+      await changeTeamMemberStatus(
+        this.dependencies.teamMembershipTransactions,
+        {
+          actorUserId: requireActorUserId(trusted),
+          expectedVersion: input.expectedVersion,
+          membershipId: input.teamMemberId,
+          organizationId: trusted.organizationId,
+          status: input.status,
+        },
+      );
       return this.requireTeamMember(trusted.organizationId, input.teamMemberId);
     });
   }
@@ -280,7 +334,8 @@ export class OrganizationApplicationService {
         payload,
       );
       await this.authorize(trusted, "TEAM", "UPDATE");
-      await assignOrganizationMembershipRole(this.dependencies.memberships, {
+      await changeTeamMemberRole(this.dependencies.teamMembershipTransactions, {
+        actorUserId: requireActorUserId(trusted),
         expectedVersion: input.expectedVersion,
         membershipId: input.teamMemberId,
         organizationId: trusted.organizationId,
@@ -309,6 +364,22 @@ export class OrganizationApplicationService {
         ),
       );
     });
+  }
+
+  private async requireActorMembership(
+    context: ValidatedApplicationExecutionContext,
+  ) {
+    const membership =
+      await this.dependencies.memberships.findByUserAndOrganization(
+        requireActorUserId(context),
+        context.organizationId,
+      );
+    if (!membership || membership.status !== "ACTIVE") {
+      throw new AuthorizationError(
+        "Your organization membership is not active.",
+      );
+    }
+    return membership;
   }
 
   private async requireTeamMember(
@@ -357,6 +428,15 @@ export class OrganizationApplicationService {
       };
     }
   }
+}
+
+function requireActorUserId(
+  context: ValidatedApplicationExecutionContext,
+): string {
+  if (!context.userId) {
+    throw new AuthorizationError("A signed-in team member is required.");
+  }
+  return context.userId;
 }
 
 const roles: readonly { description: string; name: string; role: Role }[] = [
@@ -418,6 +498,7 @@ function mapTeamMember(record: OrganizationTeamMember): TeamMemberContract {
     status: record.status,
     storeAccess: "All stores",
     updatedAt: record.updatedAt.toISOString(),
+    userId: record.userId,
     userStatus: record.userStatus,
     version: record.version,
   });
@@ -436,6 +517,31 @@ function parsePayload<T>(schema: SafeParseSchema<T>, payload: unknown): T {
 
 function normalizeError(error: unknown): ApplicationServiceError {
   if (error instanceof ApplicationServiceError) return error;
+  // Team guard messages are safe and tell the user what to do instead.
+  if (error instanceof TeamMembershipRuleError)
+    return new ApplicationServiceError({
+      code: "BUSINESS_RULE_VIOLATION",
+      message: error.message,
+    });
+  if (
+    error instanceof AuthorizationError &&
+    (error.message === OWNER_ONLY_MEMBERSHIP_MESSAGE ||
+      error.message === OWNER_ONLY_PASSWORD_MESSAGE)
+  )
+    return new ApplicationServiceError({
+      code: "FORBIDDEN",
+      message: error.message,
+    });
+  if (
+    (error instanceof ConflictError || error instanceof BusinessRuleError) &&
+    (error.message === EXISTING_LOGIN_MESSAGE ||
+      error.message === CUSTOMER_ACCOUNT_MESSAGE)
+  )
+    return new ApplicationServiceError({
+      code:
+        error instanceof ConflictError ? "CONFLICT" : "BUSINESS_RULE_VIOLATION",
+      message: error.message,
+    });
   if (error instanceof ValidationApplicationError)
     return new ApplicationServiceError({
       code: "VALIDATION_ERROR",

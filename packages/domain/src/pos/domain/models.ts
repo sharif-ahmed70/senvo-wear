@@ -24,10 +24,84 @@ export type SalesSession = {
   id: string;
   openedAt: Date;
   openedByUserId: string;
+  openedByName?: string;
+  openingFloatMinor: number;
   organizationId: string;
   status: SalesSessionStatus;
   updatedAt: Date;
   version: number;
+};
+
+export type PosSettlementStatus = "BALANCED" | "SHORTAGE" | "OVERAGE";
+
+export type PosRegisterSettlement = {
+  actualBankTransferMinor: number;
+  actualCardMinor: number;
+  actualCashMinor: number;
+  actualMobileBankingMinor: number;
+  actualTotalMinor: number;
+  approvedByUserId?: string | null;
+  approvedByUserName?: string | null;
+  bankTransferDiscrepancyMinor: number;
+  cardDiscrepancyMinor: number;
+  cashDiscrepancyMinor: number;
+  closedAt: Date;
+  closedByUserId: string;
+  closedByUserName?: string;
+  closingNotes?: string | null;
+  counterId: string;
+  counterName?: string;
+  createdAt: Date;
+  denominationBreakdown?: Record<string, number> | null;
+  discrepancyReason?: string | null;
+  expectedBankTransferMinor: number;
+  expectedCardMinor: number;
+  expectedCashMinor: number;
+  expectedMobileBankingMinor: number;
+  expectedTotalMinor: number;
+  id: string;
+  mobileBankingDiscrepancyMinor: number;
+  openingFloatMinor: number;
+  organizationId: string;
+  salesSessionId: string;
+  status: PosSettlementStatus;
+  totalDiscrepancyMinor: number;
+};
+
+export type PosSellerTotals = {
+  staffId: string;
+  staffName: string;
+  salesCount: number;
+  grossSalesMinor: number;
+  paymentsMinor: number;
+  collectionsMinor: number;
+  refundsMinor: number;
+  returnsMinor: number;
+  netSalesMinor: number;
+};
+
+export type PosSessionReconciliationSummary = {
+  sellerTotals: PosSellerTotals[];
+  returnsMinor: number;
+  bankTransferSalesMinor: number;
+  cardSalesMinor: number;
+  cashCollectionsMinor: number;
+  cashRefundsMinor: number;
+  cashSalesMinor: number;
+  counterId: string;
+  counterName: string;
+  digitalRefundsMinor: number;
+  expectedBankTransferMinor: number;
+  expectedCardMinor: number;
+  expectedCashMinor: number;
+  expectedMobileBankingMinor: number;
+  expectedTotalMinor: number;
+  grossSalesMinor: number;
+  mobileBankingSalesMinor: number;
+  openedAt: Date;
+  openingFloatMinor: number;
+  salesCount: number;
+  sessionId: string;
 };
 
 export type PosCartLine = {
@@ -42,7 +116,11 @@ export type PosCartLine = {
   updatedAt: Date;
 };
 
+export type PosCartStatus = "ACTIVE" | "CHECKED_OUT" | "ABANDONED";
+
 export type PosCart = {
+  status: PosCartStatus;
+  version: number;
   checkoutId?: string | null;
   createdAt: Date;
   id: string;
@@ -54,6 +132,8 @@ export type PosCart = {
 };
 
 export type PosCartDetails = {
+  status: PosCartStatus;
+  version: number;
   checkoutId: string | null;
   createdAt: Date;
   id: string;
@@ -100,6 +180,8 @@ export type PosCheckout = {
 };
 
 export type PosCheckoutPreparation = {
+  cartStatus: PosCartStatus;
+  cartVersion: number;
   allocationPolicyId: string | null;
   boothId: string | null;
   branchId: string | null;

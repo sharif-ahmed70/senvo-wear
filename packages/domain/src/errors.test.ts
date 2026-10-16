@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ApplicationError,
   InternalApplicationError,
+  SalesOrderReservationExpiredError,
   ValidationApplicationError,
 } from "./errors.js";
 
@@ -28,5 +30,16 @@ describe("application errors", () => {
 
     expect(error.toPublicError().message).toBe("An unexpected error occurred.");
     expect(error.toPublicError().message).not.toContain("filesystem");
+  });
+
+  it("creates SalesOrderReservationExpiredError with expected domain properties", () => {
+    const error = new SalesOrderReservationExpiredError();
+    expect(error.category).toBe("BUSINESS_RULE");
+    expect(error.code).toBe("BUSINESS_RULE.SALES_ORDER_RESERVATION_EXPIRED");
+    expect(error.message).toBe("Sales order reservation has expired.");
+    expect(error.publicMessage).toBe("The request cannot be completed.");
+    expect(error.name).toBe("SalesOrderReservationExpiredError");
+    expect(error).toBeInstanceOf(ApplicationError);
+    expect(error).toBeInstanceOf(SalesOrderReservationExpiredError);
   });
 });

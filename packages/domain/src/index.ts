@@ -29,6 +29,7 @@ export {
   InternalApplicationError,
   NotFoundError,
   RateLimitError,
+  SalesOrderReservationExpiredError,
   ValidationApplicationError,
 } from "./errors.js";
 export type {
@@ -121,7 +122,38 @@ export type {
   SalesSession,
   SalesSessionStatus,
   SellableVariant,
+  PosSettlementStatus,
+  PosRegisterSettlement,
+  PosSessionReconciliationSummary,
 } from "./pos/domain/models.js";
+export {
+  calculateSessionChannelTotals,
+  calculateExpectedRegisterTotals,
+  determineSettlementStatus,
+  calculateSettlementDiscrepancies,
+  calculateDenominationTotalMinor,
+  validateSettlementSubmission,
+} from "./pos/domain/reconciliation-rules.js";
+export type {
+  PaymentMethodType,
+  SessionPaymentLine,
+  SessionCollectionLine,
+  SessionRefundLine,
+  SessionChannelTotals,
+  ExpectedRegisterTotals,
+  SettlementDiscrepancies,
+} from "./pos/domain/reconciliation-rules.js";
+export {
+  getSalesSessionReconciliationSummary,
+  closeSalesSessionWithSettlement,
+} from "./pos/application/settlement-use-cases.js";
+export type {
+  PosSettlementRepository,
+  SessionReconciliationSource,
+  SessionPaymentLineData,
+  SessionCollectionLineData,
+  SessionRefundLineData,
+} from "./pos/repositories/pos-settlement-repository.js";
 export type {
   PosReturnAccount,
   PosReturnReasonCode,
@@ -146,7 +178,10 @@ export {
   getCheckoutStatus,
   listCheckoutHistory,
 } from "./pos/application/checkout-use-cases.js";
-export type { PosCheckoutSalesOrderRepository } from "./pos/application/checkout-use-cases.js";
+export type {
+  PosCheckoutCustomerInput,
+  PosCheckoutSalesOrderRepository,
+} from "./pos/application/checkout-use-cases.js";
 export {
   addPosCartItem,
   addCartItem,
@@ -390,6 +425,7 @@ export {
 export {
   getVariantAvailability,
   listInventoryAvailability,
+  listProductInventorySummaries,
   listInventoryMovementHistory,
   listStockLocations as listInventoryStockLocations,
 } from "./inventory/application/read-query-use-cases.js";
@@ -416,11 +452,44 @@ export {
   validateOrganizationAccess,
 } from "./identity/application/identity-use-cases.js";
 export {
+  LAST_OWNER_MESSAGE,
+  OWNER_ONLY_MEMBERSHIP_MESSAGE,
+  OWN_MEMBERSHIP_MESSAGE,
+  OWN_PASSWORD_MESSAGE,
+  OWNER_ONLY_PASSWORD_MESSAGE,
+  TeamMembershipRuleError,
+  assertTeamMembershipChangeAllowed,
+  assignableRoles,
+  canManageMemberRole,
+  changeTeamMemberRole,
+  changeTeamMemberStatus,
+} from "./identity/application/team-membership-use-cases.js";
+export {
+  CUSTOMER_ACCOUNT_MESSAGE,
+  EXISTING_LOGIN_MESSAGE,
+  createTeamMemberWithPassword,
+  resetTeamMemberPassword,
+} from "./identity/application/team-credential-use-cases.js";
+export type {
+  CreateTeamMemberWithPasswordInput,
+  CreateTeamMemberWithPasswordResult,
+  ResetTeamMemberPasswordInput,
+  ResetTeamMemberPasswordResult,
+} from "./identity/application/team-credential-use-cases.js";
+export type {
+  TeamMembershipChange,
+  TeamMembershipChangeResult,
+  TeamMembershipTransactionContext,
+  TeamMembershipTransactionManager,
+} from "./identity/application/team-membership-use-cases.js";
+export {
   assignRolePermission,
   authorize,
   createPermission,
 } from "./authorization/application/authorization-service.js";
 export {
+  allPermissionActions,
+  allPermissionResources,
   defaultRolePermissions,
   roleAllowsPermission,
 } from "./authorization/application/role-permission-policy.js";
@@ -479,6 +548,7 @@ export type {
   GetVariantAvailabilityInput,
   InventoryReadPageInput,
   ListInventoryAvailabilityInput,
+  ListProductInventorySummariesInput,
   ListInventoryMovementHistoryInput,
   ListStockLocationsInput as ListInventoryStockLocationsInput,
 } from "./inventory/application/read-query-use-cases.js";
@@ -604,6 +674,8 @@ export type {
   InventoryReadPage,
   InventoryReadPageFilter,
   InventoryReadRepository,
+  ProductInventorySummary,
+  InventoryQuantitySummary,
   InventoryVariantReadItem,
   StockLocationReadItem,
   VariantInventoryAvailability,
@@ -645,7 +717,15 @@ export type {
   DraftSalesOrderMetadataChanges,
   CursorPageRequest as SalesCursorPageRequest,
   CursorPageResult as SalesCursorPageResult,
+  FindDueStorefrontReservationOrderIdsFilter,
+  FindLegacyNullExpiryCandidatesFilter,
   FulfillSalesOrderRecord,
+  LegacyNullExpiryCandidateRecord,
+  NormalizeLegacyStorefrontReservationRecord,
+  NormalizeLegacyStorefrontReservationResult,
+  NormalizeLegacyStorefrontReservationStatus,
+  ReclaimExpiredStorefrontReservationRecord,
+  ReclaimExpiredStorefrontReservationResult,
   ReserveSalesOrderRecord,
   ReplaceSalesOrderLineRecord,
   SalesOrderListFilter,
@@ -656,6 +736,17 @@ export type {
   SalesSourceRepository,
   SalesSourceSummary,
 } from "./sales/repositories/sales-order-repositories.js";
+export {
+  assertValidReservationCutoff,
+  calculateHistoricalReservationExpiry,
+  isStorefrontReservationDue,
+  STOREFRONT_COD_RESERVATION_TTL_MS,
+  STOREFRONT_ONLINE_PAYMENT_RESERVATION_TTL_MS,
+  type CalculateHistoricalReservationExpiryInput,
+  type CalculateHistoricalReservationExpiryResult,
+  type DueStorefrontReservationCandidate,
+  type LegacyReservationExclusionReason,
+} from "./sales/application/reservation-expiry-use-cases.js";
 export {
   getSalesOrderDetails,
   listSalesOrderReadModel,
@@ -716,3 +807,214 @@ export type {
   AuditEntryRepository,
   CreateAuditEntryRecord,
 } from "./audit/repositories/audit-repositories.js";
+export type {
+  WorkforcePasswordTargetScope,
+  WorkforcePasswordTransactionContext,
+  WorkforcePasswordTransactionManager,
+} from "./workforce/repositories/workforce-password-transaction.js";
+
+export { updateVariantPrice } from "./catalog/application/variant-pricing-use-cases.js";
+
+export type {
+  CostUnknownReason,
+  CostingMethod,
+  InventoryCostEntry,
+  InventoryCostEventType,
+  Purchase,
+  PurchaseLine,
+  PurchaseStatus,
+  PurchaseWithLines,
+  SaleLineCostSnapshot,
+  Supplier,
+  SupplierStatus,
+  VariantCostState,
+} from "./procurement/domain/models.js";
+export type {
+  CreateSupplierRecord,
+  SupplierListFilter,
+  SupplierRepository,
+  UpdateSupplierRecord,
+} from "./procurement/repositories/supplier-repository.js";
+export type {
+  CreatePurchaseLineRecord,
+  CreatePurchaseRecord,
+  PurchaseListFilter,
+  PurchaseRepository,
+  UpdatePurchaseRecord,
+} from "./procurement/repositories/purchase-repository.js";
+export type {
+  CostRepository,
+  CreateInventoryCostEntryRecord,
+  CreateSaleLineCostSnapshotRecord,
+  UpsertVariantCostStateRecord,
+} from "./procurement/repositories/cost-repository.js";
+export {
+  calculateMovingWeightedAverage,
+  calculateSaleLineCostSnapshot,
+  deriveCostStateAfterReceipt,
+  validatePurchaseLineData,
+} from "./procurement/domain/costing-rules.js";
+export type {
+  DeriveCostStateAfterReceiptParams,
+  DeriveCostStateAfterReceiptResult,
+  MovingWeightedAverageResult,
+} from "./procurement/domain/costing-rules.js";
+export {
+  confirmPurchaseOrder,
+  createPurchaseDraftRecord,
+  getPurchaseById,
+  listPurchaseRecords,
+} from "./procurement/application/purchase-use-cases.js";
+export type {
+  ConfirmPurchaseOrderDependencies,
+  ConfirmPurchaseOrderInput,
+  CreatePurchaseDraftInput,
+  CreatePurchaseDraftLineInput,
+  GetPurchaseByIdInput,
+  ListPurchasesInput,
+} from "./procurement/application/purchase-use-cases.js";
+
+export type {
+  SupplierBalanceSummary,
+  SupplierLedgerDirection,
+  SupplierLedgerEntry,
+  SupplierLedgerEntryType,
+  SupplierPayment,
+  SupplierPaymentMethod,
+} from "./procurement/domain/models.js";
+export {
+  calculateSupplierBalance,
+  calculateSupplierBalanceFromEntries,
+  createSupplierLedgerEntry,
+  createSupplierPayment,
+} from "./procurement/domain/supplier-ledger-rules.js";
+export type {
+  CalculateSupplierBalanceFromEntriesInput,
+  CalculateSupplierBalanceInput,
+  CreateSupplierLedgerEntryParams,
+  CreateSupplierPaymentParams,
+} from "./procurement/domain/supplier-ledger-rules.js";
+export type {
+  CreateSupplierLedgerEntryRecord,
+  CreateSupplierPaymentRecord,
+  SupplierLedgerListFilter,
+  SupplierLedgerRepository,
+  SupplierPaymentListFilter,
+  SupplierPaymentRepository,
+} from "./procurement/repositories/supplier-payment-repository.js";
+export {
+  getSupplierBalance,
+  listSupplierLedger,
+  listSupplierPayments,
+  recordSupplierPayment,
+  recordSupplierAdjustment,
+  SupplierPaymentIdempotencyConflictError,
+} from "./procurement/application/supplier-payment-use-cases.js";
+export type {
+  GetSupplierBalanceDependencies,
+  GetSupplierBalanceInput,
+  ListSupplierLedgerDependencies,
+  ListSupplierLedgerInput,
+  ListSupplierPaymentsInput,
+  RecordSupplierPaymentDependencies,
+  RecordSupplierPaymentInput,
+  RecordSupplierPaymentResult,
+  RecordSupplierAdjustmentDependencies,
+  RecordSupplierAdjustmentInput,
+  RecordSupplierAdjustmentResult,
+} from "./procurement/application/supplier-payment-use-cases.js";
+export {
+  SELF_PURCHASE_SUPPLIER_CODE,
+  SELF_PURCHASE_SUPPLIER_NAME,
+  STOCK_INTAKE_IDEMPOTENCY_PREFIX,
+  StockIntakeIdempotencyConflictError,
+  TRANSPORT_NOT_PAYABLE_NOTE,
+  recordStockIntake,
+} from "./procurement/application/stock-intake-use-cases.js";
+export type {
+  RecordStockIntakeDependencies,
+  RecordStockIntakeInput,
+  RecordStockIntakeOutcome,
+  StockIntakeLineInput,
+  StockIntakePaymentMethod,
+  StockIntakeProductInput,
+  StockIntakeProductStatus,
+  StockIntakeResult,
+  StockIntakeResultVariant,
+  StockIntakeSupplierInput,
+} from "./procurement/application/stock-intake-use-cases.js";
+export {
+  distributeTransportCost,
+  generateCode128BarcodeValue,
+} from "./procurement/domain/stock-intake-rules.js";
+export type {
+  TransportDistribution,
+  TransportDistributionLine,
+} from "./procurement/domain/stock-intake-rules.js";
+export type { StockIntakeRepository } from "./procurement/repositories/stock-intake-repository.js";
+
+export type {
+  CourierConsignment,
+  CourierProvider,
+  ShipmentReturnEvent,
+  ShipmentStatus,
+} from "./shipping/domain/models.js";
+export {
+  ACTIVE_SHIPMENT_STATUSES,
+  ALLOWED_SHIPMENT_TRANSITIONS,
+  TERMINAL_SHIPMENT_STATUSES,
+  assertNoActiveShipment,
+  assertOrderCanBeDispatched,
+  assertValidShipmentTransition,
+  canTransitionShipmentStatus,
+  normalizeCodAmount,
+} from "./shipping/domain/shipping-rules.js";
+export type {
+  CourierConsignmentRepository,
+  CreateCourierConsignmentRecord,
+  UpdateCourierConsignmentRecord,
+} from "./shipping/repositories/courier-consignment-repository.js";
+export {
+  dispatchSalesOrder,
+  getConsignmentById,
+  getShipmentsByOrderId,
+  updateShipmentStatus,
+} from "./shipping/application/shipping-use-cases.js";
+export type {
+  DispatchSalesOrderDependencies,
+  DispatchSalesOrderInput,
+  DispatchSalesOrderResult,
+  GetConsignmentByIdDependencies,
+  GetShipmentsByOrderIdDependencies,
+  UpdateShipmentStatusDependencies,
+  UpdateShipmentStatusInput,
+  UpdateShipmentStatusResult,
+} from "./shipping/application/shipping-use-cases.js";
+export {
+  DASHBOARD_RECENT_ORDER_LIMIT,
+  DASHBOARD_SALES_CHANNELS,
+  DASHBOARD_TIME_ZONE,
+  DASHBOARD_TOP_PRODUCT_LIMIT,
+  DASHBOARD_TREND_DAYS,
+  LOW_STOCK_MAX_AVAILABLE,
+  PENDING_ORDER_STATUSES,
+  SALE_ORDER_STATUSES,
+  addBusinessDays,
+  businessDateOf,
+  classifyStock,
+  dashboardWindows,
+  getDashboardSummary,
+  startOfBusinessDate,
+  zeroFillDailySales,
+} from "./reporting/dashboard.js";
+export type {
+  DailySales,
+  DashboardReadModel,
+  DashboardReadRepository,
+  DashboardSalesChannel,
+  DashboardSummary,
+  DashboardWindows,
+  StockClass,
+} from "./reporting/dashboard.js";
+
+export type { ProductLifecycleRepository } from "./catalog/repositories/product-lifecycle-repository.js";

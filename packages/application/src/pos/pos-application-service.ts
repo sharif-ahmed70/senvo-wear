@@ -56,21 +56,29 @@ import {
   type PosSaleReturn,
   type ReceiptRepository,
   type PosReturnReceiptRepository,
+  type PosSettlementRepository,
+  type PosRegisterSettlement,
+  type PosSessionReconciliationSummary,
   type SalesReceipt,
   type SalesCounter,
   type SalesSession,
   type SalesSourceRepository,
   type UserRepository,
+  closeSalesSessionWithSettlement,
+  getSalesSessionReconciliationSummary,
 } from "@senvo/domain";
 import {
   addPosCartItemServiceInputSchema,
+  startNextPosCartServiceInputSchema,
   collectPosPaymentResultContractSchema,
   collectPosPaymentServiceInputSchema,
   createPaymentRefundServiceInputSchema,
   createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
+  closeSalesSessionWithSettlementServiceInputSchema,
   createSalesCounterServiceInputSchema,
+  getSalesSessionReconciliationServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
@@ -86,9 +94,11 @@ import {
   paymentRefundAccountContractSchema,
   paymentRefundReceiptContractSchema,
   paymentRefundResultContractSchema,
+  posRegisterSettlementContractSchema,
   posReturnAccountContractSchema,
   posReturnReceiptContractSchema,
   posReturnResultContractSchema,
+  posSessionReconciliationSummaryContractSchema,
   salesReceiptContractSchema,
   posEmptyInputSchema,
   posSaleLookupContractSchema,
@@ -106,10 +116,12 @@ import {
   type PaymentRefundAccountContract,
   type PaymentRefundReceiptContract,
   type PaymentRefundResultContract,
+  type PosRegisterSettlementContract,
   type PosReturnAccountContract,
   type PosReturnReceiptContract,
   type PosReturnResultContract,
   type PosSaleLookupContract,
+  type PosSessionReconciliationSummaryContract,
   type SalesReceiptContract,
   type SalesCounterContract,
   type SalesSessionContract,
@@ -162,6 +174,7 @@ export type PosApplicationServiceDependencies = {
   returnReceipts?: PosReturnReceiptRepository;
   requestIdGenerator?: () => string;
   salesSources: SalesSourceRepository;
+  settlements?: PosSettlementRepository;
   transactionManager: ApplicationTransactionManager;
   users: UserRepository;
 };
@@ -251,6 +264,21 @@ export class PosApplicationService {
       );
     });
   }
+  startNextCart(context: ApplicationExecutionContext, payload: unknown) {
+    return this.execute<SalesSessionContract>(context, async (trusted) => {
+      const input = parsePayload(startNextPosCartServiceInputSchema, payload);
+      await this.authorize(trusted, "CREATE");
+      this.requireUserId(trusted);
+      if (!this.dependencies.pos.startNextCart)
+        throw new Error("POS next-cart capability is required.");
+      return mapSession(
+        await this.dependencies.pos.startNextCart(
+          input.sessionId,
+          trusted.organizationId,
+        ),
+      );
+    });
+  }
   openSession(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<SalesSessionContract>(context, async (trusted) => {
       const input = parsePayload(openSalesSessionServiceInputSchema, payload);
@@ -279,7 +307,7 @@ export class PosApplicationService {
   closeSession(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<SalesSessionContract>(context, async (trusted) => {
       const input = parsePayload(closeSalesSessionServiceInputSchema, payload);
-      await this.authorize(trusted, "UPDATE");
+      await this.authorize(trusted, "APPROVE");
       return mapSession(
         await closeSalesSession(this.dependencies.pos, {
           ...input,
@@ -288,6 +316,106 @@ export class PosApplicationService {
         }),
       );
     });
+  }
+
+  getSessionReconciliationSummary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.execute<PosSessionReconciliationSummaryContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          getSalesSessionReconciliationServiceInputSchema,
+          payload,
+        );
+        await this.authorize(trusted, "APPROVE");
+        if (!this.dependencies.settlements) {
+          throw new ApplicationServiceError({
+            code: "INTERNAL_ERROR",
+            message: "Settlement repository is unavailable.",
+          });
+        }
+        return mapReconciliationSummary(
+          await getSalesSessionReconciliationSummary(
+            this.dependencies.settlements,
+            {
+              organizationId: trusted.organizationId,
+              sessionId: input.sessionId,
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  getReconciliationSummary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.getSessionReconciliationSummary(context, payload);
+  }
+
+  closeSessionWithSettlement(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ) {
+    return this.execute<PosRegisterSettlementContract>(
+      context,
+      async (trusted) => {
+        const input = parsePayload(
+          closeSalesSessionWithSettlementServiceInputSchema,
+          payload,
+        );
+        await this.authorize(trusted, "APPROVE");
+        await requireAuthentication(this.dependencies.authenticationService, {
+          requestId: trusted.requestId,
+          userId: trusted.userId,
+        });
+        const userId = this.requireUserId(trusted);
+
+        return this.dependencies.transactionManager.execute(
+          trusted,
+          async (transaction) => {
+            const settlements =
+              transaction.posSettlementRepository ??
+              this.dependencies.settlements;
+            if (!settlements) {
+              throw new ApplicationServiceError({
+                code: "INTERNAL_ERROR",
+                message: "Settlement repository is unavailable.",
+              });
+            }
+
+            const result = await closeSalesSessionWithSettlement(settlements, {
+              ...input,
+              closedAt: this.dependencies.clock.now(),
+              closedByUserId: userId,
+              organizationId: trusted.organizationId,
+              settlementId: this.requestIdGenerator(),
+            });
+
+            await transaction.auditWriter.recordWithinTransaction({
+              action: "POS_REGISTER_SETTLED",
+              actor: { userId },
+              metadata: {
+                actualTotalMinor: result.settlement.actualTotalMinor,
+                expectedTotalMinor: result.settlement.expectedTotalMinor,
+                requestId: trusted.requestId,
+                salesSessionId: result.settlement.salesSessionId,
+                status: result.settlement.status,
+                totalDiscrepancyMinor: result.settlement.totalDiscrepancyMinor,
+              },
+              organizationId: trusted.organizationId,
+              resource: "POS_SESSION",
+              resourceId: result.settlement.salesSessionId,
+            });
+
+            return mapSettlement(result.settlement);
+          },
+        );
+      },
+    );
   }
   lookupSale(context: ApplicationExecutionContext, payload: unknown) {
     return this.execute<PosSaleLookupContract>(context, async (trusted) => {
@@ -951,7 +1079,7 @@ export class PosApplicationService {
 
   private authorize(
     context: ValidatedApplicationExecutionContext,
-    action: "CREATE" | "READ" | "UPDATE",
+    action: "CREATE" | "READ" | "UPDATE" | "APPROVE",
   ) {
     return requireAuthorization(
       this.dependencies.authorizationService,
@@ -1009,9 +1137,77 @@ function mapSession(record: SalesSession): SalesSessionContract {
     id: record.id,
     openedAt: record.openedAt.toISOString(),
     openedByUserId: record.openedByUserId,
+    openedByName: record.openedByName,
+    openingFloatMinor: record.openingFloatMinor ?? 0,
     status: record.status,
     updatedAt: record.updatedAt.toISOString(),
     version: record.version,
+  });
+}
+
+function mapReconciliationSummary(
+  record: PosSessionReconciliationSummary,
+): PosSessionReconciliationSummaryContract {
+  return posSessionReconciliationSummaryContractSchema.parse({
+    returnsMinor: record.returnsMinor,
+    sellerTotals: record.sellerTotals,
+    bankTransferSalesMinor: record.bankTransferSalesMinor,
+    cardSalesMinor: record.cardSalesMinor,
+    cashCollectionsMinor: record.cashCollectionsMinor,
+    cashRefundsMinor: record.cashRefundsMinor,
+    cashSalesMinor: record.cashSalesMinor,
+    counterId: record.counterId,
+    counterName: record.counterName,
+    digitalRefundsMinor: record.digitalRefundsMinor,
+    expectedBankTransferMinor: record.expectedBankTransferMinor,
+    expectedCardMinor: record.expectedCardMinor,
+    expectedCashMinor: record.expectedCashMinor,
+    expectedMobileBankingMinor: record.expectedMobileBankingMinor,
+    expectedTotalMinor: record.expectedTotalMinor,
+    grossSalesMinor: record.grossSalesMinor,
+    mobileBankingSalesMinor: record.mobileBankingSalesMinor,
+    openedAt: record.openedAt.toISOString(),
+    openingFloatMinor: record.openingFloatMinor,
+    salesCount: record.salesCount,
+    sessionId: record.sessionId,
+  });
+}
+
+function mapSettlement(
+  record: PosRegisterSettlement,
+): PosRegisterSettlementContract {
+  return posRegisterSettlementContractSchema.parse({
+    actualBankTransferMinor: record.actualBankTransferMinor,
+    actualCardMinor: record.actualCardMinor,
+    actualCashMinor: record.actualCashMinor,
+    actualMobileBankingMinor: record.actualMobileBankingMinor,
+    actualTotalMinor: record.actualTotalMinor,
+    approvedByUserId: record.approvedByUserId ?? null,
+    approvedByUserName: record.approvedByUserName ?? null,
+    bankTransferDiscrepancyMinor: record.bankTransferDiscrepancyMinor,
+    cardDiscrepancyMinor: record.cardDiscrepancyMinor,
+    cashDiscrepancyMinor: record.cashDiscrepancyMinor,
+    closedAt: record.closedAt.toISOString(),
+    closedByUserId: record.closedByUserId,
+    closedByUserName: record.closedByUserName,
+    closingNotes: record.closingNotes ?? null,
+    counterId: record.counterId,
+    counterName: record.counterName,
+    createdAt: record.createdAt.toISOString(),
+    denominationBreakdown: record.denominationBreakdown ?? null,
+    discrepancyReason: record.discrepancyReason ?? null,
+    expectedBankTransferMinor: record.expectedBankTransferMinor,
+    expectedCardMinor: record.expectedCardMinor,
+    expectedCashMinor: record.expectedCashMinor,
+    expectedMobileBankingMinor: record.expectedMobileBankingMinor,
+    expectedTotalMinor: record.expectedTotalMinor,
+    id: record.id,
+    mobileBankingDiscrepancyMinor: record.mobileBankingDiscrepancyMinor,
+    openingFloatMinor: record.openingFloatMinor,
+    organizationId: record.organizationId,
+    salesSessionId: record.salesSessionId,
+    status: record.status,
+    totalDiscrepancyMinor: record.totalDiscrepancyMinor,
   });
 }
 function mapLine(record: PosCartLine): PosCartLineContract {
@@ -1028,6 +1224,8 @@ function mapLine(record: PosCartLine): PosCartLineContract {
 }
 function mapCartDetails(record: PosCartDetails): PosCartDetailsContract {
   return posCartDetailsContractSchema.parse({
+    status: record.status,
+    version: record.version,
     checkoutId: record.checkoutId,
     createdAt: record.createdAt.toISOString(),
     id: record.id,
@@ -1274,7 +1472,9 @@ function normalizeError(error: unknown): ApplicationServiceError {
         : "CONFLICT",
       message: error.message.includes("idempotency key")
         ? "This request was already used with different details."
-        : "The request conflicts with the current information.",
+        : error.message === "Cart changed on another screen. Refresh."
+          ? error.message
+          : "The request conflicts with the current information.",
     });
   if (error instanceof BusinessRuleError)
     return new ApplicationServiceError({
@@ -1289,6 +1489,12 @@ function normalizeError(error: unknown): ApplicationServiceError {
 }
 
 function mapBusinessRuleMessage(message: string): string {
+  if (
+    message ===
+      "Complete or empty the active cart before settling this session." ||
+    message === "The sales session is closed."
+  )
+    return message;
   if (message.includes("legacy payment checkout"))
     return "Returns are not available for this older sale yet.";
   if (message.includes("Return hold"))

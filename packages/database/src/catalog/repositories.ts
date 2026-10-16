@@ -421,6 +421,23 @@ export class PrismaProductRepository implements ProductRepository {
 export class PrismaProductVariantRepository implements ProductVariantRepository {
   constructor(private readonly prisma: CatalogPrismaClient) {}
 
+  async updatePrice(input: {
+    organizationId: string;
+    variantId: string;
+    sellingPriceMinor: number;
+    expectedSellingPriceMinor: number;
+  }): Promise<ProductVariant | null> {
+    const [record] = await this.prisma.productVariant.updateManyAndReturn({
+      where: {
+        id: input.variantId,
+        organizationId: input.organizationId,
+        sellingPriceMinor: input.expectedSellingPriceMinor,
+      },
+      data: { sellingPriceMinor: input.sellingPriceMinor },
+    });
+    return record ? mapProductVariant(record) : null;
+  }
+
   async create(record: CreateProductVariantRecord): Promise<ProductVariant> {
     return mapProductVariant(
       await createWithConflictMapping(() =>

@@ -14,6 +14,7 @@ import type {
   ReceiptRepository,
   SalesOrderRepository,
   StorefrontRepository,
+  SupplierRepository,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
@@ -46,6 +47,7 @@ describe("createApplicationServices", () => {
       storefrontRepository: fakeStorefrontRepository,
       transactionManager: fakeTransactionManager,
       sizeRepository: fakeSizeRepository,
+      supplierRepository: fakeSupplierRepository,
       userRepository: {} as never,
     });
 
@@ -88,6 +90,12 @@ const fakeBarcodeRepository: BarcodeRepository = {
 };
 
 const fakeInventoryReadRepository: InventoryReadRepository = {
+  listProductSummaries: () =>
+    Promise.resolve({
+      hasMore: false,
+      items: [],
+      nextCursor: null,
+    }),
   getVariantAvailability: () => Promise.resolve(null),
   listAvailability: () =>
     Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
@@ -145,6 +153,7 @@ const fakeProductVariantRepository: CatalogProductVariantManagementRepository =
     existsBySku: () => Promise.resolve(false),
     existsVariantCombination: () => Promise.resolve(false),
     listByProduct: () => Promise.resolve([]),
+    updatePrice: () => Promise.resolve(null),
   };
 
 const fakeSizeRepository: CatalogSizeManagementRepository = {
@@ -188,8 +197,23 @@ const fakeSalesOrderRepository: SalesOrderRepository = {
   findById: () => Promise.resolve(null),
   findByIdempotencyKey: () => Promise.resolve(null),
   findByOrderNumber: () => Promise.resolve(null),
+  findDueStorefrontReservationOrderIds: () => Promise.resolve([]),
+  findLegacyNullExpiryCandidates: () => Promise.resolve([]),
   fulfill: () => Promise.reject(unreachableError()),
   list: () => Promise.resolve({ hasMore: false, items: [], nextCursor: null }),
+  normalizeLegacyStorefrontReservation: (record) =>
+    Promise.resolve({
+      orderId: record.salesOrderId,
+      previousExpiresAt: null,
+      reclaimed: false,
+      status: "SKIPPED",
+    }),
+  reclaimExpiredStorefrontReservation: (record) =>
+    Promise.resolve({
+      expiresAt: null,
+      orderId: record.salesOrderId,
+      reclaimed: false,
+    }),
   reserve: () => Promise.reject(unreachableError()),
 };
 
@@ -209,6 +233,15 @@ const fakeStorefrontRepository: StorefrontRepository = {
   loadCheckoutFacts: () => Promise.reject(unreachableError()),
   lockCheckoutAttempt: () => Promise.reject(unreachableError()),
   resolveActiveOrganizationByCode: () => Promise.resolve(null),
+};
+
+const fakeSupplierRepository: SupplierRepository = {
+  create: () => Promise.reject(unreachableError()),
+  deactivate: () => Promise.resolve(null),
+  findByCode: () => Promise.resolve(null),
+  findById: () => Promise.resolve(null),
+  list: () => Promise.resolve([]),
+  update: () => Promise.resolve(null),
 };
 
 const nullLogger = {

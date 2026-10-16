@@ -34,6 +34,11 @@ pnpm-debug.log*
 *.sqlite
 *.sqlite3
 .senvo-media/
+.senvo-runtime/
+
+# Next.js app-level dev agent files
+apps/*/AGENTS.md
+apps/*/CLAUDE.md
 
 .DS_Store
 Thumbs.db

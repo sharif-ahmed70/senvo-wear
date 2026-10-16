@@ -112,6 +112,8 @@ export function createApiFailure(input: {
 }
 
 const idSchema = z.string().uuid();
+/** Reserved idempotency namespace used by stock intake (see @senvo/domain). */
+const STOCK_INTAKE_KEY_PREFIX = "stock-intake:";
 const displayNameSchema = z.string().trim().min(1).max(160);
 const descriptionSchema = z
   .string()
@@ -343,6 +345,7 @@ export const permissionResourceSchema = z.enum([
   "SALES_ORDER",
   "SALES",
   "REPORT",
+  "PROCUREMENT",
 ]);
 export const permissionActionSchema = z.enum([
   "CREATE",
@@ -581,12 +584,17 @@ export const auditActionSchema = z.enum([
   "INVENTORY_MOVEMENT_POSTED",
   "POS_SALE_RETURN_RECORDED",
   "SALES_ORDER_CREATED",
+  "POS_REGISTER_SETTLED",
+  "ORDER_DISPATCHED",
+  "SHIPMENT_STATUS_UPDATED",
 ]);
 
 export const auditResourceSchema = z.enum([
   "INVENTORY_MOVEMENT",
   "POS_RETURN",
   "SALES_ORDER",
+  "POS_SESSION",
+  "COURIER_CONSIGNMENT",
 ]);
 
 const auditMetadataSchema = z
@@ -670,6 +678,7 @@ export const createProductInputSchema = z.object({
 });
 
 export const createProductVariantInputSchema = z.object({
+  sellingPriceMinor: z.number().int().positive().max(2_147_483_647).optional(),
   colorId: idSchema,
   organizationId: idSchema,
   productId: idSchema,
@@ -814,6 +823,21 @@ export const listCollectionProductsServiceInputSchema = z
 export const createProductVariantServiceInputSchema =
   createProductVariantInputSchema.omit({ organizationId: true }).strict();
 
+export const updateVariantPriceServiceInputSchema = z
+  .object({
+    variantId: idSchema,
+    sellingPriceMinor: z.number().int().positive().max(2_147_483_647),
+    expectedSellingPriceMinor: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(2_147_483_647),
+  })
+  .strict();
+export type UpdateVariantPriceServiceInputContract = z.infer<
+  typeof updateVariantPriceServiceInputSchema
+>;
+
 export const listProductVariantsServiceInputSchema = z
   .object({ productId: idSchema })
   .strict();
@@ -894,6 +918,17 @@ export const createInventoryMovementInputSchema = z
     type: inventoryMovementTypeSchema,
   })
   .strict();
+
+export const createInventoryMovementServiceInputSchema =
+  createInventoryMovementInputSchema
+    .omit({ organizationId: true })
+    .extend({
+      destinationLocationId: idSchema,
+      occurredAt: isoTimestampSchema,
+      sourceLocationId: z.null().optional(),
+      type: z.literal("RECEIPT"),
+    })
+    .strict();
 
 export const replaceDraftMovementLinesInputSchema = z
   .object({
@@ -1730,6 +1765,9 @@ export type CreatePosCounterInputContract = z.infer<
 export type CreateInventoryMovementInputContract = z.infer<
   typeof createInventoryMovementInputSchema
 >;
+export type CreateInventoryMovementServiceInputContract = z.infer<
+  typeof createInventoryMovementServiceInputSchema
+>;
 export type ReplaceDraftMovementLinesInputContract = z.infer<
   typeof replaceDraftMovementLinesInputSchema
 >;
@@ -2002,6 +2040,7 @@ export type ProductContract = CatalogRecordContract & {
 };
 
 export type ProductVariantContract = CatalogRecordContract & {
+  sellingPriceMinor: number;
   colorId: string;
   organizationId: string;
   productId: string;
@@ -2366,6 +2405,7 @@ export const productContractSchema = z
 
 export const productVariantContractSchema = z
   .object({
+    sellingPriceMinor: z.number().int().nonnegative().max(2_147_483_647),
     colorId: idSchema,
     createdAt: isoTimestampSchema,
     id: idSchema,
@@ -3110,16 +3150,32 @@ export const teamMemberContractSchema = z
     status: organizationMembershipStatusSchema,
     storeAccess: z.string(),
     updatedAt: isoTimestampSchema,
+    userId: idSchema,
     userStatus: userStatusSchema,
     version: expectedVersionSchema,
   })
   .strict();
+
+/**
+ * Workforce passwords: 8-128 characters, the range the workforce password
+ * maintenance flow and the scrypt hasher accept. Never trimmed or logged.
+ */
+const workforcePasswordSchema = z.string().min(8).max(128);
 
 export const createTeamMemberServiceInputSchema = z
   .object({
     email: z.string().trim().email().max(254),
     name: displayNameSchema,
     role: roleSchema,
+    temporaryPassword: workforcePasswordSchema,
+  })
+  .strict();
+
+export const resetTeamMemberPasswordServiceInputSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    newPassword: workforcePasswordSchema,
+    teamMemberId: idSchema,
   })
   .strict();
 
@@ -3240,6 +3296,9 @@ export type TeamMemberContract = z.infer<typeof teamMemberContractSchema>;
 export type CreateTeamMemberServiceInputContract = z.infer<
   typeof createTeamMemberServiceInputSchema
 >;
+export type ResetTeamMemberPasswordServiceInputContract = z.infer<
+  typeof resetTeamMemberPasswordServiceInputSchema
+>;
 export type UpdateTeamMemberStatusServiceInputContract = z.infer<
   typeof updateTeamMemberStatusServiceInputSchema
 >;
@@ -3263,6 +3322,11 @@ export type SalesSourceSummaryContract = z.infer<
 export const salesCounterTypeSchema = z.enum(["STORE", "EVENT_BOOTH"]);
 export const salesCounterStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
 export const salesSessionStatusSchema = z.enum(["OPEN", "CLOSED"]);
+export const posSettlementStatusSchema = z.enum([
+  "BALANCED",
+  "SHORTAGE",
+  "OVERAGE",
+]);
 
 export const salesCounterContractSchema = z
   .object({
@@ -3288,6 +3352,8 @@ export const salesSessionContractSchema = z
     id: idSchema,
     openedAt: isoTimestampSchema,
     openedByUserId: idSchema,
+    openedByName: z.string().optional(),
+    openingFloatMinor: minorUnitAmountSchema.default(0),
     status: salesSessionStatusSchema,
     updatedAt: isoTimestampSchema,
     version: expectedVersionSchema,
@@ -3309,6 +3375,8 @@ export const posCartLineContractSchema = z
 
 export const posCartDetailsContractSchema = z
   .object({
+    status: z.enum(["ACTIVE", "CHECKED_OUT", "ABANDONED"]),
+    version: expectedVersionSchema,
     checkoutId: idSchema.nullable(),
     createdAt: isoTimestampSchema,
     id: idSchema,
@@ -3357,10 +3425,108 @@ export const updateSalesCounterStatusServiceInputSchema = z
   })
   .strict();
 export const openSalesSessionServiceInputSchema = z
-  .object({ counterId: idSchema })
+  .object({
+    counterId: idSchema,
+    openingFloatMinor: minorUnitAmountSchema.optional(),
+  })
   .strict();
 export const closeSalesSessionServiceInputSchema = z
   .object({ expectedVersion: expectedVersionSchema, sessionId: idSchema })
+  .strict();
+export const getSalesSessionReconciliationServiceInputSchema = z
+  .object({ sessionId: idSchema })
+  .strict();
+export const closeSalesSessionWithSettlementServiceInputSchema = z
+  .object({
+    actualBankTransferMinor: minorUnitAmountSchema,
+    actualCardMinor: minorUnitAmountSchema,
+    actualCashMinor: minorUnitAmountSchema,
+    actualMobileBankingMinor: minorUnitAmountSchema,
+    closingNotes: z.string().trim().max(1000).optional(),
+    denominationBreakdown: z
+      .record(z.string(), z.number().int().nonnegative())
+      .optional(),
+    discrepancyReason: z.string().trim().max(1000).optional(),
+    expectedVersion: expectedVersionSchema,
+    sessionId: idSchema,
+  })
+  .strict();
+export const posSessionReconciliationSummaryContractSchema = z
+  .object({
+    returnsMinor: minorUnitAmountSchema.default(0),
+    sellerTotals: z
+      .array(
+        z.object({
+          staffId: idSchema,
+          staffName: z.string(),
+          salesCount: z.number().int().nonnegative(),
+          grossSalesMinor: minorUnitAmountSchema,
+          paymentsMinor: minorUnitAmountSchema,
+          collectionsMinor: minorUnitAmountSchema,
+          refundsMinor: minorUnitAmountSchema,
+          returnsMinor: minorUnitAmountSchema,
+          netSalesMinor: z.number().int(),
+        }),
+      )
+      .default([]),
+    bankTransferSalesMinor: minorUnitAmountSchema,
+    cardSalesMinor: minorUnitAmountSchema,
+    cashCollectionsMinor: minorUnitAmountSchema,
+    cashRefundsMinor: minorUnitAmountSchema,
+    cashSalesMinor: minorUnitAmountSchema,
+    counterId: idSchema,
+    counterName: z.string().min(1).max(160),
+    digitalRefundsMinor: minorUnitAmountSchema,
+    expectedBankTransferMinor: minorUnitAmountSchema,
+    expectedCardMinor: minorUnitAmountSchema,
+    expectedCashMinor: minorUnitAmountSchema,
+    expectedMobileBankingMinor: minorUnitAmountSchema,
+    expectedTotalMinor: minorUnitAmountSchema,
+    grossSalesMinor: minorUnitAmountSchema,
+    mobileBankingSalesMinor: minorUnitAmountSchema,
+    openedAt: isoTimestampSchema,
+    openingFloatMinor: minorUnitAmountSchema,
+    salesCount: z.number().int().nonnegative(),
+    sessionId: idSchema,
+  })
+  .strict();
+export const posRegisterSettlementContractSchema = z
+  .object({
+    actualBankTransferMinor: minorUnitAmountSchema,
+    actualCardMinor: minorUnitAmountSchema,
+    actualCashMinor: minorUnitAmountSchema,
+    actualMobileBankingMinor: minorUnitAmountSchema,
+    actualTotalMinor: minorUnitAmountSchema,
+    approvedByUserId: idSchema.nullable().optional(),
+    approvedByUserName: z.string().min(1).max(160).nullable().optional(),
+    bankTransferDiscrepancyMinor: z.number().int(),
+    cardDiscrepancyMinor: z.number().int(),
+    cashDiscrepancyMinor: z.number().int(),
+    closedAt: isoTimestampSchema,
+    closedByUserId: idSchema,
+    closedByUserName: z.string().min(1).max(160).optional(),
+    closingNotes: z.string().nullable().optional(),
+    counterId: idSchema,
+    counterName: z.string().min(1).max(160).optional(),
+    createdAt: isoTimestampSchema,
+    denominationBreakdown: z
+      .record(z.string(), z.number().int().nonnegative())
+      .nullable()
+      .optional(),
+    discrepancyReason: z.string().nullable().optional(),
+    expectedBankTransferMinor: minorUnitAmountSchema,
+    expectedCardMinor: minorUnitAmountSchema,
+    expectedCashMinor: minorUnitAmountSchema,
+    expectedMobileBankingMinor: minorUnitAmountSchema,
+    expectedTotalMinor: minorUnitAmountSchema,
+    id: idSchema,
+    mobileBankingDiscrepancyMinor: z.number().int(),
+    openingFloatMinor: minorUnitAmountSchema,
+    organizationId: idSchema,
+    salesSessionId: idSchema,
+    status: posSettlementStatusSchema,
+    totalDiscrepancyMinor: z.number().int(),
+  })
   .strict();
 export const posEmptyInputSchema = z.object({}).strict();
 export const lookupPosSaleServiceInputSchema = z
@@ -3368,6 +3534,7 @@ export const lookupPosSaleServiceInputSchema = z
   .strict();
 export const addPosCartItemServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     productVariantId: idSchema,
     quantity: positiveInventoryQuantitySchema.max(10000),
@@ -3375,14 +3542,23 @@ export const addPosCartItemServiceInputSchema = z
   .strict();
 export const updatePosCartItemServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     itemId: idSchema,
     quantity: positiveInventoryQuantitySchema.max(10000),
   })
   .strict();
 export const removePosCartItemServiceInputSchema = z
-  .object({ cartId: idSchema, itemId: idSchema })
+  .object({
+    cartId: idSchema,
+    itemId: idSchema,
+    expectedVersion: expectedVersionSchema,
+  })
   .strict();
+export const startNextPosCartServiceInputSchema = z
+  .object({ sessionId: idSchema })
+  .strict();
+
 export const getPosCartServiceInputSchema = z
   .object({ cartId: idSchema })
   .strict();
@@ -3423,33 +3599,41 @@ export const checkoutPaymentInstructionSchema = z
       });
     }
   });
-export const posCheckoutContractSchema = z
+export const posCheckoutContractSchema = z.object({
+  cartId: idSchema,
+  completedAt: isoTimestampSchema,
+  counterId: idSchema,
+  counterName: z.string(),
+  createdAt: isoTimestampSchema,
+  id: idSchema,
+  idempotencyKey: z.string(),
+  orderNumber: z.string(),
+  outstandingMinor: minorUnitAmountSchema.nullable(),
+  paidMinor: minorUnitAmountSchema.nullable(),
+  paymentStatus: checkoutPaymentStatusSchema,
+  receiptId: idSchema.nullable(),
+  receiptNumber: z.string().nullable(),
+  salesOrderId: idSchema,
+  salesSessionId: idSchema,
+  staffName: z.string(),
+  status: posCheckoutStatusSchema,
+  subtotalMinor: minorUnitAmountSchema,
+  totalMinor: minorUnitAmountSchema,
+  updatedAt: isoTimestampSchema,
+});
+export const posCheckoutCustomerInputSchema = z
   .object({
-    cartId: idSchema,
-    completedAt: isoTimestampSchema,
-    counterId: idSchema,
-    counterName: z.string(),
-    createdAt: isoTimestampSchema,
-    id: idSchema,
-    idempotencyKey: z.string(),
-    orderNumber: z.string(),
-    outstandingMinor: minorUnitAmountSchema.nullable(),
-    paidMinor: minorUnitAmountSchema.nullable(),
-    paymentStatus: checkoutPaymentStatusSchema,
-    receiptId: idSchema.nullable(),
-    receiptNumber: z.string().nullable(),
-    salesOrderId: idSchema,
-    salesSessionId: idSchema,
-    staffName: z.string(),
-    status: posCheckoutStatusSchema,
-    subtotalMinor: minorUnitAmountSchema,
-    totalMinor: minorUnitAmountSchema,
-    updatedAt: isoTimestampSchema,
+    addressLine1: optionalTextSchema(240),
+    name: optionalTextSchema(160),
+    phone: phoneSchema,
   })
   .strict();
+
 export const checkoutPosCartServiceInputSchema = z
   .object({
+    expectedVersion: expectedVersionSchema,
     cartId: idSchema,
+    customer: posCheckoutCustomerInputSchema.nullable().optional(),
     idempotencyKey: z
       .string()
       .trim()
@@ -3906,6 +4090,9 @@ export type PosCartDetailsContract = z.infer<
 >;
 export type PosSaleLookupContract = z.infer<typeof posSaleLookupContractSchema>;
 export type PosCheckoutContract = z.infer<typeof posCheckoutContractSchema>;
+export type PosCheckoutCustomerInputContract = z.infer<
+  typeof posCheckoutCustomerInputSchema
+>;
 export type CheckoutPosCartServiceInputContract = z.infer<
   typeof checkoutPosCartServiceInputSchema
 >;
@@ -3970,6 +4157,19 @@ export type OpenSalesSessionServiceInputContract = z.infer<
 >;
 export type CloseSalesSessionServiceInputContract = z.infer<
   typeof closeSalesSessionServiceInputSchema
+>;
+export type GetSalesSessionReconciliationServiceInputContract = z.infer<
+  typeof getSalesSessionReconciliationServiceInputSchema
+>;
+export type PosSettlementStatus = z.infer<typeof posSettlementStatusSchema>;
+export type PosSessionReconciliationSummaryContract = z.infer<
+  typeof posSessionReconciliationSummaryContractSchema
+>;
+export type CloseSalesSessionWithSettlementServiceInputContract = z.infer<
+  typeof closeSalesSessionWithSettlementServiceInputSchema
+>;
+export type PosRegisterSettlementContract = z.infer<
+  typeof posRegisterSettlementContractSchema
 >;
 export type LookupPosSaleServiceInputContract = z.infer<
   typeof lookupPosSaleServiceInputSchema
@@ -4252,3 +4452,887 @@ function validateBoothSalesSource(
     });
   }
 }
+
+export const supplierStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
+export type SupplierStatusContract = z.infer<typeof supplierStatusSchema>;
+
+export const supplierContractSchema = z
+  .object({
+    address: z.string().nullable(),
+    code: z.string(),
+    contactPerson: z.string().nullable(),
+    createdAt: isoTimestampSchema,
+    email: z.string().nullable(),
+    id: idSchema,
+    name: z.string(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    phone: z.string().nullable(),
+    status: supplierStatusSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type SupplierContract = z.infer<typeof supplierContractSchema>;
+
+export const createSupplierServiceInputSchema = z
+  .object({
+    address: optionalTextSchema(500),
+    code: codeSchema,
+    contactPerson: optionalTextSchema(160),
+    email: emailSchema,
+    name: displayNameSchema,
+    notes: optionalTextSchema(1000),
+    phone: phoneSchema,
+  })
+  .strict();
+export type CreateSupplierServiceInputContract = z.infer<
+  typeof createSupplierServiceInputSchema
+>;
+
+export const getSupplierServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type GetSupplierServiceInputContract = z.infer<
+  typeof getSupplierServiceInputSchema
+>;
+
+export const listSuppliersServiceInputSchema = z
+  .object({
+    search: z.string().trim().max(160).optional(),
+    status: supplierStatusSchema.optional(),
+  })
+  .strict();
+export type ListSuppliersServiceInputContract = z.infer<
+  typeof listSuppliersServiceInputSchema
+>;
+
+export const updateSupplierServiceInputSchema = z
+  .object({
+    address: optionalTextSchema(500),
+    code: codeSchema.optional(),
+    contactPerson: optionalTextSchema(160),
+    email: emailSchema,
+    name: displayNameSchema.optional(),
+    notes: optionalTextSchema(1000),
+    phone: phoneSchema,
+    status: supplierStatusSchema.optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type UpdateSupplierServiceInputContract = z.infer<
+  typeof updateSupplierServiceInputSchema
+>;
+
+export const deactivateSupplierServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type DeactivateSupplierServiceInputContract = z.infer<
+  typeof deactivateSupplierServiceInputSchema
+>;
+
+export const purchaseStatusSchema = z.enum(["DRAFT", "POSTED", "CANCELLED"]);
+export type PurchaseStatusContract = z.infer<typeof purchaseStatusSchema>;
+
+export const purchaseLineContractSchema = z
+  .object({
+    id: idSchema,
+    lineNumber: z.number().int().positive(),
+    notes: z.string().nullable(),
+    productName: z.string(),
+    productVariantId: idSchema,
+    purchaseId: idSchema,
+    quantity: z.number().int().positive(),
+    sku: z.string(),
+    totalCostMinor: z.string(),
+    unitCostMinor: z.number().int().nonnegative(),
+    variantName: z.string().nullable(),
+  })
+  .strict();
+export type PurchaseLineContract = z.infer<typeof purchaseLineContractSchema>;
+
+export const purchaseContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    destinationLocationId: idSchema,
+    expectedDeliveryDate: isoTimestampSchema.nullable(),
+    id: idSchema,
+    idempotencyKey: z.string().nullable(),
+    lines: z.array(purchaseLineContractSchema).optional(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    purchaseDate: isoTimestampSchema,
+    purchaseNumber: z.string(),
+    receiptMovementId: idSchema.nullable(),
+    status: purchaseStatusSchema,
+    supplierId: idSchema,
+    totalCostMinor: z.string(),
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type PurchaseContract = z.infer<typeof purchaseContractSchema>;
+
+export const createPurchaseDraftLineServiceInputSchema = z
+  .object({
+    lineNumber: z.number().int().positive(),
+    notes: optionalTextSchema(500),
+    productName: displayNameSchema,
+    productVariantId: idSchema,
+    quantity: z.number().int().positive(),
+    sku: z.string().trim().min(1).max(80),
+    unitCostMinor: z.number().int().nonnegative(),
+    variantName: optionalTextSchema(160),
+  })
+  .strict();
+export type CreatePurchaseDraftLineServiceInputContract = z.infer<
+  typeof createPurchaseDraftLineServiceInputSchema
+>;
+
+export const createPurchaseDraftServiceInputSchema = z
+  .object({
+    destinationLocationId: idSchema,
+    expectedDeliveryDate: isoTimestampSchema.optional().nullable(),
+    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    lines: z.array(createPurchaseDraftLineServiceInputSchema).min(1),
+    notes: optionalTextSchema(1000),
+    purchaseDate: isoTimestampSchema.optional(),
+    purchaseNumber: z.string().trim().min(1).max(64).optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreatePurchaseDraftServiceInputContract = z.infer<
+  typeof createPurchaseDraftServiceInputSchema
+>;
+
+export const getPurchaseServiceInputSchema = z
+  .object({
+    purchaseId: idSchema,
+  })
+  .strict();
+export type GetPurchaseServiceInputContract = z.infer<
+  typeof getPurchaseServiceInputSchema
+>;
+
+export const listPurchasesServiceInputSchema = z
+  .object({
+    destinationLocationId: idSchema.optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
+    status: purchaseStatusSchema.optional(),
+    supplierId: idSchema.optional(),
+  })
+  .strict();
+export type ListPurchasesServiceInputContract = z.infer<
+  typeof listPurchasesServiceInputSchema
+>;
+
+export const confirmPurchaseServiceInputSchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(128).optional(),
+    purchaseId: idSchema,
+  })
+  .strict();
+export type ConfirmPurchaseServiceInputContract = z.infer<
+  typeof confirmPurchaseServiceInputSchema
+>;
+
+export const supplierPaymentMethodSchema = z.enum([
+  "CASH",
+  "BANK_TRANSFER",
+  "CHEQUE",
+  "MOBILE_BANKING",
+]);
+export type SupplierPaymentMethodContract = z.infer<
+  typeof supplierPaymentMethodSchema
+>;
+
+export const supplierLedgerEntryTypeSchema = z.enum([
+  "BILL",
+  "PAYMENT",
+  "RETURN_CREDIT",
+  "OPENING_BALANCE",
+  "ADJUSTMENT",
+]);
+export type SupplierLedgerEntryTypeContract = z.infer<
+  typeof supplierLedgerEntryTypeSchema
+>;
+
+export const supplierLedgerDirectionSchema = z.enum(["DEBIT", "CREDIT"]);
+export type SupplierLedgerDirectionContract = z.infer<
+  typeof supplierLedgerDirectionSchema
+>;
+
+export const supplierPaymentContractSchema = z
+  .object({
+    amountMinor: z.string(),
+    createdAt: isoTimestampSchema,
+    id: idSchema,
+    idempotencyKey: z.string().nullable(),
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    paymentDate: isoTimestampSchema,
+    paymentMethod: supplierPaymentMethodSchema,
+    purchaseId: idSchema.nullable(),
+    reference: z.string().nullable(),
+    supplierId: idSchema,
+    updatedAt: isoTimestampSchema,
+  })
+  .strict();
+export type SupplierPaymentContract = z.infer<
+  typeof supplierPaymentContractSchema
+>;
+
+export const supplierLedgerEntryContractSchema = z
+  .object({
+    amountMinor: z.string(),
+    balanceAfterMinor: z.string(),
+    createdAt: isoTimestampSchema,
+    direction: supplierLedgerDirectionSchema,
+    entryDate: isoTimestampSchema,
+    entryType: supplierLedgerEntryTypeSchema,
+    id: idSchema,
+    notes: z.string().nullable(),
+    organizationId: idSchema,
+    referenceId: z.string().nullable(),
+    referenceType: z.string().nullable(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type SupplierLedgerEntryContract = z.infer<
+  typeof supplierLedgerEntryContractSchema
+>;
+
+export const supplierBalanceSummaryContractSchema = z
+  .object({
+    lastBillDate: isoTimestampSchema.nullable(),
+    lastPaymentDate: isoTimestampSchema.nullable(),
+    organizationId: idSchema,
+    outstandingBalanceMinor: z.string(),
+    supplierId: idSchema,
+    totalAdjustedMinor: z.string(),
+    totalBilledMinor: z.string(),
+    totalPaidMinor: z.string(),
+  })
+  .strict();
+export type SupplierBalanceSummaryContract = z.infer<
+  typeof supplierBalanceSummaryContractSchema
+>;
+
+export const createSupplierPaymentServiceInputSchema = z
+  .object({
+    amountMinor: z.union([
+      z
+        .string()
+        .trim()
+        .regex(
+          /^[1-9]\d*$/,
+          "Amount must be a positive integer in minor units.",
+        ),
+      z.number().int().positive("Amount must be greater than zero."),
+    ]),
+    // "stock-intake:" keys are reserved for payments recorded by a stock
+    // intake, so a client key can never collide with (and replay) one.
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .refine(
+        (key) => !key.toLowerCase().startsWith(STOCK_INTAKE_KEY_PREFIX),
+        'Idempotency keys starting with "stock-intake:" are reserved.',
+      )
+      .optional(),
+    notes: optionalTextSchema(1000),
+    paymentDate: isoTimestampSchema.optional(),
+    paymentMethod: supplierPaymentMethodSchema,
+    purchaseId: idSchema.optional().nullable(),
+    reference: optionalTextSchema(160),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreateSupplierPaymentServiceInputContract = z.infer<
+  typeof createSupplierPaymentServiceInputSchema
+>;
+
+export const getSupplierBalanceServiceInputSchema = z
+  .object({
+    supplierId: idSchema,
+  })
+  .strict();
+export type GetSupplierBalanceServiceInputContract = z.infer<
+  typeof getSupplierBalanceServiceInputSchema
+>;
+
+export const getSupplierLedgerServiceInputSchema = z
+  .object({
+    from: isoTimestampSchema.optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
+    supplierId: idSchema,
+    to: isoTimestampSchema.optional(),
+  })
+  .strict();
+export type GetSupplierLedgerServiceInputContract = z.infer<
+  typeof getSupplierLedgerServiceInputSchema
+>;
+
+export const listSupplierPaymentsServiceInputSchema = z
+  .object({
+    from: isoTimestampSchema.optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    offset: z.coerce.number().int().nonnegative().optional(),
+    purchaseId: idSchema.optional(),
+    supplierId: idSchema.optional(),
+    to: isoTimestampSchema.optional(),
+  })
+  .strict();
+export type ListSupplierPaymentsServiceInputContract = z.infer<
+  typeof listSupplierPaymentsServiceInputSchema
+>;
+
+export const createSupplierAdjustmentServiceInputSchema = z
+  .object({
+    adjustmentDate: isoTimestampSchema.optional(),
+    amountMinor: z
+      .string()
+      .regex(/^\d+$/u, "amountMinor must be a positive integer"),
+    direction: supplierLedgerDirectionSchema.default("DEBIT"),
+    entryType: z.enum(["RETURN_CREDIT", "ADJUSTMENT"]),
+    idempotencyKey: z.string().max(128).optional(),
+    notes: z.string().max(500).optional(),
+    purchaseId: idSchema.optional(),
+    referenceId: z.string().max(128).optional(),
+    supplierId: idSchema,
+  })
+  .strict();
+export type CreateSupplierAdjustmentServiceInputContract = z.infer<
+  typeof createSupplierAdjustmentServiceInputSchema
+>;
+
+export const courierProviderSchema = z.enum([
+  "STEADFAST",
+  "PATHAO",
+  "REDX",
+  "PAPERFLY",
+  "IN_HOUSE",
+]);
+export type CourierProviderContract = z.infer<typeof courierProviderSchema>;
+
+export const shipmentStatusSchema = z.enum([
+  "DRAFT",
+  "BOOKED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "DELIVERED",
+  "RETURNED_TO_ORIGIN",
+  "CANCELLED",
+]);
+export type ShipmentStatusContract = z.infer<typeof shipmentStatusSchema>;
+
+export const courierConsignmentContractSchema = z
+  .object({
+    cancelledAt: isoTimestampSchema.nullable(),
+    codAmountMinor: z.string(),
+    consignmentNumber: codeSchema,
+    courierProvider: courierProviderSchema,
+    createdAt: isoTimestampSchema,
+    deliveredAt: isoTimestampSchema.nullable(),
+    deliveryAddressLine1: z.string().trim().min(1).max(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryFeeMinor: z.string(),
+    deliveryPostalCode: optionalTextSchema(120),
+    dispatchedAt: isoTimestampSchema.nullable(),
+    id: idSchema,
+    itemWeightGram: z.number().int().nonnegative().nullable(),
+    note: optionalTextSchema(1000),
+    organizationId: idSchema,
+    recipientEmail: emailSchema,
+    recipientName: z.string().trim().min(1).max(160),
+    recipientPhone: z.string().trim().min(1).max(40),
+    returnedAt: isoTimestampSchema.nullable(),
+    salesOrderId: idSchema,
+    status: shipmentStatusSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+    updatedAt: isoTimestampSchema,
+    version: expectedVersionSchema,
+  })
+  .strict();
+export type CourierConsignmentContract = z.infer<
+  typeof courierConsignmentContractSchema
+>;
+
+export const dispatchSalesOrderServiceInputSchema = z
+  .object({
+    codAmountMinor: z
+      .union([
+        z
+          .string()
+          .regex(
+            /^\d+$/u,
+            "codAmountMinor must be a non-negative integer in minor units.",
+          ),
+        z.number().int().nonnegative(),
+      ])
+      .optional(),
+    courierProvider: courierProviderSchema,
+    deliveryAddressLine1: optionalTextSchema(240),
+    deliveryAddressLine2: optionalTextSchema(240),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    deliveryFeeMinor: z
+      .union([
+        z
+          .string()
+          .regex(
+            /^\d+$/u,
+            "deliveryFeeMinor must be a non-negative integer in minor units.",
+          ),
+        z.number().int().nonnegative(),
+      ])
+      .optional(),
+    deliveryPostalCode: optionalTextSchema(120),
+    itemWeightGram: z.number().int().positive().optional(),
+    note: optionalTextSchema(1000),
+    recipientEmail: emailSchema,
+    recipientName: optionalTextSchema(160),
+    recipientPhone: phoneSchema,
+    salesOrderId: idSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+  })
+  .strict();
+export type DispatchSalesOrderServiceInputContract = z.infer<
+  typeof dispatchSalesOrderServiceInputSchema
+>;
+
+export const updateShipmentStatusServiceInputSchema = z
+  .object({
+    consignmentId: idSchema,
+    expectedVersion: expectedVersionSchema.optional(),
+    note: optionalTextSchema(1000),
+    status: shipmentStatusSchema,
+    trackingCode: optionalTextSchema(128),
+    trackingUrl: optionalTextSchema(500),
+  })
+  .strict();
+export type UpdateShipmentStatusServiceInputContract = z.infer<
+  typeof updateShipmentStatusServiceInputSchema
+>;
+
+export const getShipmentsByOrderIdServiceInputSchema = z
+  .object({
+    salesOrderId: idSchema,
+  })
+  .strict();
+export type GetShipmentsByOrderIdServiceInputContract = z.infer<
+  typeof getShipmentsByOrderIdServiceInputSchema
+>;
+
+export const getConsignmentByIdServiceInputSchema = z
+  .object({
+    consignmentId: idSchema,
+  })
+  .strict();
+export type GetConsignmentByIdServiceInputContract = z.infer<
+  typeof getConsignmentByIdServiceInputSchema
+>;
+
+export const trackStorefrontOrderInputSchema = z
+  .object({
+    orderNumber: codeSchema,
+    phone: z
+      .string()
+      .trim()
+      .min(6)
+      .max(40)
+      .regex(
+        /^[+0-9() .-]+$/,
+        "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+      ),
+  })
+  .strict();
+export type TrackStorefrontOrderInputContract = z.infer<
+  typeof trackStorefrontOrderInputSchema
+>;
+
+export const storefrontOrderTrackingContractSchema = z
+  .object({
+    createdAt: isoTimestampSchema,
+    currencyCode: salesOrderCurrencyCodeSchema,
+    customerName: optionalTextSchema(160),
+    deliveryCity: optionalTextSchema(120),
+    deliveryDistrict: optionalTextSchema(120),
+    orderNumber: codeSchema,
+    paymentStatus: z.string(),
+    shipments: z.array(courierConsignmentContractSchema),
+    status: salesOrderStatusSchema,
+    totalMinor: z.string(),
+  })
+  .strict();
+export type StorefrontOrderTrackingContract = z.infer<
+  typeof storefrontOrderTrackingContractSchema
+>;
+
+export const listProductInventorySummariesServiceInputSchema =
+  listInventoryAvailabilityServiceInputSchema.extend({
+    lowStockThreshold: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(2_147_483_647)
+      .optional(),
+  });
+
+export type ListProductInventorySummariesServiceInputContract = z.infer<
+  typeof listProductInventorySummariesServiceInputSchema
+>;
+
+const inventoryQuantitySummarySchema = z
+  .object({
+    onHand: z.number().int(),
+    reserved: z.number().int().nonnegative(),
+    availableToSell: z.number().int(),
+  })
+  .strict();
+
+const inventoryLocationSummarySchema = inventoryQuantitySummarySchema.extend({
+  location: inventoryLocationReadContractSchema,
+});
+
+export const productInventorySummaryContractSchema =
+  inventoryQuantitySummarySchema.extend({
+    product: z
+      .object({ id: idSchema, name: z.string(), productCode: z.string() })
+      .strict(),
+    lowStockThreshold: z.number().int().nonnegative().nullable(),
+    isLowStock: z.boolean().nullable(),
+    variants: z.array(
+      inventoryQuantitySummarySchema.extend({
+        variant: inventoryVariantReadContractSchema,
+        locations: z.array(inventoryLocationSummarySchema),
+      }),
+    ),
+    locations: z.array(inventoryLocationSummarySchema),
+  });
+
+export const productInventorySummaryPageContractSchema =
+  inventoryReadPageContractSchema(productInventorySummaryContractSchema);
+
+export type ProductInventorySummaryContract = z.infer<
+  typeof productInventorySummaryContractSchema
+>;
+
+const stockIntakeIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(100)
+  .regex(/^[A-Za-z0-9._:-]+$/);
+const stockIntakeMinorAmountSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(2_147_483_647);
+const stockIntakeSellingPriceSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(2_147_483_647);
+const stockIntakeLineCommonShape = {
+  quantity: z.number().int().positive().max(100_000),
+  unitCostMinor: stockIntakeMinorAmountSchema,
+};
+const stockIntakeRequiredPhoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(
+    /^[+0-9() .-]+$/,
+    "Phone may contain only digits, spaces, +, -, ., and parentheses.",
+  );
+
+export const stockIntakeProductInputSchema = z.union([
+  z.object({ existingProductId: idSchema }).strict(),
+  z
+    .object({
+      audienceCategoryName: displayNameSchema,
+      description: descriptionSchema,
+      name: displayNameSchema,
+      status: z.enum(["ACTIVE", "DRAFT", "INACTIVE"]).optional(),
+      typeCategoryName: displayNameSchema,
+    })
+    .strict(),
+]);
+
+export const stockIntakeLineInputSchema = z.union([
+  z
+    .object({
+      ...stockIntakeLineCommonShape,
+      existingVariantId: idSchema,
+      sellingPriceMinor: stockIntakeSellingPriceSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...stockIntakeLineCommonShape,
+      colorName: displayNameSchema,
+      sellingPriceMinor: stockIntakeSellingPriceSchema,
+      sizeName: displayNameSchema,
+    })
+    .strict(),
+]);
+
+export const stockIntakeSupplierInputSchema = z
+  .union([
+    z
+      .object({
+        existingSupplierId: idSchema,
+        updates: z
+          .object({
+            address: optionalTextSchema(255),
+            phone: phoneSchema,
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    z
+      .object({
+        new: z
+          .object({
+            address: optionalTextSchema(255),
+            name: displayNameSchema,
+            phone: stockIntakeRequiredPhoneSchema,
+          })
+          .strict(),
+      })
+      .strict(),
+  ])
+  .nullable();
+
+export const stockIntakePaymentMethodSchema = z.enum([
+  "CASH",
+  "MOBILE_BANKING",
+  "BANK",
+]);
+
+export const createStockIntakeServiceInputSchema = z
+  .object({
+    idempotencyKey: stockIntakeIdempotencyKeySchema,
+    lines: z.array(stockIntakeLineInputSchema).min(1).max(100),
+    payment: z
+      .object({
+        amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        method: stockIntakePaymentMethodSchema,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    product: stockIntakeProductInputSchema,
+    purchase: z
+      .object({
+        destinationLocationId: idSchema,
+        // Supplier's memo/invoice reference, any script; stored in purchase
+        // notes as "Memo: <value>". It is not the purchase number.
+        memoNumber: z.string().trim().min(1).max(60).optional(),
+        note: optionalTextSchema(1000),
+        purchaseDate: z
+          .union([isoTimestampSchema, calendarDateSchema])
+          .optional(),
+      })
+      .strict(),
+    supplier: stockIntakeSupplierInputSchema,
+    transportCostMinor: stockIntakeMinorAmountSchema.optional(),
+    transportPaidToSupplier: z.boolean().optional(),
+  })
+  .strict();
+export type CreateStockIntakeServiceInputContract = z.infer<
+  typeof createStockIntakeServiceInputSchema
+>;
+
+export const stockIntakeContractSchema = z
+  .object({
+    dueMinor: z.string(),
+    payment: z
+      .object({
+        amountMinor: z.string(),
+        id: idSchema,
+        method: supplierPaymentMethodSchema,
+      })
+      .strict()
+      .nullable(),
+    product: z
+      .object({ code: z.string(), id: idSchema, name: z.string() })
+      .strict(),
+    purchase: z
+      .object({
+        id: idSchema,
+        purchaseNumber: z.string(),
+        totalCostMinor: z.string(),
+      })
+      .strict(),
+    replayed: z.boolean(),
+    supplier: z.object({ id: idSchema, name: z.string() }).strict(),
+    transportAppliedMinor: z.number().int().nonnegative(),
+    transportRequestedMinor: z.number().int().nonnegative(),
+    variants: z.array(
+      z
+        .object({
+          barcode: z.string().nullable(),
+          color: z.string(),
+          id: idSchema,
+          quantity: z.number().int().positive(),
+          sellingPriceMinor: z.number().int().nonnegative(),
+          size: z.string(),
+          sku: z.string(),
+          unitCostMinor: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
+
+// ---------------------------------------------------------------------------
+// Reports: admin dashboard
+// ---------------------------------------------------------------------------
+
+export const getDashboardSummaryServiceInputSchema = z.object({}).strict();
+export type GetDashboardSummaryServiceInputContract = z.infer<
+  typeof getDashboardSummaryServiceInputSchema
+>;
+
+const dashboardCountSchema = z.number().int().nonnegative();
+const dashboardMinorSchema = z.number().int().nonnegative();
+
+/**
+ * GET /reports/dashboard. Business day is the Asia/Dhaka calendar day; money
+ * is integer minor units. `financials` is present only for callers that also
+ * hold POS APPROVE; it is omitted (never zeroed) for everyone else.
+ */
+export const dashboardSummaryContractSchema = z
+  .object({
+    attention: z
+      .object({
+        lowStockVariants: dashboardCountSchema,
+        openSessions: z.array(
+          z
+            .object({
+              counterName: z.string(),
+              openedAt: isoTimestampSchema,
+              openedByName: z.string(),
+              openingFloatMinor: dashboardMinorSchema,
+            })
+            .strict(),
+        ),
+        outOfStockVariants: dashboardCountSchema,
+        pendingOrders: dashboardCountSchema,
+      })
+      .strict(),
+    businessDate: calendarDateSchema,
+    financials: z
+      .object({
+        channels: z.array(
+          z
+            .object({
+              channel: salesOrderChannelSchema,
+              previousPeriodMinor: dashboardMinorSchema,
+              salesMinor: dashboardMinorSchema,
+            })
+            .strict(),
+        ),
+        last7Days: z
+          .array(
+            z
+              .object({
+                date: calendarDateSchema,
+                salesMinor: dashboardMinorSchema,
+              })
+              .strict(),
+          )
+          .length(7),
+        refundsTodayMinor: dashboardMinorSchema,
+        todaySaleCount: dashboardCountSchema,
+        todaySalesMinor: dashboardMinorSchema,
+        topProducts: z
+          .array(
+            z
+              .object({
+                name: z.string(),
+                productId: idSchema,
+                quantity: dashboardCountSchema,
+                revenueMinor: dashboardMinorSchema,
+              })
+              .strict(),
+          )
+          .max(5),
+        yesterdaySalesMinor: dashboardMinorSchema,
+      })
+      .strict()
+      .optional(),
+    generatedAt: isoTimestampSchema,
+    inventory: z
+      .object({
+        inStock: dashboardCountSchema,
+        inactive: dashboardCountSchema,
+        lowStock: dashboardCountSchema,
+        outOfStock: dashboardCountSchema,
+        total: dashboardCountSchema,
+      })
+      .strict(),
+    recentOrders: z
+      .array(
+        z
+          .object({
+            channel: salesOrderChannelSchema,
+            createdAt: isoTimestampSchema,
+            customerName: z.string().nullable(),
+            id: idSchema,
+            orderNumber: z.string(),
+            status: salesOrderStatusSchema,
+            totalMinor: dashboardMinorSchema,
+          })
+          .strict(),
+      )
+      .max(6),
+  })
+  .strict();
+export type DashboardSummaryContract = z.infer<
+  typeof dashboardSummaryContractSchema
+>;
+
+export const productLifecycleInputSchema = z
+  .object({ productId: idSchema, expectedUpdatedAt: isoTimestampSchema })
+  .strict();
+export const editProductServiceInputSchema = productLifecycleInputSchema
+  .extend({
+    name: z.string().trim().min(1).max(160).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    categoryId: idSchema.optional(),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.categoryId !== undefined,
+    "Provide a field to edit.",
+  );
+export const productDeletableContractSchema = z
+  .object({ deletable: z.boolean(), reason: z.string().nullable() })
+  .strict();
+export type ProductLifecycleInputContract = z.infer<
+  typeof productLifecycleInputSchema
+>;
+export type EditProductServiceInputContract = z.infer<
+  typeof editProductServiceInputSchema
+>;
+export type ProductDeletableContract = z.infer<
+  typeof productDeletableContractSchema
+>;

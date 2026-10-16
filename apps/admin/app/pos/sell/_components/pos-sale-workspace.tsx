@@ -36,6 +36,8 @@ import {
   type SellingContext,
 } from "./selling-context-selector";
 
+import { useAdminPermissions } from "../../../admin-shell";
+
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
 });
@@ -48,13 +50,16 @@ const requiredPermissions: readonly AdminPermissionKey[] = [
 ];
 
 export function PosSaleWorkspace({
-  permissions,
+  permissions: propsPermissions,
 }: {
-  permissions: readonly AdminPermissionKey[];
-}) {
+  permissions?: readonly AdminPermissionKey[];
+} = {}) {
+  const sessionPermissions = useAdminPermissions();
+  const permissions = propsPermissions ?? sessionPermissions;
   const allowed = requiredPermissions.every((permission) =>
     permissions.includes(permission),
   );
+
   if (!allowed) {
     return (
       <main className="pos-sale-page">
@@ -78,6 +83,10 @@ function ActivePosSale({
   permissions: readonly AdminPermissionKey[];
 }) {
   const [contexts, setContexts] = useState<SellingContext[]>([]);
+  const [activeCounters, setActiveCounters] = useState<SalesCounterContract[]>(
+    [],
+  );
+  const [openingCounter, setOpeningCounter] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [cart, setCart] = useState<PosCartDetailsContract | null>(null);
   const [checkout, setCheckout] = useState<PosCheckoutContract | null>(null);
@@ -131,10 +140,12 @@ function ActivePosSale({
         client.listSalesCounters(),
         client.listCurrentSalesSessions(),
       ]);
+      const activeList = counterResult.data.filter(
+        (counter) => counter.status === "ACTIVE",
+      );
+      setActiveCounters(activeList);
       const counters = new Map<string, SalesCounterContract>(
-        counterResult.data
-          .filter((counter) => counter.status === "ACTIVE")
-          .map((counter) => [counter.id, counter]),
+        activeList.map((counter) => [counter.id, counter]),
       );
       const available = sessionResult.data.flatMap(
         (session: SalesSessionContract) => {
@@ -160,6 +171,27 @@ function ActivePosSale({
       setLoading(false);
     }
   }, []);
+
+  async function handleOpenCounter(
+    counterId: string,
+    openingFloatMinor: number,
+  ) {
+    setOpeningCounter(true);
+    setError(null);
+    try {
+      const opened = await client.openSalesSession({
+        counterId,
+        openingFloatMinor,
+      });
+      setNotice("Sales counter opened.");
+      await loadContexts();
+      setSelectedSessionId(opened.data.id);
+    } catch (reason) {
+      setError(friendlyPosError(reason, "session"));
+    } finally {
+      setOpeningCounter(false);
+    }
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadContexts(), 0);
@@ -191,12 +223,14 @@ function ActivePosSale({
       if (existing) {
         await client.updatePosCartItem({
           cartId: cart.id,
+          expectedVersion: cart.version,
           itemId: existing.id,
           quantity: existing.quantity + 1,
         });
       } else {
         await client.addPosCartItem({
           cartId: cart.id,
+          expectedVersion: cart.version,
           productVariantId: lookup.data.variantId,
           quantity: 1,
         });
@@ -220,6 +254,7 @@ function ActivePosSale({
     try {
       await client.updatePosCartItem({
         cartId: cart.id,
+        expectedVersion: cart.version,
         itemId: lineId,
         quantity,
       });
@@ -236,7 +271,11 @@ function ActivePosSale({
     if (!cart || mutatingId) return;
     setMutatingId(lineId);
     try {
-      await client.removePosCartItem({ cartId: cart.id, itemId: lineId });
+      await client.removePosCartItem({
+        cartId: cart.id,
+        expectedVersion: cart.version,
+        itemId: lineId,
+      });
       await loadCart(cart.id);
       setNotice("Item removed.");
     } catch (reason) {
@@ -249,7 +288,7 @@ function ActivePosSale({
   async function completeSale(
     payload: Omit<
       CheckoutPosCartServiceInputContract,
-      "cartId" | "idempotencyKey"
+      "cartId" | "idempotencyKey" | "expectedVersion"
     >,
   ) {
     if (!cart || submitting) return;
@@ -261,6 +300,7 @@ function ActivePosSale({
       const result = await client.checkoutPosCart({
         ...payload,
         cartId: cart.id,
+        expectedVersion: cart.version,
         idempotencyKey: attempt.idempotencyKey,
       });
       setCheckout(result.data);
@@ -280,13 +320,8 @@ function ActivePosSale({
     try {
       const next = await reconcileNextSale(
         {
-          closeSession: async (input) => {
-            await client.closeSalesSession(input);
-          },
-          listCurrentSessions: async () =>
-            (await client.listCurrentSalesSessions()).data,
-          openSession: async (counterId) =>
-            (await client.openSalesSession({ counterId })).data,
+          startNextCart: async (sessionId) =>
+            (await client.startNextPosCart(sessionId)).data,
         },
         {
           completedSessionId: selectedContext.session.id,
@@ -344,6 +379,20 @@ function ActivePosSale({
         {error ? (
           <p className="pos-form-error" role="alert">
             {error.message}
+            {cart &&
+            error.message === "Cart changed on another screen. Refresh." ? (
+              <button
+                className="pos-sale-secondary"
+                disabled={cartLoading || submitting}
+                type="button"
+                onClick={() => {
+                  setPaymentOpen(false);
+                  void loadCart(cart.id);
+                }}
+              >
+                Refresh cart
+              </button>
+            ) : null}
             {error.requestId ? (
               <small> Support reference: {error.requestId}</small>
             ) : null}
@@ -359,8 +408,13 @@ function ActivePosSale({
       ) : (
         <>
           <SellingContextSelector
+            availableCounters={activeCounters}
             contexts={contexts}
+            onOpenCounter={(counterId, floatMinor) =>
+              void handleOpenCounter(counterId, floatMinor)
+            }
             onSelect={setSelectedSessionId}
+            openingCounter={openingCounter}
             selectedId={selectedSessionId}
           />
           {selectedContext &&

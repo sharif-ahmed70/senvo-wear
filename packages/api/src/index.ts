@@ -18,12 +18,14 @@ export {
 } from "./online-payment-handlers.js";
 export {
   createCatalogApiHandlers,
+  createInventoryMovementDraftApiHandler,
   createInventoryReadApiHandlers,
   createPostInventoryMovementApiHandler,
   createSalesOrderApiHandler,
   createSalesOrderManagementApiHandlers,
   type CatalogApiHandlers,
   type CatalogManagementApplication,
+  type InventoryMovementDraftCreationApplication,
   type InventoryMovementPostingApplication,
   type InventoryReadApiHandlers,
   type InventoryReadApplication,
@@ -47,7 +49,28 @@ export {
   type PosApplication,
 } from "./pos-handlers.js";
 export {
+  createProcurementApiHandlers,
+  type ProcurementApiHandlers,
+  type ProcurementApplication,
+} from "./procurement-handlers.js";
+export {
+  createStockIntakeApiHandlers,
+  type StockIntakeApiHandlers,
+  type StockIntakeApplication,
+} from "./stock-intake-handlers.js";
+export {
+  createShippingApiHandlers,
+  type ShippingApiDependencies,
+  type ShippingApiHandlers,
+  type ShippingApplication,
+} from "./shipping-handlers.js";
+export {
   createApplicationContext,
   type ApiAuthenticatedUser,
   type ApiRequestContext,
 } from "./request-context.js";
+export {
+  createReportingApiHandlers,
+  type ReportingApiHandlers,
+  type ReportingApplication,
+} from "./reporting-handlers.js";

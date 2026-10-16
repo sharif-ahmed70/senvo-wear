@@ -59,6 +59,7 @@ const permissionResources: readonly PermissionKey["resource"][] = [
   "USER",
   "CATALOG",
   "INVENTORY",
+  "PROCUREMENT",
   "RESERVATION",
   "SALES_ORDER",
   "SALES",

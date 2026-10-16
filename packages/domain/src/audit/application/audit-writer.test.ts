@@ -66,6 +66,75 @@ describe("RepositoryAuditWriter", () => {
       }),
     ).rejects.toBeInstanceOf(ValidationApplicationError);
   });
+
+  it("accepts STOREFRONT_RESERVATION_EXPIRED with SALES_ORDER resource and null user", async () => {
+    const repository = new MemoryAuditEntryRepository();
+    const writer = new RepositoryAuditWriter(repository);
+
+    await writer.record({
+      action: "STOREFRONT_RESERVATION_EXPIRED",
+      actor: { userId: null },
+      metadata: {
+        orderNumber: "WEB-12345",
+        reservationId: "55555555-5555-4555-8555-555555555555",
+      },
+      organizationId,
+      resource: "SALES_ORDER",
+      resourceId,
+    });
+
+    expect(repository.lastRecord).toMatchObject({
+      action: "STOREFRONT_RESERVATION_EXPIRED",
+      organizationId,
+      resource: "SALES_ORDER",
+      resourceId,
+      userId: null,
+    });
+  });
+
+  it("accepts WORKFORCE_PASSWORD_SET with USER_CREDENTIAL resource, null user, and safe metadata", async () => {
+    const repository = new MemoryAuditEntryRepository();
+    const writer = new RepositoryAuditWriter(repository);
+
+    await writer.record({
+      action: "WORKFORCE_PASSWORD_SET",
+      actor: { userId: null },
+      metadata: {
+        actorType: "MAINTENANCE",
+        operation: "ADMINISTRATIVE_WORKFORCE_PASSWORD_SET",
+        operatorId: "op-1",
+        requestId: "req-1",
+        resultingVersion: 2,
+        revokedSessionCount: 1,
+        success: true,
+        targetUserId: "44444444-4444-4444-8444-444444444444",
+      },
+      organizationId,
+      resource: "USER_CREDENTIAL",
+      resourceId,
+    });
+
+    expect(repository.lastRecord).toMatchObject({
+      action: "WORKFORCE_PASSWORD_SET",
+      organizationId,
+      resource: "USER_CREDENTIAL",
+      resourceId,
+      userId: null,
+    });
+
+    await expect(
+      writer.record({
+        action: "WORKFORCE_PASSWORD_SET",
+        actor: { userId: null },
+        metadata: {
+          passwordHash: "secret-hash",
+        },
+        organizationId,
+        resource: "USER_CREDENTIAL",
+        resourceId,
+      }),
+    ).rejects.toBeInstanceOf(ValidationApplicationError);
+  });
 });
 
 class MemoryAuditEntryRepository implements AuditEntryRepository {

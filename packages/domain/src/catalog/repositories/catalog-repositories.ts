@@ -87,7 +87,7 @@ export type CreateProductRecord = Pick<
 export type CreateProductVariantRecord = Pick<
   ProductVariant,
   "colorId" | "organizationId" | "productId" | "sizeId" | "sku" | "status"
->;
+> & { sellingPriceMinor?: number };
 
 export type CatalogListFilter = {
   organizationId: string;
@@ -206,6 +206,12 @@ export type CatalogProductManagementRepository = ProductRepository & {
 
 export type CatalogProductVariantManagementRepository =
   ProductVariantRepository & {
+    updatePrice(input: {
+      organizationId: string;
+      variantId: string;
+      sellingPriceMinor: number;
+      expectedSellingPriceMinor: number;
+    }): Promise<ProductVariant | null>;
     listByProduct(
       organizationId: string,
       productId: string,

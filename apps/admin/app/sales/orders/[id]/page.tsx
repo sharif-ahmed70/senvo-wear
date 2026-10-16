@@ -1,5 +1,4 @@
-import { adminFoundationSession } from "../../../_lib/admin-access";
-import { SalesOrdersWorkspace } from "../_components/sales-orders-workspace";
+import { SalesOrderDetailWorkspace } from "./_components/sales-order-detail-workspace";
 
 export default async function SalesOrderDetailsPage({
   params,
@@ -7,11 +6,5 @@ export default async function SalesOrderDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return (
-    <SalesOrdersWorkspace
-      orderId={id}
-      permissions={adminFoundationSession.permissions}
-      view="details"
-    />
-  );
+  return <SalesOrderDetailWorkspace orderId={id} />;
 }

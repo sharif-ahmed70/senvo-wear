@@ -2,6 +2,7 @@ import type { PosCheckout, PosCheckoutPreparation } from "../domain/models.js";
 
 export type PosCheckoutRepository = {
   createCompleted(record: {
+    expectedVersion: number;
     cartId: string;
     completedAt: Date;
     counterId: string;
@@ -19,5 +20,6 @@ export type PosCheckoutRepository = {
   prepare(
     cartId: string,
     organizationId: string,
+    staffId: string,
   ): Promise<PosCheckoutPreparation | null>;
 };

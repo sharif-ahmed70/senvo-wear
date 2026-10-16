@@ -6,12 +6,15 @@ import type {
 } from "@senvo/application";
 import {
   addPosCartItemServiceInputSchema,
+  startNextPosCartServiceInputSchema,
   collectPosPaymentServiceInputSchema,
   createPaymentRefundServiceInputSchema,
   createPosReturnServiceInputSchema,
   checkoutPosCartServiceInputSchema,
   closeSalesSessionServiceInputSchema,
+  closeSalesSessionWithSettlementServiceInputSchema,
   createSalesCounterServiceInputSchema,
+  getSalesSessionReconciliationServiceInputSchema,
   lookupPosSaleServiceInputSchema,
   getPosCheckoutServiceInputSchema,
   getPaymentCollectionReceiptServiceInputSchema,
@@ -32,10 +35,12 @@ import {
   type PaymentRefundAccountContract,
   type PaymentRefundReceiptContract,
   type PaymentRefundResultContract,
+  type PosRegisterSettlementContract,
   type PosReturnAccountContract,
   type PosReturnReceiptContract,
   type PosReturnResultContract,
   type PosSaleLookupContract,
+  type PosSessionReconciliationSummaryContract,
   type SalesReceiptContract,
   type SalesCounterContract,
   type SalesSessionContract,
@@ -43,6 +48,10 @@ import {
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
 export type PosApplication = {
+  startNextCart(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<SalesSessionContract>>;
   collectPayment(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -79,6 +88,14 @@ export type PosApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<SalesSessionContract>>;
+  getReconciliationSummary(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosSessionReconciliationSummaryContract>>;
+  closeSessionWithSettlement(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PosRegisterSettlementContract>>;
   checkoutCart(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -146,6 +163,7 @@ export type PosApplication = {
 };
 
 export type PosApiHandlers = {
+  startNextCart: ApiHandler<SalesSessionContract>;
   collectPayment: ApiHandler<CollectPosPaymentResultContract>;
   createRefund: ApiHandler<PaymentRefundResultContract>;
   getRefunds: ApiHandler<PaymentRefundAccountContract>;
@@ -155,6 +173,8 @@ export type PosApiHandlers = {
   getReturnReceipt: ApiHandler<PosReturnReceiptContract>;
   addCartItem: ApiHandler<PosCartLineContract>;
   closeSession: ApiHandler<SalesSessionContract>;
+  getReconciliationSummary: ApiHandler<PosSessionReconciliationSummaryContract>;
+  closeSessionWithSettlement: ApiHandler<PosRegisterSettlementContract>;
   checkoutCart: ApiHandler<PosCheckoutContract>;
   createCounter: ApiHandler<SalesCounterContract>;
   listCounters: ApiHandler<SalesCounterContract[]>;
@@ -179,7 +199,7 @@ export function createPosApiHandlers(dependencies: {
   pos: PosApplication;
 }): PosApiHandlers {
   const handler = <TInput, TOutput>(
-    action: "CREATE" | "READ" | "UPDATE",
+    action: "CREATE" | "READ" | "UPDATE" | "APPROVE",
     inputSchema: Parameters<
       typeof createProtectedApiHandler<TInput, TOutput>
     >[0]["inputSchema"],
@@ -196,6 +216,11 @@ export function createPosApiHandlers(dependencies: {
       permission: { action, resource: "POS" },
     });
   return {
+    startNextCart: handler(
+      "CREATE",
+      startNextPosCartServiceInputSchema,
+      (context, input) => dependencies.pos.startNextCart(context, input),
+    ),
     collectPayment: createProtectedApiHandler({
       authenticationService: dependencies.authenticationService,
       authorizationService: dependencies.authorizationService,
@@ -251,9 +276,21 @@ export function createPosApiHandlers(dependencies: {
       (context, input) => dependencies.pos.addCartItem(context, input),
     ),
     closeSession: handler(
-      "UPDATE",
+      "APPROVE",
       closeSalesSessionServiceInputSchema,
       (context, input) => dependencies.pos.closeSession(context, input),
+    ),
+    getReconciliationSummary: handler(
+      "APPROVE",
+      getSalesSessionReconciliationServiceInputSchema,
+      (context, input) =>
+        dependencies.pos.getReconciliationSummary(context, input),
+    ),
+    closeSessionWithSettlement: handler(
+      "APPROVE",
+      closeSalesSessionWithSettlementServiceInputSchema,
+      (context, input) =>
+        dependencies.pos.closeSessionWithSettlement(context, input),
     ),
     checkoutCart: handler(
       "UPDATE",

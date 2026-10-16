@@ -20,6 +20,8 @@ import type {
   CursorPageResult,
   FulfillSalesOrderRecord,
   AmendDraftSalesOrderRecord,
+  LegacyNullExpiryCandidateRecord,
+  NormalizeLegacyStorefrontReservationResult,
   ReserveSalesOrderRecord,
   SalesOrderRepository,
 } from "../repositories/sales-order-repositories.js";
@@ -600,6 +602,42 @@ class FakeSalesOrderRepository implements SalesOrderRepository {
     return Promise.resolve(
       this.patch(record.salesOrderId, { status: "FULFILLED", version: 4 }),
     );
+  }
+
+  findDueStorefrontReservationOrderIds(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+
+  findLegacyNullExpiryCandidates(): Promise<LegacyNullExpiryCandidateRecord[]> {
+    return Promise.resolve([]);
+  }
+
+  normalizeLegacyStorefrontReservation(record: {
+    salesOrderId: string;
+  }): Promise<NormalizeLegacyStorefrontReservationResult> {
+    return Promise.resolve({
+      orderId: record.salesOrderId,
+      previousExpiresAt: null,
+      reclaimed: false,
+      status: "SKIPPED",
+    });
+  }
+
+  reclaimExpiredStorefrontReservation(record: {
+    salesOrderId: string;
+  }): Promise<{
+    expiresAt: Date | null;
+    orderId: string;
+    orderNumber?: string;
+    reclaimed: boolean;
+    reservationId?: string;
+    reservationNumber?: string;
+  }> {
+    return Promise.resolve({
+      expiresAt: null,
+      orderId: record.salesOrderId,
+      reclaimed: false,
+    });
   }
 
   private patch(

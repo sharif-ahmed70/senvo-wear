@@ -12,6 +12,7 @@ import {
   Boxes,
   LoaderCircle,
   MapPinned,
+  PackagePlus,
   Search,
 } from "lucide-react";
 import Link from "next/link";
@@ -50,9 +51,10 @@ export function InventoryWorkspace({
   if (!permissions.includes("INVENTORY:READ")) {
     return <InventoryRestricted />;
   }
+  const canCreate = permissions.includes("INVENTORY:CREATE");
   return (
     <main className="inventory-page">
-      <InventoryHeader view={view} />
+      <InventoryHeader canCreate={canCreate} view={view} />
       {view === "availability" ? <AvailabilityView /> : null}
       {view === "locations" ? <LocationsView /> : null}
       {view === "movements" ? <MovementsView /> : null}
@@ -60,7 +62,13 @@ export function InventoryWorkspace({
   );
 }
 
-function InventoryHeader({ view }: { view: InventoryView }) {
+function InventoryHeader({
+  canCreate,
+  view,
+}: {
+  canCreate?: boolean;
+  view: InventoryView;
+}) {
   return (
     <>
       <header className="inventory-header">
@@ -68,6 +76,12 @@ function InventoryHeader({ view }: { view: InventoryView }) {
           <p className="page-eyebrow">Inventory</p>
           <h1>{titleFor(view)}</h1>
         </div>
+        {canCreate ? (
+          <Link className="inventory-primary-button" href="/inventory/receive">
+            <PackagePlus aria-hidden="true" size={16} />
+            Receive Stock
+          </Link>
+        ) : null}
       </header>
       <nav aria-label="Inventory views" className="inventory-tabs">
         <InventoryTab
@@ -85,6 +99,13 @@ function InventoryHeader({ view }: { view: InventoryView }) {
           href="/inventory/movements"
           label="Movements"
         />
+        {canCreate ? (
+          <InventoryTab
+            active={false}
+            href="/inventory/receive"
+            label="Receive Stock"
+          />
+        ) : null}
       </nav>
     </>
   );

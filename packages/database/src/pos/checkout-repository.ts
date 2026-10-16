@@ -1,3 +1,4 @@
+import { CART_CHANGED, lockCartSession } from "./cart-lock.js";
 import {
   calculateCheckoutSettlement,
   ConflictError,
@@ -9,7 +10,11 @@ import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
 type CheckoutPrismaClient = Pick<
   PrismaClient,
-  "$queryRaw" | "inventoryAllocationPolicy" | "posCart" | "posCheckoutRecord"
+  | "$queryRaw"
+  | "inventoryAllocationPolicy"
+  | "posCart"
+  | "posCheckoutRecord"
+  | "organizationMembership"
 >;
 
 const checkoutInclude = {
@@ -41,7 +46,9 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
   async prepare(
     cartId: string,
     organizationId: string,
+    staffId: string,
   ): Promise<PosCheckoutPreparation | null> {
+    await lockCartSession(this.prisma, cartId, organizationId);
     await this.prisma.$queryRaw`
       SELECT "id"
       FROM "pos_carts"
@@ -49,6 +56,11 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         AND "organization_id" = ${organizationId}::uuid
       FOR UPDATE
     `;
+    await this.prisma.$queryRaw`SELECT p.id FROM products p
+      JOIN product_variants v ON v.product_id = p.id AND v.organization_id = p.organization_id
+      JOIN pos_cart_lines l ON l.product_variant_id = v.id AND l.organization_id = v.organization_id
+      WHERE l.cart_id = ${cartId}::uuid AND l.organization_id = ${organizationId}::uuid
+      ORDER BY p.id FOR SHARE OF p`;
     const cart = await this.prisma.posCart.findFirst({
       include: {
         checkout: { include: checkoutInclude },
@@ -56,6 +68,7 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
           include: {
             productVariant: {
               include: {
+                product: { select: { status: true } },
                 barcodes: {
                   select: { id: true },
                   where: { status: "ACTIVE" },
@@ -68,8 +81,6 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         salesSession: {
           include: {
             counter: { include: { booth: true, branch: true } },
-            openedBy: true,
-            openedMembership: true,
           },
         },
         organization: true,
@@ -77,6 +88,11 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       where: { id: cartId, organizationId },
     });
     if (!cart) return null;
+    const membership = await this.prisma.organizationMembership.findUnique({
+      where: { userId_organizationId: { userId: staffId, organizationId } },
+      include: { user: true },
+    });
+    if (!membership) return null;
     const counter = cart.salesSession.counter;
     const allocationPolicy =
       await this.prisma.inventoryAllocationPolicy.findFirst({
@@ -101,6 +117,8 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       boothId: counter.boothId,
       branchId: counter.branchId,
       cartId: cart.id,
+      cartStatus: cart.status,
+      cartVersion: cart.version,
       checkout: cart.checkout ? mapCheckout(cart.checkout) : null,
       counterId: counter.id,
       counterCode: counter.code,
@@ -112,9 +130,12 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
         productVariantId: line.productVariantId,
         quantity: line.quantity,
         sellingPriceMinor: line.productVariant.sellingPriceMinor,
-        variantStatus: line.productVariant.status,
+        variantStatus:
+          line.productVariant.product.status === "ACTIVE"
+            ? line.productVariant.status
+            : "ARCHIVED",
       })),
-      membershipStatus: cart.salesSession.openedMembership.status,
+      membershipStatus: membership.status,
       organizationId: cart.organizationId,
       organizationAddressLine1: cart.organization.addressLine1,
       organizationAddressLine2: cart.organization.addressLine2,
@@ -126,10 +147,9 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
       organizationPostalCode: cart.organization.postalCode,
       salesSessionId: cart.salesSessionId,
       sessionStatus: cart.salesSession.status,
-      staffId: cart.salesSession.openedByUserId,
-      staffName:
-        cart.salesSession.openedBy.name ?? cart.salesSession.openedBy.email,
-      staffStatus: cart.salesSession.openedBy.status,
+      staffId,
+      staffName: membership.user.name ?? membership.user.email,
+      staffStatus: membership.user.status,
       sourceName:
         counter.type === "EVENT_BOOTH"
           ? (counter.booth?.name ?? counter.name)
@@ -141,9 +161,21 @@ export class PrismaPosCheckoutRepository implements PosCheckoutRepository {
     record: Parameters<PosCheckoutRepository["createCompleted"]>[0],
   ): Promise<PosCheckout> {
     try {
+      const { expectedVersion, ...checkout } = record;
+      const updated = await this.prisma.posCart.updateMany({
+        where: {
+          id: record.cartId,
+          organizationId: record.organizationId,
+          status: "ACTIVE",
+          version: expectedVersion,
+          salesSession: { status: "OPEN" },
+        },
+        data: { status: "CHECKED_OUT", version: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new ConflictError(CART_CHANGED);
       return mapCheckout(
         await this.prisma.posCheckoutRecord.create({
-          data: { ...record, status: "COMPLETED" },
+          data: { ...checkout, status: "COMPLETED" },
           include: checkoutInclude,
         }),
       );

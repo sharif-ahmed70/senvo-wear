@@ -48,6 +48,7 @@ describe("PosApplicationService checkout", () => {
     const result = await service.checkoutCart(
       { organizationId, requestId: "req_checkout_1", userId },
       {
+        expectedVersion: 1,
         allowOutstanding: false,
         cartId,
         idempotencyKey: "checkout-service-001",
@@ -169,6 +170,25 @@ describe("PosApplicationService checkout", () => {
     ]);
     expect(JSON.stringify(audits)).not.toContain("CARD-SECRET-REF");
   });
+
+  it("passes optional customer details through POS checkout", async () => {
+    const audits: Array<Record<string, unknown>> = [];
+    const service = serviceWith({
+      transactionManager: successfulTransaction(audits),
+    });
+    const result = await service.checkoutCart(context(), {
+      ...checkoutPayload(),
+      customer: {
+        addressLine1: "12/A Dhanmondi",
+        name: "Jane Doe",
+        phone: "+8801700000000",
+      },
+    });
+    expect(result).toMatchObject({
+      data: { paymentStatus: "PAID" },
+      ok: true,
+    });
+  });
 });
 
 describe("PosApplicationService cart reads", () => {
@@ -191,6 +211,8 @@ describe("PosApplicationService cart reads", () => {
           expect(scopedOrganizationId).toBe(organizationId);
           expect(openedByUserId).toBe(userId);
           return Promise.resolve({
+            status: "ACTIVE",
+            version: 1,
             checkoutId: null,
             createdAt: now,
             id: cartId,
@@ -205,7 +227,13 @@ describe("PosApplicationService cart reads", () => {
     });
     const result = await service.getCart(context(), { cartId });
     expect(result).toMatchObject({
-      data: { id: cartId, lines: [], sessionStatus: "OPEN" },
+      data: {
+        status: "ACTIVE",
+        version: 1,
+        id: cartId,
+        lines: [],
+        sessionStatus: "OPEN",
+      },
       ok: true,
     });
     expect(permissions).toEqual([{ action: "READ", resource: "POS" }]);
@@ -435,6 +463,7 @@ function context() {
 
 function checkoutPayload() {
   return {
+    expectedVersion: 1,
     allowOutstanding: false,
     cartId,
     idempotencyKey: "checkout-service-001",
@@ -444,6 +473,8 @@ function checkoutPayload() {
 
 function preparation(): PosCheckoutPreparation {
   return {
+    cartStatus: "ACTIVE",
+    cartVersion: 1,
     allocationPolicyId: "10000000-0000-4000-8000-000000000004",
     boothId: null,
     branchId: "10000000-0000-4000-8000-000000000005",
@@ -682,6 +713,190 @@ const authenticationService: ApplicationAuthenticationService = {
       requestId: request.requestId,
     }),
 };
+
+describe("PosApplicationService settlement", () => {
+  const sessionId = "10000000-0000-4000-8000-000000000050";
+  const counterId = "10000000-0000-4000-8000-000000000051";
+
+  it("requires POS:APPROVE permission to get reconciliation summary", async () => {
+    let authChecked = false;
+    const authorizationService: ApplicationAuthorizationService = {
+      authorize: (_context, permission) => {
+        if (permission.action === "APPROVE" && permission.resource === "POS") {
+          authChecked = true;
+          return Promise.resolve();
+        }
+        return Promise.reject(new AuthorizationError("Forbidden"));
+      },
+    };
+
+    const mockSettlementRepo = {
+      findSessionReconciliationSource: () =>
+        Promise.resolve({
+          collections: [],
+          counter: { id: counterId, name: "Main Counter" },
+          payments: [{ amountMinor: 25000, method: "CASH" as const }],
+          refunds: [],
+          salesCount: 1,
+          session: {
+            cartId: "cart-1",
+            closedAt: null,
+            counterId,
+            createdAt: new Date("2026-09-28T10:00:00Z"),
+            id: sessionId,
+            openedAt: new Date("2026-09-28T10:00:00Z"),
+            openedByUserId: userId,
+            openingFloatMinor: 5000,
+            organizationId,
+            status: "OPEN" as const,
+            updatedAt: new Date("2026-09-28T10:00:00Z"),
+            version: 1,
+          },
+        }),
+      findSettlementBySessionId: () => Promise.resolve(null),
+      saveSettlementAndCloseSession: () => Promise.resolve(null),
+    };
+
+    const service = new PosApplicationService({
+      authenticationService,
+      authorizationService,
+      barcodes: {} as never,
+      branches: {} as never,
+      checkouts,
+      clock: { now: () => new Date("2026-09-28T22:00:00Z") },
+      inventory: {} as never,
+      memberships: {} as never,
+      pos: {} as never,
+      payments: {} as never,
+      receipts: {} as never,
+      salesSources: {} as never,
+      settlements: mockSettlementRepo,
+      transactionManager,
+      users: {} as never,
+    });
+
+    const result = await service.getSessionReconciliationSummary(
+      { organizationId, requestId: "req_rec_1", userId },
+      { sessionId },
+    );
+
+    expect(authChecked).toBe(true);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.sessionId).toBe(sessionId);
+      expect(result.data.expectedCashMinor).toBe(30000); // 5000 opening + 25000 cash
+      expect(result.data.salesCount).toBe(1);
+    }
+  });
+
+  it("requires POS:APPROVE, executes atomically, and records POS_REGISTER_SETTLED audit event", async () => {
+    let authChecked = false;
+    const authorizationService: ApplicationAuthorizationService = {
+      authorize: (_context, permission) => {
+        if (permission.action === "APPROVE" && permission.resource === "POS") {
+          authChecked = true;
+          return Promise.resolve();
+        }
+        return Promise.reject(new AuthorizationError("Forbidden"));
+      },
+    };
+
+    let auditRecorded = false;
+    let auditAction = "";
+
+    const mockSettlementRepo = {
+      findSessionReconciliationSource: () =>
+        Promise.resolve({
+          collections: [],
+          counter: { id: counterId, name: "Main Counter" },
+          payments: [{ amountMinor: 25000, method: "CASH" as const }],
+          refunds: [],
+          salesCount: 1,
+          session: {
+            cartId: "cart-1",
+            closedAt: null,
+            counterId,
+            createdAt: new Date("2026-09-28T10:00:00Z"),
+            id: sessionId,
+            openedAt: new Date("2026-09-28T10:00:00Z"),
+            openedByUserId: userId,
+            openingFloatMinor: 5000,
+            organizationId,
+            status: "OPEN" as const,
+            updatedAt: new Date("2026-09-28T10:00:00Z"),
+            version: 1,
+          },
+        }),
+      findSettlementBySessionId: () => Promise.resolve(null),
+      saveSettlementAndCloseSession: (params: {
+        expectedVersion: number;
+        session: any;
+        settlement: any;
+      }) =>
+        Promise.resolve({
+          session: { ...params.session, status: "CLOSED" as const },
+          settlement: params.settlement,
+        }),
+    };
+
+    const transactionalManager: ApplicationTransactionManager = {
+      execute: (context, operation) =>
+        operation({
+          applicationContext: context,
+          auditWriter: {
+            recordWithinTransaction: (input) => {
+              auditRecorded = true;
+              auditAction = input.action;
+              return Promise.resolve({} as never);
+            },
+          },
+          inventoryMovementRepository: {} as never,
+          posSettlementRepository: mockSettlementRepo,
+          salesOrderRepository: {} as never,
+        }),
+    };
+
+    const service = new PosApplicationService({
+      authenticationService,
+      authorizationService,
+      barcodes: {} as never,
+      branches: {} as never,
+      checkouts,
+      clock: { now: () => new Date("2026-09-28T22:00:00Z") },
+      inventory: {} as never,
+      memberships: {} as never,
+      pos: {} as never,
+      payments: {} as never,
+      receipts: {} as never,
+      salesSources: {} as never,
+      settlements: mockSettlementRepo,
+      transactionManager: transactionalManager,
+      users: {} as never,
+    });
+
+    const result = await service.closeSessionWithSettlement(
+      { organizationId, requestId: "req_settle_1", userId },
+      {
+        actualBankTransferMinor: 0,
+        actualCardMinor: 0,
+        actualCashMinor: 30000,
+        actualMobileBankingMinor: 0,
+        expectedVersion: 1,
+        sessionId,
+      },
+    );
+
+    expect(authChecked).toBe(true);
+    expect(auditRecorded).toBe(true);
+    expect(auditAction).toBe("POS_REGISTER_SETTLED");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.status).toBe("BALANCED");
+      expect(result.data.actualCashMinor).toBe(30000);
+      expect(result.data.cashDiscrepancyMinor).toBe(0);
+    }
+  });
+});
 
 const checkouts: PosCheckoutRepository = {
   createCompleted: () =>

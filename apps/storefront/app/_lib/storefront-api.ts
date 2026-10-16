@@ -1,3 +1,5 @@
+import type { StorefrontOrderTrackingContract } from "@senvo/contracts";
+
 export type StorefrontVariant = {
   availability: "IN_STOCK" | "OUT_OF_STOCK";
   color: { code: string; hexValue: string; name: string };
@@ -174,6 +176,12 @@ export const storefrontApi = {
     return request<StorefrontProduct>(
       `/storefront/products/${encodeURIComponent(slug)}`,
     );
+  },
+  trackOrder(input: { orderNumber: string; phone: string }) {
+    return request<StorefrontOrderTrackingContract>("/storefront/track-order", {
+      body: JSON.stringify(input),
+      method: "POST",
+    });
   },
 };
 export function taka(minor: number): string {

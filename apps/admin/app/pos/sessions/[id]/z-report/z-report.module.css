@@ -1,0 +1,245 @@
+.page {
+  padding: 2rem;
+  background: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.actions {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.backLink {
+  color: #475569;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.backLink:hover {
+  color: #0f172a;
+}
+
+.printBtn {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.625rem 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.printBtn:hover {
+  background: #1e293b;
+}
+
+.document {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 480px;
+  padding: 2rem;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  color: #0f172a;
+}
+
+.header {
+  text-align: center;
+  border-bottom: 2px dashed #cbd5e1;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.orgName {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.reportType {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0.35rem 0 0 0;
+  color: #334155;
+  letter-spacing: 0.05em;
+}
+
+.subMeta {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed #e2e8f0;
+  margin-bottom: 1rem;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.metaLabel {
+  color: #64748b;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.metaValue {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.section {
+  margin-bottom: 1.25rem;
+}
+
+.sectionTitle {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 0.25rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.table td {
+  padding: 0.35rem 0;
+}
+
+.table td:last-child {
+  text-align: right;
+  font-weight: 600;
+}
+
+.divider {
+  border-top: 1px dashed #cbd5e1;
+  margin: 0.75rem 0;
+}
+
+.grandTotalRow td {
+  font-size: 0.95rem;
+  font-weight: 800;
+  padding-top: 0.5rem;
+  border-top: 1px solid #0f172a;
+}
+
+.statusTag {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.statusBalanced {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.statusShortage {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.statusOverage {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.notesBox {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.75rem;
+  margin-top: 0.75rem;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.signatures {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: space-between;
+  padding-top: 1.5rem;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.sigBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 45%;
+}
+
+.sigLine {
+  width: 100%;
+  border-top: 1px solid #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.sigLabel {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+@media print {
+  body {
+    background: transparent !important;
+  }
+  .page {
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .actions {
+    display: none !important;
+  }
+  .document {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    width: 80mm;
+  }
+}

@@ -41,6 +41,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -60,10 +62,10 @@ describe("offline POS use cases", () => {
         organizationId,
         userId: otherUserId,
       }),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).resolves.toBe(pos.cartDetails);
   });
 
-  it("lists only open sessions owned by the trusted user", async () => {
+  it("lists the organization open sessions across staff", async () => {
     const pos = new FakePos();
     pos.sessions.push(
       session({
@@ -81,10 +83,16 @@ describe("offline POS use cases", () => {
     );
     await expect(
       listCurrentUserSalesSessions(pos, { organizationId, userId }),
-    ).resolves.toEqual([expect.objectContaining({ openedByUserId: userId })]);
+    ).resolves.toEqual(pos.sessions);
+    await expect(
+      listCurrentUserSalesSessions(pos, {
+        organizationId: otherOrganizationId,
+        userId,
+      }),
+    ).resolves.toEqual([]);
   });
 
-  it("rejects every cart mutation from another cashier in the organization", async () => {
+  it("rejects every cart mutation from another organization", async () => {
     const pos = new FakePos();
     pos.cart = {
       createdAt: new Date(),
@@ -92,6 +100,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -100,7 +110,8 @@ describe("offline POS use cases", () => {
         { inventory: {} as never, pos },
         {
           cartId: branchId,
-          organizationId,
+          expectedVersion: 1,
+          organizationId: otherOrganizationId,
           productVariantId: variantId,
           quantity: 1,
           userId: otherUserId,
@@ -110,8 +121,9 @@ describe("offline POS use cases", () => {
     await expect(
       updatePosCartItem(pos, {
         cartId: branchId,
+        expectedVersion: 1,
         itemId: variantId,
-        organizationId,
+        organizationId: otherOrganizationId,
         quantity: 2,
         userId: otherUserId,
       }),
@@ -119,8 +131,9 @@ describe("offline POS use cases", () => {
     await expect(
       removePosCartItem(pos, {
         cartId: branchId,
+        expectedVersion: 1,
         itemId: variantId,
-        organizationId,
+        organizationId: otherOrganizationId,
         userId: otherUserId,
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -235,6 +248,8 @@ describe("offline POS use cases", () => {
       lines: [],
       organizationId,
       salesSessionId: userId,
+      status: "ACTIVE",
+      version: 1,
       sessionStatus: "OPEN",
       updatedAt: new Date(),
     };
@@ -254,6 +269,7 @@ describe("offline POS use cases", () => {
       },
       {
         cartId: branchId,
+        expectedVersion: 1,
         organizationId,
         productVariantId: variantId,
         quantity: 3,
@@ -342,20 +358,18 @@ class FakePos implements PosRepository {
   openSession(record: Parameters<PosRepository["openSession"]>[0]) {
     return Promise.resolve(session(record));
   }
-  findCartById(id: string, org: string, openedByUserId: string) {
+  findCartById(id: string, org: string, _userId: string) {
+    void _userId;
     return Promise.resolve(
-      this.cart?.id === id &&
-        this.cart.organizationId === org &&
-        this.cartOwnerId === openedByUserId
+      this.cart?.id === id && this.cart.organizationId === org
         ? this.cart
         : null,
     );
   }
-  findCartDetailsById(id: string, org: string, openedByUserId: string) {
+  findCartDetailsById(id: string, org: string, _userId: string) {
+    void _userId;
     return Promise.resolve(
-      this.cartDetails?.id === id &&
-        this.cartDetails.organizationId === org &&
-        this.cartOwnerId === openedByUserId
+      this.cartDetails?.id === id && this.cartDetails.organizationId === org
         ? this.cartDetails
         : null,
     );
@@ -385,13 +399,11 @@ class FakePos implements PosRepository {
   listSessions() {
     return Promise.resolve([]);
   }
-  listOpenSessionsByUser(org: string, openedByUserId: string) {
+  listOpenSessionsByUser(org: string, _userId: string) {
+    void _userId;
     return Promise.resolve(
       this.sessions.filter(
-        (item) =>
-          item.organizationId === org &&
-          item.openedByUserId === openedByUserId &&
-          item.status === "OPEN",
+        (item) => item.organizationId === org && item.status === "OPEN",
       ),
     );
   }
@@ -432,6 +444,7 @@ function session(
     id: userId,
     openedAt: now,
     openedByUserId: record.openedByUserId,
+    openingFloatMinor: record.openingFloatMinor ?? 0,
     organizationId: record.organizationId,
     status: "OPEN",
     updatedAt: now,
