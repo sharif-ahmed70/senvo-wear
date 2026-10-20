@@ -15,6 +15,7 @@ import styles from "./stock-intake-wizard.module.css";
 export const MAX_PRINT_LABELS = 1000;
 
 type CopyMode = "perPiece" | "perVariant";
+type PrintTarget = "label" | "sheet";
 
 export function labelCopies(
   variants: StockIntakeContract["variants"],
@@ -43,6 +44,7 @@ export function IntakeBarcodeLabels({
 }) {
   const [mode, setMode] = useState<CopyMode>("perPiece");
   const [labelSize, setLabelSize] = useState<LabelSize>("40x30");
+  const [target, setTarget] = useState<PrintTarget>("label");
   const labels = useMemo(() => labelCopies(variants, mode), [mode, variants]);
   const wanted = variants
     .filter((variant) => variant.barcode)
@@ -58,6 +60,10 @@ export function IntakeBarcodeLabels({
 
   return (
     <section aria-label="Barcode label print" className={styles.supplierPanel}>
+      {target === "label" ? (
+        // Page = one label, so a roll printer feeds one label per page.
+        <style>{`@page { size: ${size.width}mm ${size.height}mm; margin: 0; }`}</style>
+      ) : null}
       <div className={styles.addRow} style={{ alignItems: "end" }}>
         <fieldset className={styles.segmented}>
           <legend>কতগুলো label</legend>
@@ -91,6 +97,16 @@ export function IntakeBarcodeLabels({
             <option value="50x40">50mm × 40mm</option>
           </select>
         </label>
+        <label className={styles.field}>
+          Print on
+          <select
+            onChange={(event) => setTarget(event.target.value as PrintTarget)}
+            value={target}
+          >
+            <option value="label">Label printer (1 label per page)</option>
+            <option value="sheet">A4 sheet (many labels per page)</option>
+          </select>
+        </label>
         <button
           className={styles.primaryButton}
           disabled={labels.length === 0}
@@ -110,7 +126,12 @@ export function IntakeBarcodeLabels({
       {labels.length === 0 ? (
         <p className={styles.hint}>এই মালের কোনো barcode পাওয়া যায়নি।</p>
       ) : (
-        <div className={labelStyles.printArea} style={printStyle}>
+        <div
+          className={`${labelStyles.printArea}${
+            target === "label" ? ` ${labelStyles.rollPrint}` : ""
+          }`}
+          style={printStyle}
+        >
           {labels.map((item) => (
             <article className={labelStyles.label} key={item.copyKey}>
               <strong>{productName}</strong>

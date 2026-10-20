@@ -142,16 +142,16 @@ function reconstruct(
 }
 
 /**
- * CODE128 value format shared with the Admin barcode generation workflow.
+ * CODE128 value shared with the Admin barcode generation workflow: 12 digits.
+ * An even number of digits is encoded as Code 128 set C, so the printed
+ * barcode is short enough to stay readable on a 40 mm label.
  */
 export function generateCode128BarcodeValue(): string {
-  const time = Date.now().toString(36).toUpperCase();
-  const random = crypto
-    .randomUUID()
-    .replaceAll("-", "")
-    .slice(0, 12)
-    .toUpperCase();
-  return `SV-${time}-${random}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  // First digit 1-9 so the value never loses a leading zero in spreadsheets.
+  return Array.from(bytes, (byte, index) =>
+    index === 0 ? (byte % 9) + 1 : byte % 10,
+  ).join("");
 }
 
 export function normalizeIntakeName(value: string): string {

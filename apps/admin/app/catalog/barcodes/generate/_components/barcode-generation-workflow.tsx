@@ -961,13 +961,19 @@ function PrintStep({
 }
 
 export function Code128Barcode({ value }: { value: string }) {
-  const encoded = useMemo(() => encodeCode128B(value), [value]);
+  const encoded = useMemo(() => encodeCode128(value), [value]);
   return (
     <svg
       aria-label={`CODE128 barcode ${value}`}
       className={styles.barcodeSvg}
       preserveAspectRatio="none"
       role="img"
+      style={
+        // Short (set C) codes print at an exact dot-aligned width.
+        encoded.mode === "C"
+          ? { width: `${(encoded.width * BARCODE_MODULE_MM).toFixed(2)}mm` }
+          : undefined
+      }
       viewBox={`0 0 ${encoded.width} 50`}
     >
       <rect fill="#fff" height="50" width={encoded.width} x="0" y="0" />
@@ -1100,13 +1106,11 @@ async function createBarcodeWithConflictRetry(
 }
 
 function generateCode128Value() {
-  const time = Date.now().toString(36).toUpperCase();
-  const random = crypto
-    .randomUUID()
-    .replaceAll("-", "")
-    .slice(0, 12)
-    .toUpperCase();
-  return `SV-${time}-${random}`;
+  // 12 digits: encoded as Code 128 set C so it stays short on small labels.
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, (byte, index) =>
+    index === 0 ? (byte % 9) + 1 : byte % 10,
+  ).join("");
 }
 
 const code128Patterns = [
@@ -1219,17 +1223,24 @@ const code128Patterns = [
   "2331112",
 ] as const;
 
-function encodeCode128B(value: string) {
+/**
+ * Code 128 encoder. Even-length all-digit values use set C (two digits per
+ * symbol, about half the width); everything else uses set B.
+ */
+export function encodeCode128(value: string) {
   const safeValue = Array.from(value)
     .filter((character) => {
       const code = character.charCodeAt(0);
       return code >= 32 && code <= 126;
     })
     .join("");
-  const codes = Array.from(safeValue).map(
-    (character) => character.charCodeAt(0) - 32,
-  );
-  const startCode = 104;
+  const useSetC = safeValue.length >= 2 && /^(?:\d\d)+$/u.test(safeValue);
+  const codes = useSetC
+    ? Array.from({ length: safeValue.length / 2 }, (_, index) =>
+        Number(safeValue.slice(index * 2, index * 2 + 2)),
+      )
+    : Array.from(safeValue).map((character) => character.charCodeAt(0) - 32);
+  const startCode = useSetC ? 105 : 104;
   const checksum =
     (startCode +
       codes.reduce((sum, code, index) => sum + code * (index + 1), 0)) %
@@ -1249,8 +1260,18 @@ function encodeCode128B(value: string) {
     }
   }
 
-  return { bars, width: x + quiet };
+  return {
+    bars,
+    mode: useSetC ? ("C" as const) : ("B" as const),
+    width: x + quiet,
+  };
 }
+
+/**
+ * One barcode module = 2 printer dots at 203 dpi (25.4 mm * 2 / 203). A whole
+ * number of dots per module keeps thermal-printed bars sharp and scannable.
+ */
+export const BARCODE_MODULE_MM = 0.2502;
 
 export function dimensionsFor(size: LabelSize) {
   if (size === "50x30") return { height: 30, width: 50 };
