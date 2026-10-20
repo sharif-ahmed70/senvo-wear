@@ -175,6 +175,7 @@ describe("guided POS selling components", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue={false}
+        canDiscount={false}
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}
@@ -194,6 +195,7 @@ describe("guided POS selling components", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue
+        canDiscount
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}
@@ -204,10 +206,29 @@ describe("guided POS selling components", () => {
     expect(html).toContain("Allow a remaining balance");
   });
 
+  it("offers a discount only to roles allowed to approve one", () => {
+    const render = (canDiscount: boolean) =>
+      renderToStaticMarkup(
+        <PaymentPanel
+          canApproveDue={false}
+          canDiscount={canDiscount}
+          onCancel={() => undefined}
+          onComplete={() => undefined}
+          submitting={false}
+          totalMinor={250000}
+        />,
+      );
+    expect(render(true)).toContain("Discount on the whole sale (Optional)");
+    expect(render(true)).toContain("Percent (%)");
+    expect(render(true)).toContain("Amount (Tk)");
+    expect(render(false)).not.toContain("Discount on the whole sale");
+  });
+
   it("renders optional customer details capture fields in payment panel", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue={false}
+        canDiscount={false}
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}

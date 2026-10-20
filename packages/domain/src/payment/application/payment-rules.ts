@@ -178,8 +178,14 @@ export function calculatePaymentBalance(
 export function createPaymentRequestSignature(
   payments: readonly PaymentInstruction[],
   allowOutstanding: boolean,
+  discount?: string | null,
 ): string {
-  return JSON.stringify({ allowOutstanding, payments });
+  // Without a discount the signature is unchanged, so earlier checkouts replay.
+  return JSON.stringify(
+    discount
+      ? { allowOutstanding, discount, payments }
+      : { allowOutstanding, payments },
+  );
 }
 
 export function createPaymentCollectionRequestSignature(

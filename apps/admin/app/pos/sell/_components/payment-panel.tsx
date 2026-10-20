@@ -21,6 +21,7 @@ import {
   type PaymentDraft,
 } from "../_lib/checkout-attempt";
 import { formatBdt, parseTaka, takaInput } from "../_lib/money";
+import { parseDiscount, type DiscountMode } from "../_lib/discount";
 
 export function computeQuickCashAmounts(dueMinor: number): number[] {
   if (dueMinor <= 0) return [];
@@ -82,12 +83,14 @@ function PaymentMethodIcon({ method }: { method: PaymentMethodContract }) {
 
 export function PaymentPanel({
   canApproveDue,
+  canDiscount,
   onCancel,
   onComplete,
   submitting,
   totalMinor,
 }: {
   canApproveDue: boolean;
+  canDiscount: boolean;
   onCancel: () => void;
   onComplete: (
     payload: Omit<
@@ -107,8 +110,28 @@ export function PaymentPanel({
   const [tenderedMap, setTenderedMap] = useState<Record<string, string>>({});
   const [allowOutstanding, setAllowOutstanding] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [discountMode, setDiscountMode] = useState<DiscountMode>("NONE");
+  const [discountText, setDiscountText] = useState("");
+  const discount = useMemo(
+    () => parseDiscount(discountMode, discountText, totalMinor),
+    [discountMode, discountText, totalMinor],
+  );
+  const discountMinor = discount.ok ? discount.discountMinor : 0;
+  const payableMinor = totalMinor - discountMinor;
   const enteredMinor = useMemo(() => paymentTotal(drafts), [drafts]);
-  const remainingMinor = remainingPayment(totalMinor, enteredMinor);
+  const remainingMinor = remainingPayment(payableMinor, enteredMinor);
+
+  function changeDiscount(mode: DiscountMode, text: string) {
+    setDiscountMode(mode);
+    setDiscountText(text);
+    const next = parseDiscount(mode, text, totalMinor);
+    const payable = totalMinor - (next.ok ? next.discountMinor : 0);
+    // The payment must follow the new payable amount.
+    setDrafts([newDraft(takaInput(payable), drafts[0]?.method ?? "CASH")]);
+    setTenderedMap({});
+    setAllowOutstanding(false);
+    setErrors({});
+  }
 
   function update(id: string, patch: Partial<PaymentDraft>) {
     setDrafts((current) =>
@@ -120,7 +143,7 @@ export function PaymentPanel({
   }
 
   function chooseFullPayment(method: PaymentMethodContract) {
-    setDrafts([newDraft(takaInput(totalMinor), method)]);
+    setDrafts([newDraft(takaInput(payableMinor), method)]);
     setTenderedMap({});
     setAllowOutstanding(false);
     setErrors({});
@@ -133,7 +156,11 @@ export function PaymentPanel({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const validation = validatePayments(drafts, totalMinor, allowOutstanding);
+    if (!discount.ok) {
+      setErrors({ discount: discount.error });
+      return;
+    }
+    const validation = validatePayments(drafts, payableMinor, allowOutstanding);
     if (!validation.ok) {
       setErrors(validation.errors);
       const form = event.currentTarget;
@@ -179,6 +206,7 @@ export function PaymentPanel({
     onComplete({
       allowOutstanding,
       ...(customer ? { customer } : {}),
+      ...(discount.request ? { discount: discount.request } : {}),
       payments: validation.payments,
     });
   }
@@ -204,8 +232,15 @@ export function PaymentPanel({
       <form onSubmit={submit}>
         <section aria-label="Payment balance" className="pos-payment-summary">
           <div>
-            <span>Order total</span>
-            <strong>{formatBdt(totalMinor)}</strong>
+            <span>
+              {discountMinor > 0 ? "Total after discount" : "Order total"}
+            </span>
+            <strong>{formatBdt(payableMinor)}</strong>
+            {discountMinor > 0 ? (
+              <small>
+                {formatBdt(totalMinor)} − {formatBdt(discountMinor)} discount
+              </small>
+            ) : null}
           </div>
           <div>
             <span>Payment entered</span>
@@ -220,6 +255,81 @@ export function PaymentPanel({
             <strong>{formatBdt(remainingMinor)}</strong>
           </div>
         </section>
+
+        {canDiscount ? (
+          <section
+            aria-labelledby="discount-title"
+            className="pos-discount-section"
+          >
+            <div className="pos-payment-section-heading">
+              <div>
+                <span>Discount</span>
+                <h3 id="discount-title">
+                  Discount on the whole sale (Optional)
+                </h3>
+              </div>
+              <small>
+                Item discounts are set on each item in the order. This one comes
+                off the rest of the sale.
+              </small>
+            </div>
+            <div className="pos-discount-controls">
+              <div
+                aria-label="Discount type"
+                className="pos-discount-modes"
+                role="group"
+              >
+                {(
+                  [
+                    ["NONE", "No discount"],
+                    ["PERCENT", "Percent (%)"],
+                    ["AMOUNT", "Amount (Tk)"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    aria-pressed={discountMode === mode}
+                    disabled={submitting}
+                    key={mode}
+                    onClick={() =>
+                      changeDiscount(mode, mode === "NONE" ? "" : discountText)
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {discountMode !== "NONE" ? (
+                <label>
+                  {discountMode === "PERCENT"
+                    ? "Discount percentage"
+                    : "Discount amount (Tk)"}
+                  <input
+                    aria-invalid={!discount.ok}
+                    disabled={submitting}
+                    inputMode="decimal"
+                    name="discount"
+                    onChange={(event) =>
+                      changeDiscount(discountMode, event.target.value)
+                    }
+                    placeholder={
+                      discountMode === "PERCENT" ? "e.g. 10" : "e.g. 200"
+                    }
+                    value={discountText}
+                  />
+                  {!discount.ok ? (
+                    <small className="pos-field-error">{discount.error}</small>
+                  ) : discountMinor > 0 ? (
+                    <small>
+                      Customer saves {formatBdt(discountMinor)}. New total{" "}
+                      {formatBdt(payableMinor)}.
+                    </small>
+                  ) : null}
+                </label>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section
           aria-labelledby="customer-info-title"

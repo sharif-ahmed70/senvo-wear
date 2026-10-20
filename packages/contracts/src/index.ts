@@ -3629,11 +3629,37 @@ export const posCheckoutCustomerInputSchema = z
   })
   .strict();
 
+export const posCheckoutDiscountInputSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("AMOUNT"),
+      amountMinor: minorUnitAmountSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("PERCENT"),
+      basisPoints: z.number().int().min(1).max(10_000),
+    })
+    .strict(),
+]);
 export const checkoutPosCartServiceInputSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     customer: posCheckoutCustomerInputSchema.nullable().optional(),
+    discount: posCheckoutDiscountInputSchema.nullable().optional(),
+    lineDiscounts: z
+      .array(
+        z
+          .object({
+            discount: posCheckoutDiscountInputSchema,
+            productVariantId: idSchema,
+          })
+          .strict(),
+      )
+      .max(500)
+      .optional(),
     idempotencyKey: z
       .string()
       .trim()
@@ -5204,7 +5230,13 @@ export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
 // Reports: admin dashboard
 // ---------------------------------------------------------------------------
 
-export const getDashboardSummaryServiceInputSchema = z.object({}).strict();
+/** Optional business-date period (YYYY-MM-DD, Asia/Dhaka); default today. */
+export const getDashboardSummaryServiceInputSchema = z
+  .object({
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+  })
+  .strict();
 export type GetDashboardSummaryServiceInputContract = z.infer<
   typeof getDashboardSummaryServiceInputSchema
 >;
@@ -5258,6 +5290,53 @@ export const dashboardSummaryContractSchema = z
               .strict(),
           )
           .length(7),
+        /** The picked period. Profit is estimated (see the domain notes). */
+        period: z
+          .object({
+            averageSaleMinor: dashboardMinorSchema,
+            channels: z.array(
+              z
+                .object({
+                  channel: salesOrderChannelSchema,
+                  previousPeriodMinor: dashboardMinorSchema,
+                  salesMinor: dashboardMinorSchema,
+                })
+                .strict(),
+            ),
+            costMinor: dashboardMinorSchema,
+            daily: z
+              .array(
+                z
+                  .object({
+                    date: calendarDateSchema,
+                    profitMinor: z.number().int(),
+                    salesMinor: dashboardMinorSchema,
+                  })
+                  .strict(),
+              )
+              .max(366),
+            from: calendarDateSchema,
+            previousSalesMinor: dashboardMinorSchema,
+            profitMinor: z.number().int(),
+            refundsMinor: dashboardMinorSchema,
+            saleCount: dashboardCountSchema,
+            salesMinor: dashboardMinorSchema,
+            to: calendarDateSchema,
+            topProducts: z
+              .array(
+                z
+                  .object({
+                    name: z.string(),
+                    productId: idSchema,
+                    quantity: dashboardCountSchema,
+                    revenueMinor: dashboardMinorSchema,
+                  })
+                  .strict(),
+              )
+              .max(5),
+            uncostedSalesMinor: dashboardMinorSchema,
+          })
+          .strict(),
         refundsTodayMinor: dashboardMinorSchema,
         todaySaleCount: dashboardCountSchema,
         todaySalesMinor: dashboardMinorSchema,

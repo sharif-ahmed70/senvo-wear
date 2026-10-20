@@ -156,6 +156,9 @@ export function ReceiptDocument({
                       .filter(Boolean)
                       .join(" | ")}
                   </span>
+                  {line.discountMinor > 0 ? (
+                    <span>Discount −{money(line.discountMinor)}</span>
+                  ) : null}
                 </td>
                 <td>{line.quantity}</td>
                 <td>{money(line.unitPriceMinor)}</td>
@@ -170,11 +173,27 @@ export function ReceiptDocument({
         <dl>
           <div>
             <dt>Subtotal</dt>
-            <dd>{money(receipt.subtotalMinor)}</dd>
+            <dd>
+              {money(
+                receipt.subtotalMinor +
+                  receipt.lines.reduce(
+                    (sum, line) => sum + line.discountMinor,
+                    0,
+                  ),
+              )}
+            </dd>
           </div>
           <div>
             <dt>Discount</dt>
-            <dd>{money(receipt.discountMinor)}</dd>
+            <dd>
+              {money(
+                receipt.discountMinor +
+                  receipt.lines.reduce(
+                    (sum, line) => sum + line.discountMinor,
+                    0,
+                  ),
+              )}
+            </dd>
           </div>
           <div>
             <dt>Delivery</dt>

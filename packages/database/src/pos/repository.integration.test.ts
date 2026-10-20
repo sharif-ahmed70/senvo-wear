@@ -107,6 +107,64 @@ describeWithDatabase("Prisma offline POS repository", () => {
     expect(await prisma.posCheckoutRecord.count()).toBe(1);
   });
 
+  it("stores a cashier discount on the order lines, receipt and payable total", async () => {
+    const base = await seedCheckout("DISCOUNT", 5, 2);
+    const discountMinor = Math.round(base.totalMinor * 0.1);
+    const result = await completeCheckout(base, "discount-sale", {
+      discount: { kind: "PERCENT", basisPoints: 1000 },
+      payments: [
+        { amountMinor: base.totalMinor - discountMinor, method: "CASH" },
+      ],
+    });
+    expect(result.checkout).toMatchObject({
+      paidMinor: base.totalMinor - discountMinor,
+      paymentStatus: "PAID",
+      totalMinor: base.totalMinor - discountMinor,
+    });
+    const order = await prisma.salesOrder.findFirstOrThrow({
+      include: { lines: true },
+      where: { organizationId: base.organization.id },
+    });
+    expect(order.totalMinor).toBe(base.totalMinor - discountMinor);
+    expect(order.lines.reduce((sum, line) => sum + line.discountMinor, 0)).toBe(
+      discountMinor,
+    );
+    const receipt = await prisma.salesReceipt.findFirstOrThrow({
+      include: { lines: true },
+      where: { organizationId: base.organization.id },
+    });
+    expect(receipt.totalMinor).toBe(base.totalMinor - discountMinor);
+    expect(
+      receipt.lines.reduce((sum, line) => sum + line.discountMinor, 0),
+    ).toBe(discountMinor);
+  });
+
+  it("combines an item discount with a sale discount", async () => {
+    const base = await seedCheckout("ITEM-DISCOUNT", 5, 2);
+    const itemMinor = 500;
+    const saleMinor = Math.round((base.totalMinor - itemMinor) * 0.1);
+    const payable = base.totalMinor - itemMinor - saleMinor;
+    const result = await completeCheckout(base, "item-discount-sale", {
+      discount: { kind: "PERCENT", basisPoints: 1000 },
+      lineDiscounts: [
+        {
+          discount: { kind: "AMOUNT", amountMinor: itemMinor },
+          productVariantId: base.variant.id,
+        },
+      ],
+      payments: [{ amountMinor: payable, method: "CASH" }],
+    });
+    expect(result.checkout).toMatchObject({
+      paidMinor: payable,
+      totalMinor: payable,
+    });
+    const order = await prisma.salesOrder.findFirstOrThrow({
+      include: { lines: true },
+      where: { organizationId: base.organization.id },
+    });
+    expect(order.lines[0]?.discountMinor).toBe(itemMinor + saleMinor);
+  });
+
   it("keeps three sales by two sellers in one daily session and settles the whole day", async () => {
     const base = await seedCheckout("DAY", 8, 1);
     const staff = await seedOrganizationMember(
@@ -1770,6 +1828,13 @@ async function completeCheckout(
   idempotencyKey: string,
   options: {
     allowOutstanding?: boolean;
+    discount?:
+      | { kind: "AMOUNT"; amountMinor: number }
+      | { kind: "PERCENT"; basisPoints: number };
+    lineDiscounts?: readonly {
+      discount: { kind: "AMOUNT"; amountMinor: number };
+      productVariantId: string;
+    }[];
     payments?: readonly {
       amountMinor: number;
       method: "BANK_TRANSFER" | "CARD" | "CASH" | "MOBILE_BANKING";
@@ -1803,7 +1868,10 @@ async function completeCheckout(
         {
           expectedVersion: 2,
           allowOutstanding: options.allowOutstanding ?? false,
+          approveDiscount: () => Promise.resolve(),
           approveOutstanding: () => Promise.resolve(),
+          discount: options.discount,
+          lineDiscounts: options.lineDiscounts,
           cartId: base.session.cartId,
           checkoutId: crypto.randomUUID(),
           completedAt: new Date("2026-08-03T10:00:00.000Z"),
