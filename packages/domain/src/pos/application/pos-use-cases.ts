@@ -229,10 +229,12 @@ export async function lookupPosSale(
   input: { organizationId: string; value: string },
 ): Promise<PosSaleLookup> {
   const organizationId = assertId(input.organizationId, "organizationId");
-  const barcode = await repositories.barcodes.lookupActive(
-    organizationId,
-    input.value.trim().toUpperCase(),
-  );
+  const value = input.value.trim().toUpperCase();
+  // A scanner sends the barcode value; a person can also type the exact SKU.
+  const barcode =
+    (await repositories.barcodes.lookupActive(organizationId, value)) ??
+    (await repositories.barcodes.lookupActiveBySku?.(organizationId, value)) ??
+    null;
   if (!barcode || barcode.variantStatus !== "ACTIVE")
     throw new NotFoundError("Sellable barcode was not found.");
   const availability = await repositories.inventory.getVariantAvailability({

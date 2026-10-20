@@ -95,6 +95,29 @@ export class PrismaBarcodeRepository implements BarcodeRepository {
     return record ? mapLookup(record) : null;
   }
 
+  async lookupActiveBySku(
+    organizationId: string,
+    sku: string,
+  ): Promise<BarcodeLookupResult | null> {
+    const record = await this.prisma.variantBarcode.findFirst({
+      include: {
+        productVariant: {
+          include: { color: true, product: true, size: true },
+        },
+      },
+      where: {
+        organizationId,
+        status: "ACTIVE",
+        productVariant: {
+          sku: { equals: sku, mode: "insensitive" },
+          status: "ACTIVE",
+          product: { status: "ACTIVE" },
+        },
+      },
+    });
+    return record ? mapLookup(record) : null;
+  }
+
   async updateStatus(record: {
     id: string;
     organizationId: string;

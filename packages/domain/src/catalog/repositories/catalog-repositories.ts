@@ -31,6 +31,11 @@ export type BarcodeRepository = {
     organizationId: string,
     value: string,
   ): Promise<BarcodeLookupResult | null>;
+  /** Finds the active barcode of a sellable variant by its exact SKU. */
+  lookupActiveBySku?(
+    organizationId: string,
+    sku: string,
+  ): Promise<BarcodeLookupResult | null>;
   updateStatus(record: {
     id: string;
     organizationId: string;

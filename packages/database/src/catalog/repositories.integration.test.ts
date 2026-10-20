@@ -796,6 +796,22 @@ describeWithDatabase("Prisma catalog repositories", () => {
     await expect(
       repositories.barcodes.lookupActive(second.organization.id, active.value),
     ).resolves.toBeNull();
+    // Fixture products start as DRAFT; only ACTIVE products are sellable.
+    await prisma.product.update({
+      data: { status: "ACTIVE" },
+      where: { id: first.product.id },
+    });
+    const bySku = await repositories.barcodes.lookupActiveBySku?.(
+      first.organization.id,
+      first.variant.sku.toLowerCase(),
+    );
+    expect(bySku?.barcode.value).toBe(active.value);
+    await expect(
+      repositories.barcodes.lookupActiveBySku?.(
+        second.organization.id,
+        first.variant.sku,
+      ),
+    ).resolves.toBeNull();
     await expect(
       repositories.barcodes.updateStatus({
         id: active.id,

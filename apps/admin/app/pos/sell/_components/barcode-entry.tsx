@@ -18,7 +18,7 @@ export function BarcodeEntry({
 }) {
   return (
     <form className="pos-scan" onSubmit={onSubmit}>
-      <label htmlFor="pos-scan-code">Scan barcode or enter code</label>
+      <label htmlFor="pos-scan-code">Scan barcode or type SKU</label>
       <div className="pos-scan__control">
         <ScanBarcode aria-hidden="true" size={22} />
         <input
@@ -28,7 +28,7 @@ export function BarcodeEntry({
           id="pos-scan-code"
           maxLength={80}
           onChange={(event) => onValueChange(event.target.value)}
-          placeholder="Scan or type, then press Enter"
+          placeholder="Scan, or type the full SKU, then press Enter"
           ref={inputRef}
           value={value}
         />

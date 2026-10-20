@@ -29,7 +29,8 @@ describe("cashier-safe POS errors", () => {
     expect(
       friendlyPosError(error("NOT_FOUND.RESOURCE"), "lookup"),
     ).toMatchObject({
-      message: "No product was found for this barcode.",
+      message:
+        "No product was found for this barcode or SKU. Scan the label or type the full SKU.",
       uncertain: false,
     });
   });

@@ -50,7 +50,7 @@ export function friendlyPosError(
       "The payment details changed after this sale attempt. Review them before trying again.",
     "NOT_FOUND.RESOURCE":
       operation === "lookup"
-        ? "No product was found for this barcode."
+        ? "No product was found for this barcode or SKU. Scan the label or type the full SKU."
         : "This sale is no longer available. Start a new sale or refresh the page.",
     "VALIDATION.INVALID_INPUT":
       "Check the highlighted information and try again.",
