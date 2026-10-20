@@ -676,7 +676,7 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
   if (handlers.reporting) {
     routes.push({
       handler: handlers.reporting.getDashboardSummary,
-      input: emptyInput,
+      input: queryInput,
       method: "GET",
       path: /^\/reports\/dashboard$/u,
       successStatus: 200,

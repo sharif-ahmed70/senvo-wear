@@ -33,9 +33,10 @@ const amountFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 0,
 });
 
-/** Integer poisha → "৳ 1,250" (display only). */
+/** Integer poisha → "৳ 1,250" or "−৳ 1,250" (display only). */
 export function formatMinor(minor: number): string {
-  return `৳ ${amountFormatter.format(minor / 100)}`;
+  const text = `৳ ${amountFormatter.format(Math.abs(minor) / 100)}`;
+  return minor < 0 ? `−${text}` : text;
 }
 
 /** "+18.6%", "−4.0%", "New" when the earlier period was zero, "—" when both are zero. */
@@ -88,36 +89,54 @@ export function dashboardModelFromSummary(
   const firstSession = attention.openSessions[0];
 
   const metrics: DashboardMetric[] = [];
-  if (financials) {
-    const average =
-      financials.todaySaleCount > 0
-        ? Math.round(financials.todaySalesMinor / financials.todaySaleCount)
-        : 0;
+  const period = financials?.period;
+  const periodText = period
+    ? periodLabel(period.from, period.to, summary.businessDate)
+    : "Today";
+  if (period) {
+    const costedSales = period.profitMinor + period.costMinor;
     metrics.push(
       {
-        label: "Today’s sales",
-        meta: `${changeLabel(financials.todaySalesMinor, financials.yesterdaySalesMinor)} vs yesterday`,
-        value: formatMinor(financials.todaySalesMinor),
+        href: "/sales/orders",
+        label: "Sales",
+        meta: `${changeLabel(period.salesMinor, period.previousSalesMinor)} vs previous period`,
+        value: formatMinor(period.salesMinor),
       },
       {
-        label: "Today’s sales count",
+        href: "/sales/orders",
+        label: "Profit (estimated)",
+        meta:
+          period.uncostedSalesMinor > 0
+            ? `${formatMinor(period.uncostedSalesMinor)} of sales has no cost yet`
+            : costedSales > 0
+              ? `${((period.profitMinor / costedSales) * 100).toFixed(1)}% margin`
+              : "No costed sales",
+        tone: period.profitMinor < 0 ? "attention" : "default",
+        value: formatMinor(period.profitMinor),
+      },
+      {
+        href: "/pos/checkouts",
+        label: "Sales count",
         meta: "Confirmed and fulfilled",
-        value: String(financials.todaySaleCount),
+        value: String(period.saleCount),
       },
       {
+        href: "/pos/checkouts",
         label: "Average sale value",
-        meta: "Today",
-        value: formatMinor(average),
+        meta: periodText,
+        value: formatMinor(period.averageSaleMinor),
       },
       {
-        label: "Refunds today",
+        href: "/pos/checkouts",
+        label: "Refunds",
         meta: "Shown separately, not deducted",
-        value: formatMinor(financials.refundsTodayMinor),
+        value: formatMinor(period.refundsMinor),
       },
     );
   }
   metrics.push(
     {
+      href: "/pos/sessions",
       label: "Open sessions",
       meta: firstSession
         ? `${firstSession.counterName} is open`
@@ -125,6 +144,7 @@ export function dashboardModelFromSummary(
       value: String(attention.openSessions.length),
     },
     {
+      href: "/inventory",
       label: "Low stock variants",
       meta: `${attention.outOfStockVariants} out of stock`,
       tone: attention.lowStockVariants > 0 ? "attention" : "default",
@@ -199,27 +219,56 @@ export function dashboardModelFromSummary(
     },
     metrics,
     orders,
+    periodLabel: periodText,
   };
 
-  if (financials) {
+  if (financials && period) {
+    // A single day has no trend of its own, so show the 7 days up to today.
+    const series =
+      period.daily.length > 1
+        ? period.daily
+        : financials.last7Days.map((day) => ({ ...day, profitMinor: 0 }));
     model.chart = {
-      labels: financials.last7Days.map((day) => dayLabel(day.date)),
-      values: financials.last7Days.map((day) => day.salesMinor),
+      labels: series.map((day) => dayLabel(day.date)),
+      values: series.map((day) => day.salesMinor),
     };
-    model.channels = financials.channels.map((channel) => ({
+    model.chartLabel = period.daily.length > 1 ? periodText : "Last 7 days";
+    model.channels = period.channels.map((channel) => ({
       ...channelCards[channel.channel],
       amount: formatMinor(channel.salesMinor),
       change: changeLabel(channel.salesMinor, channel.previousPeriodMinor),
+      href: "/sales/orders",
     }));
-    model.products = financials.topProducts.map((product) => ({
+    model.products = period.topProducts.map((product) => ({
+      href: `/catalog/products/${product.productId}`,
       label: product.name,
-      meta: "Last 7 days",
+      meta: periodText,
       revenue: formatMinor(product.revenueMinor),
       sold: `${product.quantity} sold`,
     }));
-    model.revenueTotal = formatMinor(
-      financials.channels.reduce((sum, channel) => sum + channel.salesMinor, 0),
-    );
+    model.revenueTotal = formatMinor(period.salesMinor);
   }
   return model;
+}
+
+/** "Today", "Yesterday", "20 Oct 2026" or "1 Oct – 7 Oct 2026". */
+export function periodLabel(from: string, to: string, today: string): string {
+  const yesterday = new Date(Date.parse(`${today}T00:00:00.000Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  if (from === to) {
+    if (from === today) return "Today";
+    if (from === yesterday) return "Yesterday";
+    return shortDate(from, true);
+  }
+  return `${shortDate(from, from.slice(0, 4) !== to.slice(0, 4))} – ${shortDate(to, true)}`;
+}
+
+function shortDate(date: string, withYear: boolean): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    ...(withYear ? { year: "numeric" } : {}),
+  }).format(new Date(`${date}T00:00:00.000Z`));
 }

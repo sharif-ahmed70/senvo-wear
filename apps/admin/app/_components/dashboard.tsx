@@ -11,9 +11,11 @@ import {
   TentTree,
 } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import styles from "./dashboard.module.css";
 
 export type DashboardMetric = {
+  href?: string;
   label: string;
   value: string;
   meta: string;
@@ -31,6 +33,7 @@ export type DashboardAttentionItem = {
 export type DashboardChannel = {
   amount: string;
   change: string;
+  href?: string;
   kind: "store" | "online" | "booth";
   label: string;
 };
@@ -46,6 +49,7 @@ export type DashboardOrder = {
 };
 
 export type DashboardProduct = {
+  href?: string;
   label: string;
   meta: string;
   revenue: string;
@@ -69,6 +73,8 @@ export type DashboardModel = {
     values: number[];
   };
   channels?: DashboardChannel[];
+  /** What the chart covers, e.g. "Last 7 days" or the picked period. */
+  chartLabel?: string;
   dateLabel: string;
   greetingName: string;
   inventory: {
@@ -78,6 +84,8 @@ export type DashboardModel = {
   };
   metrics: DashboardMetric[];
   orders: DashboardOrder[];
+  /** The picked period, e.g. "Today" or "1 Oct – 7 Oct 2026". */
+  periodLabel?: string;
   products?: DashboardProduct[];
   revenueTotal?: string;
 };
@@ -95,7 +103,14 @@ const channelIcons = {
   store: Store,
 } as const;
 
-export function AdminDashboard({ model }: { model: DashboardModel }) {
+export function AdminDashboard({
+  model,
+  toolbar,
+}: {
+  model: DashboardModel;
+  /** Controls shown under the heading, such as the period picker. */
+  toolbar?: ReactNode;
+}) {
   return (
     <div className={styles.dashboard}>
       <header className={styles.hero}>
@@ -112,11 +127,16 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
           <span>Live operational view</span>
         </div>
       </header>
+      {toolbar}
 
-      <section className={styles.metrics} aria-label="Today at a glance">
+      <section
+        className={styles.metrics}
+        aria-label={`${model.periodLabel ?? "Today"} at a glance`}
+      >
         {model.metrics.map((metric, index) => (
-          <article
-            className={`${styles.metricCard} ${metric.tone === "attention" ? styles.metricAttention : ""}`}
+          <MetricCard
+            className={`${styles.metricCard} ${metric.href ? styles.metricLink : ""} ${metric.tone === "attention" ? styles.metricAttention : ""}`}
+            href={metric.href}
             key={metric.label}
           >
             <div className={styles.metricTopline}>
@@ -139,14 +159,17 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
             </div>
             <strong>{metric.value}</strong>
             <span className={styles.metricMeta}>{metric.meta}</span>
-          </article>
+          </MetricCard>
         ))}
       </section>
 
       <section className={styles.primaryGrid}>
         {model.chart ? (
           <article className={`${styles.panel} ${styles.salesPanel}`}>
-            <PanelHeader title="Sales overview" action="Last 7 days" />
+            <PanelHeader
+              title="Sales overview"
+              action={model.chartLabel ?? "Last 7 days"}
+            />
             <SalesChart
               labels={model.chart.labels}
               values={model.chart.values}
@@ -193,12 +216,19 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
 
         {model.channels ? (
           <article className={`${styles.panel} ${styles.channelPanel}`}>
-            <PanelHeader title="Channel performance" action="Last 7 days" />
+            <PanelHeader
+              title="Channel performance"
+              action={model.periodLabel ?? "Last 7 days"}
+            />
             <div className={styles.channelList}>
               {model.channels.map((channel) => {
                 const Icon = channelIcons[channel.kind];
                 return (
-                  <div className={styles.channelRow} key={channel.label}>
+                  <MetricCard
+                    className={styles.channelRow}
+                    href={channel.href}
+                    key={channel.label}
+                  >
                     <span
                       className={`${styles.channelIcon} ${styles[`channel_${channel.kind}`]}`}
                     >
@@ -207,7 +237,7 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                     <span className={styles.channelName}>{channel.label}</span>
                     <strong>{channel.amount}</strong>
                     <span className={styles.positive}>{channel.change}</span>
-                  </div>
+                  </MetricCard>
                 );
               })}
             </div>
@@ -216,7 +246,9 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
               <div>
                 <span>Total revenue</span>
                 <strong>{model.revenueTotal}</strong>
-                <small>Last 7 days, all sales channels</small>
+                <small>
+                  {model.periodLabel ?? "Last 7 days"}, all sales channels
+                </small>
               </div>
             </div>
           </article>
@@ -286,12 +318,14 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
             />
             <div className={styles.productList}>
               {model.products.length === 0 ? (
-                <p className={styles.panelFootnote}>
-                  No sales in the last 7 days.
-                </p>
+                <p className={styles.panelFootnote}>No sales in this period.</p>
               ) : null}
               {model.products.map((product, index) => (
-                <div className={styles.productRow} key={product.label}>
+                <MetricCard
+                  className={styles.productRow}
+                  href={product.href}
+                  key={product.label}
+                >
                   <span className={styles.productThumb} aria-hidden="true">
                     <span>{String(index + 1).padStart(2, "0")}</span>
                   </span>
@@ -301,7 +335,7 @@ export function AdminDashboard({ model }: { model: DashboardModel }) {
                   </span>
                   <span className={styles.productSold}>{product.sold}</span>
                   <strong>{product.revenue}</strong>
-                </div>
+                </MetricCard>
               ))}
             </div>
           </article>
@@ -443,5 +477,24 @@ function SalesChart({
         ))}
       </div>
     </div>
+  );
+}
+
+/** A card that is a link when it has somewhere to go. */
+function MetricCard({
+  children,
+  className,
+  href,
+}: {
+  children: ReactNode;
+  className?: string;
+  href?: string;
+}) {
+  return href ? (
+    <Link className={className} href={href}>
+      {children}
+    </Link>
+  ) : (
+    <article className={className}>{children}</article>
   );
 }

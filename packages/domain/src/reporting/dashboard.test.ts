@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyStock,
+  dashboardRange,
   dashboardWindows,
+  summarizePeriod,
   getDashboardSummary,
   type DashboardReadModel,
   type DashboardReadRepository,
@@ -11,6 +13,13 @@ const emptyModel = (): DashboardReadModel => ({
   financials: {
     channels: [],
     dailySales: [],
+    period: {
+      channels: [],
+      daily: [],
+      refundsMinor: 0,
+      topProducts: [],
+      uncostedSalesMinor: 0,
+    },
     refundsTodayMinor: 0,
     topProducts: [],
   },
@@ -30,6 +39,78 @@ function repository(model = emptyModel()) {
   };
   return { calls, repo };
 }
+
+describe("dashboard period", () => {
+  it("defaults to today and accepts a single date", () => {
+    expect(dashboardRange("2026-10-21")).toMatchObject({
+      dates: ["2026-10-21"],
+      from: "2026-10-21",
+      to: "2026-10-21",
+    });
+    expect(dashboardRange("2026-10-21", { from: "2026-10-01" }).to).toBe(
+      "2026-10-01",
+    );
+  });
+
+  it("covers whole Dhaka days and compares with the same length before", () => {
+    const range = dashboardRange("2026-10-21", {
+      from: "2026-10-01",
+      to: "2026-10-07",
+    });
+    expect(range.dates).toHaveLength(7);
+    expect(range.start.toISOString()).toBe("2026-09-30T18:00:00.000Z");
+    expect(range.end.toISOString()).toBe("2026-10-07T18:00:00.000Z");
+    expect(range.previousStart.toISOString()).toBe("2026-09-23T18:00:00.000Z");
+  });
+
+  it("rejects reversed, malformed and too long ranges", () => {
+    expect(() =>
+      dashboardRange("2026-10-21", { from: "2026-10-09", to: "2026-10-01" }),
+    ).toThrow();
+    expect(() =>
+      dashboardRange("2026-10-21", { from: "10/01/2026" }),
+    ).toThrow();
+    expect(() =>
+      dashboardRange("2026-10-21", { from: "2024-01-01", to: "2026-01-01" }),
+    ).toThrow();
+  });
+
+  it("computes estimated profit only from costed sales", () => {
+    const summary = summarizePeriod(
+      dashboardRange("2026-10-21", { from: "2026-10-20", to: "2026-10-21" }),
+      {
+        channels: [
+          { channel: "POS", previousPeriodMinor: 1_000, salesMinor: 30_000 },
+        ],
+        daily: [
+          {
+            costMinor: 6_000,
+            costedSalesMinor: 10_000,
+            date: "2026-10-21",
+            saleCount: 2,
+            salesMinor: 30_000,
+          },
+        ],
+        refundsMinor: 500,
+        topProducts: [],
+        uncostedSalesMinor: 20_000,
+      },
+    );
+    expect(summary).toMatchObject({
+      averageSaleMinor: 15_000,
+      costMinor: 6_000,
+      previousSalesMinor: 1_000,
+      profitMinor: 4_000,
+      saleCount: 2,
+      salesMinor: 30_000,
+      uncostedSalesMinor: 20_000,
+    });
+    expect(summary.daily).toEqual([
+      { date: "2026-10-20", profitMinor: 0, salesMinor: 0 },
+      { date: "2026-10-21", profitMinor: 4_000, salesMinor: 30_000 },
+    ]);
+  });
+});
 
 describe("dashboard windows", () => {
   it("uses the Asia/Dhaka calendar day", () => {

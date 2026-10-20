@@ -5,6 +5,8 @@ import {
   LOW_STOCK_MAX_AVAILABLE,
   PENDING_ORDER_STATUSES,
   SALE_ORDER_STATUSES,
+  type DashboardPeriodReadModel,
+  type DashboardRange,
   type DashboardReadModel,
   type DashboardReadRepository,
   type DashboardWindows,
@@ -145,7 +147,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
     windows: DashboardWindows,
   ): Promise<NonNullable<DashboardReadModel["financials"]>> {
     const saleStatuses = statusList(SALE_ORDER_STATUSES);
-    const [daily, channels, refunds, topProducts] = await Promise.all([
+    const [daily, channels, refunds, topProducts, period] = await Promise.all([
       this.prisma.$queryRaw<
         Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
       >`
@@ -212,6 +214,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         GROUP BY product.id, product.name
         ORDER BY revenue_minor DESC, quantity DESC, product.id
         LIMIT ${DASHBOARD_TOP_PRODUCT_LIMIT}`,
+      this.period(organizationId, windows.range),
     ]);
     return {
       channels: channels.map((row) => ({
@@ -224,6 +227,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         saleCount: toNumber(row.sale_count),
         salesMinor: toNumber(row.sales_minor),
       })),
+      period,
       refundsTodayMinor: toNumber(refunds[0]?.refunds_minor),
       topProducts: topProducts.map((row) => ({
         name: row.name,
@@ -231,6 +235,148 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         quantity: toNumber(row.quantity),
         revenueMinor: toNumber(row.revenue_minor),
       })),
+    };
+  }
+
+  /** Aggregates for the picked business dates (see the domain definitions). */
+  private async period(
+    organizationId: string,
+    range: DashboardRange,
+  ): Promise<DashboardPeriodReadModel> {
+    const saleStatuses = statusList(SALE_ORDER_STATUSES);
+    const [orders, lines, channels, refunds, topProducts] = await Promise.all([
+      this.prisma.$queryRaw<
+        Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
+      >`
+        SELECT
+          to_char(confirmed_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
+          COUNT(*)::bigint AS sale_count,
+          COALESCE(SUM(total_minor), 0)::bigint AS sales_minor
+        FROM sales_orders
+        WHERE organization_id = ${organizationId}::uuid
+          AND status::text IN (${saleStatuses})
+          AND confirmed_at >= ${range.start}
+          AND confirmed_at < ${range.end}
+        GROUP BY 1`,
+      this.prisma.$queryRaw<
+        Array<{
+          cost_minor: bigint;
+          costed_sales_minor: bigint;
+          date: string;
+          uncosted_sales_minor: bigint;
+        }>
+      >`
+        WITH sale_lines AS (
+          SELECT
+            to_char(sale.confirmed_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
+            line.line_total_minor::bigint AS revenue,
+            CASE
+              WHEN snap.is_cost_known AND snap.total_cost_minor IS NOT NULL
+                THEN snap.total_cost_minor
+              WHEN cost_state.is_cost_known AND cost_state.average_cost_minor IS NOT NULL
+                THEN line.quantity::bigint * cost_state.average_cost_minor
+              ELSE NULL
+            END AS cost
+          FROM sales_order_lines line
+          INNER JOIN sales_orders sale
+            ON sale.id = line.sales_order_id
+           AND sale.organization_id = line.organization_id
+          LEFT JOIN sale_line_cost_snapshots snap
+            ON snap.sales_order_line_id = line.id
+           AND snap.organization_id = line.organization_id
+          LEFT JOIN variant_cost_states cost_state
+            ON cost_state.product_variant_id = line.product_variant_id
+           AND cost_state.organization_id = line.organization_id
+          WHERE line.organization_id = ${organizationId}::uuid
+            AND sale.status::text IN (${saleStatuses})
+            AND sale.confirmed_at >= ${range.start}
+            AND sale.confirmed_at < ${range.end}
+        )
+        SELECT
+          date,
+          COALESCE(SUM(cost), 0)::bigint AS cost_minor,
+          COALESCE(SUM(revenue) FILTER (WHERE cost IS NOT NULL), 0)::bigint AS costed_sales_minor,
+          COALESCE(SUM(revenue) FILTER (WHERE cost IS NULL), 0)::bigint AS uncosted_sales_minor
+        FROM sale_lines
+        GROUP BY date`,
+      this.prisma.$queryRaw<
+        Array<{ channel: string; previous_minor: bigint; sales_minor: bigint }>
+      >`
+        SELECT
+          channel::text AS channel,
+          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at >= ${range.start}), 0)::bigint AS sales_minor,
+          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at < ${range.start}), 0)::bigint AS previous_minor
+        FROM sales_orders
+        WHERE organization_id = ${organizationId}::uuid
+          AND status::text IN (${saleStatuses})
+          AND confirmed_at >= ${range.previousStart}
+          AND confirmed_at < ${range.end}
+        GROUP BY channel`,
+      this.prisma.$queryRaw<Array<{ refunds_minor: bigint }>>`
+        SELECT COALESCE(SUM(amount_minor), 0)::bigint AS refunds_minor
+        FROM payment_refunds
+        WHERE organization_id = ${organizationId}::uuid
+          AND issued_at >= ${range.start}
+          AND issued_at < ${range.end}`,
+      this.prisma.$queryRaw<
+        Array<{
+          name: string;
+          product_id: string;
+          quantity: bigint;
+          revenue_minor: bigint;
+        }>
+      >`
+        SELECT
+          product.id::text AS product_id,
+          product.name AS name,
+          SUM(line.quantity)::bigint AS quantity,
+          SUM(line.line_total_minor)::bigint AS revenue_minor
+        FROM sales_order_lines line
+        INNER JOIN sales_orders sale
+          ON sale.id = line.sales_order_id
+         AND sale.organization_id = line.organization_id
+        INNER JOIN product_variants variant
+          ON variant.id = line.product_variant_id
+         AND variant.organization_id = line.organization_id
+        INNER JOIN products product
+          ON product.id = variant.product_id
+         AND product.organization_id = variant.organization_id
+        WHERE line.organization_id = ${organizationId}::uuid
+          AND sale.status::text IN (${saleStatuses})
+          AND sale.confirmed_at >= ${range.start}
+          AND sale.confirmed_at < ${range.end}
+        GROUP BY product.id, product.name
+        ORDER BY revenue_minor DESC, quantity DESC, product.id
+        LIMIT ${DASHBOARD_TOP_PRODUCT_LIMIT}`,
+    ]);
+    const lineByDate = new Map(lines.map((row) => [row.date, row]));
+    return {
+      channels: channels.map((row) => ({
+        channel: row.channel,
+        previousPeriodMinor: toNumber(row.previous_minor),
+        salesMinor: toNumber(row.sales_minor),
+      })),
+      daily: orders.map((row) => {
+        const line = lineByDate.get(row.date);
+        return {
+          costMinor: toNumber(line?.cost_minor),
+          costedSalesMinor: toNumber(line?.costed_sales_minor),
+          date: row.date,
+          saleCount: toNumber(row.sale_count),
+          salesMinor: toNumber(row.sales_minor),
+        };
+      }),
+      refundsMinor: toNumber(refunds[0]?.refunds_minor),
+      topProducts: topProducts.map((row) => ({
+        name: row.name,
+        productId: row.product_id,
+        quantity: toNumber(row.quantity),
+        revenueMinor: toNumber(row.revenue_minor),
+      })),
+      uncostedSalesMinor: lines.reduce(
+        (sum, row) => sum + toNumber(row.uncosted_sales_minor),
+        0,
+      ),
     };
   }
 }

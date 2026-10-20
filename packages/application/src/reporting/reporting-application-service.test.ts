@@ -15,6 +15,21 @@ const model: DashboardReadModel = {
   financials: {
     channels: [{ channel: "POS", previousPeriodMinor: 1000, salesMinor: 5000 }],
     dailySales: [{ date: "2026-10-02", saleCount: 2, salesMinor: 5000 }],
+    period: {
+      channels: [{ channel: "POS", previousPeriodMinor: 0, salesMinor: 5000 }],
+      daily: [
+        {
+          costMinor: 3000,
+          costedSalesMinor: 5000,
+          date: "2026-10-02",
+          saleCount: 2,
+          salesMinor: 5000,
+        },
+      ],
+      refundsMinor: 300,
+      topProducts: [],
+      uncostedSalesMinor: 0,
+    },
     refundsTodayMinor: 300,
     topProducts: [
       {
@@ -136,6 +151,34 @@ describe("ReportingApplicationService.getDashboardSummary", () => {
     expect(result.data.recentOrders[0]?.createdAt).toBe(
       "2026-10-02T05:00:00.000Z",
     );
+  });
+
+  it("reports the picked period with estimated profit", async () => {
+    const harness = service();
+    const today = await harness.service.getDashboardSummary(context(OWNER), {});
+    expect(today.ok && today.data.financials?.period).toMatchObject({
+      costMinor: 3000,
+      from: "2026-10-02",
+      profitMinor: 2000,
+      salesMinor: 5000,
+      to: "2026-10-02",
+    });
+    const week = await harness.service.getDashboardSummary(context(OWNER), {
+      from: "2026-09-26",
+      to: "2026-10-02",
+    });
+    expect(week.ok && week.data.financials?.period.daily).toHaveLength(7);
+  });
+
+  it("rejects a reversed period", async () => {
+    const result = await service().service.getDashboardSummary(context(OWNER), {
+      from: "2026-10-02",
+      to: "2026-09-01",
+    });
+    expect(result).toMatchObject({
+      error: { code: "VALIDATION_ERROR" },
+      ok: false,
+    });
   });
 
   it("requires REPORT READ", async () => {

@@ -25,7 +25,16 @@ import { ValidationApplicationError } from "../errors.js";
  * - Recent orders: the latest non-DRAFT sales orders by creation time.
  * - Top products: sale order lines of the last 7 business days grouped by
  *   product, ranked by line revenue (`line_total_minor`).
+ * - Period: the business dates `from`..`to` the caller picked (default today,
+ *   at most DASHBOARD_MAX_RANGE_DAYS). Its comparison period is the same
+ *   number of days just before it.
+ * - Cost and profit (estimated): a sale line's cost is its cost snapshot when
+ *   one was recorded, otherwise quantity x the variant's current moving
+ *   average cost. Lines without any known cost are left out of profit and
+ *   reported as `uncostedSalesMinor`. Profit = costed line revenue - cost; it
+ *   ignores order-level delivery fees and refunds.
  */
+export const DASHBOARD_MAX_RANGE_DAYS = 366;
 export const DASHBOARD_TIME_ZONE = "Asia/Dhaka";
 export const LOW_STOCK_MAX_AVAILABLE = 3;
 export const SALE_ORDER_STATUSES = ["CONFIRMED", "FULFILLED"] as const;
@@ -71,8 +80,51 @@ export function addBusinessDays(date: string, days: number): string {
     .slice(0, 10);
 }
 
+/** The business dates the dashboard period covers. */
+export type DashboardRange = {
+  /** Every business date in the period, oldest first. */
+  dates: string[];
+  /** Start of the day after `to`. */
+  end: Date;
+  from: string;
+  /** Start of the comparison period (same length, just before). */
+  previousStart: Date;
+  start: Date;
+  to: string;
+};
+
+export function dashboardRange(
+  today: string,
+  input: { from?: string; to?: string } = {},
+): DashboardRange {
+  const from = input.from ?? input.to ?? today;
+  const to = input.to ?? input.from ?? today;
+  const start = startOfBusinessDate(from);
+  const end = startOfBusinessDate(addBusinessDays(to, 1));
+  if (from > to)
+    throw new ValidationApplicationError(
+      "The start date must be on or before the end date.",
+    );
+  const days = Math.round((end.getTime() - start.getTime()) / DAY_MS);
+  if (days > DASHBOARD_MAX_RANGE_DAYS)
+    throw new ValidationApplicationError(
+      `Choose at most ${DASHBOARD_MAX_RANGE_DAYS} days.`,
+    );
+  return {
+    dates: Array.from({ length: days }, (_, index) =>
+      addBusinessDays(from, index),
+    ),
+    end,
+    from,
+    previousStart: startOfBusinessDate(addBusinessDays(from, -days)),
+    start,
+    to,
+  };
+}
+
 export type DashboardWindows = {
   businessDate: string;
+  range: DashboardRange;
   /** The 7 business dates ending today, oldest first. */
   last7Dates: string[];
   /** Start of today - 6 (first of the last 7 days). */
@@ -84,13 +136,17 @@ export type DashboardWindows = {
   yesterdayDate: string;
 };
 
-export function dashboardWindows(now: Date): DashboardWindows {
+export function dashboardWindows(
+  now: Date,
+  range: { from?: string; to?: string } = {},
+): DashboardWindows {
   const businessDate = businessDateOf(now);
   const last7Dates = Array.from({ length: DASHBOARD_TREND_DAYS }, (_, index) =>
     addBusinessDays(businessDate, index - (DASHBOARD_TREND_DAYS - 1)),
   );
   return {
     businessDate,
+    range: dashboardRange(businessDate, range),
     last7Dates,
     last7Start: startOfBusinessDate(last7Dates[0] ?? businessDate),
     previous7Start: startOfBusinessDate(
@@ -143,6 +199,7 @@ export type DashboardSummary = {
       salesMinor: number;
     }>;
     last7Days: Array<{ date: string; salesMinor: number }>;
+    period: DashboardPeriodSummary;
     refundsTodayMinor: number;
     todaySaleCount: number;
     todaySalesMinor: number;
@@ -173,6 +230,53 @@ export type DashboardSummary = {
   }>;
 };
 
+export type DashboardTopProduct = {
+  name: string;
+  productId: string;
+  quantity: number;
+  revenueMinor: number;
+};
+
+export type DashboardPeriodSummary = {
+  averageSaleMinor: number;
+  channels: Array<{
+    channel: DashboardSalesChannel;
+    previousPeriodMinor: number;
+    salesMinor: number;
+  }>;
+  costMinor: number;
+  daily: Array<{ date: string; profitMinor: number; salesMinor: number }>;
+  from: string;
+  previousSalesMinor: number;
+  /** Estimated: see the definitions at the top of this file. */
+  profitMinor: number;
+  refundsMinor: number;
+  saleCount: number;
+  salesMinor: number;
+  to: string;
+  topProducts: DashboardTopProduct[];
+  uncostedSalesMinor: number;
+};
+
+/** Raw aggregates for the picked period. */
+export type DashboardPeriodReadModel = {
+  channels: Array<{
+    channel: string;
+    previousPeriodMinor: number;
+    salesMinor: number;
+  }>;
+  daily: Array<{
+    costMinor: number;
+    costedSalesMinor: number;
+    date: string;
+    saleCount: number;
+    salesMinor: number;
+  }>;
+  refundsMinor: number;
+  topProducts: DashboardTopProduct[];
+  uncostedSalesMinor: number;
+};
+
 /** Raw, tenant-scoped aggregates the repository returns. */
 export type DashboardReadModel = {
   financials: {
@@ -182,6 +286,7 @@ export type DashboardReadModel = {
       salesMinor: number;
     }>;
     dailySales: DailySales[];
+    period: DashboardPeriodReadModel;
     refundsTodayMinor: number;
     topProducts: NonNullable<DashboardSummary["financials"]>["topProducts"];
   } | null;
@@ -205,9 +310,18 @@ export type DashboardReadRepository = {
  */
 export async function getDashboardSummary(
   repository: DashboardReadRepository,
-  input: { includeFinancials: boolean; now: Date; organizationId: string },
+  input: {
+    from?: string;
+    includeFinancials: boolean;
+    now: Date;
+    organizationId: string;
+    to?: string;
+  },
 ): Promise<DashboardSummary> {
-  const windows = dashboardWindows(input.now);
+  const windows = dashboardWindows(input.now, {
+    from: input.from,
+    to: input.to,
+  });
   const model = await repository.readDashboard({
     includeFinancials: input.includeFinancials,
     organizationId: input.organizationId,
@@ -242,6 +356,7 @@ export async function getDashboardSummary(
         windows.last7Dates,
         model.financials.dailySales,
       ),
+      period: summarizePeriod(windows.range, model.financials.period),
       refundsTodayMinor: model.financials.refundsTodayMinor,
       todaySaleCount: daily.get(windows.businessDate)?.saleCount ?? 0,
       todaySalesMinor: daily.get(windows.businessDate)?.salesMinor ?? 0,
@@ -253,4 +368,50 @@ export async function getDashboardSummary(
     };
   }
   return summary;
+}
+
+/** Totals, zero-filled daily series and channel rows for the picked period. */
+export function summarizePeriod(
+  range: DashboardRange,
+  period: DashboardPeriodReadModel,
+): DashboardPeriodSummary {
+  const byDate = new Map(period.daily.map((row) => [row.date, row]));
+  const daily = range.dates.map((date) => {
+    const row = byDate.get(date);
+    return {
+      date,
+      profitMinor: (row?.costedSalesMinor ?? 0) - (row?.costMinor ?? 0),
+      salesMinor: row?.salesMinor ?? 0,
+    };
+  });
+  const sum = (
+    pick: (row: DashboardPeriodReadModel["daily"][number]) => number,
+  ) => period.daily.reduce((total, row) => total + pick(row), 0);
+  const saleCount = sum((row) => row.saleCount);
+  const salesMinor = sum((row) => row.salesMinor);
+  const costMinor = sum((row) => row.costMinor);
+  const channelRows = new Map(period.channels.map((row) => [row.channel, row]));
+  const channels = DASHBOARD_SALES_CHANNELS.map((channel) => ({
+    channel,
+    previousPeriodMinor: channelRows.get(channel)?.previousPeriodMinor ?? 0,
+    salesMinor: channelRows.get(channel)?.salesMinor ?? 0,
+  }));
+  return {
+    averageSaleMinor: saleCount > 0 ? Math.round(salesMinor / saleCount) : 0,
+    channels,
+    costMinor,
+    daily,
+    from: range.from,
+    previousSalesMinor: channels.reduce(
+      (total, row) => total + row.previousPeriodMinor,
+      0,
+    ),
+    profitMinor: sum((row) => row.costedSalesMinor) - costMinor,
+    refundsMinor: period.refundsMinor,
+    saleCount,
+    salesMinor,
+    to: range.to,
+    topProducts: period.topProducts.slice(0, DASHBOARD_TOP_PRODUCT_LIMIT),
+    uncostedSalesMinor: period.uncostedSalesMinor,
+  };
 }

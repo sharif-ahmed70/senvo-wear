@@ -911,9 +911,17 @@ export class AdminApiClient {
   }
 
   /** Read-only dashboard; `financials` is present only for POS APPROVE roles. */
-  getDashboardSummary(request?: AdminApiRequest) {
+  getDashboardSummary(
+    range: { from?: string; to?: string } = {},
+    request?: AdminApiRequest,
+  ) {
+    const query = new URLSearchParams(
+      Object.entries(range).filter((entry): entry is [string, string] =>
+        Boolean(entry[1]),
+      ),
+    ).toString();
     return this.request<DashboardSummaryContract>(
-      "/reports/dashboard",
+      `/reports/dashboard${query ? `?${query}` : ""}`,
       request,
     );
   }

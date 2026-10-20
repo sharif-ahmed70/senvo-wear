@@ -22,6 +22,7 @@ describeWithDatabase("dashboard read model (database)", () => {
   let otherShopId = "";
   let emptyShopId = "";
   let productId = "";
+  let primaryVariantId = "";
 
   const locations = new Map<string, string>();
   const branches = new Map<string, string>();
@@ -187,6 +188,7 @@ describeWithDatabase("dashboard read model (database)", () => {
       shop.suffix,
     );
     productId = id;
+    primaryVariantId = variantId;
 
     // Online sale today, an online sale yesterday, a cancelled order and a
     // reserved (pending) order.
@@ -381,6 +383,55 @@ describeWithDatabase("dashboard read model (database)", () => {
     });
     expect(summary.recentOrders).toHaveLength(5);
     expect(JSON.stringify(summary)).not.toContain("7777800");
+  });
+
+  it("reports a picked period with estimated profit from average cost", async () => {
+    const range = { from: "2026-10-01", to: "2026-10-02" };
+    const uncosted = await getDashboardSummary(repository, {
+      ...range,
+      includeFinancials: true,
+      now,
+      organizationId: shopId,
+    });
+    expect(uncosted.financials?.period).toMatchObject({
+      costMinor: 0,
+      from: "2026-10-01",
+      profitMinor: 0,
+      saleCount: 3,
+      salesMinor: 100000,
+      to: "2026-10-02",
+      uncostedSalesMinor: 100000,
+    });
+    await prisma.variantCostState.create({
+      data: {
+        averageCostMinor: 10000,
+        isCostKnown: true,
+        organizationId: shopId,
+        productVariantId: primaryVariantId,
+      },
+    });
+    try {
+      const costed = await getDashboardSummary(repository, {
+        ...range,
+        includeFinancials: true,
+        now,
+        organizationId: shopId,
+      });
+      // 4 pieces sold at an average cost of 10 000 each.
+      expect(costed.financials?.period).toMatchObject({
+        costMinor: 40000,
+        profitMinor: 60000,
+        uncostedSalesMinor: 0,
+      });
+      expect(costed.financials?.period.daily).toEqual([
+        { date: "2026-10-01", profitMinor: 10000, salesMinor: 20000 },
+        { date: "2026-10-02", profitMinor: 50000, salesMinor: 80000 },
+      ]);
+    } finally {
+      await prisma.variantCostState.deleteMany({
+        where: { organizationId: shopId },
+      });
+    }
   });
 
   it("zero-fills seven days for a shop with no data", async () => {
