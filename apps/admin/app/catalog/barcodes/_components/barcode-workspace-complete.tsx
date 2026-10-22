@@ -17,6 +17,7 @@ import {
   Download,
   LoaderCircle,
   PackageSearch,
+  Printer,
   RefreshCw,
   ScanBarcode,
   Search,
@@ -37,6 +38,10 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import { ProductThumb } from "../../../_components/product-thumb";
+import {
+  BarcodeLabelSheet,
+  type BarcodeLabelItem,
+} from "./barcode-label-sheet";
 import styles from "./barcode-management.module.css";
 import edge from "./barcode-edge-states.module.css";
 
@@ -93,6 +98,10 @@ export function BarcodeWorkspaceComplete({
     null,
   );
   const [changingStatus, setChangingStatus] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printCopies, setPrintCopies] = useState(1);
+  const [colorNames, setColorNames] = useState<Map<string, string>>(new Map());
+  const [sizeNames, setSizeNames] = useState<Map<string, string>>(new Map());
 
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
@@ -147,6 +156,7 @@ export function BarcodeWorkspaceComplete({
         })),
       );
       setSelectedVariantIds([]);
+      setPrintOpen(false);
     } catch (caught) {
       setError(messageFor(caught));
     } finally {
@@ -157,6 +167,17 @@ export function BarcodeWorkspaceComplete({
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  // Colour and size names for printed labels (variants only carry ids).
+  useEffect(() => {
+    if (!canRead) return;
+    void Promise.all([client.listColors(), client.listSizes()])
+      .then(([colors, sizes]) => {
+        setColorNames(new Map(colors.data.map((item) => [item.id, item.name])));
+        setSizeNames(new Map(sizes.data.map((item) => [item.id, item.name])));
+      })
+      .catch(() => undefined);
+  }, [canRead]);
 
   useEffect(() => {
     if (selectedProductId) void loadSelectedProduct(selectedProductId);
@@ -184,6 +205,21 @@ export function BarcodeWorkspaceComplete({
   const selectedMissingCount = rows.filter(
     (row) => selectedVariantIds.includes(row.variant.id) && !row.activeBarcode,
   ).length;
+  // Reprint: labels for selected variants that already have a barcode.
+  const printRows = rows.filter(
+    (row) => selectedVariantIds.includes(row.variant.id) && row.activeBarcode,
+  );
+  const printItems: BarcodeLabelItem[] = printRows.flatMap((row) =>
+    Array.from({ length: printCopies }, (_, index) => ({
+      barcode: row.activeBarcode?.value ?? "",
+      color: colorNames.get(row.variant.colorId) ?? "",
+      key: `${row.variant.id}-${index}`,
+      productName: details?.product.name ?? "",
+      sellingPriceMinor: row.variant.sellingPriceMinor,
+      size: sizeNames.get(row.variant.sizeId) ?? "",
+      sku: row.variant.sku,
+    })),
+  );
 
   if (!canRead) {
     return (
@@ -498,20 +534,17 @@ export function BarcodeWorkspaceComplete({
                     <tr>
                       <th className={styles.checkboxCell}>
                         <input
-                          aria-label="Select all visible variants needing barcode"
+                          aria-label="Select all visible variants"
                           checked={
-                            filteredRows.filter((row) => !row.activeBarcode)
-                              .length > 0 &&
-                            filteredRows
-                              .filter((row) => !row.activeBarcode)
-                              .every((row) =>
-                                selectedVariantIds.includes(row.variant.id),
-                              )
+                            filteredRows.length > 0 &&
+                            filteredRows.every((row) =>
+                              selectedVariantIds.includes(row.variant.id),
+                            )
                           }
                           onChange={(event) => {
-                            const ids = filteredRows
-                              .filter((row) => !row.activeBarcode)
-                              .map((row) => row.variant.id);
+                            const ids = filteredRows.map(
+                              (row) => row.variant.id,
+                            );
                             setSelectedVariantIds((current) =>
                               event.target.checked
                                 ? Array.from(new Set([...current, ...ids]))
@@ -541,7 +574,6 @@ export function BarcodeWorkspaceComplete({
                               checked={selectedVariantIds.includes(
                                 row.variant.id,
                               )}
-                              disabled={Boolean(row.activeBarcode)}
                               onChange={(event) =>
                                 setSelectedVariantIds((current) =>
                                   event.target.checked
@@ -600,7 +632,21 @@ export function BarcodeWorkspaceComplete({
                                 row.variant.updatedAt,
                             )}
                           </td>
-                          <td>
+                          <td className={styles.rowActions}>
+                            {row.activeBarcode ? (
+                              <button
+                                aria-label={`Print label for ${row.variant.sku}`}
+                                className={styles.rowAction}
+                                onClick={() => {
+                                  setSelectedVariantIds([row.variant.id]);
+                                  setPrintOpen(true);
+                                }}
+                                title="Print this label again"
+                                type="button"
+                              >
+                                <Printer size={16} />
+                              </button>
+                            ) : null}
                             {canUpdate &&
                             (row.activeBarcode || previousBarcode) ? (
                               <button
@@ -651,7 +697,50 @@ export function BarcodeWorkspaceComplete({
                 >
                   Generate Selected ({selectedMissingCount})
                 </Link>
+                <button
+                  className={styles.primaryButton}
+                  disabled={printRows.length === 0}
+                  onClick={() => setPrintOpen(true)}
+                  type="button"
+                >
+                  <Printer size={16} /> Print labels ({printRows.length})
+                </button>
               </footer>
+              {printOpen && printRows.length > 0 ? (
+                <section
+                  aria-label="Print existing barcode labels"
+                  className={styles.printPanel}
+                >
+                  <h3>
+                    Print labels again ({printRows.length} variant
+                    {printRows.length === 1 ? "" : "s"})
+                  </h3>
+                  <p>
+                    লেবেল হারিয়ে গেলে বা নষ্ট হলে একই barcode আবার print করুন।
+                    Barcode বদলাতে হলে আগে পুরনোটা Deactivate করে নতুন Generate
+                    করুন।
+                  </p>
+                  <BarcodeLabelSheet items={printItems}>
+                    <label>
+                      Copies per variant
+                      <input
+                        max={100}
+                        min={1}
+                        onChange={(event) =>
+                          setPrintCopies(
+                            Math.min(
+                              100,
+                              Math.max(1, Number(event.target.value) || 1),
+                            ),
+                          )
+                        }
+                        type="number"
+                        value={printCopies}
+                      />
+                    </label>
+                  </BarcodeLabelSheet>
+                </section>
+              ) : null}
             </>
           )}
         </section>

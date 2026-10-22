@@ -32,7 +32,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
@@ -40,6 +39,7 @@ import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
 import { ProductThumb } from "../../../../_components/product-thumb";
 import styles from "./barcode-generation.module.css";
+import { BarcodeLabelSheet } from "../../_components/barcode-label-sheet";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -801,11 +801,6 @@ function PrintStep({
       ),
     [generated, settings.copies],
   );
-  const labelDimensions = dimensionsFor(settings.labelSize);
-  const printStyle = {
-    "--label-height": `${labelDimensions.height}mm`,
-    "--label-width": `${labelDimensions.width}mm`,
-  } as CSSProperties;
 
   return (
     <section className={styles.workflowCard}>
@@ -825,109 +820,33 @@ function PrintStep({
       </header>
 
       {generated.length ? (
-        <div className={styles.printLayout}>
-          <div className={styles.previewPanel}>
-            <div className={styles.previewToolbar}>
-              <div>
-                <strong>Label preview</strong>
-                <span>
-                  {repeated.length} label{repeated.length === 1 ? "" : "s"} · A4
-                  print sheet
-                </span>
-              </div>
-            </div>
-            <div className={styles.printArea} style={printStyle}>
-              {repeated.map((item) => (
-                <article className={styles.label} key={item.copyKey}>
-                  {settings.showProduct ? (
-                    <strong>{product?.name ?? "SENVO Wear"}</strong>
-                  ) : null}
-                  <span className={styles.labelVariant}>
-                    {item.colorName} / {item.sizeName}
-                  </span>
-                  {settings.showSku ? <small>{item.variant.sku}</small> : null}
-                  <Code128Barcode value={item.barcode.value} />
-                  <span className={styles.labelValue}>
-                    {item.barcode.value}
-                  </span>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <aside className={styles.printSettings}>
-            <h3>Print settings</h3>
-            <label>
-              <span>Label size</span>
-              <select
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    labelSize: event.target.value as LabelSize,
-                  }))
-                }
-                value={settings.labelSize}
-              >
-                <option value="40x30">40mm × 30mm</option>
-                <option value="50x30">50mm × 30mm</option>
-                <option value="50x40">50mm × 40mm</option>
-              </select>
-            </label>
-            <label>
-              <span>Copies per variant</span>
-              <input
-                max={10}
-                min={1}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    copies: clamp(Number(event.target.value) || 1, 1, 10),
-                  }))
-                }
-                type="number"
-                value={settings.copies}
-              />
-            </label>
-            <label className={styles.checkLabel}>
-              <input
-                checked={settings.showProduct}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    showProduct: event.target.checked,
-                  }))
-                }
-                type="checkbox"
-              />
-              <span>Show product name</span>
-            </label>
-            <label className={styles.checkLabel}>
-              <input
-                checked={settings.showSku}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    showSku: event.target.checked,
-                  }))
-                }
-                type="checkbox"
-              />
-              <span>Show SKU</span>
-            </label>
-            <button
-              className={styles.primaryButton}
-              onClick={() => window.print()}
-              type="button"
-            >
-              <Printer aria-hidden="true" size={16} />
-              Print {repeated.length} Label{repeated.length === 1 ? "" : "s"}
-            </button>
-            <p>
-              Use 100% print scale for best scanner accuracy. Browser headers
-              and footers should be disabled in the print dialog.
-            </p>
-          </aside>
-        </div>
+        <BarcodeLabelSheet
+          items={repeated.map((item) => ({
+            barcode: item.barcode.value,
+            color: item.colorName,
+            key: item.copyKey,
+            productName: product?.name ?? "SENVO Wear",
+            sellingPriceMinor: item.variant.sellingPriceMinor,
+            size: item.sizeName,
+            sku: item.variant.sku,
+          }))}
+        >
+          <label>
+            Copies per variant
+            <input
+              max={10}
+              min={1}
+              onChange={(event) =>
+                setSettings((current) => ({
+                  ...current,
+                  copies: clamp(Number(event.target.value) || 1, 1, 10),
+                }))
+              }
+              type="number"
+              value={settings.copies}
+            />
+          </label>
+        </BarcodeLabelSheet>
       ) : (
         <StatePanel
           compact
@@ -968,6 +887,9 @@ export function Code128Barcode({ value }: { value: string }) {
       className={styles.barcodeSvg}
       preserveAspectRatio="none"
       role="img"
+      // No anti-aliased (grey) bar edges: thermal printers turn grey into
+      // blurry dots, which scanners misread.
+      shapeRendering="crispEdges"
       style={
         // Short (set C) codes print at an exact dot-aligned width.
         encoded.mode === "C"
@@ -979,7 +901,7 @@ export function Code128Barcode({ value }: { value: string }) {
       <rect fill="#fff" height="50" width={encoded.width} x="0" y="0" />
       {encoded.bars.map((bar, index) => (
         <rect
-          fill="#111"
+          fill="#000"
           height="46"
           key={`${bar.x}-${index}`}
           width={bar.width}

@@ -714,3 +714,36 @@
     max-width: none;
   }
 }
+
+.rowActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.printPanel {
+  border-top: 1px solid #e8dfd6;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.printPanel h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.printPanel p {
+  color: #6f6560;
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.printPanel input[type="number"] {
+  border: 1px solid #d8cfc6;
+  border-radius: 6px;
+  font: inherit;
+  min-height: 36px;
+  padding: 0 8px;
+  width: 90px;
+}
