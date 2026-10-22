@@ -6,6 +6,7 @@ import type {
   SizeContract,
   StockLocationReadContract,
   SupplierContract,
+  VariantLastPurchaseCostContract,
 } from "@senvo/contracts";
 import {
   AlertCircle,
@@ -463,6 +464,10 @@ export function QuantityGridEditor({
         </p>
       ) : (
         <div className={styles.colorList}>
+          <p className={styles.hint}>
+            প্রতিটা রঙে শুধু যে size এসেছে সেখানে পিস লিখুন। যে রঙে কোনো size
+            নেই, সেই ঘর ফাঁকা রাখুন: ওই রং-size তৈরি হবে না, স্টকেও যোগ হবে না।
+          </p>
           {grid.colors.map((color) => {
             const locked = lockedColorIds?.has(color.id) ?? false;
             const total = colorPieces(color, grid.sizes);
@@ -544,7 +549,7 @@ export function QuantityGridEditor({
                               },
                             })
                           }
-                          placeholder="—"
+                          placeholder="নেই"
                           value={value}
                           {...invalidProps(
                             errors,
@@ -591,6 +596,7 @@ export function PriceAndSupplierStep({
   canEditSupplier = false,
   colors,
   errors,
+  lastCosts,
   lines,
   locations,
   onPrices,
@@ -602,6 +608,8 @@ export function PriceAndSupplierStep({
 }: {
   colors: readonly ColorContract[];
   errors: FieldErrors;
+  /** Latest purchase price per existing variant (restock only). */
+  lastCosts?: ReadonlyMap<string, VariantLastPurchaseCostContract>;
   lines: readonly IntakeLine[];
   locations: readonly StockLocationReadContract[];
   onPrices: (prices: PriceDraft) => void;
@@ -735,6 +743,13 @@ export function PriceAndSupplierStep({
                         id={`${costId}-error`}
                         message={errors[`cost:${line.key}`]}
                       />
+                      <LastCostNote
+                        cost={
+                          line.existing
+                            ? lastCosts?.get(line.existing.variantId)
+                            : undefined
+                        }
+                      />
                     </td>
                     <td>
                       <input
@@ -812,7 +827,7 @@ export function PriceAndSupplierStep({
 
       <div className={styles.transportBox}>
         <label className={styles.field}>
-          গাড়ি ভাড়া / কুলি (ঐচ্ছিক)
+          অতিরিক্ত খরচ: গাড়ি ভাড়া, কুরিয়ার, কুলি (ঐচ্ছিক, সব মিলিয়ে)
           <input
             inputMode="decimal"
             onChange={(event) => update({ transport: event.target.value })}
@@ -826,7 +841,8 @@ export function PriceAndSupplierStep({
           />
         </label>
         <p className={styles.perPiece} aria-live="polite">
-          প্রতি পিসে + {formatTaka(totals.transportPerPieceMinor)}
+          প্রতি পিসে + {formatTaka(totals.transportPerPieceMinor)}। সাপ্লায়ারের
+          আসল দাম আলাদা করে রাখা থাকবে।
         </p>
         <label className={styles.checkLabel}>
           <input
@@ -1429,4 +1445,22 @@ export function locationLabel(
 ): string {
   const location = locations.find((item) => item.id === id);
   return location ? `${location.name} · ${location.branch.name}` : "";
+}
+
+/** "আগে: ৳500 + খরচ ৳20" from the variant's latest purchase. */
+function LastCostNote({ cost }: { cost?: VariantLastPurchaseCostContract }) {
+  if (!cost) return null;
+  const supplier = cost.supplierUnitCostMinor;
+  const extra = cost.extraCostPerUnitMinor;
+  return (
+    <span
+      className={styles.hint}
+      style={{ display: "block", fontSize: "0.72rem" }}
+    >
+      আগে:{" "}
+      {supplier === null
+        ? formatTaka(cost.unitCostMinor)
+        : `${formatTaka(supplier)}${extra ? ` + খরচ ${formatTaka(extra)}` : ""}`}
+    </span>
+  );
 }

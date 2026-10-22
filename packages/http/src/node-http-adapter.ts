@@ -983,6 +983,44 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/procurement\/purchases$/u,
         successStatus: 201,
       },
+      ...(procurement.uploadPurchaseMemo
+        ? [
+            {
+              handler: procurement.uploadPurchaseMemo,
+              input: pathBodyInput("purchaseId"),
+              maximumBodyBytes: 7_100_000,
+              method: "POST",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/memo$/iu,
+              successStatus: 201,
+            } as HttpRoute,
+          ]
+        : []),
+      ...(procurement.getPurchaseMemo
+        ? [
+            {
+              handler: procurement.getPurchaseMemo,
+              input: (_body: unknown, match: RegExpMatchArray) => ({
+                purchaseId: match.groups?.id,
+              }),
+              method: "GET",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/memo$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
+      ...(procurement.listLastPurchaseCosts
+        ? [
+            {
+              handler: procurement.listLastPurchaseCosts,
+              input: (_body: unknown, match: RegExpMatchArray) => ({
+                productId: match.groups?.id,
+              }),
+              method: "GET",
+              path: /^\/procurement\/products\/(?<id>[0-9a-f-]+)\/last-costs$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
       {
         handler: procurement.getPurchase,
         input: (_body, match) => ({ purchaseId: match.groups?.id }),

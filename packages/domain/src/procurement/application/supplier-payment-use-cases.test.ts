@@ -80,6 +80,8 @@ describe("supplier payment and ledger use cases", () => {
           sku: "FAB-OXF",
           totalCostMinor: 50_000n,
           unitCostMinor: 500,
+          supplierUnitCostMinor: null,
+          extraCostPerUnitMinor: null,
           updatedAt: new Date("2026-09-01T00:00:00Z"),
           variantName: "Blue",
         },

@@ -780,6 +780,11 @@ class FakeProcurement implements ProcurementApplication {
     );
   }
 
+  listLastPurchaseCosts(context: ApplicationExecutionContext) {
+    this.context = context;
+    return Promise.resolve({ data: [], ok: true as const });
+  }
+
   getPurchase(context: ApplicationExecutionContext, payload?: unknown) {
     if (this.getPurchaseResult) {
       this.context = context;

@@ -62,6 +62,9 @@ import type {
   CreatePurchaseDraftServiceInputContract,
   ListPurchasesServiceInputContract,
   PurchaseContract,
+  PurchaseMemoContract,
+  UploadPurchaseMemoServiceInputContract,
+  VariantLastPurchaseCostContract,
   CreateStockIntakeServiceInputContract,
   CreateSupplierServiceInputContract,
   CreateSupplierPaymentServiceInputContract,
@@ -819,6 +822,31 @@ export class AdminApiClient {
   ) {
     return this.request<PurchaseContract[]>(
       `/procurement/purchases${queryString(input)}`,
+      request,
+    );
+  }
+
+  getPurchaseMemo(purchaseId: string, request?: AdminApiRequest) {
+    return this.request<PurchaseMemoContract | null>(
+      `/procurement/purchases/${purchaseId}/memo`,
+      request,
+    );
+  }
+
+  uploadPurchaseMemo(
+    input: UploadPurchaseMemoServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<PurchaseMemoContract>(
+      `/procurement/purchases/${purchaseId}/memo`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  listLastPurchaseCosts(productId: string, request?: AdminApiRequest) {
+    return this.request<VariantLastPurchaseCostContract[]>(
+      `/procurement/products/${productId}/last-costs`,
       request,
     );
   }

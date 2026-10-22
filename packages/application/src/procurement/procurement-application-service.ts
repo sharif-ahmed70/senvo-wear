@@ -1,4 +1,9 @@
 import {
+  purchaseMemoObjectKey,
+  type ObjectStorageProvider,
+} from "@senvo/storage";
+import { decodeAndValidateImage } from "../catalog/catalog-media-application-service.js";
+import {
   AuthorizationError,
   BusinessRuleError,
   ConflictError,
@@ -32,6 +37,13 @@ import {
   createSupplierServiceInputSchema,
   deactivateSupplierServiceInputSchema,
   getPurchaseServiceInputSchema,
+  listLastPurchaseCostsServiceInputSchema,
+  getPurchaseMemoServiceInputSchema,
+  purchaseMemoContractSchema,
+  uploadPurchaseMemoServiceInputSchema,
+  type PurchaseMemoContract,
+  variantLastPurchaseCostContractSchema,
+  type VariantLastPurchaseCostContract,
   getSupplierServiceInputSchema,
   listPurchasesServiceInputSchema,
   listSuppliersServiceInputSchema,
@@ -94,6 +106,8 @@ type SafeParseSchema<T> = {
 
 export type ProcurementApplicationServiceDependencies = {
   authorizationService?: ApplicationAuthorizationService;
+  /** Where cash memo photos are kept (same store as product images). */
+  storage?: ObjectStorageProvider;
   costRepository?: CostRepository;
   purchases?: PurchaseRepository;
   requestIdGenerator?: () => string;
@@ -108,6 +122,7 @@ export class ProcurementApplicationService {
   private readonly costRepository?: CostRepository;
   private readonly purchases?: PurchaseRepository;
   private readonly requestIdGenerator: () => string;
+  private readonly storage?: ObjectStorageProvider;
   private readonly supplierLedger?: SupplierLedgerRepository;
   private readonly supplierPayments?: SupplierPaymentRepository;
   private readonly suppliers: SupplierRepository;
@@ -119,6 +134,7 @@ export class ProcurementApplicationService {
     this.purchases = dependencies.purchases;
     this.requestIdGenerator =
       dependencies.requestIdGenerator ?? (() => crypto.randomUUID());
+    this.storage = dependencies.storage;
     this.supplierLedger = dependencies.supplierLedger;
     this.supplierPayments = dependencies.supplierPayments;
     this.suppliers = dependencies.suppliers;
@@ -303,6 +319,102 @@ export class ProcurementApplicationService {
       });
 
       return mapPurchase(purchase);
+    });
+  }
+
+  /** Saves (or replaces) the photo of the supplier's cash memo. */
+  uploadPurchaseMemo(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseMemoContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(uploadPurchaseMemoServiceInputSchema, payload);
+      await this.authorize(validated, "CREATE");
+      if (!this.storage || !this.purchases?.setMemo)
+        throw new BusinessRuleError("Cash memo storage is not configured.");
+      const body = decodeAndValidateImage(
+        input.contentBase64,
+        input.contentType,
+      );
+      const storageKey = purchaseMemoObjectKey({
+        assetId: crypto.randomUUID(),
+        contentType: input.contentType,
+        organizationId: validated.organizationId,
+        purchaseId: input.purchaseId,
+      });
+      await this.storage.upload({
+        body,
+        contentType: input.contentType,
+        key: storageKey,
+      });
+      const uploadedAt = new Date();
+      const saved = await this.purchases.setMemo({
+        contentType: input.contentType,
+        organizationId: validated.organizationId,
+        purchaseId: input.purchaseId,
+        storageKey,
+        uploadedAt,
+      });
+      if (!saved) {
+        await this.storage.delete(storageKey).catch(() => undefined);
+        throw new NotFoundError("Purchase not found.");
+      }
+      if (saved.previousStorageKey)
+        await this.storage
+          .delete(saved.previousStorageKey)
+          .catch(() => undefined);
+      return purchaseMemoContractSchema.parse({
+        contentType: input.contentType,
+        uploadedAt: uploadedAt.toISOString(),
+        url: await this.storage.getUrl(storageKey),
+      });
+    });
+  }
+
+  /** The cash memo photo of a purchase, or null when none was added. */
+  getPurchaseMemo(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseMemoContract | null>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(getPurchaseMemoServiceInputSchema, payload);
+      await this.authorize(validated, "READ");
+      if (!this.storage || !this.purchases?.findMemo) return null;
+      const memo = await this.purchases.findMemo(
+        validated.organizationId,
+        input.purchaseId,
+      );
+      if (!memo) return null;
+      return purchaseMemoContractSchema.parse({
+        contentType: memo.contentType,
+        uploadedAt: memo.uploadedAt.toISOString(),
+        url: await this.storage.getUrl(memo.storageKey),
+      });
+    });
+  }
+
+  /** Latest purchase price per variant of a product, for the next restock. */
+  listLastPurchaseCosts(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantLastPurchaseCostContract[]>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        listLastPurchaseCostsServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "READ");
+      if (!this.purchases?.lastCostsForProduct) return [];
+      const rows = await this.purchases.lastCostsForProduct(
+        validated.organizationId,
+        input.productId,
+      );
+      return rows.map((row) =>
+        variantLastPurchaseCostContractSchema.parse({
+          ...row,
+          purchaseDate: row.purchaseDate.toISOString(),
+        }),
+      );
     });
   }
 
@@ -711,6 +823,8 @@ function mapPurchase(record: Purchase | PurchaseWithLines): PurchaseContract {
           sku: line.sku,
           totalCostMinor: line.totalCostMinor.toString(),
           unitCostMinor: line.unitCostMinor,
+          supplierUnitCostMinor: line.supplierUnitCostMinor ?? null,
+          extraCostPerUnitMinor: line.extraCostPerUnitMinor ?? null,
           variantName: line.variantName ?? null,
         }))
       : undefined,

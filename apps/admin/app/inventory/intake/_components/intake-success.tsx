@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { formatTaka } from "../_lib/currency-math";
+import { PurchaseMemo } from "../../../procurement/purchases/_components/purchase-memo";
 import { IntakeBarcodeLabels } from "./intake-barcode-labels";
 import styles from "./stock-intake-wizard.module.css";
 
@@ -156,6 +157,8 @@ export function IntakeSuccess({
           Product দেখুন
         </Link>
       </div>
+
+      <PurchaseMemo purchaseId={result.purchase.id} />
 
       {showLabels ? (
         <IntakeBarcodeLabels

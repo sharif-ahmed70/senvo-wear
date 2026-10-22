@@ -839,7 +839,9 @@ export type {
   CreatePurchaseLineRecord,
   CreatePurchaseRecord,
   PurchaseListFilter,
+  PurchaseMemo,
   PurchaseRepository,
+  VariantLastPurchaseCost,
   UpdatePurchaseRecord,
 } from "./procurement/repositories/purchase-repository.js";
 export type {

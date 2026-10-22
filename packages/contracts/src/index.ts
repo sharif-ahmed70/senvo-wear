@@ -4575,6 +4575,10 @@ export const purchaseLineContractSchema = z
     sku: z.string(),
     totalCostMinor: z.string(),
     unitCostMinor: z.number().int().nonnegative(),
+    /** Supplier price per piece; null on older purchases. */
+    supplierUnitCostMinor: z.number().int().nonnegative().nullable(),
+    /** Extra charges per piece (transport, courier, labour). */
+    extraCostPerUnitMinor: z.number().int().nonnegative().nullable(),
     variantName: z.string().nullable(),
   })
   .strict();
@@ -4631,6 +4635,57 @@ export const createPurchaseDraftServiceInputSchema = z
   .strict();
 export type CreatePurchaseDraftServiceInputContract = z.infer<
   typeof createPurchaseDraftServiceInputSchema
+>;
+
+export const uploadPurchaseMemoServiceInputSchema = z
+  .object({
+    contentBase64: z
+      .string()
+      .min(4)
+      .max(6_990_508)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    purchaseId: idSchema,
+  })
+  .strict();
+export type UploadPurchaseMemoServiceInputContract = z.infer<
+  typeof uploadPurchaseMemoServiceInputSchema
+>;
+export const getPurchaseMemoServiceInputSchema = z
+  .object({ purchaseId: idSchema })
+  .strict();
+export type GetPurchaseMemoServiceInputContract = z.infer<
+  typeof getPurchaseMemoServiceInputSchema
+>;
+/** The supplier's cash memo photo; url is a data: URL for local storage. */
+export const purchaseMemoContractSchema = z
+  .object({
+    contentType: z.string(),
+    uploadedAt: isoTimestampSchema,
+    url: z.string(),
+  })
+  .strict();
+export type PurchaseMemoContract = z.infer<typeof purchaseMemoContractSchema>;
+
+export const listLastPurchaseCostsServiceInputSchema = z
+  .object({ productId: idSchema })
+  .strict();
+export type ListLastPurchaseCostsServiceInputContract = z.infer<
+  typeof listLastPurchaseCostsServiceInputSchema
+>;
+/** The latest purchase price of a variant, for the next restock. */
+export const variantLastPurchaseCostContractSchema = z
+  .object({
+    extraCostPerUnitMinor: z.number().int().nonnegative().nullable(),
+    productVariantId: idSchema,
+    purchaseDate: isoTimestampSchema,
+    purchaseNumber: z.string(),
+    supplierUnitCostMinor: z.number().int().nonnegative().nullable(),
+    unitCostMinor: z.number().int().nonnegative(),
+  })
+  .strict();
+export type VariantLastPurchaseCostContract = z.infer<
+  typeof variantLastPurchaseCostContractSchema
 >;
 
 export const getPurchaseServiceInputSchema = z

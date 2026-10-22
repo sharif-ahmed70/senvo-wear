@@ -556,6 +556,7 @@ export function createApplicationServices(
     }),
     procurement: new ProcurementApplicationService({
       authorizationService: options.authorizationService,
+      storage: resolveStorageProvider(options.storageProvider),
       costRepository,
       purchases: purchaseRepository,
       requestIdGenerator: options.requestIdGenerator,

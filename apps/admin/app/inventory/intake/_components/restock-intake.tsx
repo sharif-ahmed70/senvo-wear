@@ -1,8 +1,11 @@
 "use client";
 
-import type { ProductInventorySummaryContract } from "@senvo/contracts";
+import type {
+  ProductInventorySummaryContract,
+  VariantLastPurchaseCostContract,
+} from "@senvo/contracts";
 import { LoaderCircle, Plus, Search } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { parseTaka } from "../_lib/currency-math";
 import {
   blankPrices,
@@ -86,7 +89,31 @@ export function RestockIntake({
     blankPurchase(references.locations.map((location) => location.id)),
   );
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [lastCosts, setLastCosts] = useState<
+    ReadonlyMap<string, VariantLastPurchaseCostContract>
+  >(new Map());
   const submission = useIntakeSubmission();
+  const selectedProductId = selected?.summary.product.id ?? "";
+
+  // Show the previous purchase price next to each existing size.
+  useEffect(() => {
+    if (!selectedProductId) return;
+    let active = true;
+    void intakeClient
+      .listLastPurchaseCosts(selectedProductId)
+      .then((result) => {
+        if (active)
+          setLastCosts(
+            new Map(result.data.map((row) => [row.productVariantId, row])),
+          );
+      })
+      .catch(() => {
+        if (active) setLastCosts(new Map());
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProductId]);
 
   const existing = selected?.existing;
   const lines = useMemo(() => linesFromGrid(grid, existing), [existing, grid]);
@@ -406,6 +433,7 @@ export function RestockIntake({
             canEditSupplier={canEditSupplier}
             colors={references.colors}
             errors={errors}
+            lastCosts={lastCosts}
             lines={lines}
             locations={references.locations}
             onPrices={setPrices}

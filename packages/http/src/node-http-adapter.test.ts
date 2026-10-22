@@ -1697,6 +1697,8 @@ describe("Node HTTP runtime adapter", () => {
           sku: "SHT-BLK-M",
           totalCostMinor: "500000",
           unitCostMinor: 50000,
+          supplierUnitCostMinor: null,
+          extraCostPerUnitMinor: null,
           variantName: "Black / M",
         },
       ],

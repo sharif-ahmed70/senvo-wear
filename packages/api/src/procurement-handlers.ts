@@ -10,6 +10,14 @@ import {
   createSupplierServiceInputSchema,
   deactivateSupplierServiceInputSchema,
   getPurchaseServiceInputSchema,
+  listLastPurchaseCostsServiceInputSchema,
+  getPurchaseMemoServiceInputSchema,
+  uploadPurchaseMemoServiceInputSchema,
+  type GetPurchaseMemoServiceInputContract,
+  type PurchaseMemoContract,
+  type UploadPurchaseMemoServiceInputContract,
+  type ListLastPurchaseCostsServiceInputContract,
+  type VariantLastPurchaseCostContract,
   getSupplierServiceInputSchema,
   listPurchasesServiceInputSchema,
   listSuppliersServiceInputSchema,
@@ -67,6 +75,18 @@ export type ProcurementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<PurchaseContract>>;
+  listLastPurchaseCosts?(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<VariantLastPurchaseCostContract[]>>;
+  uploadPurchaseMemo?(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseMemoContract>>;
+  getPurchaseMemo?(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseMemoContract | null>>;
   getSupplier(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -111,6 +131,9 @@ export type ProcurementApiHandlers = {
   createSupplier: ApiHandler<SupplierContract>;
   deactivateSupplier: ApiHandler<SupplierContract>;
   getPurchase: ApiHandler<PurchaseContract>;
+  listLastPurchaseCosts?: ApiHandler<VariantLastPurchaseCostContract[]>;
+  uploadPurchaseMemo?: ApiHandler<PurchaseMemoContract>;
+  getPurchaseMemo?: ApiHandler<PurchaseMemoContract | null>;
   getSupplier: ApiHandler<SupplierContract>;
   listPurchases: ApiHandler<PurchaseContract[]>;
   listSuppliers: ApiHandler<SupplierContract[]>;
@@ -181,6 +204,36 @@ export function createProcurementApiHandlers(
       execute: (context, input) =>
         dependencies.procurement.deactivateSupplier(context, input),
       inputSchema: deactivateSupplierServiceInputSchema,
+    }),
+    uploadPurchaseMemo: handler<
+      UploadPurchaseMemoServiceInputContract,
+      PurchaseMemoContract
+    >({
+      action: "CREATE",
+      execute: (context, input) =>
+        dependencies.procurement.uploadPurchaseMemo?.(context, input) ??
+        Promise.reject(new Error("Cash memo upload is not available.")),
+      inputSchema: uploadPurchaseMemoServiceInputSchema,
+    }),
+    getPurchaseMemo: handler<
+      GetPurchaseMemoServiceInputContract,
+      PurchaseMemoContract | null
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.getPurchaseMemo?.(context, input) ??
+        Promise.resolve({ data: null, ok: true as const }),
+      inputSchema: getPurchaseMemoServiceInputSchema,
+    }),
+    listLastPurchaseCosts: handler<
+      ListLastPurchaseCostsServiceInputContract,
+      VariantLastPurchaseCostContract[]
+    >({
+      action: "READ",
+      execute: (context, input) =>
+        dependencies.procurement.listLastPurchaseCosts?.(context, input) ??
+        Promise.resolve({ data: [], ok: true as const }),
+      inputSchema: listLastPurchaseCostsServiceInputSchema,
     }),
     getPurchase: handler<GetPurchaseServiceInputContract, PurchaseContract>({
       action: "READ",

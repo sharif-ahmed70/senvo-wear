@@ -5,6 +5,7 @@ import type {
   StockLocationReadContract,
   SupplierContract,
 } from "@senvo/contracts";
+import { PurchaseMemo } from "./purchase-memo";
 import {
   AlertCircle,
   ArrowLeft,
@@ -658,6 +659,8 @@ function PurchaseDetailsPanel({
             )}
           </div>
 
+          <PurchaseMemo purchaseId={purchase.id} />
+
           <h3 className={styles.stateTitle}>
             ক্রয়কৃত পণ্যের তালিকা (Line Items)
           </h3>
@@ -670,7 +673,9 @@ function PurchaseDetailsPanel({
                   <th>ভ্যারিয়েন্ট (Variant)</th>
                   <th>এসকেইউ (SKU)</th>
                   <th>পরিমাণ (Qty)</th>
-                  <th>দর (Unit Cost)</th>
+                  <th>সাপ্লায়ার দাম (Supplier price)</th>
+                  <th>অতিরিক্ত খরচ (Extra / pc)</th>
+                  <th>মোট দাম (Landed cost)</th>
                   <th>মোট (Line Total)</th>
                 </tr>
               </thead>
@@ -678,7 +683,7 @@ function PurchaseDetailsPanel({
                 {(purchase.lines ?? []).length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={9}
                       style={{ textAlign: "center", color: "#64748b" }}
                     >
                       কোনো লাইন আইটেম যুক্ত নেই (No line items found)
@@ -692,6 +697,16 @@ function PurchaseDetailsPanel({
                       <td>{line.variantName ?? "—"}</td>
                       <td className={styles.purchaseNumber}>{line.sku}</td>
                       <td>{line.quantity}</td>
+                      <td>
+                        {line.supplierUnitCostMinor === null
+                          ? "—"
+                          : formatPurchaseAmount(line.supplierUnitCostMinor)}
+                      </td>
+                      <td>
+                        {line.extraCostPerUnitMinor === null
+                          ? "—"
+                          : formatPurchaseAmount(line.extraCostPerUnitMinor)}
+                      </td>
                       <td>{formatPurchaseAmount(line.unitCostMinor)}</td>
                       <td className={styles.amount}>
                         {formatPurchaseAmount(line.totalCostMinor)}
