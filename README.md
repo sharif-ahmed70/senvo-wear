@@ -28,6 +28,8 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 
 ## Run it on a laptop
 
+**বাংলা গাইড:** [docs/SENVO_GUIDE_BN.md](docs/SENVO_GUIDE_BN.md) (Word: `docs/SENVO-Guide-BN.docx`).
+
 **After reinstalling Windows or on a new laptop:** paste the prompt in
 [SETUP_PROMPT.md](SETUP_PROMPT.md) into Claude Code, Codex or Antigravity. It
 finds or clones this repository, restores the private `SENVO_BACKUP` folder
