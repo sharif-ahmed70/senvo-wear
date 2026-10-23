@@ -107,7 +107,10 @@ export function SaleSuccess({
                   <ReceiptText aria-hidden="true" size={18} />
                   View receipt
                 </Link>
-                <Link className="pos-success-secondary" href={receiptUrl}>
+                <Link
+                  className="pos-success-secondary"
+                  href={`${receiptUrl}?print=1`}
+                >
                   <Printer aria-hidden="true" size={18} />
                   Print receipt
                 </Link>

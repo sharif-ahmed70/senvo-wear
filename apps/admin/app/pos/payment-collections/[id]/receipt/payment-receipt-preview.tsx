@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
+import { ThermalPageSize } from "../../../_components/thermal-page-size";
 import { formatBdt } from "../../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -64,6 +65,7 @@ export function PaymentReceiptPreview({
           <Printer size={17} /> Print
         </button>
       </div>
+      <ThermalPageSize />
       <article className="receipt-document">
         <header className="receipt-header">
           <div>
