@@ -10,7 +10,23 @@ Antigravity), paste the prompt in [AI_SETUP_PROMPT.md](AI_SETUP_PROMPT.md).
 > (`.senvo-media`) বসান, তারপর `scripts\start-local.ps1` চালান। পরে আপডেট করতে:
 > ব্যাকআপ → `git pull` → `pnpm install` → migration → আবার start।
 
-## Fastest way: the portable package
+## Fastest way: one prompt
+
+Paste the prompt in [SETUP_PROMPT.md](../SETUP_PROMPT.md) into Claude Code,
+Codex or Antigravity. It finds this project (or clones it), then runs
+`scripts\setup-windows.ps1`, which restores the private `SENVO_BACKUP` folder
+(found on any drive) and starts everything. Keep `SENVO_BACKUP` off drive C so
+it survives a Windows reinstall:
+
+| Folder                  | What                                             |
+| ----------------------- | ------------------------------------------------ |
+| `SENVO_BACKUP\DATABASE` | Full shop backups; daily backups are added here  |
+| `SENVO_BACKUP\SEED`     | Fresh data: settings and logins only (`-Fresh`)  |
+| `SENVO_BACKUP\MEDIA`    | `.senvo-media` pictures                          |
+| `SENVO_BACKUP\CONFIG`   | `.env` (private settings such as `AUTH_SECRET`)  |
+| `SENVO_BACKUP\TOOLS`    | Node 22 zip and portable PostgreSQL 17 (offline) |
+
+## Portable package
 
 The portable package (`SENVO-Portable-*.zip`) holds the code, portable Node 22
 and PostgreSQL 17, the shop data and pictures, and `setup-senvo.ps1` (a copy

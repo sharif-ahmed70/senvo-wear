@@ -22,8 +22,11 @@ For the premium storefront redesign task, also read:
 ## Local setup and running
 
 To install, run or update SENVO Wear on a Windows laptop, follow
-`docs/LOCAL_SETUP.md` (the owner may paste `docs/AI_SETUP_PROMPT.md`). Start
-with `scripts\start-local.ps1`. A fresh database has no login: restore the
+`SETUP_PROMPT.md` (one prompt the owner pastes) and `docs/LOCAL_SETUP.md`.
+`scripts\setup-windows.ps1` does the whole setup; start with
+`scripts\start-local.ps1`. Private data (database dumps, pictures, `.env`)
+lives in a `SENVO_BACKUP` folder off drive C and never in git: the repository
+is public. A fresh database has no login: restore the
 shop's newest backup dump. Apply schema changes only with
 `prisma migrate deploy`; never `migrate dev`, `migrate reset` or `db push` on
 the shop database. Back up with `scripts\backup-db.ps1` before updates. Report
