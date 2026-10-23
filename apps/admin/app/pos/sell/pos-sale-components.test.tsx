@@ -175,6 +175,7 @@ describe("guided POS selling components", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue={false}
+        canDiscount={false}
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}
@@ -194,6 +195,7 @@ describe("guided POS selling components", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue
+        canDiscount
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}
@@ -204,10 +206,29 @@ describe("guided POS selling components", () => {
     expect(html).toContain("Allow a remaining balance");
   });
 
+  it("offers a discount only to roles allowed to approve one", () => {
+    const render = (canDiscount: boolean) =>
+      renderToStaticMarkup(
+        <PaymentPanel
+          canApproveDue={false}
+          canDiscount={canDiscount}
+          onCancel={() => undefined}
+          onComplete={() => undefined}
+          submitting={false}
+          totalMinor={250000}
+        />,
+      );
+    expect(render(true)).toContain("Discount on the whole sale (Optional)");
+    expect(render(true)).toContain("Percent (%)");
+    expect(render(true)).toContain("Amount (Tk)");
+    expect(render(false)).not.toContain("Discount on the whole sale");
+  });
+
   it("renders optional customer details capture fields in payment panel", () => {
     const html = renderToStaticMarkup(
       <PaymentPanel
         canApproveDue={false}
+        canDiscount={false}
         onCancel={() => undefined}
         onComplete={() => undefined}
         submitting={false}
@@ -284,7 +305,15 @@ describe("guided POS selling components", () => {
     expect(html).toContain("+8801700000000");
   });
 
-  it("omits customer fields on the receipt preview when not provided", () => {
+  it("shows each item as quantity x price for the 3 inch receipt", () => {
+    const receipt = mockReceipt();
+    const line = receipt.lines[0]!;
+    const html = renderToStaticMarkup(<ReceiptDocument receipt={receipt} />);
+    expect(html).toContain("receipt-table--compact");
+    expect(html).toContain(`${line.quantity} × `);
+  });
+
+  it("shows a walk-in customer and no phone when buyer details were not given", () => {
     const html = renderToStaticMarkup(
       <ReceiptDocument
         receipt={{
@@ -294,7 +323,7 @@ describe("guided POS selling components", () => {
         }}
       />,
     );
-    expect(html).not.toContain("<dt>Customer</dt>");
+    expect(html).toContain("Walk-in customer");
     expect(html).not.toContain("<dt>Phone</dt>");
   });
 });

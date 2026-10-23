@@ -7,6 +7,11 @@ import { AdminApiClient, AdminApiError } from "../_lib/api-client";
 import { dashboardModelFromSummary } from "../_lib/dashboard-model";
 import { useAdminSession } from "../admin-shell";
 import { AdminDashboard } from "./dashboard";
+import {
+  DashboardRange,
+  dhakaToday,
+  type DashboardRangeValue,
+} from "./dashboard-range";
 import { NoAccessState } from "./no-access-state";
 
 const client = new AdminApiClient({
@@ -23,11 +28,19 @@ type LoadState =
 export function DashboardLive() {
   const session = useAdminSession();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [range, setRange] = useState<DashboardRangeValue>(() => {
+    const today = dhakaToday();
+    return { from: today, preset: "today", to: today };
+  });
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
+  const load = useCallback(async (period: DashboardRangeValue) => {
+    setRefreshing(true);
     try {
-      const result = await client.getDashboardSummary();
+      const result = await client.getDashboardSummary({
+        from: period.from,
+        to: period.to,
+      });
       setState({ kind: "ready", summary: result.data });
     } catch (caught) {
       if (caught instanceof AdminApiError && caught.status === 403) {
@@ -41,12 +54,14 @@ export function DashboardLive() {
             ? `${caught.message} Request ${caught.requestId}.`
             : "The dashboard could not be loaded.",
       });
+    } finally {
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(range);
+  }, [load, range]);
 
   if (state.kind === "forbidden") {
     return (
@@ -86,7 +101,7 @@ export function DashboardLive() {
           <AlertCircle aria-hidden="true" size={18} /> {state.message}
         </p>
         <button
-          onClick={() => void load()}
+          onClick={() => void load(range)}
           style={{ justifySelf: "start", minHeight: 38, padding: "0 14px" }}
           type="button"
         >
@@ -100,6 +115,12 @@ export function DashboardLive() {
       model={dashboardModelFromSummary(state.summary, {
         greetingName: session?.displayName ?? "there",
       })}
+      toolbar={
+        // Only people who see money figures get the period picker.
+        state.summary.financials ? (
+          <DashboardRange busy={refreshing} onChange={setRange} value={range} />
+        ) : undefined
+      }
     />
   );
 }

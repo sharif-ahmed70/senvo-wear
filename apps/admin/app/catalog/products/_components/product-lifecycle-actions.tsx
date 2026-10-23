@@ -100,9 +100,9 @@ export function ProductLifecycleActions({
         const data = new FormData(form);
         const response = await client.editProduct({
           ...input,
-          name: String(data.get("name")),
-          description: String(data.get("description")) || null,
-          categoryId: String(data.get("categoryId")),
+          name: formText(data, "name"),
+          description: formText(data, "description") || null,
+          categoryId: formText(data, "categoryId"),
         });
         onSaved(response.data);
       } else {
@@ -130,18 +130,18 @@ export function ProductLifecycleActions({
     }
   }
   return (
-    <section className="admin-section" aria-label="Product actions">
+    <section className="catalog-actions" aria-label="Product actions">
       {canUpdate ? (
         <>
           <button
-            className="organization-text-button"
+            className="catalog-action-button"
             type="button"
             onClick={() => void open("edit")}
           >
             Edit
           </button>
           <button
-            className="organization-text-button"
+            className="catalog-action-button"
             type="button"
             onClick={() =>
               void open(product.status === "ARCHIVED" ? "restore" : "archive")
@@ -154,7 +154,7 @@ export function ProductLifecycleActions({
       {canDelete ? (
         <>
           <button
-            className="organization-text-button"
+            className="catalog-action-button catalog-action-button--danger"
             type="button"
             disabled={!deletable?.deletable}
             aria-describedby={reasonId}
@@ -162,8 +162,8 @@ export function ProductLifecycleActions({
           >
             Delete
           </button>
-          <p id={reasonId}>
-            {deletable ? deletable.reason : "Checking product history?"}
+          <p className="catalog-actions__note" id={reasonId}>
+            {deletable ? deletable.reason : "Checking product history..."}
           </p>
         </>
       ) : null}
@@ -171,7 +171,7 @@ export function ProductLifecycleActions({
       {action ? (
         <dialog
           ref={dialog}
-          className="admin-section"
+          className="catalog-dialog"
           aria-labelledby={titleId}
           onCancel={() => {
             setAction(null);
@@ -239,24 +239,39 @@ export function ProductLifecycleActions({
                     : "Make this product available for selling again?"}
               </p>
             )}
-            {error ? <p role="alert">{error}</p> : null}
-            <button
-              className="organization-text-button"
-              type="button"
-              onClick={close}
-            >
-              Cancel
-            </button>
-            <button
-              className="organization-text-button"
-              type="submit"
-              disabled={busy}
-            >
-              {busy ? "Saving?" : "Confirm"}
-            </button>
+            {error ? (
+              <p className="catalog-dialog__error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="catalog-dialog__footer">
+              <button
+                className="catalog-action-button"
+                type="button"
+                onClick={close}
+              >
+                Cancel
+              </button>
+              <button
+                className={`catalog-action-button ${
+                  action === "delete"
+                    ? "catalog-action-button--danger-solid"
+                    : "catalog-action-button--primary"
+                }`}
+                type="submit"
+                disabled={busy}
+              >
+                {busy ? "Saving..." : "Confirm"}
+              </button>
+            </div>
           </form>
         </dialog>
       ) : null}
     </section>
   );
+}
+
+function formText(data: FormData, name: string): string {
+  const value = data.get(name);
+  return typeof value === "string" ? value : "";
 }

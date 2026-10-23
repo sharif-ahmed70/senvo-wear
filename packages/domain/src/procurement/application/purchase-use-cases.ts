@@ -35,6 +35,9 @@ export type CreatePurchaseDraftLineInput = {
   quantity: number;
   sku: string;
   unitCostMinor: number;
+  /** Supplier price per piece; with extraCostPerUnitMinor it must add up to unitCostMinor. */
+  supplierUnitCostMinor?: number | null;
+  extraCostPerUnitMinor?: number | null;
   variantName?: string | null;
 };
 
@@ -103,6 +106,7 @@ export async function createPurchaseDraftRecord(
     const lineTotalCostMinor =
       BigInt(line.quantity) * BigInt(line.unitCostMinor);
     totalCostMinor += lineTotalCostMinor;
+    const breakdown = costBreakdown(line);
 
     return {
       lineNumber,
@@ -113,6 +117,7 @@ export async function createPurchaseDraftRecord(
       sku: line.sku.trim(),
       totalCostMinor: lineTotalCostMinor,
       unitCostMinor: line.unitCostMinor,
+      ...breakdown,
       variantName: line.variantName?.trim() ?? null,
     };
   });
@@ -377,4 +382,36 @@ function assertEntityId(value: string, field: string): string {
     throw new ValidationApplicationError(`${field} must be a valid UUID.`);
   }
   return value;
+}
+
+/**
+ * The supplier price and the extra charge per piece must add up to the landed
+ * unit cost, or both be absent (manual purchase orders do not split them).
+ */
+function costBreakdown(line: {
+  extraCostPerUnitMinor?: number | null;
+  supplierUnitCostMinor?: number | null;
+  unitCostMinor: number;
+}): {
+  extraCostPerUnitMinor: number | null;
+  supplierUnitCostMinor: number | null;
+} {
+  const supplier = line.supplierUnitCostMinor ?? null;
+  const extra = line.extraCostPerUnitMinor ?? null;
+  if (supplier === null && extra === null)
+    return { extraCostPerUnitMinor: null, supplierUnitCostMinor: null };
+  if (
+    supplier === null ||
+    extra === null ||
+    !Number.isSafeInteger(supplier) ||
+    !Number.isSafeInteger(extra) ||
+    supplier < 0 ||
+    extra < 0 ||
+    supplier + extra !== line.unitCostMinor
+  ) {
+    throw new ValidationApplicationError(
+      "Supplier price and extra cost must add up to the unit cost.",
+    );
+  }
+  return { extraCostPerUnitMinor: extra, supplierUnitCostMinor: supplier };
 }

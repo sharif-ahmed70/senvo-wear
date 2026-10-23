@@ -110,6 +110,7 @@ const fakeCategoryRepository: CatalogCategoryManagementRepository = {
   findById: () => Promise.resolve(null),
   findBySlug: () => Promise.resolve(null),
   list: () => Promise.resolve([]),
+  updateParent: () => Promise.resolve(null),
   updateStatus: () => Promise.resolve(null),
 };
 

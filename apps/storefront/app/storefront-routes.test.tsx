@@ -96,11 +96,31 @@ describe("storefront route states", () => {
     const html = renderToStaticMarkup(createElement(CatalogWorkspace));
     expect(html).toContain("SENVO featured collections");
     expect(html).toContain("Made to move");
-    expect(html).toContain("Shop by category");
     expect(html).toContain("The SENVO edit");
     expect(html).toContain("Search products");
     expect(html).toContain("Filter by category");
     expect(html).toContain("Loading products");
+  });
+
+  it("opens the edit filtered by a category from a menu link", () => {
+    const html = renderToStaticMarkup(
+      <CatalogWorkspace
+        initialCatalog={{
+          categories: [
+            { code: "shirts", id: "category-1", name: "Shirts" },
+            { code: "shoes", id: "category-2", name: "Shoes" },
+          ],
+          collections: [],
+          hasMore: false,
+          page: 1,
+          pageSize: 12,
+          products: [],
+        }}
+        initialCategory="shoes"
+      />,
+    );
+    expect(html).toContain('<option value="shoes" selected="">Shoes</option>');
+    expect(html).toContain("Clear filters");
   });
 
   it("labels wishlist behavior as device-local and keeps quick view available", () => {

@@ -39,6 +39,11 @@ import {
   taka,
   type StorefrontCatalog,
 } from "../_lib/storefront-api";
+import {
+  MobileCategoryList,
+  SectionBar,
+  useStorefrontFacets,
+} from "./category-menu";
 import { useCustomerAuth } from "./customer-auth-provider";
 
 // Both are off by default: the OTP message sender is a stub and the
@@ -50,8 +55,8 @@ const showNewsletter = process.env.NEXT_PUBLIC_STOREFRONT_NEWSLETTER === "true";
 const emptyCart: HydratedCart = { lines: [], unavailable: [] };
 const mobileLinks = [
   ["01", "New arrivals", "/#collection"],
-  ["02", "Categories", "/#categories"],
-  ["03", "Our story", "/#journal"],
+  ["02", "Our story", "/#journal"],
+  ["03", "Track order", "/track-order"],
   ["04", "Your bag", "/cart"],
 ] as const;
 
@@ -85,6 +90,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
     stiffness: 120,
   });
   const whatsapp = whatsappHref(process.env.NEXT_PUBLIC_WHATSAPP_NUMBER);
+  const facets = useStorefrontFacets();
 
   const updateCount = useCallback(() => {
     setCartCount(
@@ -237,9 +243,8 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
           <Menu size={21} />
         </button>
         <nav aria-label="Primary navigation" className="desktop-navigation">
-          <Link href="/#collection">New in</Link>
-          <Link href="/#categories">Categories</Link>
-          <Link href="/#journal">Journal</Link>
+          <Link href="/#journal">Our story</Link>
+          <Link href="/track-order">Track order</Link>
         </nav>
         <Link aria-label="SENVO home" className="senvo-wordmark" href="/">
           senvo<span>wear</span>
@@ -306,6 +311,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
             {cartCount > 0 ? <span>{cartCount}</span> : null}
           </button>
         </div>
+        <SectionBar facets={facets} />
       </header>
 
       <motion.div
@@ -354,7 +360,6 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
           <div>
             <span>Shop</span>
             <Link href="/#collection">New arrivals</Link>
-            <Link href="/#categories">Categories</Link>
             <Link href="/cart">Your bag</Link>
           </div>
           <div>
@@ -448,6 +453,7 @@ export function StorefrontShell({ children }: { children: ReactNode }) {
           </button>
         </div>
         <nav>
+          <MobileCategoryList facets={facets} onNavigate={closePanels} />
           {mobileLinks.map(([index, label, href]) => (
             <Link href={href} key={label} onClick={closePanels}>
               <span>{index}</span>

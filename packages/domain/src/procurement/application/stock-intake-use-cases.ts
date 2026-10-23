@@ -199,6 +199,8 @@ type ResolvedLine = {
   quantity: number;
   sellingPriceMinor: number;
   size: Size;
+  /** Supplier price per piece, before transport. */
+  supplierUnitCostMinor: number;
   unitCostMinor: number;
   variant: ProductVariant;
 };
@@ -313,6 +315,9 @@ export async function recordStockIntake(
       quantity: line.quantity,
       sku: line.variant.sku,
       unitCostMinor: line.unitCostMinor,
+      // Keep the supplier price; the transport share is stored separately.
+      supplierUnitCostMinor: line.supplierUnitCostMinor,
+      extraCostPerUnitMinor: line.unitCostMinor - line.supplierUnitCostMinor,
       variantName: `${line.color.name} / ${line.size.name}`,
     })),
     notes: purchaseNotes(normalized.purchase),
@@ -894,6 +899,11 @@ async function resolveLines(
       );
     }
 
+    if (variant?.status === "ARCHIVED") {
+      throw new ValidationApplicationError(
+        `${variant.sku} (${color.name} / ${size.name}) is archived. Restore it on the product page before adding stock.`,
+      );
+    }
     if (variant) {
       if (
         line.sellingPriceMinor !== null &&
@@ -946,6 +956,7 @@ async function resolveLines(
       quantity: line.quantity,
       sellingPriceMinor: variant.sellingPriceMinor,
       size,
+      supplierUnitCostMinor: line.unitCostMinor,
       unitCostMinor,
       variant,
     });

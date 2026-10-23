@@ -700,6 +700,13 @@ export const updateCategoryStatusServiceInputSchema = z
   })
   .strict();
 
+export const updateCategoryParentServiceInputSchema = z
+  .object({
+    categoryId: idSchema,
+    parentId: idSchema.nullable(),
+  })
+  .strict();
+
 export const createCollectionServiceInputSchema = createCollectionInputSchema
   .omit({ organizationId: true })
   .strict();
@@ -836,6 +843,14 @@ export const updateVariantPriceServiceInputSchema = z
   .strict();
 export type UpdateVariantPriceServiceInputContract = z.infer<
   typeof updateVariantPriceServiceInputSchema
+>;
+
+/** Archive, restore or delete one variant (size/colour) of a product. */
+export const variantLifecycleInputSchema = z
+  .object({ variantId: idSchema, expectedUpdatedAt: isoTimestampSchema })
+  .strict();
+export type VariantLifecycleInputContract = z.infer<
+  typeof variantLifecycleInputSchema
 >;
 
 export const listProductVariantsServiceInputSchema = z
@@ -1691,6 +1706,9 @@ export type CreateCategoryServiceInputContract = z.infer<
 >;
 export type UpdateCategoryStatusServiceInputContract = z.infer<
   typeof updateCategoryStatusServiceInputSchema
+>;
+export type UpdateCategoryParentServiceInputContract = z.infer<
+  typeof updateCategoryParentServiceInputSchema
 >;
 export type CreateCollectionServiceInputContract = z.infer<
   typeof createCollectionServiceInputSchema
@@ -3629,11 +3647,37 @@ export const posCheckoutCustomerInputSchema = z
   })
   .strict();
 
+export const posCheckoutDiscountInputSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("AMOUNT"),
+      amountMinor: minorUnitAmountSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("PERCENT"),
+      basisPoints: z.number().int().min(1).max(10_000),
+    })
+    .strict(),
+]);
 export const checkoutPosCartServiceInputSchema = z
   .object({
     expectedVersion: expectedVersionSchema,
     cartId: idSchema,
     customer: posCheckoutCustomerInputSchema.nullable().optional(),
+    discount: posCheckoutDiscountInputSchema.nullable().optional(),
+    lineDiscounts: z
+      .array(
+        z
+          .object({
+            discount: posCheckoutDiscountInputSchema,
+            productVariantId: idSchema,
+          })
+          .strict(),
+      )
+      .max(500)
+      .optional(),
     idempotencyKey: z
       .string()
       .trim()
@@ -4549,6 +4593,10 @@ export const purchaseLineContractSchema = z
     sku: z.string(),
     totalCostMinor: z.string(),
     unitCostMinor: z.number().int().nonnegative(),
+    /** Supplier price per piece; null on older purchases. */
+    supplierUnitCostMinor: z.number().int().nonnegative().nullable(),
+    /** Extra charges per piece (transport, courier, labour). */
+    extraCostPerUnitMinor: z.number().int().nonnegative().nullable(),
     variantName: z.string().nullable(),
   })
   .strict();
@@ -4605,6 +4653,57 @@ export const createPurchaseDraftServiceInputSchema = z
   .strict();
 export type CreatePurchaseDraftServiceInputContract = z.infer<
   typeof createPurchaseDraftServiceInputSchema
+>;
+
+export const uploadPurchaseMemoServiceInputSchema = z
+  .object({
+    contentBase64: z
+      .string()
+      .min(4)
+      .max(6_990_508)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+    contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    purchaseId: idSchema,
+  })
+  .strict();
+export type UploadPurchaseMemoServiceInputContract = z.infer<
+  typeof uploadPurchaseMemoServiceInputSchema
+>;
+export const getPurchaseMemoServiceInputSchema = z
+  .object({ purchaseId: idSchema })
+  .strict();
+export type GetPurchaseMemoServiceInputContract = z.infer<
+  typeof getPurchaseMemoServiceInputSchema
+>;
+/** The supplier's cash memo photo; url is a data: URL for local storage. */
+export const purchaseMemoContractSchema = z
+  .object({
+    contentType: z.string(),
+    uploadedAt: isoTimestampSchema,
+    url: z.string(),
+  })
+  .strict();
+export type PurchaseMemoContract = z.infer<typeof purchaseMemoContractSchema>;
+
+export const listLastPurchaseCostsServiceInputSchema = z
+  .object({ productId: idSchema })
+  .strict();
+export type ListLastPurchaseCostsServiceInputContract = z.infer<
+  typeof listLastPurchaseCostsServiceInputSchema
+>;
+/** The latest purchase price of a variant, for the next restock. */
+export const variantLastPurchaseCostContractSchema = z
+  .object({
+    extraCostPerUnitMinor: z.number().int().nonnegative().nullable(),
+    productVariantId: idSchema,
+    purchaseDate: isoTimestampSchema,
+    purchaseNumber: z.string(),
+    supplierUnitCostMinor: z.number().int().nonnegative().nullable(),
+    unitCostMinor: z.number().int().nonnegative(),
+  })
+  .strict();
+export type VariantLastPurchaseCostContract = z.infer<
+  typeof variantLastPurchaseCostContractSchema
 >;
 
 export const getPurchaseServiceInputSchema = z
@@ -5204,7 +5303,13 @@ export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
 // Reports: admin dashboard
 // ---------------------------------------------------------------------------
 
-export const getDashboardSummaryServiceInputSchema = z.object({}).strict();
+/** Optional business-date period (YYYY-MM-DD, Asia/Dhaka); default today. */
+export const getDashboardSummaryServiceInputSchema = z
+  .object({
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+  })
+  .strict();
 export type GetDashboardSummaryServiceInputContract = z.infer<
   typeof getDashboardSummaryServiceInputSchema
 >;
@@ -5258,6 +5363,53 @@ export const dashboardSummaryContractSchema = z
               .strict(),
           )
           .length(7),
+        /** The picked period. Profit is estimated (see the domain notes). */
+        period: z
+          .object({
+            averageSaleMinor: dashboardMinorSchema,
+            channels: z.array(
+              z
+                .object({
+                  channel: salesOrderChannelSchema,
+                  previousPeriodMinor: dashboardMinorSchema,
+                  salesMinor: dashboardMinorSchema,
+                })
+                .strict(),
+            ),
+            costMinor: dashboardMinorSchema,
+            daily: z
+              .array(
+                z
+                  .object({
+                    date: calendarDateSchema,
+                    profitMinor: z.number().int(),
+                    salesMinor: dashboardMinorSchema,
+                  })
+                  .strict(),
+              )
+              .max(366),
+            from: calendarDateSchema,
+            previousSalesMinor: dashboardMinorSchema,
+            profitMinor: z.number().int(),
+            refundsMinor: dashboardMinorSchema,
+            saleCount: dashboardCountSchema,
+            salesMinor: dashboardMinorSchema,
+            to: calendarDateSchema,
+            topProducts: z
+              .array(
+                z
+                  .object({
+                    name: z.string(),
+                    productId: idSchema,
+                    quantity: dashboardCountSchema,
+                    revenueMinor: dashboardMinorSchema,
+                  })
+                  .strict(),
+              )
+              .max(5),
+            uncostedSalesMinor: dashboardMinorSchema,
+          })
+          .strict(),
         refundsTodayMinor: dashboardMinorSchema,
         todaySaleCount: dashboardCountSchema,
         todaySalesMinor: dashboardMinorSchema,

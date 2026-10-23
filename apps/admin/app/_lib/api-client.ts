@@ -21,6 +21,7 @@ import type {
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
   UpdateVariantPriceServiceInputContract,
+  VariantLifecycleInputContract,
   CreateSizeServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryAvailabilityReadContract,
@@ -62,6 +63,9 @@ import type {
   CreatePurchaseDraftServiceInputContract,
   ListPurchasesServiceInputContract,
   PurchaseContract,
+  PurchaseMemoContract,
+  UploadPurchaseMemoServiceInputContract,
+  VariantLastPurchaseCostContract,
   CreateStockIntakeServiceInputContract,
   CreateSupplierServiceInputContract,
   CreateSupplierPaymentServiceInputContract,
@@ -76,6 +80,7 @@ import type {
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
   TeamMemberContract,
+  UpdateCategoryParentServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateBarcodeStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
@@ -395,6 +400,16 @@ export class AdminApiClient {
     );
   }
 
+  updateCategoryParent(
+    input: UpdateCategoryParentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CategoryContract>(
+      `/catalog/categories/${input.categoryId}/parent`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
   listCollections(request?: AdminApiRequest) {
     return this.request<CollectionContract[]>("/catalog/collections", request);
   }
@@ -619,6 +634,17 @@ export class AdminApiClient {
     );
   }
 
+  changeVariantLifecycle(
+    operation: "archive" | "restore" | "delete",
+    input: VariantLifecycleInputContract,
+  ) {
+    const { variantId, ...body } = input;
+    return this.request<ProductVariantContract | null>(
+      `/catalog/variants/${variantId}${operation === "delete" ? "" : `/${operation}`}`,
+      { method: operation === "delete" ? "DELETE" : "POST", body },
+    );
+  }
+
   listVariants(productId: string, request?: AdminApiRequest) {
     return this.request<ProductVariantContract[]>(
       `/catalog/products/${productId}/variants`,
@@ -823,6 +849,31 @@ export class AdminApiClient {
     );
   }
 
+  getPurchaseMemo(purchaseId: string, request?: AdminApiRequest) {
+    return this.request<PurchaseMemoContract | null>(
+      `/procurement/purchases/${purchaseId}/memo`,
+      request,
+    );
+  }
+
+  uploadPurchaseMemo(
+    input: UploadPurchaseMemoServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<PurchaseMemoContract>(
+      `/procurement/purchases/${purchaseId}/memo`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
+  listLastPurchaseCosts(productId: string, request?: AdminApiRequest) {
+    return this.request<VariantLastPurchaseCostContract[]>(
+      `/procurement/products/${productId}/last-costs`,
+      request,
+    );
+  }
+
   getPurchase(purchaseId: string, request?: AdminApiRequest) {
     return this.request<PurchaseContract>(
       `/procurement/purchases/${purchaseId}`,
@@ -911,9 +962,17 @@ export class AdminApiClient {
   }
 
   /** Read-only dashboard; `financials` is present only for POS APPROVE roles. */
-  getDashboardSummary(request?: AdminApiRequest) {
+  getDashboardSummary(
+    range: { from?: string; to?: string } = {},
+    request?: AdminApiRequest,
+  ) {
+    const query = new URLSearchParams(
+      Object.entries(range).filter((entry): entry is [string, string] =>
+        Boolean(entry[1]),
+      ),
+    ).toString();
     return this.request<DashboardSummaryContract>(
-      "/reports/dashboard",
+      `/reports/dashboard${query ? `?${query}` : ""}`,
       request,
     );
   }

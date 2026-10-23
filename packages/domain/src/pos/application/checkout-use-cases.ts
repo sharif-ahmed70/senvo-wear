@@ -21,6 +21,12 @@ import type { PaymentRepository } from "../../payment/repositories/payment-repos
 import type { ReceiptRepository } from "../../receipt/repositories/receipt-repository.js";
 import type { PosCheckout, PosCheckoutPreparation } from "../domain/models.js";
 import type { PosCheckoutRepository } from "../repositories/pos-checkout-repository.js";
+import {
+  discountSignature,
+  planCheckoutDiscount,
+  type PosCheckoutDiscountInput,
+  type PosCheckoutLineDiscountInput,
+} from "./checkout-discount.js";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -45,13 +51,16 @@ export async function checkoutCart(
   },
   input: {
     allowOutstanding: boolean;
+    approveDiscount(): Promise<void>;
     approveOutstanding(): Promise<void>;
     cartId: string;
     expectedVersion: number;
     checkoutId: string;
     completedAt: Date;
     customer?: PosCheckoutCustomerInput | null;
+    discount?: PosCheckoutDiscountInput | null;
     idempotencyKey: string;
+    lineDiscounts?: readonly PosCheckoutLineDiscountInput[] | null;
     organizationId: string;
     paymentBatchId: string;
     payments: readonly {
@@ -77,6 +86,7 @@ export async function checkoutCart(
   const paymentRequestSignature = createPaymentRequestSignature(
     payments,
     input.allowOutstanding,
+    discountSignature(input.discount, input.lineDiscounts ?? []),
   );
   const preparation = await repositories.checkouts.prepare(
     cartId,
@@ -110,8 +120,19 @@ export async function checkoutCart(
   )
     throw new ConflictError("Cart changed on another screen. Refresh.");
   validatePreparation(preparation, staffId);
+  const grossMinor = checkoutTotal(preparation);
+  const discountPlan = planCheckoutDiscount(
+    preparation.lines.map((line) => ({
+      productVariantId: line.productVariantId,
+      quantity: line.quantity,
+      unitPriceMinor: line.sellingPriceMinor,
+    })),
+    input.discount,
+    input.lineDiscounts ?? [],
+  );
+  if (discountPlan.discountMinor > 0) await input.approveDiscount();
   const balance = calculatePaymentBalance(
-    checkoutTotal(preparation),
+    grossMinor - discountPlan.discountMinor,
     payments,
     input.allowOutstanding,
   );
@@ -119,7 +140,8 @@ export async function checkoutCart(
 
   const suffix = checkoutId.replaceAll("-", "").slice(0, 20).toUpperCase();
   const orderKey = `pos:${preparation.salesSessionId}:${idempotencyKey}`;
-  const lines = preparation.lines.map((line) => ({
+  const lines = preparation.lines.map((line, index) => ({
+    discountMinor: discountPlan.lineDiscountsMinor[index] ?? 0,
     productVariantId: line.productVariantId,
     quantity: line.quantity,
     unitPriceMinor: line.sellingPriceMinor,

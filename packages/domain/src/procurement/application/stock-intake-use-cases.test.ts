@@ -387,6 +387,8 @@ function createStockIntakeTestWorld() {
             sku: line.sku,
             totalCostMinor: line.totalCostMinor,
             unitCostMinor: line.unitCostMinor,
+            supplierUnitCostMinor: line.supplierUnitCostMinor ?? null,
+            extraCostPerUnitMinor: line.extraCostPerUnitMinor ?? null,
             variantName: line.variantName ?? null,
           })),
           notes: record.notes ?? null,
@@ -1011,6 +1013,17 @@ describe("recordStockIntake", () => {
       );
       expect(result.transportAppliedMinor).toBe(1_001);
       expect(result.transportRequestedMinor).toBe(1_001);
+      // The supplier price stays visible next to the transport share.
+      expect(
+        world.state.purchases[0]?.lines.map((line) => [
+          line.supplierUnitCostMinor,
+          line.extraCostPerUnitMinor,
+          line.unitCostMinor,
+        ]),
+      ).toEqual([
+        [50_000, 250, 50_250],
+        [40_000, 251, 40_251],
+      ]);
     });
 
     it("distributes remainders across lines and keeps the sum exact", () => {

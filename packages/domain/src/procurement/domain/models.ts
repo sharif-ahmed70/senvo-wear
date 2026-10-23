@@ -62,6 +62,9 @@ export type PurchaseLine = {
   sku: string;
   totalCostMinor: bigint;
   unitCostMinor: number;
+  /** Supplier price per piece; null on purchases made before it was kept. */
+  supplierUnitCostMinor: number | null;
+  extraCostPerUnitMinor: number | null;
   updatedAt: Date;
   variantName: string | null;
 };

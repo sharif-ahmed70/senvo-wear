@@ -327,6 +327,7 @@ function CatalogForm({
         const result = await client.createCategory({
           description: optionalValue(formData, "description"),
           name,
+          parentId: optionalValue(formData, "parentId"),
           slug: slugify(name),
           sortOrder: 0,
         });
@@ -392,6 +393,19 @@ function CatalogForm({
             colors={colors}
             sizes={sizes}
           />
+        ) : null}
+        {kind === "categories" ? (
+          <label>
+            <span>Parent category</span>
+            <select defaultValue="" name="parentId">
+              <option value="">None (main section)</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : null}
         {kind === "colors" ? <ColorFields /> : null}
         {kind === "sizes" ? <SizeFields /> : null}
@@ -641,6 +655,44 @@ function CatalogTable({
     [kind, records],
   );
 
+  /** Categories that cannot become the parent of `categoryId`. */
+  function blockedParents(categoryId: string) {
+    const blocked = new Set([categoryId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const record of records) {
+        if (
+          "parentId" in record &&
+          record.parentId &&
+          blocked.has(record.parentId) &&
+          !blocked.has(record.id)
+        ) {
+          blocked.add(record.id);
+          grew = true;
+        }
+      }
+    }
+    return blocked;
+  }
+
+  async function changeParent(record: CatalogRecord, parentId: string) {
+    setUpdateError("");
+    try {
+      const result = await client.updateCategoryParent({
+        categoryId: record.id,
+        parentId: parentId || null,
+      });
+      setRecords(
+        records.map((current) =>
+          current.id === result.data.id ? result.data : current,
+        ),
+      );
+    } catch (caught) {
+      setUpdateError(messageForError(caught));
+    }
+  }
+
   async function toggleStatus(record: CatalogRecord) {
     setUpdateError("");
     try {
@@ -700,9 +752,32 @@ function CatalogTable({
                 <td>{secondaryValue(record)}</td>
                 {kind === "categories" ? (
                   <td>
-                    {"parentId" in record && record.parentId
-                      ? (categoryMap.get(record.parentId) ?? "Parent category")
-                      : "Top level"}
+                    {canUpdate && "parentId" in record ? (
+                      <select
+                        aria-label={`Parent category of ${record.name}`}
+                        className="catalog-parent-select"
+                        onChange={(event) =>
+                          void changeParent(record, event.target.value)
+                        }
+                        value={record.parentId ?? ""}
+                      >
+                        <option value="">Top level</option>
+                        {records
+                          .filter(
+                            (option) =>
+                              !blockedParents(record.id).has(option.id),
+                          )
+                          .map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.name}
+                            </option>
+                          ))}
+                      </select>
+                    ) : "parentId" in record && record.parentId ? (
+                      (categoryMap.get(record.parentId) ?? "Parent category")
+                    ) : (
+                      "Top level"
+                    )}
                   </td>
                 ) : null}
                 {kind === "colors" ? (

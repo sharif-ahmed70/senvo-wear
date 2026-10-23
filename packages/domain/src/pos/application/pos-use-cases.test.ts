@@ -3,7 +3,7 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../errors.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   PosCart,
   PosCartDetails,
@@ -310,6 +310,42 @@ describe("offline POS use cases", () => {
       availableQuantity: 4,
       sellingPriceMinor: 1250,
     });
+  });
+
+  it("falls back to an exact SKU when no barcode matches", async () => {
+    const lookupBySku = vi.fn((_org: string, sku: string) =>
+      Promise.resolve(
+        sku === "OX-L"
+          ? {
+              barcode: { value: "123456789012" },
+              color: "Black",
+              productName: "Oxford",
+              sellingPriceMinor: 1250,
+              size: "L",
+              sku: "OX-L",
+              variantId,
+              variantStatus: "ACTIVE",
+            }
+          : null,
+      ),
+    );
+    const repositories = {
+      barcodes: {
+        lookupActive: () => Promise.resolve(null),
+        lookupActiveBySku: lookupBySku,
+      } as never,
+      inventory: {
+        getVariantAvailability: () =>
+          Promise.resolve({ locations: [{ availableToSell: 2 }], variant: {} }),
+      } as never,
+    };
+    await expect(
+      lookupPosSale(repositories, { organizationId, value: " ox-l " }),
+    ).resolves.toMatchObject({ barcode: "123456789012", sku: "OX-L" });
+    expect(lookupBySku).toHaveBeenCalledWith(organizationId, "OX-L");
+    await expect(
+      lookupPosSale(repositories, { organizationId, value: "OX" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rejects unavailable and cross-organization barcode results", async () => {

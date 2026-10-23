@@ -526,7 +526,7 @@ export class CatalogMediaApplicationService {
   }
 }
 
-function decodeAndValidateImage(
+export function decodeAndValidateImage(
   contentBase64: string,
   contentType: ProductImageContentType,
 ): Uint8Array {

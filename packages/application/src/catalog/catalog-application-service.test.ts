@@ -466,3 +466,140 @@ describe("product lifecycle", () => {
     expect(audit).not.toHaveBeenCalled();
   });
 });
+
+describe("product option (variant) lifecycle", () => {
+  const variantId = "11111111-1111-4111-8111-111111111113";
+  function setup(actorRole: "OWNER" | "ADMIN" = "OWNER", history = false) {
+    let variant: ProductVariant | null = {
+      colorId: variantId,
+      createdAt: new Date(0),
+      id: variantId,
+      organizationId,
+      productId: variantId,
+      sellingPriceMinor: 1000,
+      sizeId: variantId,
+      sku: "TEE-BLK-M",
+      status: "ACTIVE",
+      updatedAt: new Date(0),
+    };
+    const audit = vi.fn().mockResolvedValue(undefined);
+    const repo = {
+      findVariantLocked: (id: string, org: string) =>
+        Promise.resolve(
+          variant?.id === id && variant.organizationId === org ? variant : null,
+        ),
+      updateVariantStatus: (
+        record: ProductVariant,
+        status: ProductVariant["status"],
+      ) => {
+        variant = {
+          ...record,
+          status,
+          updatedAt: new Date(record.updatedAt.getTime() + 1),
+        };
+        return Promise.resolve(variant);
+      },
+      deleteVariant: () => {
+        if (history)
+          return Promise.reject(
+            new ConflictError(
+              "This option has stock or sales history. Archive it instead.",
+            ),
+          );
+        variant = null;
+        return Promise.resolve();
+      },
+      actorRole: () => Promise.resolve(actorRole),
+    } as unknown as ProductLifecycleRepository;
+    const service = new CatalogApplicationService({
+      barcodes: createFailFastStub("barcodes"),
+      categories: createFailFastStub("categories"),
+      collections: createFailFastStub("collections"),
+      colors: createFailFastStub("colors"),
+      organizations: createFailFastStub("organizations"),
+      products: createFailFastStub("products"),
+      productVariants: createFailFastStub("variants"),
+      sizes: createFailFastStub("sizes"),
+      authorizationService: {
+        authorize: (ctx, permission) =>
+          defaultRolePermissions.some(
+            (grant) =>
+              grant.role === ctx.role &&
+              grant.resource === permission.resource &&
+              grant.action === permission.action,
+          )
+            ? Promise.resolve()
+            : Promise.reject(new AuthorizationError("Denied")),
+      },
+      transactionManager: {
+        execute: (ctx, operation) =>
+          operation({
+            applicationContext: ctx,
+            productLifecycleRepository: repo,
+            auditWriter: { recordWithinTransaction: audit },
+          } as unknown as ApplicationTransactionContext),
+      },
+    });
+    return { service, audit, read: () => variant };
+  }
+  const input = { variantId, expectedUpdatedAt: new Date(0).toISOString() };
+
+  it("archives and restores one option with an audit entry", async () => {
+    const { service, audit, read } = setup();
+    expect(await service.archiveVariant(context, input)).toMatchObject({
+      ok: true,
+      data: { status: "ARCHIVED", sku: "TEE-BLK-M" },
+    });
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "PRODUCT_VARIANT_ARCHIVED",
+        resource: "PRODUCT_VARIANT",
+        resourceId: variantId,
+      }),
+    );
+    expect(
+      await service.restoreVariant(context, {
+        ...input,
+        expectedUpdatedAt: read()!.updatedAt.toISOString(),
+      }),
+    ).toMatchObject({ ok: true, data: { status: "ACTIVE" } });
+  });
+
+  it("rejects a stale archive and denies STAFF", async () => {
+    const { service } = setup();
+    await service.archiveVariant(context, input);
+    expect(await service.archiveVariant(context, input)).toMatchObject({
+      ok: false,
+      error: { code: "CONCURRENCY_CONFLICT" },
+    });
+    expect(
+      await setup().service.archiveVariant(
+        { ...context, role: "STAFF" },
+        input,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  });
+
+  it("lets only the owner delete, and only without history", async () => {
+    const admin = setup("ADMIN");
+    expect(await admin.service.deleteVariant(context, input)).toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    });
+    expect(admin.read()).not.toBeNull();
+
+    expect(
+      await setup("OWNER", true).service.deleteVariant(context, input),
+    ).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+
+    const owner = setup("OWNER");
+    expect(await owner.service.deleteVariant(context, input)).toEqual({
+      ok: true,
+      data: null,
+    });
+    expect(owner.read()).toBeNull();
+    expect(owner.audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "PRODUCT_VARIANT_DELETED" }),
+    );
+  });
+});

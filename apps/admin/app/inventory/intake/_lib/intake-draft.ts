@@ -76,6 +76,8 @@ export type PurchaseDraft = {
   editSupplier: boolean;
   existingSupplier: SelectedSupplier | null;
   locationId: string;
+  /** Photo of the supplier's cash memo; uploaded right after saving. */
+  memoFile: File | null;
   memoNumber: string;
   method: PaymentMethod;
   newSupplier: { address: string; name: string; phone: string };
@@ -118,6 +120,7 @@ export function blankPurchase(
     editSupplier: false,
     existingSupplier: null,
     locationId: locationIds.length === 1 ? (locationIds[0] ?? "") : "",
+    memoFile: null,
     memoNumber: "",
     method: "CASH",
     newSupplier: { address: "", name: "", phone: "" },

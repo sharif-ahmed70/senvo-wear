@@ -25,6 +25,7 @@ import {
   createApiFailure,
   createApiSuccess,
   createInventoryMovementServiceInputSchema,
+  updateCategoryParentServiceInputSchema,
   updateVariantPriceServiceInputSchema,
   postInventoryMovementServiceInputSchema,
   type ApiResponse,
@@ -243,6 +244,49 @@ describe("Node HTTP runtime adapter", () => {
     );
     expect(invalid.status).toBe(400);
     expect(requests).toHaveLength(1);
+  });
+
+  it("routes category parent PATCH with path ownership and validates its payload", async () => {
+    const requests: unknown[] = [];
+    const handler = createProtectedApiHandler({
+      authenticationService: new DevelopmentAuthenticationService("test"),
+      authorizationService: { authorize: () => Promise.resolve() },
+      permission: { action: "UPDATE", resource: "CATALOG" },
+      inputSchema: updateCategoryParentServiceInputSchema,
+      execute: (_context, input) => {
+        requests.push(input);
+        return Promise.resolve({ ok: true, data: input });
+      },
+    });
+    const fallback = new RecordingApiHandler(
+      createApiSuccess({}, suppliedRequestId),
+    );
+    const runtime = await startRuntime({
+      handlers: {
+        catalog: {
+          updateCategoryParent: handler,
+        } as unknown as CatalogApiHandlers,
+        createSalesOrder: fallback,
+        postInventoryMovement: fallback,
+      },
+    });
+    const send = (body: unknown) =>
+      fetch(`${runtime.url}/catalog/categories/${movementId}/parent`, {
+        method: "PATCH",
+        headers: developmentHeaders(suppliedRequestId),
+        body: JSON.stringify(body),
+      });
+
+    expect((await send({ categoryId: userId, parentId: userId })).status).toBe(
+      200,
+    );
+    expect((await send({ parentId: null })).status).toBe(200);
+    expect(requests).toEqual([
+      { categoryId: movementId, parentId: userId },
+      { categoryId: movementId, parentId: null },
+    ]);
+    expect((await send({ parentId: "not-an-id" })).status).toBe(400);
+    expect(requests).toHaveLength(2);
   });
   it("routes all public storefront operations without employee headers", async () => {
     const listCatalog = new RecordingApiHandler(
@@ -1697,6 +1741,8 @@ describe("Node HTTP runtime adapter", () => {
           sku: "SHT-BLK-M",
           totalCostMinor: "500000",
           unitCostMinor: 50000,
+          supplierUnitCostMinor: null,
+          extraCostPerUnitMinor: null,
           variantName: "Black / M",
         },
       ],

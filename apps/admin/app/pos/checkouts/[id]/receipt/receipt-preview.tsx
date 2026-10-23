@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
+import { ThermalPageSize } from "../../../_components/thermal-page-size";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -14,9 +15,11 @@ const client = new AdminApiClient({
 export function ReceiptPreview({
   checkoutId,
   permissions: propsPermissions,
+  printOnLoad = false,
 }: {
   checkoutId: string;
   permissions?: readonly AdminPermissionKey[];
+  printOnLoad?: boolean;
 }) {
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
@@ -57,6 +60,7 @@ export function ReceiptPreview({
           <Printer size={17} /> Print
         </button>
       </div>
+      <ThermalPageSize autoPrint={printOnLoad} />
       <ReceiptDocument receipt={receipt} />
     </main>
   );
@@ -122,12 +126,10 @@ export function ReceiptDocument({
           <dt>Payment</dt>
           <dd>{label(receipt.paymentStatus)}</dd>
         </div>
-        {receipt.customerName ? (
-          <div>
-            <dt>Customer</dt>
-            <dd>{receipt.customerName}</dd>
-          </div>
-        ) : null}
+        <div>
+          <dt>Customer</dt>
+          <dd>{receipt.customerName ?? "Walk-in customer"}</dd>
+        </div>
         {receipt.customerPhone ? (
           <div>
             <dt>Phone</dt>
@@ -137,7 +139,7 @@ export function ReceiptDocument({
       </dl>
 
       <div className="receipt-table-wrap">
-        <table className="receipt-table">
+        <table className="receipt-table receipt-table--compact">
           <thead>
             <tr>
               <th>Item</th>
@@ -156,6 +158,12 @@ export function ReceiptDocument({
                       .filter(Boolean)
                       .join(" | ")}
                   </span>
+                  {line.discountMinor > 0 ? (
+                    <span>Discount −{money(line.discountMinor)}</span>
+                  ) : null}
+                  <span className="receipt-line-calc">
+                    {line.quantity} × {money(line.unitPriceMinor)}
+                  </span>
                 </td>
                 <td>{line.quantity}</td>
                 <td>{money(line.unitPriceMinor)}</td>
@@ -170,11 +178,27 @@ export function ReceiptDocument({
         <dl>
           <div>
             <dt>Subtotal</dt>
-            <dd>{money(receipt.subtotalMinor)}</dd>
+            <dd>
+              {money(
+                receipt.subtotalMinor +
+                  receipt.lines.reduce(
+                    (sum, line) => sum + line.discountMinor,
+                    0,
+                  ),
+              )}
+            </dd>
           </div>
           <div>
             <dt>Discount</dt>
-            <dd>{money(receipt.discountMinor)}</dd>
+            <dd>
+              {money(
+                receipt.discountMinor +
+                  receipt.lines.reduce(
+                    (sum, line) => sum + line.discountMinor,
+                    0,
+                  ),
+              )}
+            </dd>
           </div>
           <div>
             <dt>Delivery</dt>

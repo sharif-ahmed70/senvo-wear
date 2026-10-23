@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { formatTaka } from "../_lib/currency-math";
+import { PurchaseMemo } from "../../../procurement/purchases/_components/purchase-memo";
 import { IntakeBarcodeLabels } from "./intake-barcode-labels";
 import styles from "./stock-intake-wizard.module.css";
 
@@ -23,12 +24,15 @@ export type PhotoUploadState =
   | { message: string; status: "failed" };
 
 export function IntakeSuccess({
+  memoFile = null,
   onAnother,
   onRetryPhoto,
   photo = { status: "none" },
   result,
   typedTransportMinor,
 }: {
+  /** Memo photo chosen in the form, uploaded once the purchase exists. */
+  memoFile?: File | null;
   onAnother: () => void;
   onRetryPhoto?: () => void;
   photo?: PhotoUploadState;
@@ -156,6 +160,8 @@ export function IntakeSuccess({
           Product দেখুন
         </Link>
       </div>
+
+      <PurchaseMemo pendingFile={memoFile} purchaseId={result.purchase.id} />
 
       {showLabels ? (
         <IntakeBarcodeLabels

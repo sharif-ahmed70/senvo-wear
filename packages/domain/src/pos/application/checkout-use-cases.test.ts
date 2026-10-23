@@ -37,6 +37,51 @@ function repositories(checkouts: FakeCheckoutRepository) {
 }
 
 describe("POS checkout", () => {
+  it("applies a percentage discount to order lines, payable total and approval", async () => {
+    const checkouts = new FakeCheckoutRepository(preparation());
+    const dependencies = repositories(checkouts);
+    let approvals = 0;
+    const result = await checkoutCart(dependencies, {
+      ...input(),
+      approveDiscount: () => {
+        approvals += 1;
+        return Promise.resolve();
+      },
+      discount: { kind: "PERCENT", basisPoints: 1000 },
+      payments: [{ amountMinor: 4500, method: "CASH" as const }],
+    });
+    expect(approvals).toBe(1);
+    expect(dependencies.salesOrders.created).toMatchObject({
+      lines: [{ discountMinor: 500, quantity: 2, unitPriceMinor: 2500 }],
+    });
+    expect(result.checkout).toMatchObject({
+      paidMinor: 4500,
+      paymentStatus: "PAID",
+      totalMinor: 4500,
+    });
+  });
+
+  it("requires payment to match the discounted total and refuses without approval", async () => {
+    const full = new FakeCheckoutRepository(preparation());
+    await expect(
+      checkoutCart(repositories(full), {
+        ...input(),
+        discount: { kind: "AMOUNT", amountMinor: 1000 },
+      }),
+    ).rejects.toThrow("Payment cannot exceed the checkout total.");
+    const denied = new FakeCheckoutRepository(preparation());
+    const dependencies = repositories(denied);
+    await expect(
+      checkoutCart(dependencies, {
+        ...input(),
+        approveDiscount: () => Promise.reject(new Error("approval denied")),
+        discount: { kind: "AMOUNT", amountMinor: 1000 },
+        payments: [{ amountMinor: 4000, method: "CASH" as const }],
+      }),
+    ).rejects.toThrow("approval denied");
+    expect(dependencies.salesOrders.created).toBeUndefined();
+  });
+
   it("derives the offline channel and current server price through the full lifecycle", async () => {
     const checkouts = new FakeCheckoutRepository(preparation());
     const dependencies = repositories(checkouts);
@@ -191,6 +236,7 @@ function input() {
     expectedVersion: 1,
     cartId: ids.cart,
     allowOutstanding: false,
+    approveDiscount: () => Promise.resolve(),
     approveOutstanding: () => Promise.resolve(),
     checkoutId: ids.checkout,
     completedAt: new Date("2026-08-03T10:00:00.000Z"),

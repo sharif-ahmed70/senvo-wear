@@ -26,6 +26,7 @@ import {
   type FriendlyPosError,
 } from "../_lib/pos-error-messages";
 import { formatBdt } from "../_lib/money";
+import { previewItemDiscounts, type ItemDiscountDraft } from "../_lib/discount";
 import { reconcileNextSale } from "../_lib/reconcile-next-sale";
 import { BarcodeEntry } from "./barcode-entry";
 import { CartLineList } from "./cart-line-list";
@@ -107,8 +108,18 @@ function ActivePosSale({
   const checkoutAttempt = useRef<CheckoutAttempt | null>(null);
   const selectedContext =
     contexts.find(({ session }) => session.id === selectedSessionId) ?? null;
+  const [itemDiscounts, setItemDiscounts] = useState<
+    Record<string, ItemDiscountDraft>
+  >({});
+  const canDiscount = permissions.includes("POS:APPROVE");
   const subtotalMinor =
     cart?.lines.reduce((sum, line) => sum + line.lineSubtotalMinor, 0) ?? 0;
+  const itemPreview = previewItemDiscounts(
+    cart?.lines ?? [],
+    canDiscount ? itemDiscounts : {},
+  );
+  const itemDiscountInvalid = Object.keys(itemPreview.errors).length > 0;
+  const afterItemDiscountMinor = subtotalMinor - itemPreview.totalMinor;
   const itemCount =
     cart?.lines.reduce((sum, line) => sum + line.quantity, 0) ?? 0;
   const canReadReceipt =
@@ -292,13 +303,16 @@ function ActivePosSale({
     >,
   ) {
     if (!cart || submitting) return;
-    const attempt = prepareCheckoutAttempt(checkoutAttempt.current, payload);
+    const request = itemPreview.requests.length
+      ? { ...payload, lineDiscounts: itemPreview.requests }
+      : payload;
+    const attempt = prepareCheckoutAttempt(checkoutAttempt.current, request);
     checkoutAttempt.current = attempt;
     setSubmitting(true);
     setError(null);
     try {
       const result = await client.checkoutPosCart({
-        ...payload,
+        ...request,
         cartId: cart.id,
         expectedVersion: cart.version,
         idempotencyKey: attempt.idempotencyKey,
@@ -340,6 +354,7 @@ function ActivePosSale({
       setSelectedSessionId(next.id);
       setCart(nextCart);
       setCheckout(null);
+      setItemDiscounts({});
       setNotice("New sale ready.");
     } catch (reason) {
       setNextSaleError(friendlyPosError(reason, "session"));
@@ -427,10 +442,11 @@ function ActivePosSale({
               paymentOpen ? (
                 <PaymentPanel
                   canApproveDue={permissions.includes("PAYMENT:APPROVE")}
+                  canDiscount={canDiscount}
                   onCancel={() => !submitting && setPaymentOpen(false)}
                   onComplete={(input) => void completeSale(input)}
                   submitting={submitting}
-                  totalMinor={subtotalMinor}
+                  totalMinor={afterItemDiscountMinor}
                 />
               ) : (
                 <div className="pos-sale-layout">
@@ -445,6 +461,23 @@ function ActivePosSale({
                     />
                     <CartLineList
                       cart={cart}
+                      {...(canDiscount
+                        ? {
+                            discountAmounts: itemPreview.amounts,
+                            discountErrors: itemPreview.errors,
+                            discounts: itemDiscounts,
+                            onDiscountChange: (
+                              variantId: string,
+                              draft: ItemDiscountDraft | null,
+                            ) =>
+                              setItemDiscounts((current) => {
+                                const next = { ...current };
+                                if (draft) next[variantId] = draft;
+                                else delete next[variantId];
+                                return next;
+                              }),
+                          }
+                        : {})}
                       mutatingId={mutatingId}
                       onQuantity={(itemId, quantity) =>
                         void changeQuantity(itemId, quantity)
@@ -466,9 +499,15 @@ function ActivePosSale({
                         <dt>Subtotal</dt>
                         <dd>{formatBdt(subtotalMinor)}</dd>
                       </div>
+                      {itemPreview.totalMinor > 0 ? (
+                        <div>
+                          <dt>Item discounts</dt>
+                          <dd>−{formatBdt(itemPreview.totalMinor)}</dd>
+                        </div>
+                      ) : null}
                       <div className="pos-order-total">
                         <dt>Total</dt>
-                        <dd>{formatBdt(subtotalMinor)}</dd>
+                        <dd>{formatBdt(afterItemDiscountMinor)}</dd>
                       </div>
                     </dl>
                     <p>
@@ -477,6 +516,7 @@ function ActivePosSale({
                     <button
                       disabled={
                         cart.lines.length === 0 ||
+                        itemDiscountInvalid ||
                         scanBusy ||
                         Boolean(mutatingId)
                       }

@@ -10,7 +10,7 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-export type PurchasePrismaClient = Pick<PrismaClient, "purchase">;
+export type PurchasePrismaClient = Pick<PrismaClient, "purchase" | "$queryRaw">;
 
 type KnownPrismaError = {
   code?: string;
@@ -18,6 +18,55 @@ type KnownPrismaError = {
 
 export class PrismaPurchaseRepository implements PurchaseRepository {
   constructor(private readonly prisma: PurchasePrismaClient) {}
+
+  async setMemo(input: {
+    contentType: string;
+    organizationId: string;
+    purchaseId: string;
+    storageKey: string;
+    uploadedAt: Date;
+  }) {
+    const existing = await this.prisma.purchase.findFirst({
+      select: { memoStorageKey: true },
+      where: { id: input.purchaseId, organizationId: input.organizationId },
+    });
+    if (!existing) return null;
+    await this.prisma.purchase.update({
+      data: {
+        memoContentType: input.contentType,
+        memoStorageKey: input.storageKey,
+        memoUploadedAt: input.uploadedAt,
+      },
+      where: { id: input.purchaseId, organizationId: input.organizationId },
+    });
+    return { previousStorageKey: existing.memoStorageKey };
+  }
+
+  async findMemo(organizationId: string, purchaseId: string) {
+    const record = await this.prisma.purchase.findFirst({
+      select: {
+        memoContentType: true,
+        memoStorageKey: true,
+        memoUploadedAt: true,
+      },
+      where: { id: purchaseId, organizationId },
+    });
+    if (
+      !record?.memoStorageKey ||
+      !record.memoContentType ||
+      !record.memoUploadedAt
+    )
+      return null;
+    return {
+      contentType: record.memoContentType,
+      storageKey: record.memoStorageKey,
+      uploadedAt: record.memoUploadedAt,
+    };
+  }
+
+  lastCostsForProduct(organizationId: string, productId: string) {
+    return lastCostsForProductQuery(this.prisma, organizationId, productId);
+  }
 
   async create(record: CreatePurchaseRecord): Promise<PurchaseWithLines> {
     try {
@@ -51,6 +100,8 @@ export class PrismaPurchaseRepository implements PurchaseRepository {
                       sku: line.sku,
                       totalCostMinor: line.totalCostMinor,
                       unitCostMinor: line.unitCostMinor,
+                      supplierUnitCostMinor: line.supplierUnitCostMinor ?? null,
+                      extraCostPerUnitMinor: line.extraCostPerUnitMinor ?? null,
                       variantName: line.variantName ?? null,
                     }),
                   ),
@@ -236,6 +287,49 @@ function mapPurchase(
   };
 }
 
+export async function lastCostsForProductQuery(
+  prisma: { $queryRaw: PrismaClient["$queryRaw"] },
+  organizationId: string,
+  productId: string,
+) {
+  const rows = await prisma.$queryRaw<
+    Array<{
+      extra_cost_per_unit_minor: number | null;
+      product_variant_id: string;
+      purchase_date: Date;
+      purchase_number: string;
+      supplier_unit_cost_minor: number | null;
+      unit_cost_minor: number;
+    }>
+  >`
+    SELECT DISTINCT ON (line.product_variant_id)
+      line.product_variant_id::text AS product_variant_id,
+      line.unit_cost_minor,
+      line.supplier_unit_cost_minor,
+      line.extra_cost_per_unit_minor,
+      purchase.purchase_date,
+      purchase.purchase_number
+    FROM purchase_lines line
+    INNER JOIN purchases purchase
+      ON purchase.id = line.purchase_id
+     AND purchase.organization_id = line.organization_id
+    INNER JOIN product_variants variant
+      ON variant.id = line.product_variant_id
+     AND variant.organization_id = line.organization_id
+    WHERE line.organization_id = ${organizationId}::uuid
+      AND variant.product_id = ${productId}::uuid
+      AND purchase.status::text <> 'CANCELLED'
+    ORDER BY line.product_variant_id, purchase.purchase_date DESC, purchase.created_at DESC`;
+  return rows.map((row) => ({
+    extraCostPerUnitMinor: row.extra_cost_per_unit_minor,
+    productVariantId: row.product_variant_id,
+    purchaseDate: row.purchase_date,
+    purchaseNumber: row.purchase_number,
+    supplierUnitCostMinor: row.supplier_unit_cost_minor,
+    unitCostMinor: row.unit_cost_minor,
+  }));
+}
+
 function mapPurchaseWithLines(
   record: Prisma.PurchaseGetPayload<{
     include: { lines: true };
@@ -256,6 +350,8 @@ function mapPurchaseWithLines(
       sku: line.sku,
       totalCostMinor: line.totalCostMinor,
       unitCostMinor: line.unitCostMinor,
+      supplierUnitCostMinor: line.supplierUnitCostMinor,
+      extraCostPerUnitMinor: line.extraCostPerUnitMinor,
       updatedAt: line.updatedAt,
       variantName: line.variantName,
     })),

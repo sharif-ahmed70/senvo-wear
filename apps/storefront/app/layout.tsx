@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
+import { Bodoni_Moda, Jost } from "next/font/google";
 import "./globals.css";
 import { StorefrontShell } from "./_components/storefront-shell";
 import { CustomerAuthProvider } from "./_components/customer-auth-provider";
+
+const displayFont = Bodoni_Moda({
+  axes: ["opsz"],
+  display: "swap",
+  subsets: ["latin"],
+  variable: "--font-bodoni",
+});
+const sansFont = Jost({
+  display: "swap",
+  subsets: ["latin"],
+  variable: "--font-jost",
+});
 
 export const metadata: Metadata = {
   description:
@@ -27,7 +40,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html className={`${displayFont.variable} ${sansFont.variable}`} lang="en">
       <body>
         <CustomerAuthProvider>
           <StorefrontShell>{children}</StorefrontShell>

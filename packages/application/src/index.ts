@@ -57,6 +57,7 @@ export type {
   GetProductServiceInputContract,
   ListCatalogItemsServiceInputContract,
   ListProductVariantsServiceInputContract,
+  UpdateCategoryParentServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,

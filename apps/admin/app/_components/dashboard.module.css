@@ -54,7 +54,72 @@
 .metrics {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.metricLink,
+a.channelRow,
+a.productRow {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.metricLink:hover,
+.metricLink:focus-visible {
+  border-color: #b9a28f;
+  box-shadow: 0 14px 34px rgba(64, 43, 31, 0.1);
+}
+
+a.channelRow:hover,
+a.productRow:hover,
+a.channelRow:focus-visible,
+a.productRow:focus-visible {
+  background: #faf5ef;
+}
+
+.rangeBar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rangeBar button,
+.rangeBar input {
+  background: #fffdfa;
+  border: 1px solid #e0d5ca;
+  border-radius: 8px;
+  color: #3a2c27;
+  font: inherit;
+  font-size: 0.82rem;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.rangeBar button {
+  cursor: pointer;
+}
+
+.rangeBar button[aria-pressed="true"] {
+  background: #5c1a1b;
+  border-color: #5c1a1b;
+  color: #fff;
+}
+
+.rangeBar label {
+  color: #746966;
+  display: grid;
+  font-size: 0.72rem;
+  gap: 3px;
+}
+
+.rangeError {
+  color: #a3312b;
+  font-size: 0.78rem;
+  margin: 0;
 }
 
 .metricCard,
@@ -626,9 +691,6 @@
 }
 
 @media (max-width: 1280px) {
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
   .primaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

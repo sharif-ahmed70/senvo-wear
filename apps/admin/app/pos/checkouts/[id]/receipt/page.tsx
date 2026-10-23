@@ -2,9 +2,12 @@ import { ReceiptPreview } from "./receipt-preview";
 
 export default async function ReceiptPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ print?: string }>;
 }) {
   const { id } = await params;
-  return <ReceiptPreview checkoutId={id} />;
+  const query = await searchParams;
+  return <ReceiptPreview checkoutId={id} printOnLoad={query.print === "1"} />;
 }

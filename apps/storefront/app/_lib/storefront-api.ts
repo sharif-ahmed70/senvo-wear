@@ -37,7 +37,14 @@ export type StorefrontProduct = {
   variants: StorefrontVariant[];
 };
 export type StorefrontCatalog = {
-  categories: { code: string; id: string; name: string }[];
+  categories: {
+    code: string;
+    id: string;
+    name: string;
+    // Older API builds omit these; treat missing values as a main section.
+    parentId?: string | null;
+    sortOrder?: number;
+  }[];
   collections: { code: string; id: string; name: string }[];
   hasMore: boolean;
   page: number;

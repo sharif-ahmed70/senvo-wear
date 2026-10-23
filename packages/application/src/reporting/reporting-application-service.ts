@@ -75,7 +75,9 @@ export class ReportingApplicationService {
         resource: "POS",
       });
       const summary = await getDashboardSummary(this.dependencies.dashboards, {
+        from: parsed.data.from,
         includeFinancials,
+        to: parsed.data.to,
         now: this.clock.now(),
         organizationId: trusted.organizationId,
       });

@@ -13,6 +13,10 @@ export type CreatePurchaseLineRecord = {
   sku: string;
   totalCostMinor: bigint;
   unitCostMinor: number;
+  /** Supplier price per piece before extra charges. */
+  supplierUnitCostMinor?: number | null;
+  /** Extra charges per piece; supplier + extra = unitCostMinor. */
+  extraCostPerUnitMinor?: number | null;
   variantName?: string | null;
 };
 
@@ -66,4 +70,36 @@ export type PurchaseRepository = {
   ): Promise<PurchaseWithLines | null>;
   list(filter: PurchaseListFilter): Promise<Purchase[]>;
   update(record: UpdatePurchaseRecord): Promise<Purchase | null>;
+  /** Records the cash memo photo; returns the replaced key, or null if no purchase. */
+  setMemo?(input: {
+    contentType: string;
+    organizationId: string;
+    purchaseId: string;
+    storageKey: string;
+    uploadedAt: Date;
+  }): Promise<{ previousStorageKey: string | null } | null>;
+  findMemo?(
+    organizationId: string,
+    purchaseId: string,
+  ): Promise<PurchaseMemo | null>;
+  /** The latest purchase price of each variant of a product (not cancelled). */
+  lastCostsForProduct?(
+    organizationId: string,
+    productId: string,
+  ): Promise<VariantLastPurchaseCost[]>;
+};
+
+export type PurchaseMemo = {
+  contentType: string;
+  storageKey: string;
+  uploadedAt: Date;
+};
+
+export type VariantLastPurchaseCost = {
+  extraCostPerUnitMinor: number | null;
+  productVariantId: string;
+  purchaseDate: Date;
+  purchaseNumber: string;
+  supplierUnitCostMinor: number | null;
+  unitCostMinor: number;
 };

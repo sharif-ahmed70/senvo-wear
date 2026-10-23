@@ -133,6 +133,20 @@ export class PrismaCategoryRepository implements CategoryRepository {
       ? null
       : this.findById(record.id, record.organizationId);
   }
+
+  async updateParent(record: {
+    id: string;
+    organizationId: string;
+    parentId: string | null;
+  }): Promise<Category | null> {
+    const result = await this.prisma.category.updateMany({
+      data: { parentId: record.parentId },
+      where: { id: record.id, organizationId: record.organizationId },
+    });
+    return result.count === 0
+      ? null
+      : this.findById(record.id, record.organizationId);
+  }
 }
 
 export class PrismaCollectionRepository implements CollectionRepository {

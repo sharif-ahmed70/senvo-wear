@@ -136,6 +136,7 @@ import {
 } from "../context/authorization.js";
 import type { ApplicationTransactionManager } from "../context/transaction.js";
 import type { Clock } from "../context/clock.js";
+import { pickContractFields } from "./contract-fields.js";
 import {
   validateExecutionContext,
   type ApplicationExecutionContext,
@@ -531,6 +532,13 @@ export class PosApplicationService {
               paymentBatchId: crypto.randomUUID(),
               receiptId: crypto.randomUUID(),
               staffId,
+              // Discounts need the same approval as settling a session.
+              approveDiscount: () =>
+                requireAuthorization(
+                  this.dependencies.authorizationService,
+                  transaction.applicationContext,
+                  { action: "APPROVE", resource: "POS" },
+                ),
               approveOutstanding: () =>
                 requireAuthorization(
                   this.dependencies.authorizationService,
@@ -545,6 +553,18 @@ export class PosApplicationService {
               actor: { userId: staffId },
               metadata: {
                 cartId: result.checkout.cartId,
+                ...(input.discount
+                  ? {
+                      discountKind: input.discount.kind,
+                      discountValue:
+                        input.discount.kind === "PERCENT"
+                          ? input.discount.basisPoints
+                          : input.discount.amountMinor,
+                    }
+                  : {}),
+                ...(input.lineDiscounts?.length
+                  ? { itemDiscountCount: input.lineDiscounts.length }
+                  : {}),
                 requestId: trusted.requestId,
                 salesOrderId: result.checkout.salesOrderId,
               },
@@ -1267,7 +1287,7 @@ function mapCheckout(record: PosCheckout): PosCheckoutContract {
 }
 function mapReceipt(record: SalesReceipt): SalesReceiptContract {
   return salesReceiptContractSchema.parse({
-    ...record,
+    ...pickContractFields(salesReceiptContractSchema, record),
     issuedAt: record.issuedAt.toISOString(),
   });
 }
@@ -1322,7 +1342,7 @@ function mapPaymentCollectionReceipt(
   record: PaymentCollectionReceipt,
 ): PaymentCollectionReceiptContract {
   return paymentCollectionReceiptContractSchema.parse({
-    ...record,
+    ...pickContractFields(paymentCollectionReceiptContractSchema, record),
     collectedAt: record.collectedAt.toISOString(),
   });
 }
@@ -1369,7 +1389,7 @@ function mapPaymentRefundReceipt(
   record: PaymentRefundReceipt,
 ): PaymentRefundReceiptContract {
   return paymentRefundReceiptContractSchema.parse({
-    ...record,
+    ...pickContractFields(paymentRefundReceiptContractSchema, record),
     issuedAt: record.issuedAt.toISOString(),
   });
 }
@@ -1423,7 +1443,7 @@ function mapReturnAccount(record: PosReturnAccount): PosReturnAccountContract {
 }
 function mapReturnReceipt(record: PosReturnReceipt): PosReturnReceiptContract {
   return posReturnReceiptContractSchema.parse({
-    ...record,
+    ...pickContractFields(posReturnReceiptContractSchema, record),
     returnedAt: record.returnedAt.toISOString(),
   });
 }

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { AdminPermissionKey } from "../../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
 import { useAdminPermissions } from "../../../../admin-shell";
+import { ThermalPageSize } from "../../../_components/thermal-page-size";
 import { formatBdt } from "../../../sell/_lib/money";
 
 const client = new AdminApiClient({
@@ -48,9 +49,6 @@ export function ReturnReceiptPreview({
     );
     return () => clearTimeout(timer);
   }, [canRead, returnId]);
-  useEffect(() => {
-    if (receipt && printOnLoad) window.print();
-  }, [printOnLoad, receipt]);
   if (!canRead) return <State title="Receipt access unavailable" />;
   if (error) return <State title={error} />;
   if (!receipt) return <State loading title="Loading return receipt" />;
@@ -70,6 +68,7 @@ export function ReturnReceiptPreview({
           <Printer size={17} /> Print
         </button>
       </div>
+      <ThermalPageSize autoPrint={printOnLoad} />
       <article className="receipt-document">
         <header className="receipt-header">
           <div>

@@ -46,6 +46,8 @@ describe("PrismaPurchaseRepository", () => {
           sku: "CHINO-BLK-32",
           totalCostMinor: 5000000n, // 100 * 50,000 poisha (500 taka)
           unitCostMinor: 50000,
+          supplierUnitCostMinor: null,
+          extraCostPerUnitMinor: null,
           updatedAt: new Date("2026-09-27T00:00:00.000Z"),
           variantName: "Black / 32",
         },
@@ -82,6 +84,8 @@ describe("PrismaPurchaseRepository", () => {
     };
 
     const client = {
+      $queryRaw: (() =>
+        Promise.resolve([])) as unknown as PurchasePrismaClient["$queryRaw"],
       purchase: purchase as unknown as PurchasePrismaClient["purchase"],
     };
 
@@ -137,6 +141,8 @@ describe("PrismaPurchaseRepository", () => {
                 sku: "CHINO-BLK-32",
                 totalCostMinor: 5000000n,
                 unitCostMinor: 50000,
+                supplierUnitCostMinor: null,
+                extraCostPerUnitMinor: null,
                 variantName: "Black / 32",
               },
             ],

@@ -56,6 +56,8 @@ describe("Purchase Domain Use Cases", () => {
           sku: "SHIRT-BLK-M",
           totalCostMinor: 5000000n, // 100 * 50,000 poisha (500 taka)
           unitCostMinor: 50000,
+          supplierUnitCostMinor: null,
+          extraCostPerUnitMinor: null,
           updatedAt: new Date("2026-09-27T00:00:00.000Z"),
           variantName: "Black / M",
         },

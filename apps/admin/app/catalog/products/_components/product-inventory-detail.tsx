@@ -24,7 +24,8 @@ import {
   parseVariantPrice,
   formatVariantPrice,
 } from "../../_lib/variant-price";
-import { useAdminPermissions } from "../../../admin-shell";
+import { useAdminPermissions, useAdminSession } from "../../../admin-shell";
+import { VariantLifecycleActions } from "./variant-lifecycle-actions";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -37,6 +38,7 @@ export function ProductInventoryDetail({
   permissions?: readonly AdminPermissionKey[];
   productId: string;
 }) {
+  const session = useAdminSession();
   const sessionPermissions = useAdminPermissions();
   const permissions = propsPermissions ?? sessionPermissions;
   const [product, setProduct] = useState<ProductDetailsContract | null>(null);
@@ -99,6 +101,23 @@ export function ProductInventoryDetail({
       active = false;
     };
   }, [permissions, productId]);
+
+  const canUpdateCatalog = permissions.includes("CATALOG:UPDATE");
+  // The API checks the owner role too; this only hides the button.
+  const isOwner =
+    session?.role === "OWNER" && permissions.includes("CATALOG:DELETE");
+  function replaceVariant(updated: ProductVariantContract) {
+    setProduct((current) =>
+      current
+        ? {
+            ...current,
+            variants: current.variants.map((item) =>
+              item.id === updated.id ? updated : item,
+            ),
+          }
+        : current,
+    );
+  }
 
   if (!permissions.includes("CATALOG:READ")) {
     return <ProductState title="Catalog access is restricted" />;
@@ -177,11 +196,20 @@ export function ProductInventoryDetail({
                 <th>SKU</th>
                 <th>Barcode</th>
                 <th>Selling price (BDT)</th>
+                <th>Status</th>
+                {canUpdateCatalog || isOwner ? <th>Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {product.variants.map((variant) => (
-                <tr key={variant.id}>
+                <tr
+                  key={variant.id}
+                  className={
+                    variant.status === "ARCHIVED"
+                      ? "variant-row--archived"
+                      : undefined
+                  }
+                >
                   <td className="inventory-mono">{variant.sku}</td>
                   <td>
                     <span
@@ -202,20 +230,38 @@ export function ProductInventoryDetail({
                     <VariantPriceEditor
                       variant={variant}
                       canUpdate={permissions.includes("CATALOG:UPDATE")}
-                      onSaved={(updated) =>
-                        setProduct((current) =>
-                          current
-                            ? {
-                                ...current,
-                                variants: current.variants.map((item) =>
-                                  item.id === updated.id ? updated : item,
-                                ),
-                              }
-                            : current,
-                        )
-                      }
+                      onSaved={replaceVariant}
                     />
                   </td>
+                  <td>
+                    <span className="inventory-badge">
+                      {variant.status === "ARCHIVED"
+                        ? "Archived"
+                        : humanize(variant.status)}
+                    </span>
+                  </td>
+                  {canUpdateCatalog || isOwner ? (
+                    <td>
+                      <VariantLifecycleActions
+                        variant={variant}
+                        canUpdate={canUpdateCatalog}
+                        canDelete={isOwner}
+                        onSaved={replaceVariant}
+                        onDeleted={(variantId) =>
+                          setProduct((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  variants: current.variants.filter(
+                                    (item) => item.id !== variantId,
+                                  ),
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -335,10 +381,13 @@ export function VariantPriceEditor({
 
   if (!editing || !canUpdate)
     return (
-      <div>
-        <span>{formatVariantPrice(variant.sellingPriceMinor)}</span>{" "}
+      <div className="variant-price">
+        <span className="variant-price__value">
+          {formatVariantPrice(variant.sellingPriceMinor)}
+        </span>
         {canUpdate ? (
           <button
+            className="catalog-action-button catalog-action-button--small"
             type="button"
             onClick={() => {
               setDraft(
@@ -359,25 +408,33 @@ export function VariantPriceEditor({
 
   return (
     <form
+      className="variant-price-form"
       onSubmit={(event) => {
         event.preventDefault();
         void save();
       }}
     >
-      <label>
-        <span>Selling price for {variant.sku} (BDT)</span>
-        <input
-          inputMode="decimal"
-          required
-          value={draft}
-          disabled={saving}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-      </label>
-      <button type="submit" disabled={saving}>
-        {saving ? "Saving price..." : "Save price"}
+      <input
+        aria-label={`Selling price for ${variant.sku} (BDT)`}
+        inputMode="decimal"
+        required
+        value={draft}
+        disabled={saving}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button
+        className="catalog-action-button catalog-action-button--small catalog-action-button--primary"
+        type="submit"
+        disabled={saving}
+      >
+        {saving ? "Saving..." : "Save"}
       </button>
-      <button type="button" disabled={saving} onClick={() => setEditing(false)}>
+      <button
+        className="catalog-action-button catalog-action-button--small"
+        type="button"
+        disabled={saving}
+        onClick={() => setEditing(false)}
+      >
         Cancel
       </button>
       {error ? <p role="alert">{error}</p> : null}

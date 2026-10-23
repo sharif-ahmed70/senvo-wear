@@ -350,6 +350,8 @@ export {
   normalizeSlug,
   slugFromDisplayName,
 } from "./catalog/domain/value-objects.js";
+export { changeCategoryParent } from "./catalog/application/category-use-cases.js";
+export type { ChangeCategoryParentInput } from "./catalog/application/category-use-cases.js";
 export {
   createCategory,
   createCollection,
@@ -839,7 +841,9 @@ export type {
   CreatePurchaseLineRecord,
   CreatePurchaseRecord,
   PurchaseListFilter,
+  PurchaseMemo,
   PurchaseRepository,
+  VariantLastPurchaseCost,
   UpdatePurchaseRecord,
 } from "./procurement/repositories/purchase-repository.js";
 export type {
@@ -1002,13 +1006,19 @@ export {
   addBusinessDays,
   businessDateOf,
   classifyStock,
+  DASHBOARD_MAX_RANGE_DAYS,
+  dashboardRange,
   dashboardWindows,
   getDashboardSummary,
+  summarizePeriod,
   startOfBusinessDate,
   zeroFillDailySales,
 } from "./reporting/dashboard.js";
 export type {
   DailySales,
+  DashboardPeriodReadModel,
+  DashboardPeriodSummary,
+  DashboardRange,
   DashboardReadModel,
   DashboardReadRepository,
   DashboardSalesChannel,

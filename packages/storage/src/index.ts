@@ -58,6 +58,23 @@ export function productImageObjectKey(input: {
   return `organizations/${input.organizationId}/products/${input.productId}/${input.assetId}.${extensions[input.contentType]}`;
 }
 
+export function purchaseMemoObjectKey(input: {
+  assetId: string;
+  contentType: ProductImageContentType;
+  organizationId: string;
+  purchaseId: string;
+}): string {
+  const segment = /^[0-9a-f-]{36}$/iu;
+  if (
+    !segment.test(input.organizationId) ||
+    !segment.test(input.purchaseId) ||
+    !segment.test(input.assetId)
+  ) {
+    throw new Error("Media storage identifiers are invalid.");
+  }
+  return `organizations/${input.organizationId}/purchases/${input.purchaseId}/${input.assetId}.${extensions[input.contentType]}`;
+}
+
 export class InMemoryObjectStorageProvider implements ObjectStorageProvider {
   private readonly objects = new Map<
     string,

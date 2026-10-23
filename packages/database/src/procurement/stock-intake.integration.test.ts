@@ -98,6 +98,29 @@ describeWithDatabase("Stock intake transaction integration", () => {
         where: { organizationId: base.organization.id },
       }),
     ).resolves.toBe(1);
+    // 1 500 transport over 15 pieces = 100 a piece; the supplier price is kept.
+    await expect(
+      prisma.purchaseLine.findMany({
+        orderBy: { lineNumber: "asc" },
+        select: {
+          extraCostPerUnitMinor: true,
+          supplierUnitCostMinor: true,
+          unitCostMinor: true,
+        },
+        where: { organizationId: base.organization.id },
+      }),
+    ).resolves.toEqual([
+      {
+        extraCostPerUnitMinor: 100,
+        supplierUnitCostMinor: 50_000,
+        unitCostMinor: 50_100,
+      },
+      {
+        extraCostPerUnitMinor: 100,
+        supplierUnitCostMinor: 50_000,
+        unitCostMinor: 50_100,
+      },
+    ]);
   });
 
   it("rolls back every write when a later step fails after variants are created", async () => {

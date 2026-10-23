@@ -227,6 +227,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "categoryId",
       ),
       catalogRoute(
+        "PATCH",
+        /^\/catalog\/categories\/(?<id>[0-9a-f-]+)\/parent$/iu,
+        handlers.catalog.updateCategoryParent,
+        200,
+        "categoryId",
+      ),
+      catalogRoute(
         "GET",
         /^\/catalog\/collections$/u,
         handlers.catalog.listCollections,
@@ -426,6 +433,27 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "PATCH",
         /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/price$/iu,
         handlers.catalog.updateVariantPrice,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/archive$/iu,
+        handlers.catalog.archiveVariant,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/restore$/iu,
+        handlers.catalog.restoreVariant,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "DELETE",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.deleteVariant,
         200,
         "variantId",
       ),
@@ -676,7 +704,7 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
   if (handlers.reporting) {
     routes.push({
       handler: handlers.reporting.getDashboardSummary,
-      input: emptyInput,
+      input: queryInput,
       method: "GET",
       path: /^\/reports\/dashboard$/u,
       successStatus: 200,
@@ -983,6 +1011,44 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         path: /^\/procurement\/purchases$/u,
         successStatus: 201,
       },
+      ...(procurement.uploadPurchaseMemo
+        ? [
+            {
+              handler: procurement.uploadPurchaseMemo,
+              input: pathBodyInput("purchaseId"),
+              maximumBodyBytes: 7_100_000,
+              method: "POST",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/memo$/iu,
+              successStatus: 201,
+            } as HttpRoute,
+          ]
+        : []),
+      ...(procurement.getPurchaseMemo
+        ? [
+            {
+              handler: procurement.getPurchaseMemo,
+              input: (_body: unknown, match: RegExpMatchArray) => ({
+                purchaseId: match.groups?.id,
+              }),
+              method: "GET",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/memo$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
+      ...(procurement.listLastPurchaseCosts
+        ? [
+            {
+              handler: procurement.listLastPurchaseCosts,
+              input: (_body: unknown, match: RegExpMatchArray) => ({
+                productId: match.groups?.id,
+              }),
+              method: "GET",
+              path: /^\/procurement\/products\/(?<id>[0-9a-f-]+)\/last-costs$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
       {
         handler: procurement.getPurchase,
         input: (_body, match) => ({ purchaseId: match.groups?.id }),

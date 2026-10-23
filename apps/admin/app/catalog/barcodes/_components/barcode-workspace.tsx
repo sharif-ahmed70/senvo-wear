@@ -101,10 +101,13 @@ export function BarcodeWorkspace({
     try {
       const productDetails = (await client.getProduct(productId)).data;
       const barcodeSets = await Promise.all(
-        productDetails.variants.map(async (variant) => ({
-          barcodes: (await client.listVariantBarcodes(variant.id)).data,
-          variant,
-        })),
+        productDetails.variants
+          // Archived options are not labelled or printed.
+          .filter((variant) => variant.status !== "ARCHIVED")
+          .map(async (variant) => ({
+            barcodes: (await client.listVariantBarcodes(variant.id)).data,
+            variant,
+          })),
       );
       setDetails(productDetails);
       setRows(

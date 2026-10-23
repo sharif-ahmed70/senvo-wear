@@ -6,7 +6,9 @@ import {
   changeLabel,
   dashboardModelFromSummary,
   formatMinor,
+  periodLabel,
 } from "./_lib/dashboard-model";
+import { presetRange } from "./_components/dashboard-range";
 
 const base: DashboardSummaryContract = {
   attention: {
@@ -51,6 +53,23 @@ const financials: NonNullable<DashboardSummaryContract["financials"]> = {
     "2026-10-01",
     "2026-10-02",
   ].map((date) => ({ date, salesMinor: 0 })),
+  period: {
+    averageSaleMinor: 125050,
+    channels: [
+      { channel: "POS", previousPeriodMinor: 100000, salesMinor: 150000 },
+    ],
+    costMinor: 75000,
+    daily: [{ date: "2026-10-02", profitMinor: 50050, salesMinor: 125050 }],
+    from: "2026-10-02",
+    previousSalesMinor: 100000,
+    profitMinor: 50050,
+    refundsMinor: 0,
+    saleCount: 1,
+    salesMinor: 125050,
+    to: "2026-10-02",
+    topProducts: [],
+    uncostedSalesMinor: 0,
+  },
   refundsTodayMinor: 0,
   todaySaleCount: 1,
   todaySalesMinor: 125050,
@@ -87,7 +106,48 @@ describe("dashboard model", () => {
     expect(html).toContain("Counter (POS)");
     expect(html).toContain("+50.0%");
     expect(html).toContain("৳ 1,250.5");
-    expect(html).toContain("No sales in the last 7 days.");
+    expect(html).toContain("No sales in this period.");
+  });
+
+  it("shows estimated profit and links every card", () => {
+    const html = render({ ...base, financials });
+    expect(html).toContain("Profit (estimated)");
+    expect(html).toContain("৳ 500.5");
+    expect(html).toContain("40.0% margin");
+    expect(html).toContain('href="/sales/orders"');
+    expect(html).toContain('href="/pos/checkouts"');
+    expect(html).toContain('href="/pos/sessions"');
+    expect(html).toContain('href="/inventory"');
+  });
+
+  it("warns when part of the sales has no cost", () => {
+    const html = render({
+      ...base,
+      financials: {
+        ...financials,
+        period: { ...financials.period, uncostedSalesMinor: 20000 },
+      },
+    });
+    expect(html).toContain("৳ 200 of sales has no cost yet");
+  });
+
+  it("labels periods and presets in Dhaka business days", () => {
+    expect(periodLabel("2026-10-02", "2026-10-02", "2026-10-02")).toBe("Today");
+    expect(periodLabel("2026-10-01", "2026-10-01", "2026-10-02")).toBe(
+      "Yesterday",
+    );
+    expect(periodLabel("2026-10-01", "2026-10-07", "2026-10-21")).toBe(
+      "1 Oct – 7 Oct 2026",
+    );
+    expect(presetRange("last7", "2026-10-21")).toEqual({
+      from: "2026-10-15",
+      to: "2026-10-21",
+    });
+    expect(presetRange("lastMonth", "2026-03-15")).toEqual({
+      from: "2026-02-01",
+      to: "2026-02-28",
+    });
+    expect(formatMinor(-12500)).toBe("−৳ 125");
   });
 
   it("formats money and changes without floats leaking into minor units", () => {

@@ -227,6 +227,7 @@ export function NewProductIntake({
   if (saved) {
     return (
       <IntakeSuccess
+        memoFile={purchase.memoFile}
         onAnother={startAnother}
         onRetryPhoto={
           photo
