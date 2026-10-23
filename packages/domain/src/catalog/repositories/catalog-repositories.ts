@@ -159,6 +159,11 @@ export type CatalogCategoryManagementRepository = CategoryRepository & {
     organizationId: string;
     status: Category["status"];
   }): Promise<Category | null>;
+  updateParent(record: {
+    id: string;
+    organizationId: string;
+    parentId: string | null;
+  }): Promise<Category | null>;
 };
 
 export type CatalogCollectionManagementRepository = CollectionRepository & {

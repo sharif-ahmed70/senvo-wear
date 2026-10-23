@@ -700,6 +700,13 @@ export const updateCategoryStatusServiceInputSchema = z
   })
   .strict();
 
+export const updateCategoryParentServiceInputSchema = z
+  .object({
+    categoryId: idSchema,
+    parentId: idSchema.nullable(),
+  })
+  .strict();
+
 export const createCollectionServiceInputSchema = createCollectionInputSchema
   .omit({ organizationId: true })
   .strict();
@@ -1699,6 +1706,9 @@ export type CreateCategoryServiceInputContract = z.infer<
 >;
 export type UpdateCategoryStatusServiceInputContract = z.infer<
   typeof updateCategoryStatusServiceInputSchema
+>;
+export type UpdateCategoryParentServiceInputContract = z.infer<
+  typeof updateCategoryParentServiceInputSchema
 >;
 export type CreateCollectionServiceInputContract = z.infer<
   typeof createCollectionServiceInputSchema

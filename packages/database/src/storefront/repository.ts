@@ -11,6 +11,7 @@ type StorefrontPrismaClient = Pick<
   PrismaClient,
   | "$executeRaw"
   | "$queryRaw"
+  | "category"
   | "inventoryAllocationPolicy"
   | "organization"
   | "product"
@@ -19,6 +20,59 @@ type StorefrontPrismaClient = Pick<
 >;
 
 type AvailabilityRow = { product_variant_id: string };
+type CategoryNode = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  slug: string;
+  sortOrder: number;
+};
+
+/** The category with `slug` plus every category nested below it. */
+export function categoryWithDescendants(
+  categories: CategoryNode[],
+  slug: string,
+): string[] {
+  const root = categories.find((category) => category.slug === slug);
+  if (!root) return [];
+  const ids = [root.id];
+  for (let index = 0; index < ids.length; index += 1) {
+    for (const category of categories) {
+      if (category.parentId === ids[index] && !ids.includes(category.id)) {
+        ids.push(category.id);
+      }
+    }
+  }
+  return ids;
+}
+
+/** Categories with products, plus their ancestors so menus can nest them. */
+export function visibleCategoryTree(
+  categories: CategoryNode[],
+  stockedIds: Iterable<string>,
+) {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const visible = new Set<string>();
+  for (const id of stockedIds) {
+    let current = byId.get(id);
+    while (current && !visible.has(current.id)) {
+      visible.add(current.id);
+      current = current.parentId ? byId.get(current.parentId) : undefined;
+    }
+  }
+  return categories
+    .filter((category) => visible.has(category.id))
+    .map((category) => ({
+      code: category.slug,
+      id: category.id,
+      name: category.name,
+      parentId:
+        category.parentId && visible.has(category.parentId)
+          ? category.parentId
+          : null,
+      sortOrder: category.sortOrder,
+    }));
+}
 
 const productInclude = {
   category: true,
@@ -76,6 +130,17 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
     const collectionRank = new Map(
       collectionOrder.map((item, index) => [item.productId, index]),
     );
+    const activeCategories = await this.prisma.category.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        slug: true,
+        sortOrder: true,
+      },
+      where: { organizationId: input.organizationId, status: "ACTIVE" },
+    });
     const [products, categories, collections] = await Promise.all([
       this.prisma.product.findMany({
         include: productInclude,
@@ -83,9 +148,12 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
         skip: input.collection ? undefined : (page - 1) * pageSize,
         take: input.collection ? undefined : pageSize + 1,
         where: {
-          category: input.category
-            ? { slug: input.category, status: "ACTIVE" }
-            : { status: "ACTIVE" },
+          category: { status: "ACTIVE" },
+          categoryId: input.category
+            ? {
+                in: categoryWithDescendants(activeCategories, input.category),
+              }
+            : undefined,
           id: input.collection
             ? { in: collectionOrder.map((item) => item.productId) }
             : undefined,
@@ -155,11 +223,10 @@ export class PrismaStorefrontRepository implements StorefrontRepository {
       }
     }
     return {
-      categories: categories.map(({ category }) => ({
-        code: category.slug,
-        id: category.id,
-        name: category.name,
-      })),
+      categories: visibleCategoryTree(
+        activeCategories,
+        categories.map(({ category }) => category.id),
+      ),
       collections: [...collectionMap.values()].sort((left, right) =>
         left.name.localeCompare(right.name),
       ),

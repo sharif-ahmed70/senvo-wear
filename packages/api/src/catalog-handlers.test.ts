@@ -719,6 +719,10 @@ class FakeCatalog implements CatalogManagementApplication {
     this.payloads.push(payload);
     return this.success(context, {} as VariantBarcodeContract);
   }
+  updateCategoryParent(context: ApplicationExecutionContext, payload: unknown) {
+    this.payloads.push(payload);
+    return this.success(context, {} as CategoryContract);
+  }
   updateCategoryStatus(context: ApplicationExecutionContext) {
     return this.success(context, {} as CategoryContract);
   }

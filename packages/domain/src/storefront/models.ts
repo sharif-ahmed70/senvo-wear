@@ -41,7 +41,13 @@ export type StorefrontProduct = {
 };
 
 export type StorefrontCatalog = {
-  categories: { code: string; id: string; name: string }[];
+  categories: {
+    code: string;
+    id: string;
+    name: string;
+    parentId: string | null;
+    sortOrder: number;
+  }[];
   collections: { code: string; id: string; name: string }[];
   hasMore: boolean;
   page: number;

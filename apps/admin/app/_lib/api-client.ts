@@ -80,6 +80,7 @@ import type {
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
   TeamMemberContract,
+  UpdateCategoryParentServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateBarcodeStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
@@ -395,6 +396,16 @@ export class AdminApiClient {
   ) {
     return this.request<CategoryContract>(
       `/catalog/categories/${input.categoryId}/status`,
+      { ...request, body: input, method: "PATCH" },
+    );
+  }
+
+  updateCategoryParent(
+    input: UpdateCategoryParentServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<CategoryContract>(
+      `/catalog/categories/${input.categoryId}/parent`,
       { ...request, body: input, method: "PATCH" },
     );
   }

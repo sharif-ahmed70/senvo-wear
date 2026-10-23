@@ -1214,6 +1214,19 @@ a {
 .catalog-primary-button:focus-visible,
 .catalog-secondary-button:focus-visible,
 .catalog-icon-button:focus-visible,
+.catalog-parent-select {
+  background: #fff;
+  border: 1px solid #d8ded9;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  max-width: 220px;
+  min-height: 34px;
+  padding: 4px 8px;
+  width: 100%;
+}
+
+.catalog-parent-select:focus-visible,
 .catalog-text-button:focus-visible,
 .catalog-form :is(input, select, textarea):focus-visible {
   outline: 3px solid #9bc4b4;

@@ -44,6 +44,7 @@ import {
   type ProductInventorySummaryContract,
   createInventoryMovementServiceInputSchema,
   postInventoryMovementServiceInputSchema,
+  updateCategoryParentServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
   updateBarcodeStatusServiceInputSchema,
   updateColorStatusServiceInputSchema,
@@ -96,6 +97,7 @@ import {
   type SalesOrderManagementListInputContract,
   type SizeContract,
   type StockLocationReadContract,
+  type UpdateCategoryParentServiceInputContract,
   type UpdateCategoryStatusServiceInputContract,
   type UpdateBarcodeStatusServiceInputContract,
   type VariantBarcodeContract,
@@ -372,6 +374,10 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<VariantBarcodeContract>>;
+  updateCategoryParent(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<CategoryContract>>;
   updateCategoryStatus(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -424,6 +430,7 @@ export type CatalogApiHandlers = {
   listVariantBarcodes: ApiHandler<VariantBarcodeContract[]>;
   lookupBarcode: ApiHandler<BarcodeLookupContract>;
   updateBarcodeStatus: ApiHandler<VariantBarcodeContract>;
+  updateCategoryParent: ApiHandler<CategoryContract>;
   updateCategoryStatus: ApiHandler<CategoryContract>;
   updateColorStatus: ApiHandler<ColorContract>;
   updateSizeStatus: ApiHandler<SizeContract>;
@@ -743,6 +750,15 @@ export function createCatalogApiHandlers(
       execute: (context, input) =>
         dependencies.catalog.updateBarcodeStatus(context, input),
       inputSchema: updateBarcodeStatusServiceInputSchema,
+    }),
+    updateCategoryParent: protectedHandler<
+      UpdateCategoryParentServiceInputContract,
+      CategoryContract
+    >({
+      action: "UPDATE",
+      execute: (context, input) =>
+        dependencies.catalog.updateCategoryParent(context, input),
+      inputSchema: updateCategoryParentServiceInputSchema,
     }),
     updateCategoryStatus: protectedHandler<
       UpdateCategoryStatusServiceInputContract,

@@ -227,6 +227,13 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         "categoryId",
       ),
       catalogRoute(
+        "PATCH",
+        /^\/catalog\/categories\/(?<id>[0-9a-f-]+)\/parent$/iu,
+        handlers.catalog.updateCategoryParent,
+        200,
+        "categoryId",
+      ),
+      catalogRoute(
         "GET",
         /^\/catalog\/collections$/u,
         handlers.catalog.listCollections,

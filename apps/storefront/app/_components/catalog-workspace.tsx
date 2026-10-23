@@ -1,11 +1,13 @@
 "use client";
 
 import {
-  ArrowLeft,
   ArrowRight,
+  MapPin,
   RefreshCw,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
+  Truck,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,18 +20,16 @@ import { Reveal } from "./motion-primitives";
 import { ProductCard as PremiumProductCard } from "./product-card";
 import { ProductQuickView } from "./product-quick-view";
 
-const campaignImages = [
-  "/senvo-hero.png",
-  "/senvo-hero-urban.png",
-  "/senvo-hero-summer.png",
-] as const;
-
 export interface CatalogWorkspaceProps {
   initialCatalog?: StorefrontCatalog | null;
+  initialCategory?: string;
+  initialCollection?: string;
 }
 
 export function CatalogWorkspace({
   initialCatalog = null,
+  initialCategory = "",
+  initialCollection = "",
 }: CatalogWorkspaceProps = {}) {
   const [catalog, setCatalog] = useState<StorefrontCatalog | null>(
     initialCatalog,
@@ -40,8 +40,8 @@ export function CatalogWorkspace({
     categories: initialCatalog?.categories ?? [],
     collections: initialCatalog?.collections ?? [],
   });
-  const [category, setCategory] = useState("");
-  const [collection, setCollection] = useState("");
+  const [category, setCategory] = useState(initialCategory);
+  const [collection, setCollection] = useState(initialCollection);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(!initialCatalog);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,7 +49,6 @@ export function CatalogWorkspace({
   const [appliedSearch, setAppliedSearch] = useState("");
   const [quickView, setQuickView] = useState<StorefrontProduct | null>(null);
   const [toast, setToast] = useState("");
-  const categoryRail = useRef<HTMLDivElement>(null);
   const requestSequence = useRef(0);
   const isFirstMount = useRef(true);
 
@@ -116,92 +115,34 @@ export function CatalogWorkspace({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const selectCategory = (code: string) => {
-    setCategory(code);
-    document
-      .getElementById("collection")
-      ?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
     <main className="storefront-home">
       <HeroCarousel />
 
-      <section
-        aria-labelledby="categories-heading"
-        className="editorial-section category-section"
-        id="categories"
-      >
-        <Reveal className="section-heading">
-          <div>
-            <p className="eyebrow">Find your form</p>
-            <h2 id="categories-heading">Shop by category</h2>
-          </div>
-          <div className="rail-buttons">
-            <button
-              aria-label="Previous categories"
-              onClick={() =>
-                categoryRail.current?.scrollBy({
-                  behavior: "smooth",
-                  left: -360,
-                })
-              }
-            >
-              <ArrowLeft size={17} />
-            </button>
-            <button
-              aria-label="Next categories"
-              onClick={() =>
-                categoryRail.current?.scrollBy({
-                  behavior: "smooth",
-                  left: 360,
-                })
-              }
-            >
-              <ArrowRight size={17} />
-            </button>
-          </div>
-        </Reveal>
-        <div className="category-rail" ref={categoryRail}>
-          {facets.categories.length > 0
-            ? facets.categories.map((item, index) => (
-                <button
-                  aria-pressed={category === item.code}
-                  className={`category-tile${
-                    category === item.code ? " selected" : ""
-                  }`}
-                  key={item.id}
-                  onClick={() => selectCategory(item.code)}
-                  type="button"
-                >
-                  <span
-                    className="category-campaign"
-                    style={{
-                      backgroundImage: `url(${campaignImages[index % campaignImages.length]})`,
-                    }}
-                  />
-                  <span className="category-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <strong>{item.name}</strong>
-                  <small>Explore the edit</small>
-                </button>
-              ))
-            : [1, 2, 3, 4].map((item) => (
-                <div className="category-tile skeleton-tile" key={item} />
-              ))}
-        </div>
-      </section>
+      <ul aria-label="Shopping with SENVO" className="home-assurances">
+        <li>
+          <Truck aria-hidden="true" size={18} />
+          Cash on delivery across Bangladesh
+        </li>
+        <li>
+          <ShieldCheck aria-hidden="true" size={18} />
+          Stock and price confirmed before you order
+        </li>
+        <li>
+          <MapPin aria-hidden="true" size={18} />
+          Designed in Dhaka
+        </li>
+      </ul>
 
       <section
         aria-labelledby="collection-heading"
         className="editorial-section collection-section"
         id="collection"
       >
-        <Reveal className="section-heading collection-heading">
-          <div>
-            <p className="eyebrow">Curated for now</p>
+        <div className="section-heading collection-heading">
+          <div className="home-heading">
             <h2 id="collection-heading">The SENVO edit</h2>
+            <p>New pieces, priced and stocked from our live catalogue.</p>
           </div>
           <div className="collection-pills" aria-label="Filter by collection">
             <button
@@ -222,7 +163,7 @@ export function CatalogWorkspace({
               </button>
             ))}
           </div>
-        </Reveal>
+        </div>
 
         <div className="catalog-filter-bar" aria-label="Catalog filters">
           <label>
@@ -325,17 +266,22 @@ export function CatalogWorkspace({
         ) : null}
       </section>
 
-      <section className="campaign-editorial" id="journal">
-        <div className="campaign-editorial-image" />
+      <section
+        aria-labelledby="journal-heading"
+        className="campaign-editorial"
+        id="journal"
+      >
+        <div className="campaign-editorial-image" role="presentation" />
         <Reveal className="campaign-editorial-copy">
-          <p className="eyebrow light">SENVO journal / Vol. 01</p>
-          <h2>Style that speaks softly.</h2>
+          <p className="campaign-editorial-kicker">The SENVO journal</p>
+          <h2 id="journal-heading">Style that speaks softly.</h2>
           <p>
             Designed in Dhaka, inspired by the pace, warmth and effortless
-            confidence of the city.
+            confidence of the city. Every piece is cut for long days, humid
+            evenings and the people you spend them with.
           </p>
           <a href="#collection">
-            Discover the edit <ArrowRight size={17} />
+            Shop the edit <ArrowRight size={17} />
           </a>
         </Reveal>
       </section>

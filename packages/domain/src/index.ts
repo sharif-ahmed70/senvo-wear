@@ -350,6 +350,8 @@ export {
   normalizeSlug,
   slugFromDisplayName,
 } from "./catalog/domain/value-objects.js";
+export { changeCategoryParent } from "./catalog/application/category-use-cases.js";
+export type { ChangeCategoryParentInput } from "./catalog/application/category-use-cases.js";
 export {
   createCategory,
   createCollection,

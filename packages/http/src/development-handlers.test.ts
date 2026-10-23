@@ -134,6 +134,7 @@ function createMockServices(): ApplicationServices {
       setExistingPrimary: () => ok([]),
       setPrimaryProductImage: () => ok({} as never),
       updateBarcodeStatus: () => ok(mockBarcode),
+      updateCategoryParent: () => ok({} as never),
       updateCategoryStatus: () => ok({} as never),
       updateColorStatus: () => ok({} as never),
       updateProductMedia: () => ok({} as never),

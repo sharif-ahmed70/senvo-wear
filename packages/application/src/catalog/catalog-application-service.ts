@@ -6,6 +6,7 @@ import {
   ConcurrencyError,
   NotFoundError,
   ValidationApplicationError,
+  changeCategoryParent,
   createCategory,
   createVariantBarcode,
   createCollection,
@@ -65,6 +66,7 @@ import {
   updateBarcodeStatusServiceInputSchema,
   variantBarcodeContractSchema,
   type BarcodeLookupContract,
+  updateCategoryParentServiceInputSchema,
   updateCategoryStatusServiceInputSchema,
   updateColorStatusServiceInputSchema,
   updateSizeStatusServiceInputSchema,
@@ -95,6 +97,7 @@ import {
   type ProductVariantContract,
   type SizeContract,
   type VariantBarcodeContract,
+  type UpdateCategoryParentServiceInputContract,
   type UpdateCategoryStatusServiceInputContract,
   type UpdateColorStatusServiceInputContract,
   type UpdateSizeStatusServiceInputContract,
@@ -222,6 +225,29 @@ export class CatalogApplicationService {
         throw new NotFoundError("Category was not found.");
       }
       return mapCategory(category);
+    });
+  }
+
+  updateCategoryParent(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<CategoryContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        updateCategoryParentServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "UPDATE");
+      return mapCategory(
+        await changeCategoryParent(
+          { categories: this.categories },
+          {
+            categoryId: input.categoryId,
+            organizationId: validated.organizationId,
+            parentId: input.parentId,
+          },
+        ),
+      );
     });
   }
 
@@ -1134,6 +1160,7 @@ export type {
   GetProductServiceInputContract,
   ListCatalogItemsServiceInputContract,
   ListProductVariantsServiceInputContract,
+  UpdateCategoryParentServiceInputContract,
   UpdateCategoryStatusServiceInputContract,
   UpdateColorStatusServiceInputContract,
   UpdateSizeStatusServiceInputContract,
