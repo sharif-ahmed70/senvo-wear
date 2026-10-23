@@ -1,69 +1,67 @@
 /* Inside one sticker. Pure black, no shading: thermal printers print grey as
-   dots, which blurs text and bars. Sizes are in mm/pt so print matches. */
+   dots, which blurs text and bars. Sizes are in mm/pt so print matches a
+   40 x 30 mm sticker. */
 .inner {
+  align-content: space-between;
   color: #000;
   display: grid;
   font-family: Arial, "Helvetica Neue", sans-serif;
-  gap: 0.5mm;
+  gap: 0.25mm;
+  /* minmax(0, 1fr): long names shrink with an ellipsis instead of widening
+     the sticker. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
+  min-width: 0;
+  text-align: center;
   width: 100%;
 }
 
-.top {
-  align-items: baseline;
-  border-bottom: 0.3mm solid #000;
-  display: flex;
-  justify-content: space-between;
-  padding-bottom: 0.4mm;
-}
-
+/* Wordmark: "— S E N V O —" in a wide-spaced serif. */
 .brand {
-  font-family: Didot, "Bodoni MT", "Bodoni 72", Georgia, serif;
-  font-size: 9.5pt;
+  align-items: center;
+  display: flex;
+  font-family: Didot, "Bodoni MT", "Bodoni 72", "Times New Roman", serif;
+  font-size: 9pt;
   font-weight: 700;
-  letter-spacing: 0.32em;
+  gap: 1.2mm;
+  justify-content: center;
+  letter-spacing: 0.38em;
   line-height: 1;
 }
 
-.price {
-  font-size: 10pt;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
+.brand::before,
+.brand::after {
+  border-top: 0.3mm solid #000;
+  content: "";
+  width: 4mm;
+}
+
+.brand::after {
+  margin-left: -0.38em;
 }
 
 .name {
-  font-size: 6.5pt;
-  line-height: 1.15;
+  font-size: 8pt;
+  font-weight: 700;
+  line-height: 1.05;
   overflow: hidden;
-  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sizeRow {
-  align-items: baseline;
-  display: flex;
-  gap: 1.5mm;
-  justify-content: space-between;
-  line-height: 1;
-}
-
-.size {
-  font-size: 11pt;
-  font-weight: 900;
+.color {
+  font-size: 6.5pt;
+  font-weight: 700;
+  line-height: 1.05;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.size small {
-  font-size: 5.5pt;
+.sku {
+  font-size: 5.8pt;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  margin-right: 0.8mm;
-}
-
-.color {
-  font-size: 6.5pt;
+  line-height: 1.05;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -74,13 +72,45 @@
   justify-content: center;
 }
 
+/* Shorter bars leave room for the text; width stays dot-exact. */
+.inner .bars svg {
+  height: 7mm !important;
+  margin-top: 0.3mm !important;
+}
+
 .number {
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 6.5pt;
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   line-height: 1;
-  text-align: center;
+}
+
+.bottom {
+  align-items: center;
+  display: flex;
+  gap: 2mm;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Size in a solid black box with white text. */
+.size {
+  background: #000;
+  border-radius: 0.8mm;
+  color: #fff;
+  font-size: 10pt;
+  font-weight: 900;
+  padding: 0.4mm 1.6mm;
+  white-space: nowrap;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.price {
+  font-size: 11pt;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .controls {

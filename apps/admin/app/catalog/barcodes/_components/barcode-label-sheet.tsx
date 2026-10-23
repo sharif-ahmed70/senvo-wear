@@ -23,35 +23,34 @@ export type BarcodeLabelItem = {
 
 type PrintTarget = "label" | "sheet";
 
-/** "Tk 1,200" (the taka sign is not in every printer font). */
+/** "৳750" or "৳1,250.50" (whole taka shown without decimals). */
 export function labelPrice(minor: number): string {
-  return `Tk ${new Intl.NumberFormat("en-US", {
+  return `৳${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
   }).format(minor / 100)}`;
 }
 
-/** One sticker: brand, price, name, big size, barcode and its number. */
+/**
+ * One sticker, top to bottom: — SENVO —, product name, colour, SKU, barcode,
+ * barcode number, then the size in a black box and the price.
+ */
 export function BarcodeLabel({ item }: { item: BarcodeLabelItem }) {
   return (
     <div className={styles.inner}>
-      <div className={styles.top}>
-        <span className={styles.brand}>SENVO</span>
-        <span className={styles.price}>
-          {labelPrice(item.sellingPriceMinor)}
-        </span>
-      </div>
+      <span className={styles.brand}>SENVO</span>
       <span className={styles.name}>{item.productName}</span>
-      <div className={styles.sizeRow}>
-        <span className={styles.size}>
-          <small>SIZE</small>
-          {item.size}
-        </span>
-        <span className={styles.color}>{item.color}</span>
-      </div>
+      {item.color ? <span className={styles.color}>{item.color}</span> : null}
+      <span className={styles.sku}>{item.sku}</span>
       <div className={styles.bars}>
         <Code128Barcode value={item.barcode} />
       </div>
       <span className={styles.number}>{item.barcode}</span>
+      <div className={styles.bottom}>
+        <span className={styles.size}>{item.size}</span>
+        <span className={styles.price}>
+          {labelPrice(item.sellingPriceMinor)}
+        </span>
+      </div>
     </div>
   );
 }
