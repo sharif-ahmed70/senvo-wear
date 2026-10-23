@@ -34,7 +34,20 @@ if (-not (Test-Path (Join-Path $repo "node_modules"))) {
   throw "Dependencies are missing. Run: pnpm install; pnpm db:generate"
 }
 
-# Start PostgreSQL if it is installed as a Windows service and stopped.
+# Start the portable PostgreSQL that setup-windows.ps1 installs (no service),
+# or a PostgreSQL Windows service that is stopped.
+$dotEnv = @{}
+Get-Content (Join-Path $repo ".env") | ForEach-Object {
+  if ($_ -match '^\s*(SENVO_PG_BIN|SENVO_PG_DATA|DATABASE_URL)=(.*)$') { $dotEnv[$Matches[1]] = $Matches[2].Trim().Trim('"') }
+}
+$pgPort = 5432
+if ($dotEnv["DATABASE_URL"] -match ':(\d+)/') { $pgPort = [int]$Matches[1] }
+$pgListening = [bool](Get-NetTCPConnection -LocalPort $pgPort -State Listen -ErrorAction SilentlyContinue)
+if (-not $pgListening -and $dotEnv["SENVO_PG_BIN"] -and $dotEnv["SENVO_PG_DATA"]) {
+  $pgData = $dotEnv["SENVO_PG_DATA"]
+  & (Join-Path $dotEnv["SENVO_PG_BIN"] "pg_ctl.exe") -D $pgData -l (Join-Path $pgData "server.log") -w start | Out-Null
+  if ($LASTEXITCODE -ne 0) { Write-Warning "PostgreSQL did not start; see $pgData\server.log" }
+}
 Get-Service -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -like "*postgresql*" -and $_.Status -ne "Running" } |
   ForEach-Object {
