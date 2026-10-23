@@ -10,6 +10,22 @@ Antigravity), paste the prompt in [AI_SETUP_PROMPT.md](AI_SETUP_PROMPT.md).
 > (`.senvo-media`) বসান, তারপর `scripts\start-local.ps1` চালান। পরে আপডেট করতে:
 > ব্যাকআপ → `git pull` → `pnpm install` → migration → আবার start।
 
+## Fastest way: the portable package
+
+The portable package (`SENVO-Portable-*.zip`) holds the code, portable Node 22
+and PostgreSQL 17, the shop data and pictures, and `setup-senvo.ps1` (a copy
+of [scripts/setup-windows.ps1](../scripts/setup-windows.ps1)). Unzip it and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-senvo.ps1
+```
+
+No admin rights or passwords are needed; only `pnpm install` needs internet.
+On a new laptop it installs everything under `C:\SENVO` and the code in
+`C:\xampp\htdocs\SENVO Wear`. On a laptop that already has SENVO it keeps the
+`.env`, pictures and data, takes a backup first and renames the old code
+folder instead of deleting it. The manual steps below do the same by hand.
+
 ## What runs where
 
 | Part       | Address                 | Notes                              |

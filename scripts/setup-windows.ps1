@@ -23,7 +23,7 @@ param(
   [string]$ProjectDir = "C:\xampp\htdocs\SENVO Wear",
   [string]$ToolsRoot = "C:\SENVO",
   # Rehearsal on a machine that already runs SENVO: does not create the daily
-  # task or the desktop shortcuts (they would replace the real ones).
+  # task or the desktop shortcuts and does not change the user PATH.
   [switch]$Rehearsal
 )
 
@@ -51,6 +51,7 @@ function Invoke-Checked([string]$label, [scriptblock]$block) {
   if ($LASTEXITCODE -ne 0) { Fail "$label failed (exit $LASTEXITCODE). See the log in $logDir." }
 }
 function Add-UserPath([string]$dir) {
+  if ($Rehearsal) { $env:Path = "$dir;$env:Path"; return }
   $user = [Environment]::GetEnvironmentVariable("Path", "User")
   $parts = @()
   if ($user) { $parts = $user -split ";" | Where-Object { $_ -and ($_ -ne $dir) } }
@@ -153,7 +154,7 @@ if (-not $pnpmOk) {
   $pnpmHome = Join-Path $ToolsRoot "pnpm"
   if (-not (Test-Path (Join-Path $pnpmHome "pnpm.cmd"))) {
     $npm = Join-Path (Split-Path (Get-Command node).Source) "npm.cmd"
-    Invoke-Checked "Installing pnpm" { & $npm install --prefix $pnpmHome "pnpm@$pnpmVersion" --no-audit --no-fund --loglevel error }
+    Invoke-Checked "Installing pnpm" { & $npm install --global --prefix $pnpmHome "pnpm@$pnpmVersion" --no-audit --no-fund --loglevel error }
   }
   Add-UserPath $pnpmHome
 }
@@ -172,9 +173,18 @@ if (Test-Path $marker) { $current = (Get-Content $marker -First 1).Trim() }
 if ((Test-Path $ProjectDir) -and ($current -ne $packageCommit)) {
   # Different or unknown code: set the folder aside (renamed, never deleted).
   Stop-SenvoPorts
+  # Dev servers leave node/cmd processes running inside the folder; stop
+  # them (never this setup process) so the folder can be renamed.
+  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cmd.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.Contains($ProjectDir) -and $_.ProcessId -ne $PID } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   $oldDir = "$ProjectDir.old-$stamp"
-  try { Rename-Item -Path $ProjectDir -NewName (Split-Path $oldDir -Leaf) }
-  catch { Fail "Could not rename $ProjectDir. Close VS Code, terminals and browsers using it, then run setup again." }
+  $renamed = $false
+  for ($try = 0; $try -lt 6 -and -not $renamed; $try++) {
+    try { Rename-Item -Path $ProjectDir -NewName (Split-Path $oldDir -Leaf); $renamed = $true }
+    catch { Start-Sleep -Seconds 5 }
+  }
+  if (-not $renamed) { Fail "Could not rename $ProjectDir. Close VS Code, terminals and browsers using it, then run setup again." }
   Note "Old folder kept as $oldDir"
 }
 if (-not (Test-Path $ProjectDir)) {
