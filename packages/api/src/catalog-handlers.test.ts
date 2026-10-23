@@ -581,6 +581,15 @@ class FakeCatalog implements CatalogManagementApplication {
   getProductDeletable(context: ApplicationExecutionContext) {
     return this.success(context, { deletable: true, reason: null });
   }
+  archiveVariant(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  restoreVariant(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
+  deleteVariant(context: ApplicationExecutionContext) {
+    return this.success(context, null);
+  }
 
   context?: ApplicationExecutionContext;
   payloads: unknown[] = [];
