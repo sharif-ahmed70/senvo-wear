@@ -892,6 +892,36 @@ export function PriceAndSupplierStep({
           <FieldMessage id={`${uid}-memo-error`} message={errors.memoNumber} />
         </label>
         <div className={styles.field}>
+          <label htmlFor={`${uid}-memo-photo`}>মেমোর ছবি (ঐচ্ছিক)</label>
+          {purchase.memoFile ? (
+            <div className={styles.addRow}>
+              <span>{purchase.memoFile.name}</span>
+              <button
+                className={styles.textButton}
+                onClick={() => update({ memoFile: null })}
+                type="button"
+              >
+                <X aria-hidden="true" size={14} /> সরান
+              </button>
+            </div>
+          ) : (
+            <input
+              accept="image/*"
+              capture="environment"
+              id={`${uid}-memo-photo`}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                if (file && !file.type.startsWith("image/")) return;
+                update({ memoFile: file });
+              }}
+              type="file"
+            />
+          )}
+          <span className={styles.hint}>
+            Save করার পর ছবিটা এই কেনাকাটার সাথে রাখা হবে।
+          </span>
+        </div>
+        <div className={styles.field}>
           <label htmlFor={`${uid}-paid`}>এখন কত দিলেন</label>
           <div className={styles.addRow}>
             <input

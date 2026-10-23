@@ -38,7 +38,15 @@ export async function compressMemoImage(
 }
 
 /** Shows and uploads the supplier's cash memo photo for one purchase. */
-export function PurchaseMemo({ purchaseId }: { purchaseId: string }) {
+export function PurchaseMemo({
+  pendingFile = null,
+  purchaseId,
+}: {
+  /** A photo chosen before the purchase existed; uploaded automatically. */
+  pendingFile?: File | null;
+  purchaseId: string;
+}) {
+  const [pendingSent, setPendingSent] = useState(false);
   const [memo, setMemo] = useState<PurchaseMemoContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -59,6 +67,14 @@ export function PurchaseMemo({ purchaseId }: { purchaseId: string }) {
       active = false;
     };
   }, [purchaseId]);
+
+  useEffect(() => {
+    if (loading || pendingSent || !pendingFile) return;
+    setPendingSent(true);
+    void upload(pendingFile);
+    // upload is stable enough here: it only uses purchaseId and setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, pendingFile, pendingSent]);
 
   async function upload(file: File | undefined) {
     if (!file) return;

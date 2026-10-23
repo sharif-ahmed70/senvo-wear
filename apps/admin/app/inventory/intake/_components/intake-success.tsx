@@ -24,12 +24,15 @@ export type PhotoUploadState =
   | { message: string; status: "failed" };
 
 export function IntakeSuccess({
+  memoFile = null,
   onAnother,
   onRetryPhoto,
   photo = { status: "none" },
   result,
   typedTransportMinor,
 }: {
+  /** Memo photo chosen in the form, uploaded once the purchase exists. */
+  memoFile?: File | null;
   onAnother: () => void;
   onRetryPhoto?: () => void;
   photo?: PhotoUploadState;
@@ -158,7 +161,7 @@ export function IntakeSuccess({
         </Link>
       </div>
 
-      <PurchaseMemo purchaseId={result.purchase.id} />
+      <PurchaseMemo pendingFile={memoFile} purchaseId={result.purchase.id} />
 
       {showLabels ? (
         <IntakeBarcodeLabels

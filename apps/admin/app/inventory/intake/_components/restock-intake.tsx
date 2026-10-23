@@ -243,6 +243,7 @@ export function RestockIntake({
   if (submission.result) {
     return (
       <IntakeSuccess
+        memoFile={purchase.memoFile}
         onAnother={startAnother}
         result={submission.result}
         typedTransportMinor={parseTaka(purchase.transport) ?? 0}
