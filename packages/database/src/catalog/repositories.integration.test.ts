@@ -1,6 +1,7 @@
 import {
   PrismaProductLifecycleRepository,
   PRODUCT_HISTORY,
+  VARIANT_HISTORY,
 } from "./product-lifecycle-repository.js";
 import {
   createCategory,
@@ -221,6 +222,93 @@ describeWithDatabase("Prisma catalog repositories", () => {
         where: { id: base.variant.id },
       }),
     ).not.toBeNull();
+  });
+
+  it("archives one option out of barcode scanning and deletes only a clean, non-last option", async () => {
+    const base = await createBaseCatalog(prisma, "VARIANT");
+    const second = await prisma.productVariant.create({
+      data: {
+        colorId: base.color.id,
+        organizationId: base.organization.id,
+        productId: base.product.id,
+        sizeId: base.otherSize.id,
+        sku: "OXFORD-BLK-M-VARIANT",
+      },
+    });
+    await prisma.variantBarcode.create({
+      data: {
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+        value: "VARIANT-ARCHIVE",
+        type: "CODE128",
+      },
+    });
+    await prisma.$transaction(async (tx) => {
+      const repo = new PrismaProductLifecycleRepository(tx);
+      const variant = await repo.findVariantLocked(
+        base.variant.id,
+        base.organization.id,
+      );
+      const archived = await repo.updateVariantStatus(variant!, "ARCHIVED");
+      expect(archived.updatedAt.getTime()).toBeGreaterThan(
+        variant!.updatedAt.getTime(),
+      );
+    });
+    expect(
+      await repositories.barcodes.lookupActive(
+        base.organization.id,
+        "VARIANT-ARCHIVE",
+      ),
+    ).toBeNull();
+    expect(
+      await repositories.barcodes.lookupActiveBySku(
+        base.organization.id,
+        base.variant.sku,
+      ),
+    ).toBeNull();
+
+    await prisma.variantCostState.create({
+      data: {
+        organizationId: base.organization.id,
+        productVariantId: base.variant.id,
+      },
+    });
+    await expect(
+      prisma.$transaction(async (tx) => {
+        const repo = new PrismaProductLifecycleRepository(tx);
+        await repo.deleteVariant(
+          (await repo.findVariantLocked(
+            base.variant.id,
+            base.organization.id,
+          ))!,
+        );
+      }),
+    ).rejects.toThrow(VARIANT_HISTORY);
+
+    await prisma.$transaction(async (tx) => {
+      const repo = new PrismaProductLifecycleRepository(tx);
+      await repo.deleteVariant(
+        (await repo.findVariantLocked(second.id, base.organization.id))!,
+      );
+    });
+    expect(
+      await prisma.productVariant.findUnique({ where: { id: second.id } }),
+    ).toBeNull();
+  });
+
+  it("refuses to delete a product's only option", async () => {
+    const base = await createBaseCatalog(prisma, "ONLY");
+    await expect(
+      prisma.$transaction(async (tx) => {
+        const repo = new PrismaProductLifecycleRepository(tx);
+        await repo.deleteVariant(
+          (await repo.findVariantLocked(
+            base.variant.id,
+            base.organization.id,
+          ))!,
+        );
+      }),
+    ).rejects.toThrow("only option");
   });
 
   it("keeps lifecycle lookup tenant scoped and edit timestamps monotonic", async () => {

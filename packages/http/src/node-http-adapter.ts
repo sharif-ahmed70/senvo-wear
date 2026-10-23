@@ -429,6 +429,27 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
         200,
         "variantId",
       ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/archive$/iu,
+        handlers.catalog.archiveVariant,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "POST",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)\/restore$/iu,
+        handlers.catalog.restoreVariant,
+        200,
+        "variantId",
+      ),
+      catalogRoute(
+        "DELETE",
+        /^\/catalog\/variants\/(?<id>[0-9a-f-]+)$/iu,
+        handlers.catalog.deleteVariant,
+        200,
+        "variantId",
+      ),
     );
   }
   if (handlers.storefront) {

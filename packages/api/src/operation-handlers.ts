@@ -16,6 +16,7 @@ import {
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
   updateVariantPriceServiceInputSchema,
+  variantLifecycleInputSchema,
   type UpdateVariantPriceServiceInputContract,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
@@ -242,6 +243,18 @@ export type CatalogManagementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<ProductDeletableContract>>;
+  archiveVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract | null>>;
+  restoreVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract | null>>;
+  deleteVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<ProductVariantContract | null>>;
 
   createVariantBarcode(
     context: ApplicationExecutionContext,
@@ -379,6 +392,9 @@ export type CatalogApiHandlers = {
   restoreProduct: ApiHandler<ProductContract | null>;
   deleteProduct: ApiHandler<ProductContract | null>;
   getProductDeletable: ApiHandler<ProductDeletableContract>;
+  archiveVariant: ApiHandler<ProductVariantContract | null>;
+  restoreVariant: ApiHandler<ProductVariantContract | null>;
+  deleteVariant: ApiHandler<ProductVariantContract | null>;
 
   addProductMedia: ApiHandler<ProductMediaContract>;
   archiveProductMedia: ApiHandler<null>;
@@ -463,6 +479,21 @@ export function createCatalogApiHandlers(
       inputSchema: getProductServiceInputSchema,
       execute: (ctx, input) =>
         dependencies.catalog.getProductDeletable(ctx, input),
+    }),
+    archiveVariant: protectedHandler({
+      action: "UPDATE",
+      inputSchema: variantLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.archiveVariant(ctx, input),
+    }),
+    restoreVariant: protectedHandler({
+      action: "UPDATE",
+      inputSchema: variantLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.restoreVariant(ctx, input),
+    }),
+    deleteVariant: protectedHandler({
+      action: "DELETE",
+      inputSchema: variantLifecycleInputSchema,
+      execute: (ctx, input) => dependencies.catalog.deleteVariant(ctx, input),
     }),
     addProductMedia: protectedHandler<
       AddProductMediaServiceInputContract,

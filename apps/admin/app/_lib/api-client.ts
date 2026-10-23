@@ -21,6 +21,7 @@ import type {
   CreateProductServiceInputContract,
   CreateProductVariantServiceInputContract,
   UpdateVariantPriceServiceInputContract,
+  VariantLifecycleInputContract,
   CreateSizeServiceInputContract,
   GetVariantAvailabilityServiceInputContract,
   InventoryAvailabilityReadContract,
@@ -619,6 +620,17 @@ export class AdminApiClient {
     return this.request<ProductVariantContract>(
       `/catalog/variants/${variantId}/price`,
       { ...request, body, method: "PATCH" },
+    );
+  }
+
+  changeVariantLifecycle(
+    operation: "archive" | "restore" | "delete",
+    input: VariantLifecycleInputContract,
+  ) {
+    const { variantId, ...body } = input;
+    return this.request<ProductVariantContract | null>(
+      `/catalog/variants/${variantId}${operation === "delete" ? "" : `/${operation}`}`,
+      { method: operation === "delete" ? "DELETE" : "POST", body },
     );
   }
 

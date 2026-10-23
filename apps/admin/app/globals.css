@@ -4271,3 +4271,196 @@ a {
     max-width: 320px;
   }
 }
+
+/* Product page actions: product Edit/Archive/Delete, price edit, and
+   per-option Archive/Restore/Delete share one button style. */
+.catalog-actions {
+  align-items: center;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+.catalog-actions__note {
+  color: var(--admin-muted);
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  margin: 2px 0 0;
+}
+.catalog-action-button {
+  align-items: center;
+  background: var(--admin-surface);
+  border: 1px solid #cbd4ce;
+  border-radius: 6px;
+  color: var(--admin-ink);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 6px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+  white-space: nowrap;
+}
+.catalog-action-button:hover:not(:disabled) {
+  background: #f1f4f2;
+  border-color: #9fb0a7;
+}
+.catalog-action-button:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+}
+.catalog-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.catalog-action-button--small {
+  font-size: 0.76rem;
+  min-height: 30px;
+  padding: 0 10px;
+}
+.catalog-action-button--primary {
+  background: var(--admin-accent);
+  border-color: var(--admin-accent);
+  color: #ffffff;
+}
+.catalog-action-button--primary:hover:not(:disabled) {
+  background: #245a4a;
+  border-color: #245a4a;
+}
+.catalog-action-button--danger {
+  border-color: #e3b9b6;
+  color: var(--admin-danger);
+}
+.catalog-action-button--danger:hover:not(:disabled) {
+  background: #fbefee;
+  border-color: var(--admin-danger);
+}
+.catalog-action-button--danger-solid {
+  background: var(--admin-danger);
+  border-color: var(--admin-danger);
+  color: #ffffff;
+}
+.catalog-action-button--danger-solid:hover:not(:disabled) {
+  background: #8a2f2b;
+  border-color: #8a2f2b;
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-action-button {
+    transition: none;
+  }
+}
+
+.catalog-dialog {
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgb(16 24 20 / 22%);
+  color: var(--admin-ink);
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 22px;
+  width: 100%;
+}
+.catalog-dialog::backdrop {
+  background: rgb(16 24 20 / 45%);
+}
+.catalog-dialog form {
+  display: grid;
+  gap: 12px;
+}
+.catalog-dialog h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.catalog-dialog p {
+  color: var(--admin-muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  margin: 0;
+}
+.catalog-dialog label {
+  display: grid;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 6px;
+}
+.catalog-dialog input,
+.catalog-dialog select,
+.catalog-dialog textarea {
+  border: 1px solid #cbd4ce;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 400;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+.catalog-dialog textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.catalog-dialog .catalog-dialog__sku {
+  color: var(--admin-ink);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-weight: 700;
+}
+.catalog-dialog .catalog-dialog__error {
+  background: #fbefee;
+  border-radius: 6px;
+  color: var(--admin-danger);
+  padding: 8px 10px;
+}
+.catalog-dialog__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Selling price cell and its inline editor. */
+.variant-price,
+.variant-price-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.variant-price__value {
+  font-weight: 700;
+  min-width: 72px;
+}
+.variant-price-form input {
+  border: 1px solid #cbd4ce;
+  border-radius: 6px;
+  font: inherit;
+  min-height: 30px;
+  padding: 4px 8px;
+  width: 110px;
+}
+.variant-price-form [role="alert"] {
+  color: var(--admin-danger);
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+/* Per-option Archive / Restore / Delete. */
+.variant-lifecycle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.variant-row--archived td {
+  opacity: 0.55;
+}
+.variant-row--archived td:last-child {
+  opacity: 1;
+}

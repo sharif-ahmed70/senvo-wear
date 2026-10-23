@@ -899,6 +899,11 @@ async function resolveLines(
       );
     }
 
+    if (variant?.status === "ARCHIVED") {
+      throw new ValidationApplicationError(
+        `${variant.sku} (${color.name} / ${size.name}) is archived. Restore it on the product page before adding stock.`,
+      );
+    }
     if (variant) {
       if (
         line.sellingPriceMinor !== null &&

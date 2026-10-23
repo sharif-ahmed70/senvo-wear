@@ -49,6 +49,7 @@ import {
   createProductServiceInputSchema,
   createProductVariantServiceInputSchema,
   updateVariantPriceServiceInputSchema,
+  variantLifecycleInputSchema,
   createSizeServiceInputSchema,
   getProductServiceInputSchema,
   reorderCollectionProductsServiceInputSchema,
@@ -547,6 +548,92 @@ export class CatalogApplicationService {
         return result ? mapProduct(result) : null;
       });
     });
+  }
+
+  archiveVariant(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateVariant(context, payload, "archive");
+  }
+  restoreVariant(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateVariant(context, payload, "restore");
+  }
+  /** Owner only, and only for an option with no stock or sales history. */
+  deleteVariant(context: ApplicationExecutionContext, payload: unknown) {
+    return this.mutateVariant(context, payload, "delete");
+  }
+
+  private mutateVariant(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+    operation: "archive" | "restore" | "delete",
+  ) {
+    return this.execute<ProductVariantContract | null>(
+      context,
+      async (trusted) => {
+        await this.authorize(
+          trusted,
+          operation === "delete" ? "DELETE" : "UPDATE",
+        );
+        const input = parsePayload(variantLifecycleInputSchema, payload);
+        if (!this.transactionManager)
+          throw new Error("Transaction manager is required.");
+        return this.transactionManager.execute(trusted, async (tx) => {
+          const repo = tx.productLifecycleRepository;
+          if (
+            !repo?.findVariantLocked ||
+            !repo.updateVariantStatus ||
+            !repo.deleteVariant ||
+            !repo.actorRole
+          )
+            throw new Error("Variant lifecycle repository is required.");
+          if (operation === "delete") {
+            const role = trusted.userId
+              ? await repo.actorRole(trusted.userId, trusted.organizationId)
+              : null;
+            if (role !== "OWNER")
+              throw new AuthorizationError(
+                "Only the owner can delete a product option.",
+              );
+          }
+          const variant = await repo.findVariantLocked(
+            input.variantId,
+            trusted.organizationId,
+          );
+          if (!variant)
+            throw new NotFoundError("Product option was not found.");
+          if (
+            variant.updatedAt.getTime() !==
+            new Date(input.expectedUpdatedAt).getTime()
+          )
+            throw new ConcurrencyError("Product option changed. Refresh.");
+          let result: ProductVariant | null = null;
+          if (operation === "delete") await repo.deleteVariant(variant);
+          else
+            result = await repo.updateVariantStatus(
+              variant,
+              operation === "archive" ? "ARCHIVED" : "ACTIVE",
+            );
+          await tx.auditWriter.recordWithinTransaction({
+            action:
+              operation === "archive"
+                ? "PRODUCT_VARIANT_ARCHIVED"
+                : operation === "restore"
+                  ? "PRODUCT_VARIANT_RESTORED"
+                  : "PRODUCT_VARIANT_DELETED",
+            actor: { userId: trusted.userId },
+            organizationId: trusted.organizationId,
+            resource: "PRODUCT_VARIANT",
+            resourceId: variant.id,
+            metadata: {
+              productId: variant.productId,
+              sku: variant.sku,
+              before: { status: variant.status },
+              after: result ? { status: result.status } : null,
+            },
+          });
+          return result ? mapVariant(result) : null;
+        });
+      },
+    );
   }
 
   getProduct(

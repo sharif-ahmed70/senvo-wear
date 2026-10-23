@@ -838,6 +838,14 @@ export type UpdateVariantPriceServiceInputContract = z.infer<
   typeof updateVariantPriceServiceInputSchema
 >;
 
+/** Archive, restore or delete one variant (size/colour) of a product. */
+export const variantLifecycleInputSchema = z
+  .object({ variantId: idSchema, expectedUpdatedAt: isoTimestampSchema })
+  .strict();
+export type VariantLifecycleInputContract = z.infer<
+  typeof variantLifecycleInputSchema
+>;
+
 export const listProductVariantsServiceInputSchema = z
   .object({ productId: idSchema })
   .strict();
