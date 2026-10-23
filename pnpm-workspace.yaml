@@ -14,6 +14,8 @@ overrides:
   source-map-js: 1.2.2
   nanoid: 3.3.18
   valibot: 1.4.2
+  hono: 4.13.13
+  vite: 8.1.6
 allowBuilds:
   "@prisma/engines": true
   prisma: true
@@ -27,3 +29,9 @@ minimumReleaseAgeExclude:
   - "@turbo/windows-64@2.10.2"
   - "@turbo/windows-arm64@2.10.2"
   - turbo@2.10.2
+auditConfig:
+  ignoreGhsas:
+    # braces <=3.0.3 (deep-pattern DoS). Only reached through ESLint tooling
+    # (eslint-config-next > fast-glob > micromatch), never shipped or run on
+    # user input, and no patched release exists yet. Remove when 3.0.4 ships.
+    - GHSA-vfj7-8cjw-p6xm
