@@ -19,6 +19,16 @@ For the premium storefront redesign task, also read:
 - `docs/codex/unpack-design-reference.sh` and the verified design package it
   reconstructs from the numbered repository parts
 
+## Local setup and running
+
+To install, run or update SENVO Wear on a Windows laptop, follow
+`docs/LOCAL_SETUP.md` (the owner may paste `docs/AI_SETUP_PROMPT.md`). Start
+with `scripts\start-local.ps1`. A fresh database has no login: restore the
+shop's newest backup dump. Apply schema changes only with
+`prisma migrate deploy`; never `migrate dev`, `migrate reset` or `db push` on
+the shop database. Back up with `scripts\backup-db.ps1` before updates. Report
+to the owner in short, simple Bangla.
+
 ## Storefront redesign boundary
 
 The current storefront commerce flow already works. Redesign the presentation

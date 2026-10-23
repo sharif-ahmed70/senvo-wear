@@ -26,6 +26,19 @@ The repository uses a pnpm and Turborepo monorepo with three Next.js App Router 
 - `packages/utils`: genuinely generic utilities only.
 - `docs`: architecture, ADR, security, testing, and operations documentation.
 
+## Run it on a laptop
+
+Step-by-step Windows setup (from GitHub `main`, with the shop's backup), daily
+start, updating and backups: [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md). To let
+an AI agent (Claude Code, Codex, Antigravity) do it, paste the prompt in
+[docs/AI_SETUP_PROMPT.md](docs/AI_SETUP_PROMPT.md).
+
+Start everything on Windows:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-local.ps1
+```
+
 ## Prerequisites
 
 - Node.js 22 LTS is the repository runtime target. CI pins `22.23.1`; local tooling requires `>=22.13`.
