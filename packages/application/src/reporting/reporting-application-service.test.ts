@@ -26,11 +26,13 @@ const model: DashboardReadModel = {
           salesMinor: 5000,
         },
       ],
+      productProfits: [],
       refundsMinor: 300,
       topProducts: [],
       uncostedSalesMinor: 0,
     },
     refundsTodayMinor: 300,
+    stock: { costMinor: 1_250_000, uncostedUnits: 4 },
     topProducts: [
       {
         name: "Polo",
@@ -143,6 +145,7 @@ describe("ReportingApplicationService.getDashboardSummary", () => {
     expect(result.data.businessDate).toBe("2026-10-02");
     expect(result.data.financials).toMatchObject({
       refundsTodayMinor: 300,
+      stock: { costMinor: 1_250_000, uncostedUnits: 4 },
       todaySaleCount: 2,
       todaySalesMinor: 5000,
       yesterdaySalesMinor: 0,

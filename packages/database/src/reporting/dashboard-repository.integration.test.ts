@@ -423,6 +423,18 @@ describeWithDatabase("dashboard read model (database)", () => {
         profitMinor: 60000,
         uncostedSalesMinor: 0,
       });
+      // One product sold in the period: its row equals the period totals.
+      expect(costed.financials?.period.productProfits).toEqual([
+        expect.objectContaining({
+          costMinor: 40000,
+          extraCostMinor: 0,
+          productId,
+          profitMinor: 60000,
+          quantity: 4,
+          revenueMinor: 100000,
+          uncostedRevenueMinor: 0,
+        }),
+      ]);
       expect(costed.financials?.period.daily).toEqual([
         { date: "2026-10-01", profitMinor: 10000, salesMinor: 20000 },
         { date: "2026-10-02", profitMinor: 50000, salesMinor: 80000 },

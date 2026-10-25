@@ -33,6 +33,16 @@ import { ValidationApplicationError } from "../errors.js";
  *   average cost. Lines without any known cost are left out of profit and
  *   reported as `uncostedSalesMinor`. Profit = costed line revenue - cost; it
  *   ignores order-level delivery fees and refunds.
+ * - Profit by product: the same sale lines and cost rule as the period
+ *   profit, grouped by product, so the rows add up to the period totals.
+ *   Ranked by profit, at most DASHBOARD_PRODUCT_PROFIT_LIMIT products. The
+ *   cost is split into supplier price and extra cost (transport/labour) by
+ *   the share of extra cost in the variant's posted purchases, so the owner
+ *   sees the supplier price unchanged next to the extra cost.
+ * - Stock value (at cost): per ACTIVE or INACTIVE variant, on-hand summed
+ *   over every stock location x the variant's current moving average cost.
+ *   Units of variants without a known cost are left out of the value and
+ *   reported as `uncostedUnits`; negative on-hand counts as zero.
  */
 export const DASHBOARD_MAX_RANGE_DAYS = 366;
 export const DASHBOARD_TIME_ZONE = "Asia/Dhaka";
@@ -42,6 +52,7 @@ export const PENDING_ORDER_STATUSES = ["RESERVED", "CONFIRMED"] as const;
 export const DASHBOARD_RECENT_ORDER_LIMIT = 6;
 export const DASHBOARD_TOP_PRODUCT_LIMIT = 5;
 export const DASHBOARD_TREND_DAYS = 7;
+export const DASHBOARD_PRODUCT_PROFIT_LIMIT = 500;
 export const DASHBOARD_SALES_CHANNELS = [
   "POS",
   "OFFLINE_STORE",
@@ -201,6 +212,7 @@ export type DashboardSummary = {
     last7Days: Array<{ date: string; salesMinor: number }>;
     period: DashboardPeriodSummary;
     refundsTodayMinor: number;
+    stock: DashboardStockValue;
     todaySaleCount: number;
     todaySalesMinor: number;
     topProducts: Array<{
@@ -230,6 +242,39 @@ export type DashboardSummary = {
   }>;
 };
 
+/** Stock on hand valued at cost (see the definitions at the top). */
+export type DashboardStockValue = {
+  costMinor: number;
+  uncostedUnits: number;
+};
+
+/** One product's sales and estimated profit in the picked period. */
+export type DashboardProductProfit = {
+  /** Cost of the lines whose cost is known (supplier price + extra cost). */
+  costMinor: number;
+  /**
+   * The part of costMinor that is transport/labour ("extra cost" at intake),
+   * by each variant's posted purchases: extra / landed unit cost.
+   */
+  extraCostMinor: number;
+  name: string;
+  productCode: string;
+  productId: string;
+  /** Revenue of the lines with a known cost minus their cost. */
+  profitMinor: number;
+  quantity: number;
+  /** Revenue of all its sale lines. */
+  revenueMinor: number;
+  /** Revenue of lines without any known cost (left out of profit). */
+  uncostedRevenueMinor: number;
+};
+
+/** Raw per-product aggregates the repository returns. */
+export type DashboardProductProfitRow = Omit<
+  DashboardProductProfit,
+  "profitMinor"
+> & { costedRevenueMinor: number };
+
 export type DashboardTopProduct = {
   name: string;
   productId: string;
@@ -248,6 +293,8 @@ export type DashboardPeriodSummary = {
   daily: Array<{ date: string; profitMinor: number; salesMinor: number }>;
   from: string;
   previousSalesMinor: number;
+  /** Ranked by profit; adds up to the period's profit and cost. */
+  productProfits: DashboardProductProfit[];
   /** Estimated: see the definitions at the top of this file. */
   profitMinor: number;
   refundsMinor: number;
@@ -272,6 +319,7 @@ export type DashboardPeriodReadModel = {
     saleCount: number;
     salesMinor: number;
   }>;
+  productProfits: DashboardProductProfitRow[];
   refundsMinor: number;
   topProducts: DashboardTopProduct[];
   uncostedSalesMinor: number;
@@ -288,6 +336,7 @@ export type DashboardReadModel = {
     dailySales: DailySales[];
     period: DashboardPeriodReadModel;
     refundsTodayMinor: number;
+    stock: DashboardStockValue;
     topProducts: NonNullable<DashboardSummary["financials"]>["topProducts"];
   } | null;
   inventory: DashboardSummary["inventory"];
@@ -358,6 +407,7 @@ export async function getDashboardSummary(
       ),
       period: summarizePeriod(windows.range, model.financials.period),
       refundsTodayMinor: model.financials.refundsTodayMinor,
+      stock: model.financials.stock,
       todaySaleCount: daily.get(windows.businessDate)?.saleCount ?? 0,
       todaySalesMinor: daily.get(windows.businessDate)?.salesMinor ?? 0,
       topProducts: model.financials.topProducts.slice(
@@ -406,6 +456,18 @@ export function summarizePeriod(
       (total, row) => total + row.previousPeriodMinor,
       0,
     ),
+    productProfits: period.productProfits
+      .map(({ costedRevenueMinor, ...row }) => ({
+        ...row,
+        profitMinor: costedRevenueMinor - row.costMinor,
+      }))
+      .sort(
+        (a, b) =>
+          b.profitMinor - a.profitMinor ||
+          b.revenueMinor - a.revenueMinor ||
+          a.productId.localeCompare(b.productId),
+      )
+      .slice(0, DASHBOARD_PRODUCT_PROFIT_LIMIT),
     profitMinor: sum((row) => row.costedSalesMinor) - costMinor,
     refundsMinor: period.refundsMinor,
     saleCount,

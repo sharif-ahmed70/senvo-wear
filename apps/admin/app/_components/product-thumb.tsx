@@ -26,10 +26,13 @@ export function ProductThumb({
   productId,
   name,
   size = 40,
+  fill = false,
 }: {
   productId: string;
   name: string;
   size?: number;
+  /** Fill the parent box and show the whole picture (no cropping). */
+  fill?: boolean;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -52,7 +55,9 @@ export function ProductThumb({
     };
   }, [productId]);
 
-  const style = { width: size, height: size };
+  const style = fill
+    ? { width: "100%", height: "100%", borderRadius: 0 }
+    : { width: size, height: size };
 
   if (error) {
     return (
@@ -71,7 +76,7 @@ export function ProductThumb({
       src={url}
       alt={name}
       loading="lazy"
-      className={styles.image}
+      className={fill ? `${styles.image} ${styles.fill}` : styles.image}
       style={style}
       onError={() => setError(true)}
     />

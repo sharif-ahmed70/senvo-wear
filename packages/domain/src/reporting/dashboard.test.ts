@@ -16,11 +16,13 @@ const emptyModel = (): DashboardReadModel => ({
     period: {
       channels: [],
       daily: [],
+      productProfits: [],
       refundsMinor: 0,
       topProducts: [],
       uncostedSalesMinor: 0,
     },
     refundsTodayMinor: 0,
+    stock: { costMinor: 0, uncostedUnits: 0 },
     topProducts: [],
   },
   inventory: { inStock: 0, inactive: 0, lowStock: 0, outOfStock: 0, total: 0 },
@@ -91,11 +93,57 @@ describe("dashboard period", () => {
             salesMinor: 30_000,
           },
         ],
+        productProfits: [
+          {
+            costMinor: 3_500,
+            costedRevenueMinor: 4_000,
+            extraCostMinor: 500,
+            name: "Panjabi",
+            productCode: "PAN-0001",
+            productId: "11111111-1111-4111-8111-111111111111",
+            quantity: 3,
+            revenueMinor: 24_000,
+            uncostedRevenueMinor: 20_000,
+          },
+          {
+            costMinor: 2_500,
+            costedRevenueMinor: 6_000,
+            extraCostMinor: 0,
+            name: "Shirt",
+            productCode: "SHI-0001",
+            productId: "22222222-2222-4222-8222-222222222222",
+            quantity: 2,
+            revenueMinor: 6_000,
+            uncostedRevenueMinor: 0,
+          },
+        ],
         refundsMinor: 500,
         topProducts: [],
         uncostedSalesMinor: 20_000,
       },
     );
+    // Ranked by profit; the rows add up to the period's cost and profit.
+    expect(
+      summary.productProfits.map(({ name, profitMinor }) => [
+        name,
+        profitMinor,
+      ]),
+    ).toEqual([
+      ["Shirt", 3_500],
+      ["Panjabi", 500],
+    ]);
+    expect(
+      summary.productProfits.reduce((sum, row) => sum + row.profitMinor, 0),
+    ).toBe(summary.profitMinor);
+    expect(
+      summary.productProfits.reduce((sum, row) => sum + row.costMinor, 0),
+    ).toBe(summary.costMinor);
+    // Transport/labour is shown apart but stays inside the cost.
+    expect(summary.productProfits[1]).toMatchObject({
+      costMinor: 3_500,
+      extraCostMinor: 500,
+      profitMinor: 500,
+    });
     expect(summary).toMatchObject({
       averageSaleMinor: 15_000,
       costMinor: 6_000,

@@ -147,7 +147,8 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
     windows: DashboardWindows,
   ): Promise<NonNullable<DashboardReadModel["financials"]>> {
     const saleStatuses = statusList(SALE_ORDER_STATUSES);
-    const [daily, channels, refunds, topProducts, period] = await Promise.all([
+    const [daily, channels, refunds, topProducts, period, stock] =
+      await Promise.all([
       this.prisma.$queryRaw<
         Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
       >`
@@ -215,6 +216,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         ORDER BY revenue_minor DESC, quantity DESC, product.id
         LIMIT ${DASHBOARD_TOP_PRODUCT_LIMIT}`,
       this.period(organizationId, windows.range),
+      this.stockValue(organizationId),
     ]);
     return {
       channels: channels.map((row) => ({
@@ -229,6 +231,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
       })),
       period,
       refundsTodayMinor: toNumber(refunds[0]?.refunds_minor),
+      stock,
       topProducts: topProducts.map((row) => ({
         name: row.name,
         productId: row.product_id,
@@ -238,13 +241,48 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
     };
   }
 
+  /** On-hand stock at moving average cost (see the domain definitions). */
+  private async stockValue(organizationId: string) {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ cost_minor: bigint; uncosted_units: bigint }>
+    >`
+      WITH ${availabilityCtes(organizationId)},
+      per_variant AS (
+        SELECT variant_id, GREATEST(SUM(on_hand), 0)::bigint AS on_hand
+        FROM availability
+        GROUP BY variant_id
+      )
+      SELECT
+        COALESCE(SUM(stock.on_hand * cost_state.average_cost_minor) FILTER (
+          WHERE cost_state.is_cost_known AND cost_state.average_cost_minor IS NOT NULL
+        ), 0)::bigint AS cost_minor,
+        COALESCE(SUM(stock.on_hand) FILTER (
+          WHERE cost_state.id IS NULL
+             OR NOT cost_state.is_cost_known
+             OR cost_state.average_cost_minor IS NULL
+        ), 0)::bigint AS uncosted_units
+      FROM per_variant stock
+      INNER JOIN product_variants variant
+        ON variant.id = stock.variant_id
+       AND variant.organization_id = ${organizationId}::uuid
+      LEFT JOIN variant_cost_states cost_state
+        ON cost_state.product_variant_id = variant.id
+       AND cost_state.organization_id = variant.organization_id
+      WHERE variant.status::text IN ('ACTIVE', 'INACTIVE')`;
+    return {
+      costMinor: toNumber(rows[0]?.cost_minor),
+      uncostedUnits: toNumber(rows[0]?.uncosted_units),
+    };
+  }
+
   /** Aggregates for the picked business dates (see the domain definitions). */
   private async period(
     organizationId: string,
     range: DashboardRange,
   ): Promise<DashboardPeriodReadModel> {
     const saleStatuses = statusList(SALE_ORDER_STATUSES);
-    const [orders, lines, channels, refunds, topProducts] = await Promise.all([
+    const [orders, lines, channels, refunds, topProducts, productProfits] =
+      await Promise.all([
       this.prisma.$queryRaw<
         Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
       >`
@@ -348,6 +386,88 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         GROUP BY product.id, product.name
         ORDER BY revenue_minor DESC, quantity DESC, product.id
         LIMIT ${DASHBOARD_TOP_PRODUCT_LIMIT}`,
+      // Same lines and cost rule as the period profit above, per product.
+      this.prisma.$queryRaw<
+        Array<{
+          cost_minor: bigint;
+          costed_revenue_minor: bigint;
+          extra_cost_minor: bigint;
+          name: string;
+          product_code: string;
+          product_id: string;
+          quantity: bigint;
+          revenue_minor: bigint;
+          uncosted_revenue_minor: bigint;
+        }>
+      >`
+        WITH extra_share AS (
+          -- Share of transport/labour in each variant's landed purchase cost.
+          SELECT
+            pl.product_variant_id AS variant_id,
+            SUM(pl.quantity::numeric * COALESCE(pl.extra_cost_per_unit_minor, 0))
+              / NULLIF(SUM(pl.quantity::numeric * pl.unit_cost_minor), 0) AS ratio
+          FROM purchase_lines pl
+          INNER JOIN purchases purchase
+            ON purchase.id = pl.purchase_id
+           AND purchase.organization_id = pl.organization_id
+          WHERE pl.organization_id = ${organizationId}::uuid
+            AND purchase.status::text = 'POSTED'
+          GROUP BY pl.product_variant_id
+        ),
+        sale_lines AS (
+          SELECT
+            product.id AS product_id,
+            product.name AS name,
+            product.product_code AS product_code,
+            line.quantity::bigint AS quantity,
+            line.line_total_minor::bigint AS revenue,
+            COALESCE(share.ratio, 0) AS extra_ratio,
+            CASE
+              WHEN snap.is_cost_known AND snap.total_cost_minor IS NOT NULL
+                THEN snap.total_cost_minor
+              WHEN cost_state.is_cost_known AND cost_state.average_cost_minor IS NOT NULL
+                THEN line.quantity::bigint * cost_state.average_cost_minor
+              ELSE NULL
+            END AS cost
+          FROM sales_order_lines line
+          LEFT JOIN extra_share share
+            ON share.variant_id = line.product_variant_id
+          INNER JOIN sales_orders sale
+            ON sale.id = line.sales_order_id
+           AND sale.organization_id = line.organization_id
+          INNER JOIN product_variants variant
+            ON variant.id = line.product_variant_id
+           AND variant.organization_id = line.organization_id
+          INNER JOIN products product
+            ON product.id = variant.product_id
+           AND product.organization_id = variant.organization_id
+          LEFT JOIN sale_line_cost_snapshots snap
+            ON snap.sales_order_line_id = line.id
+           AND snap.organization_id = line.organization_id
+          LEFT JOIN variant_cost_states cost_state
+            ON cost_state.product_variant_id = line.product_variant_id
+           AND cost_state.organization_id = line.organization_id
+          WHERE line.organization_id = ${organizationId}::uuid
+            AND sale.status::text IN (${saleStatuses})
+            AND sale.confirmed_at >= ${range.start}
+            AND sale.confirmed_at < ${range.end}
+        )
+        SELECT
+          product_id::text AS product_id,
+          name,
+          product_code,
+          SUM(quantity)::bigint AS quantity,
+          COALESCE(SUM(revenue), 0)::bigint AS revenue_minor,
+          COALESCE(SUM(cost), 0)::bigint AS cost_minor,
+          -- Never more than the cost itself.
+          LEAST(
+            COALESCE(SUM(ROUND(cost * extra_ratio)), 0),
+            COALESCE(SUM(cost), 0)
+          )::bigint AS extra_cost_minor,
+          COALESCE(SUM(revenue) FILTER (WHERE cost IS NOT NULL), 0)::bigint AS costed_revenue_minor,
+          COALESCE(SUM(revenue) FILTER (WHERE cost IS NULL), 0)::bigint AS uncosted_revenue_minor
+        FROM sale_lines
+        GROUP BY product_id, name, product_code`,
     ]);
     const lineByDate = new Map(lines.map((row) => [row.date, row]));
     return {
@@ -366,6 +486,17 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
           salesMinor: toNumber(row.sales_minor),
         };
       }),
+      productProfits: productProfits.map((row) => ({
+        costMinor: toNumber(row.cost_minor),
+        costedRevenueMinor: toNumber(row.costed_revenue_minor),
+        extraCostMinor: toNumber(row.extra_cost_minor),
+        name: row.name,
+        productCode: row.product_code,
+        productId: row.product_id,
+        quantity: toNumber(row.quantity),
+        revenueMinor: toNumber(row.revenue_minor),
+        uncostedRevenueMinor: toNumber(row.uncosted_revenue_minor),
+      })),
       refundsMinor: toNumber(refunds[0]?.refunds_minor),
       topProducts: topProducts.map((row) => ({
         name: row.name,

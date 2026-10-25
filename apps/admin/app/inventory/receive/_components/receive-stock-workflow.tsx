@@ -39,9 +39,14 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type RefObject,
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import {
+  normalizeScannedCode,
+  submitScanOnEnterOrTab,
+} from "../../../_lib/scan-input";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./receive-stock-workflow.module.css";
 import { canReceiveStock, ReceiptAttempt } from "../_lib/receipt-attempt";
@@ -101,6 +106,7 @@ export function ReceiveStockWorkflow({
   const [receiptId, setReceiptId] = useState(() => crypto.randomUUID());
   const attempt = useRef<ReceiptAttempt | null>(null);
   const [attemptLocked, setAttemptLocked] = useState(false);
+  const scanInput = useRef<HTMLInputElement>(null);
 
   const loadFoundation = useCallback(async () => {
     if (!canReceive) return;
@@ -231,7 +237,7 @@ export function ReceiveStockWorkflow({
 
   async function scan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = scanValue.trim();
+    const value = normalizeScannedCode(scanValue);
     if (!value || scanning) return;
     setScanning(true);
     setError("");
@@ -245,11 +251,15 @@ export function ReceiveStockWorkflow({
         setError(
           `Barcode ${value} was not found. Check the label or choose the product manually.`,
         );
+        // Clear it so the next scan does not join onto this one.
+        setScanValue("");
       } else {
         setError(messageFor(caught));
       }
     } finally {
       setScanning(false);
+      // Ready for the next scan without clicking the box again.
+      setTimeout(() => scanInput.current?.focus());
     }
   }
 
@@ -440,6 +450,7 @@ export function ReceiveStockWorkflow({
           onRemoveLine={removeLine}
           onScan={(event) => void scan(event)}
           onUpdateQuantity={updateQuantity}
+          scanInputRef={scanInput}
           productDetails={productDetails}
           productQuery={productQuery}
           scanValue={scanValue}
@@ -583,6 +594,7 @@ function ItemsStep({
   onUpdateQuantity,
   productDetails,
   productQuery,
+  scanInputRef,
   scanValue,
   scanning,
   selectedProductId,
@@ -604,6 +616,7 @@ function ItemsStep({
   onUpdateQuantity: (variantId: string, quantity: number) => void;
   productDetails: ProductDetailsContract | null;
   productQuery: string;
+  scanInputRef?: RefObject<HTMLInputElement | null>;
   scanValue: string;
   scanning: boolean;
   selectedProductId: string;
@@ -636,9 +649,13 @@ function ItemsStep({
               <Barcode size={17} />
               <input
                 autoComplete="off"
+                // The cursor waits here, so a scan works without a click.
+                autoFocus
                 disabled={!canReadCatalog}
                 onChange={(event) => setScanValue(event.target.value)}
+                onKeyDown={submitScanOnEnterOrTab}
                 placeholder="Scan or enter barcode…"
+                ref={scanInputRef}
                 value={scanValue}
               />
             </label>

@@ -17,6 +17,8 @@ import {
   MapPin,
   Package,
   PackageCheck,
+  PackagePlus,
+  Palette,
   RefreshCw,
   ScanBarcode,
   SlidersHorizontal,
@@ -27,6 +29,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AdminApiClient } from "../../_lib/api-client";
+import { intakeRestockHref } from "../intake/_components/stock-intake-wizard";
 import styles from "./inventory-overview.module.css";
 
 const client = new AdminApiClient();
@@ -429,8 +432,29 @@ export function ProductInventoryDrawer({
             </div>
 
             <div className={styles.quickActionButtonsGrid}>
+              {canCreate ? (
+                <>
+                  <Link
+                    className={styles.actionBtnPrimary}
+                    href={intakeRestockHref(item.product, true)}
+                  >
+                    <Palette size={16} />
+                    <span>নতুন রং / Size যোগ করুন</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                  <Link
+                    className={styles.actionBtnSecondary}
+                    href={intakeRestockHref(item.product)}
+                  >
+                    <PackagePlus size={16} />
+                    <span>আবার মাল এলো (দাম ও Supplier সহ)</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </>
+              ) : null}
+
               <Link
-                className={styles.actionBtnPrimary}
+                className={styles.actionBtnSecondary}
                 href={`/inventory/receive?productId=${encodeURIComponent(
                   item.product.id,
                 )}`}

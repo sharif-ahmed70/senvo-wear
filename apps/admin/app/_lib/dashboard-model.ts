@@ -103,7 +103,8 @@ export function dashboardModelFromSummary(
         value: formatMinor(period.salesMinor),
       },
       {
-        href: "/sales/orders",
+        // Opens profit per product for the same period.
+        href: `/reports/profit?from=${period.from}&to=${period.to}`,
         label: "Profit (estimated)",
         meta:
           period.uncostedSalesMinor > 0

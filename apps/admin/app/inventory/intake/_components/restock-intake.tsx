@@ -5,7 +5,11 @@ import type {
   VariantLastPurchaseCostContract,
 } from "@senvo/contracts";
 import { LoaderCircle, Plus, Search } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  normalizeScannedCode,
+  submitScanOnEnterOrTab,
+} from "../../../_lib/scan-input";
 import { parseTaka } from "../_lib/currency-math";
 import {
   blankPrices,
@@ -63,14 +67,24 @@ const emptyGrid: QuantityGrid = {
   sizesCustomized: true,
 };
 
+/** Opened from a product page: that product is chosen straight away. */
+export type RestockStart = {
+  /** Go to the quantity step with "নতুন রং বা size এলো" already open. */
+  addVariant: boolean;
+  productCode: string;
+  productId: string;
+};
+
 export function RestockIntake({
   canEditSupplier = false,
   canSave,
   references,
+  start,
 }: {
   canEditSupplier?: boolean;
   canSave: boolean;
   references: IntakeReferences;
+  start?: RestockStart | null;
 }) {
   const uid = useId();
   const [step, setStep] = useState(0);
@@ -134,9 +148,10 @@ export function RestockIntake({
     try {
       let searchTerm = term;
       let fromBarcode = false;
-      if (/^\S+$/u.test(term)) {
+      const scanned = normalizeScannedCode(term);
+      if (/^[A-Za-z0-9._-]+$/u.test(scanned)) {
         try {
-          const hit = await intakeClient.lookupBarcode(term);
+          const hit = await intakeClient.lookupBarcode(scanned);
           searchTerm = hit.data.sku;
           fromBarcode = true;
         } catch {
@@ -170,12 +185,45 @@ export function RestockIntake({
       setShowAdd(setup.grid.colors.length === 0);
       setPrices(blankPrices);
       setErrors({});
+      return true;
     } catch (caught) {
       setSearchError(readErrorMessage(caught));
+      return false;
     } finally {
       setLoadingId("");
     }
   }
+
+  // Opened from a product's "নতুন রং/size" or "আবার মাল এলো" button.
+  const started = useRef("");
+  useEffect(() => {
+    if (!start || started.current === start.productId) return;
+    started.current = start.productId;
+    setQuery(start.productCode);
+    void (async () => {
+      setSearching(true);
+      try {
+        const page = await intakeClient.listInventoryProducts({
+          pageSize: 20,
+          search: start.productCode.slice(0, 120),
+        });
+        setResults(page.data.items);
+        const match = page.data.items.find(
+          (item) => item.product.id === start.productId,
+        );
+        if (match && (await choose(match))) {
+          setStep(1);
+          if (start.addVariant) setShowAdd(true);
+        }
+      } catch (caught) {
+        setSearchError(readErrorMessage(caught));
+      } finally {
+        setSearching(false);
+      }
+    })();
+    // choose() only reads stable references; run once per product.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start]);
 
   function validate(index: number): FieldErrors {
     if (index === 0) {
@@ -298,6 +346,7 @@ export function RestockIntake({
                 <input
                   id={`${uid}-search`}
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={submitScanOnEnterOrTab}
                   placeholder="যেমন Panjabi বা barcode scan করুন"
                   type="search"
                   value={query}

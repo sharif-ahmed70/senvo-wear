@@ -25,3 +25,8 @@
   flex-shrink: 0;
   background-color: #f9fafb;
 }
+
+.image.fill {
+  object-fit: contain;
+  background-color: transparent;
+}

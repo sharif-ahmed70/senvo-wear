@@ -532,12 +532,13 @@ export class PosApplicationService {
               paymentBatchId: crypto.randomUUID(),
               receiptId: crypto.randomUUID(),
               staffId,
-              // Discounts need the same approval as settling a session.
+              // Any cashier who may sell may give a discount or offer price
+              // (shop owner's decision), so this is the checkout permission.
               approveDiscount: () =>
                 requireAuthorization(
                   this.dependencies.authorizationService,
                   transaction.applicationContext,
-                  { action: "APPROVE", resource: "POS" },
+                  { action: "UPDATE", resource: "POS" },
                 ),
               approveOutstanding: () =>
                 requireAuthorization(

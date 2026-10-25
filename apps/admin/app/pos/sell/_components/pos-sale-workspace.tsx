@@ -111,7 +111,9 @@ function ActivePosSale({
   const [itemDiscounts, setItemDiscounts] = useState<
     Record<string, ItemDiscountDraft>
   >({});
-  const canDiscount = permissions.includes("POS:APPROVE");
+  // Every cashier who can check out may discount (same permission as checkout).
+  const canDiscount =
+    permissions.includes("POS:UPDATE") || permissions.includes("POS:APPROVE");
   const subtotalMinor =
     cart?.lines.reduce((sum, line) => sum + line.lineSubtotalMinor, 0) ?? 0;
   const itemPreview = previewItemDiscounts(
