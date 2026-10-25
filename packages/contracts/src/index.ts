@@ -5390,6 +5390,25 @@ export const dashboardSummaryContractSchema = z
               .max(366),
             from: calendarDateSchema,
             previousSalesMinor: dashboardMinorSchema,
+            /** Per product, ranked by profit; adds up to the totals. */
+            productProfits: z
+              .array(
+                z
+                  .object({
+                    costMinor: dashboardMinorSchema,
+                    /** Transport/labour part of costMinor. */
+                    extraCostMinor: dashboardMinorSchema,
+                    name: z.string(),
+                    productCode: z.string(),
+                    productId: idSchema,
+                    profitMinor: z.number().int(),
+                    quantity: dashboardCountSchema,
+                    revenueMinor: dashboardMinorSchema,
+                    uncostedRevenueMinor: dashboardMinorSchema,
+                  })
+                  .strict(),
+              )
+              .max(500),
             profitMinor: z.number().int(),
             refundsMinor: dashboardMinorSchema,
             saleCount: dashboardCountSchema,
@@ -5411,6 +5430,13 @@ export const dashboardSummaryContractSchema = z
           })
           .strict(),
         refundsTodayMinor: dashboardMinorSchema,
+        /** On-hand stock valued at moving average cost. */
+        stock: z
+          .object({
+            costMinor: dashboardMinorSchema,
+            uncostedUnits: dashboardCountSchema,
+          })
+          .strict(),
         todaySaleCount: dashboardCountSchema,
         todaySalesMinor: dashboardMinorSchema,
         topProducts: z

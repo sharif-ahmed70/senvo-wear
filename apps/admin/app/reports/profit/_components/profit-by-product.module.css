@@ -1,0 +1,276 @@
+.page {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.backLink {
+  align-items: center;
+  color: #66716b;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 6px;
+  justify-self: start;
+}
+
+.header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  color: #74101f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.title {
+  color: #211b18;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 500;
+  margin: 0;
+}
+
+.subtitle {
+  color: #66716b;
+  font-size: 0.9rem;
+  margin: 6px 0 0;
+}
+
+.stateLine {
+  align-items: center;
+  color: #66716b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+.retry {
+  background: #fff;
+  border: 1px solid #e7dfd5;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Totals ----------------------------------------------------------------- */
+.summaryGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.summaryCard {
+  background: #fff;
+  border: 1px solid #e7dfd5;
+  border-radius: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+}
+
+.summaryCard span {
+  color: #66716b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.summaryCard strong {
+  color: #211b18;
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryCard small {
+  color: #66716b;
+  font-size: 0.78rem;
+}
+
+.summaryProfit {
+  background: #f6fef9;
+  border-color: #bbf7d0;
+}
+
+.summaryProfit strong {
+  color: #15803d;
+}
+
+.warning {
+  align-items: center;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  color: #92400e;
+  display: flex;
+  font-size: 0.85rem;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 14px;
+}
+
+/* Table ------------------------------------------------------------------ */
+.tableCard {
+  background: #fff;
+  border: 1px solid #e7dfd5;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.tableTools {
+  align-items: center;
+  border-bottom: 1px solid #f0eae1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.tableTools small {
+  color: #66716b;
+  font-size: 0.78rem;
+}
+
+.search {
+  align-items: center;
+  border: 1px solid #e7dfd5;
+  border-radius: 8px;
+  color: #66716b;
+  display: flex;
+  flex: 1 1 220px;
+  gap: 8px;
+  max-width: 340px;
+  padding: 0 10px;
+}
+
+.search input {
+  background: transparent;
+  border: 0;
+  flex: 1;
+  font: inherit;
+  min-height: 36px;
+  min-width: 0;
+  outline: none;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  min-width: 840px;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid #f0eae1;
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table thead th {
+  background: #fbf8f3;
+  color: #66716b;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.table tfoot th,
+.table tfoot td {
+  background: #fbf8f3;
+  border-bottom: 0;
+  font-weight: 800;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.product {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  gap: 10px;
+}
+
+.product span {
+  display: grid;
+  gap: 1px;
+}
+
+.product strong {
+  color: #211b18;
+}
+
+.product:hover strong {
+  color: #74101f;
+  text-decoration: underline;
+}
+
+.product small {
+  color: #66716b;
+  font-size: 0.74rem;
+}
+
+.product .uncosted {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.profit {
+  color: #15803d;
+  font-weight: 800;
+}
+
+.loss {
+  color: #be123c;
+}
+
+.empty {
+  color: #66716b;
+  margin: 0;
+  padding: 28px 14px;
+  text-align: center;
+}
+
+.footnote {
+  color: #66716b;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+@media (max-width: 580px) {
+  .page {
+    padding: 16px;
+  }
+}

@@ -13,13 +13,18 @@ import {
   ArrowUp,
   ImagePlus,
   LoaderCircle,
+  Plus,
   Star,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AdminPermissionKey } from "../../../_lib/admin-access";
+import {
+  canAccessPath,
+  type AdminPermissionKey,
+} from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { intakeRestockHref } from "../../../inventory/intake/_components/stock-intake-wizard";
 import {
   parseVariantPrice,
   formatVariantPrice,
@@ -188,6 +193,25 @@ export function ProductInventoryDetail({
           <div>
             <h2>Product options</h2>
           </div>
+          {canAccessPath(permissions, "/inventory/intake") ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {/* A missed or newly arrived colour/size is added with its
+                  stock, price, barcode and supplier bill in one go. */}
+              <Link
+                className="inventory-primary-button"
+                href={intakeRestockHref(product.product, true)}
+              >
+                <Plus aria-hidden="true" size={15} />
+                নতুন রং / Size যোগ করুন
+              </Link>
+              <Link
+                className="inventory-secondary-button"
+                href={intakeRestockHref(product.product)}
+              >
+                আবার মাল এলো
+              </Link>
+            </div>
+          ) : null}
         </div>
         <div className="inventory-table-wrap">
           <table className="inventory-table">

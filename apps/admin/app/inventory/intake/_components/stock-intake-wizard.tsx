@@ -23,7 +23,7 @@ import {
 } from "../_lib/intake-support";
 import type { IntakeReferences } from "./intake-parts";
 import { NewProductIntake } from "./new-product-intake";
-import { RestockIntake } from "./restock-intake";
+import { RestockIntake, type RestockStart } from "./restock-intake";
 import styles from "./stock-intake-wizard.module.css";
 import { intakeClient } from "./use-intake-submission";
 
@@ -33,6 +33,31 @@ const tabs: ReadonlyArray<[Tab, string]> = [
   ["new", "নতুন Product"],
   ["restock", "পুরোনো মাল আবার এলো"],
 ];
+
+/**
+ * Link from a product page:
+ * /inventory/intake?tab=restock&product=<id>&code=<productCode>[&add=1]
+ */
+export function intakeRestockHref(
+  product: { id: string; productCode: string },
+  addVariant = false,
+): string {
+  const query = new URLSearchParams({
+    code: product.productCode,
+    product: product.id,
+    tab: "restock",
+  });
+  if (addVariant) query.set("add", "1");
+  return `/inventory/intake?${query.toString()}`;
+}
+
+function restockStartFromUrl(search: string): RestockStart | null {
+  const query = new URLSearchParams(search);
+  const productId = query.get("product");
+  const productCode = query.get("code");
+  if (query.get("tab") !== "restock" || !productId || !productCode) return null;
+  return { addVariant: query.get("add") === "1", productCode, productId };
+}
 
 export async function loadIntakeReferences(): Promise<IntakeReferences> {
   const [categories, colors, sizes, suppliers, locations] = await Promise.all([
@@ -74,6 +99,18 @@ export function StockIntakeWizard({
     initialReferences ?? null,
   );
   const [loadError, setLoadError] = useState("");
+  const [restockStart, setRestockStart] = useState<RestockStart | null>(null);
+
+  // Read in an effect: the URL is not known while rendering on the server.
+  useEffect(() => {
+    const start = restockStartFromUrl(window.location.search);
+    if (start) {
+      setTab("restock");
+      setRestockStart(start);
+    } else if (new URLSearchParams(window.location.search).get("tab") === "restock") {
+      setTab("restock");
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -187,6 +224,7 @@ export function StockIntakeWizard({
                 canEditSupplier={canEditSupplier}
                 canSave={canSave}
                 references={references}
+                start={restockStart}
               />
             )}
           </div>

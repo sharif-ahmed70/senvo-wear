@@ -22,6 +22,7 @@ import {
   Search,
   SlidersHorizontal,
   Truck,
+  Wallet,
   X,
   XCircle,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import {
   type AdminPermissionKey,
 } from "../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../_lib/api-client";
+import { formatMinor } from "../../_lib/dashboard-model";
 import { useAdminPermissions } from "../../admin-shell";
 import { InventoryScanDialog } from "./inventory-scan-dialog";
 import { ProductHistoryModal } from "./product-history-modal";
@@ -59,6 +61,11 @@ export function InventoryOverview({
   const [error, setError] = useState("");
   const [items, setItems] = useState<ProductInventorySummaryContract[]>([]);
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
+  // Stock value at cost; only sent to roles that may see financials.
+  const [stockValue, setStockValue] = useState<{
+    costMinor: number;
+    uncostedUnits: number;
+  } | null>(null);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -77,6 +84,11 @@ export function InventoryOverview({
     if (!canRead) return;
     setLoading(true);
     setError("");
+
+    void client
+      .getDashboardSummary()
+      .then((res) => setStockValue(res.data.financials?.stock ?? null))
+      .catch(() => setStockValue(null));
 
     try {
       const [productsRes, locationsRes] = await Promise.all([
@@ -334,6 +346,28 @@ export function InventoryOverview({
             <span className={styles.summarySubtext}>0 available to sell</span>
           </div>
         </article>
+
+        {/* Card 5: Stock value at cost (owner/admin only) */}
+        {stockValue ? (
+          <article className={styles.summaryCard}>
+            <div
+              className={`${styles.summaryIconWrap} ${styles.summaryIconWrap_success}`}
+            >
+              <Wallet size={22} />
+            </div>
+            <div className={styles.summaryContent}>
+              <span className={styles.summaryLabel}>Stock Value / মালের দাম</span>
+              <strong className={styles.summaryValue}>
+                {formatMinor(stockValue.costMinor)}
+              </strong>
+              <span className={styles.summarySubtext}>
+                {stockValue.uncostedUnits > 0
+                  ? `কেনা দামে · ${stockValue.uncostedUnits.toLocaleString()} pcs-এর দাম জানা নেই`
+                  : "কেনা দামে, সব লোকেশন মিলিয়ে"}
+              </span>
+            </div>
+          </article>
+        ) : null}
       </section>
 
       {/* ------------------------------------------------------------------
@@ -526,6 +560,7 @@ export function InventoryOverview({
                     productId={item.product.id}
                     name={item.product.name}
                     size={58}
+                    fill
                   />
 
                   <div className={styles.cardBadgePos}>

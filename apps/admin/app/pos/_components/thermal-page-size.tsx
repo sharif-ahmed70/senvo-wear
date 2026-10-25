@@ -15,10 +15,11 @@ export function thermalPageHeightMm(receiptHeightPx: number): number {
 }
 
 /**
- * Sets the print page to exactly one receipt: 76 mm wide and as long as the
- * receipt on screen (the screen layout is the same 72 mm layout as print), so a
- * roll printer prints one continuous receipt with no browser header/footer.
- * With `autoPrint`, opens the print dialog once the size is known.
+ * Prints the receipt with no margins and no browser header/footer, on the
+ * paper size picked for the printer. A forced `@page` size made the browser
+ * shrink the whole receipt onto the printer's (shorter) page, so the text
+ * came out tiny; on a continuous roll the pages simply follow each other.
+ * With `autoPrint`, opens the print dialog once the receipt has rendered.
  */
 export function ThermalPageSize({
   autoPrint = false,
@@ -50,6 +51,6 @@ export function ThermalPageSize({
   }, [autoPrint, heightMm]);
 
   return heightMm === null ? null : (
-    <style>{`@page { size: ${THERMAL_PAGE_WIDTH_MM}mm ${heightMm}mm; margin: 0; }`}</style>
+    <style>{`@page { margin: 0; }`}</style>
   );
 }
