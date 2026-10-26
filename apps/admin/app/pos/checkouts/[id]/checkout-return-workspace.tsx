@@ -23,6 +23,7 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import { formatBdt } from "../../sell/_lib/money";
+import { exchangeHref } from "../../_lib/exchange";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -54,6 +55,12 @@ export function CheckoutReturnWorkspace({
     permissions.includes("INVENTORY:CREATE") &&
     permissions.includes("PAYMENT:APPROVE");
   const canReadLocations = permissions.includes("INVENTORY:READ");
+  // An exchange ends with a refund on this sale, so it needs Refund rights.
+  const canExchange =
+    canCreate &&
+    permissions.includes("PAYMENT:CREATE") &&
+    permissions.includes("POS:CREATE") &&
+    permissions.includes("SALES:CREATE");
   const canReadReceipt =
     permissions.includes("RECEIPT:READ") &&
     permissions.includes("PAYMENT:READ") &&
@@ -208,6 +215,11 @@ export function CheckoutReturnWorkspace({
             Returned stock goes to Return hold for review. No cash refund is
             recorded here.
           </p>
+          <p>
+            বদল (অন্য size/রং বা অন্য মাল): আগে এখানে মাল ফেরত নিন, তারপর
+            &quot;বদলে নতুন মাল দিন&quot; চাপুন। শুধু টাকা ফেরত দিতে নিচের
+            Refund ব্যবহার করুন।
+          </p>
         </div>
         <button
           className="pos-secondary-button"
@@ -261,6 +273,17 @@ export function CheckoutReturnWorkspace({
         </div>
       </section>
 
+      {canExchange && !success && (account.refundableMinor ?? 0) > 0 ? (
+        <p className="pos-exchange-banner">
+          <span>
+            এই বিলে {formatBdt(account.refundableMinor ?? 0)} ফেরতের ক্রেডিট
+            আছে। কাস্টমার অন্য মাল নিলে:
+          </span>
+          <Link className="pos-primary-button" href={exchangeHref(checkoutId)}>
+            বদলে নতুন মাল দিন (Exchange)
+          </Link>
+        </p>
+      ) : null}
       {error ? (
         <p className="pos-inline-error" role="alert">
           {error}
@@ -269,6 +292,7 @@ export function CheckoutReturnWorkspace({
       {success ? (
         <ReturnSuccessState
           account={account}
+          canExchange={canExchange}
           canReadReceipt={canReadReceipt}
           checkoutId={checkoutId}
           hasReturnable={hasReturnable}
@@ -479,6 +503,7 @@ export function CheckoutReturnWorkspace({
 
 export function ReturnSuccessState({
   account,
+  canExchange = false,
   canReadReceipt,
   checkoutId,
   hasReturnable,
@@ -486,6 +511,7 @@ export function ReturnSuccessState({
   success,
 }: {
   account: PosReturnAccountContract;
+  canExchange?: boolean;
   canReadReceipt: boolean;
   checkoutId: string;
   hasReturnable: boolean;
@@ -513,6 +539,11 @@ export function ReturnSuccessState({
           Refund due: {formatBdt(account.refundableMinor)}. The return is
           recorded. The refund has not been issued yet.
         </p>
+      ) : null}
+      {canExchange && account.refundableMinor && account.refundableMinor > 0 ? (
+        <Link className="pos-primary-button" href={exchangeHref(checkoutId)}>
+          বদলে নতুন মাল দিন (Exchange)
+        </Link>
       ) : null}
       {canReadReceipt ? (
         <>

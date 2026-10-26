@@ -152,6 +152,7 @@ export function ProfitByProduct() {
       extra: sum.extra + row.extraCostMinor,
       profit: sum.profit + row.profitMinor,
       quantity: sum.quantity + row.quantity,
+      returned: sum.returned + row.returnedQuantity,
       revenue: sum.revenue + row.revenueMinor,
       uncosted: sum.uncosted + row.uncostedRevenueMinor,
     }),
@@ -161,12 +162,16 @@ export function ProfitByProduct() {
       extra: 0,
       profit: 0,
       quantity: 0,
+      returned: 0,
       revenue: 0,
       uncosted: 0,
     },
   );
   const periodExtraMinor =
     period?.productProfits.reduce((sum, row) => sum + row.extraCostMinor, 0) ??
+    0;
+  const periodReturned =
+    period?.productProfits.reduce((sum, row) => sum + row.returnedQuantity, 0) ??
     0;
 
   return (
@@ -226,7 +231,7 @@ export function ProfitByProduct() {
               </small>
             </article>
             <article className={styles.summaryCard}>
-              <span>প্রোডাক্ট বিক্রি</span>
+              <span>নিট বিক্রি (ফেরত বাদে)</span>
               <strong>
                 {formatMinor(
                   period.productProfits.reduce(
@@ -241,6 +246,7 @@ export function ProfitByProduct() {
                   0,
                 )}{" "}
                 পিস · {period.productProfits.length} টা প্রোডাক্ট
+                {periodReturned > 0 ? ` · ${periodReturned} পিস ফেরত` : ""}
               </small>
             </article>
             <article className={styles.summaryCard}>
@@ -289,7 +295,8 @@ export function ProfitByProduct() {
                     <tr>
                       <th>Product</th>
                       <th className={styles.num}>বিক্রি (পিস)</th>
-                      <th className={styles.num}>বিক্রির টাকা</th>
+                      <th className={styles.num}>ফেরত (পিস)</th>
+                      <th className={styles.num}>নিট বিক্রির টাকা</th>
                       <th className={styles.num}>কেনা দাম (Supplier)</th>
                       <th className={styles.num}>অতিরিক্ত খরচ</th>
                       <th className={styles.num}>লাভ</th>
@@ -321,7 +328,16 @@ export function ProfitByProduct() {
                             </span>
                           </Link>
                         </td>
-                        <td className={styles.num}>{row.quantity}</td>
+                        <td className={styles.num}>
+                          {row.quantity + row.returnedQuantity}
+                        </td>
+                        <td
+                          className={`${styles.num} ${
+                            row.returnedQuantity > 0 ? styles.loss : ""
+                          }`}
+                        >
+                          {row.returnedQuantity || "—"}
+                        </td>
                         <td className={styles.num}>
                           {formatMinor(row.revenueMinor)}
                         </td>
@@ -352,7 +368,10 @@ export function ProfitByProduct() {
                       <th>
                         মোট{search.trim() ? " (খোঁজার ফল)" : ""}
                       </th>
-                      <td className={styles.num}>{totals.quantity}</td>
+                      <td className={styles.num}>
+                        {totals.quantity + totals.returned}
+                      </td>
+                      <td className={styles.num}>{totals.returned || "—"}</td>
                       <td className={styles.num}>
                         {formatMinor(totals.revenue)}
                       </td>
@@ -384,8 +403,9 @@ export function ProfitByProduct() {
             (Dashboard-এর Profit card-এর একই নিয়মে)। অতিরিক্ত খরচ হলো মাল তোলার
             সময় লেখা গাড়ি ভাড়া, কুরিয়ার, কুলি — প্রতি পিসে ভাগ করা।
             বিক্রির টাকা ডিসকাউন্ট বাদ দিয়ে (POS-এ আইটেম আর পুরো বিলের ডিসকাউন্ট
-            দুটোই); delivery charge আর ফেরত (refund) ধরা হয়নি। কেনা দাম হলো মাল
-            তোলার সময়ের গড় দাম।
+            দুটোই)। ফেরত আসা মাল যেদিন ফেরত এলো সেদিনের বিক্রি, কেনা দাম আর লাভ
+            থেকে বাদ যায়; বদলে (exchange) শুধু নতুন মালের লাভ থাকে। Delivery
+            charge ধরা হয়নি। কেনা দাম হলো মাল তোলার সময়ের গড় দাম।
           </p>
         </>
       ) : null}

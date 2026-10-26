@@ -22,6 +22,7 @@ import {
 } from "../_lib/checkout-attempt";
 import { formatBdt, parseTaka, takaInput } from "../_lib/money";
 import { parseDiscount, type DiscountMode } from "../_lib/discount";
+import { splitExchange } from "../../_lib/exchange";
 
 export function computeQuickCashAmounts(dueMinor: number): number[] {
   if (dueMinor <= 0) return [];
@@ -54,6 +55,29 @@ export function computeQuickCashAmounts(dueMinor: number): number[] {
     .slice(0, 5);
 }
 
+type PaymentInstruction =
+  CheckoutPosCartServiceInputContract["payments"][number];
+
+/**
+ * Adds an exchange credit to the payments as cash: into the first cash line
+ * when there is one (a single cash line on the receipt, never more than the
+ * 8 lines the API takes), otherwise as its own cash line.
+ */
+export function withExchangeCredit(
+  payments: readonly PaymentInstruction[],
+  creditMinor: number,
+): PaymentInstruction[] {
+  if (creditMinor <= 0) return [...payments];
+  const cashIndex = payments.findIndex((payment) => payment.method === "CASH");
+  if (cashIndex === -1)
+    return [...payments, { amountMinor: creditMinor, method: "CASH" }];
+  return payments.map((payment, index) =>
+    index === cashIndex
+      ? { ...payment, amountMinor: payment.amountMinor + creditMinor }
+      : payment,
+  );
+}
+
 const paymentMethods: Array<{ label: string; value: PaymentMethodContract }> = [
   { label: "Cash", value: "CASH" },
   { label: "Card", value: "CARD" },
@@ -84,6 +108,7 @@ function PaymentMethodIcon({ method }: { method: PaymentMethodContract }) {
 export function PaymentPanel({
   canApproveDue,
   canDiscount,
+  exchangeCreditMinor = 0,
   onCancel,
   onComplete,
   submitting,
@@ -91,6 +116,12 @@ export function PaymentPanel({
 }: {
   canApproveDue: boolean;
   canDiscount: boolean;
+  /**
+   * Return credit from the old sale in an exchange. It pays for this sale as
+   * cash (refunded in cash on the old sale afterwards); the payment lines
+   * only take what the customer still pays.
+   */
+  exchangeCreditMinor?: number;
   onCancel: () => void;
   onComplete: (
     payload: Omit<
@@ -101,9 +132,10 @@ export function PaymentPanel({
   submitting: boolean;
   totalMinor: number;
 }) {
-  const [drafts, setDrafts] = useState<PaymentDraft[]>([
-    newDraft(takaInput(totalMinor)),
-  ]);
+  const [drafts, setDrafts] = useState<PaymentDraft[]>(() => {
+    const due = splitExchange(exchangeCreditMinor, totalMinor).customerPaysMinor;
+    return due > 0 ? [newDraft(takaInput(due))] : [];
+  });
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -118,16 +150,22 @@ export function PaymentPanel({
   );
   const discountMinor = discount.ok ? discount.discountMinor : 0;
   const payableMinor = totalMinor - discountMinor;
+  const exchange = splitExchange(exchangeCreditMinor, payableMinor);
+  // What the payment lines must cover (the exchange credit pays the rest).
+  const dueMinor = exchange.customerPaysMinor;
   const enteredMinor = useMemo(() => paymentTotal(drafts), [drafts]);
-  const remainingMinor = remainingPayment(payableMinor, enteredMinor);
+  const remainingMinor = remainingPayment(dueMinor, enteredMinor);
 
   function changeDiscount(mode: DiscountMode, text: string) {
     setDiscountMode(mode);
     setDiscountText(text);
     const next = parseDiscount(mode, text, totalMinor);
     const payable = totalMinor - (next.ok ? next.discountMinor : 0);
+    const due = splitExchange(exchangeCreditMinor, payable).customerPaysMinor;
     // The payment must follow the new payable amount.
-    setDrafts([newDraft(takaInput(payable), drafts[0]?.method ?? "CASH")]);
+    setDrafts(
+      due > 0 ? [newDraft(takaInput(due), drafts[0]?.method ?? "CASH")] : [],
+    );
     setTenderedMap({});
     setAllowOutstanding(false);
     setErrors({});
@@ -143,7 +181,7 @@ export function PaymentPanel({
   }
 
   function chooseFullPayment(method: PaymentMethodContract) {
-    setDrafts([newDraft(takaInput(payableMinor), method)]);
+    setDrafts(dueMinor > 0 ? [newDraft(takaInput(dueMinor), method)] : []);
     setTenderedMap({});
     setAllowOutstanding(false);
     setErrors({});
@@ -160,7 +198,11 @@ export function PaymentPanel({
       setErrors({ discount: discount.error });
       return;
     }
-    const validation = validatePayments(drafts, payableMinor, allowOutstanding);
+    // Fully paid by the exchange credit: no payment lines are needed.
+    const validation =
+      dueMinor === 0 && drafts.length === 0
+        ? { ok: true as const, payments: [], remainingMinor: 0 }
+        : validatePayments(drafts, dueMinor, allowOutstanding);
     if (!validation.ok) {
       setErrors(validation.errors);
       const form = event.currentTarget;
@@ -207,7 +249,10 @@ export function PaymentPanel({
       allowOutstanding,
       ...(customer ? { customer } : {}),
       ...(discount.request ? { discount: discount.request } : {}),
-      payments: validation.payments,
+      payments: withExchangeCredit(
+        validation.payments,
+        exchange.appliedCreditMinor,
+      ),
     });
   }
 
@@ -242,6 +287,19 @@ export function PaymentPanel({
               </small>
             ) : null}
           </div>
+          {exchangeCreditMinor > 0 ? (
+            <div className="pos-exchange-credit">
+              <span>বদলের ক্রেডিট (Exchange)</span>
+              <strong>−{formatBdt(exchange.appliedCreditMinor)}</strong>
+              <small>
+                {exchange.giveBackMinor > 0
+                  ? `কাস্টমারকে ফেরত দিন ${formatBdt(exchange.giveBackMinor)}`
+                  : dueMinor > 0
+                    ? `কাস্টমার দেবেন ${formatBdt(dueMinor)}`
+                    : "কাস্টমারকে কিছু দিতে হবে না"}
+              </small>
+            </div>
+          ) : null}
           <div>
             <span>Payment entered</span>
             <strong>{formatBdt(enteredMinor)}</strong>
@@ -682,7 +740,9 @@ export function PaymentPanel({
             <span>
               {remainingMinor > 0
                 ? `${formatBdt(remainingMinor)} remaining`
-                : "Payment covers the full sale"}
+                : exchange.giveBackMinor > 0
+                  ? `Exchange: give back ${formatBdt(exchange.giveBackMinor)} in cash`
+                  : "Payment covers the full sale"}
             </span>
             <button
               className="pos-complete-button"
