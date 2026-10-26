@@ -154,7 +154,18 @@ function mapBarcode(record: BarcodeRecord): VariantBarcode {
 
 function mapLookup(record: LookupRecord): BarcodeLookupResult {
   return {
-    barcode: mapBarcode(record),
+    // The barcode itself, without the included variant relation (the strict
+    // barcode contract rejects extra keys).
+    barcode: mapBarcode({
+      createdAt: record.createdAt,
+      id: record.id,
+      organizationId: record.organizationId,
+      productVariantId: record.productVariantId,
+      status: record.status,
+      type: record.type,
+      updatedAt: record.updatedAt,
+      value: record.value,
+    }),
     color: record.productVariant.color.name,
     productName: record.productVariant.product.name,
     size: record.productVariant.size.name,

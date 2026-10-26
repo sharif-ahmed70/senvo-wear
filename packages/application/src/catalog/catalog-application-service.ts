@@ -1121,9 +1121,15 @@ function mapBarcode(record: VariantBarcode): VariantBarcodeContract {
 }
 
 function mapBarcodeLookup(record: BarcodeLookupResult): BarcodeLookupContract {
+  // Only the contract's fields: the lookup also carries POS-only data
+  // (selling price, variant status) that the strict contract rejects.
   return barcodeLookupContractSchema.parse({
-    ...record,
     barcode: mapBarcode(record.barcode),
+    color: record.color,
+    productName: record.productName,
+    size: record.size,
+    sku: record.sku,
+    variantId: record.variantId,
   });
 }
 

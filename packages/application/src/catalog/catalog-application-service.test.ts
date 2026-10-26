@@ -302,6 +302,61 @@ describe("CatalogApplicationService variant pricing", () => {
   });
 });
 
+describe("CatalogApplicationService barcode lookup", () => {
+  it("returns only contract fields when the repository adds POS-only data", async () => {
+    const variantId = "20000000-0000-4000-8000-000000000002";
+    const lookupActive = vi.fn().mockResolvedValue({
+      barcode: {
+        createdAt: new Date("2026-10-23T00:00:00Z"),
+        id: "30000000-0000-4000-8000-000000000003",
+        organizationId,
+        productVariantId: variantId,
+        status: "ACTIVE",
+        type: "CODE128",
+        updatedAt: new Date("2026-10-23T00:00:00Z"),
+        value: "290922352796",
+      },
+      color: "Blue",
+      productName: "US-Polo Shirt",
+      // Selling price and variant status are for POS; the strict catalog
+      // contract rejected them, so every scan failed with a 500.
+      sellingPriceMinor: 40000,
+      size: "XL",
+      sku: "SHI-0001-BLUE-XL",
+      variantId,
+      variantStatus: "ACTIVE",
+    });
+    const service = new CatalogApplicationService({
+      authorizationService: { authorize: () => Promise.resolve() },
+      barcodes: { lookupActive } as never,
+      categories: createFailFastStub("categories"),
+      collections: createFailFastStub("collections"),
+      colors: createFailFastStub("colors"),
+      organizations: createFailFastStub("organizations"),
+      products: createFailFastStub("products"),
+      productVariants: createFailFastStub("productVariants"),
+      sizes: createFailFastStub("sizes"),
+    });
+
+    const result = await service.lookupBarcode(context, {
+      value: "290922352796",
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        barcode: expect.objectContaining({ value: "290922352796" }) as unknown,
+        color: "Blue",
+        productName: "US-Polo Shirt",
+        size: "XL",
+        sku: "SHI-0001-BLUE-XL",
+        variantId,
+      },
+    });
+    expect(lookupActive).toHaveBeenCalledWith(organizationId, "290922352796");
+  });
+});
+
 describe("product lifecycle", () => {
   const productId = "11111111-1111-4111-8111-111111111112";
   function setup(history = false) {
