@@ -11,6 +11,8 @@ import {
   deactivateSupplierServiceInputSchema,
   getPurchaseServiceInputSchema,
   listLastPurchaseCostsServiceInputSchema,
+  correctPurchaseExtraCostServiceInputSchema,
+  type CorrectPurchaseExtraCostServiceInputContract,
   getPurchaseMemoServiceInputSchema,
   uploadPurchaseMemoServiceInputSchema,
   type GetPurchaseMemoServiceInputContract,
@@ -79,6 +81,10 @@ export type ProcurementApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<VariantLastPurchaseCostContract[]>>;
+  correctPurchaseExtraCost?(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>>;
   uploadPurchaseMemo?(
     context: ApplicationExecutionContext,
     payload: unknown,
@@ -132,6 +138,7 @@ export type ProcurementApiHandlers = {
   deactivateSupplier: ApiHandler<SupplierContract>;
   getPurchase: ApiHandler<PurchaseContract>;
   listLastPurchaseCosts?: ApiHandler<VariantLastPurchaseCostContract[]>;
+  correctPurchaseExtraCost?: ApiHandler<PurchaseContract>;
   uploadPurchaseMemo?: ApiHandler<PurchaseMemoContract>;
   getPurchaseMemo?: ApiHandler<PurchaseMemoContract | null>;
   getSupplier: ApiHandler<SupplierContract>;
@@ -235,6 +242,24 @@ export function createProcurementApiHandlers(
         Promise.resolve({ data: [], ok: true as const }),
       inputSchema: listLastPurchaseCostsServiceInputSchema,
     }),
+    // Optional: some compositions (and tests) build handlers without it.
+    ...((dependencies.procurement as Partial<ProcurementApplication> | undefined)
+      ?.correctPurchaseExtraCost
+      ? {
+          correctPurchaseExtraCost: handler<
+            CorrectPurchaseExtraCostServiceInputContract,
+            PurchaseContract
+          >({
+            action: "UPDATE",
+            execute: (context, input) =>
+              dependencies.procurement.correctPurchaseExtraCost!(
+                context,
+                input,
+              ),
+            inputSchema: correctPurchaseExtraCostServiceInputSchema,
+          }),
+        }
+      : {}),
     getPurchase: handler<GetPurchaseServiceInputContract, PurchaseContract>({
       action: "READ",
       execute: (context, input) =>

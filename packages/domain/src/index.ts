@@ -877,6 +877,11 @@ export type {
   GetPurchaseByIdInput,
   ListPurchasesInput,
 } from "./procurement/application/purchase-use-cases.js";
+export {
+  correctPurchaseExtraCost,
+  replayVariantCost,
+} from "./procurement/application/purchase-cost-correction.js";
+export type { ReplayedCost } from "./procurement/application/purchase-cost-correction.js";
 
 export type {
   SupplierBalanceSummary,

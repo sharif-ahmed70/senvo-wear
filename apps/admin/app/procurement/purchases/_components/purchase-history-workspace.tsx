@@ -534,6 +534,29 @@ function PurchaseDetailsPanel({
             </div>
           )}
 
+          {purchase.status === "POSTED" && canConfirm ? (
+            <div
+              style={{
+                alignItems: "center",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.75rem",
+                justifyContent: "space-between",
+                marginBottom: "1.5rem",
+              }}
+            >
+              <span style={{ color: "#66716b", fontSize: "0.85rem" }}>
+                গাড়ি ভাড়া / কুলি লিখতে ভুলে গেছেন?
+              </span>
+              <Link
+                className={styles.primaryButton}
+                href={`/procurement/purchases/${purchase.id}/extra-cost`}
+              >
+                অতিরিক্ত খরচ এডিট করুন
+              </Link>
+            </div>
+          ) : null}
+
           {purchase.status === "DRAFT" && (
             <div
               style={{

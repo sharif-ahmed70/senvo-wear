@@ -11,6 +11,7 @@ import {
   SupplierPaymentIdempotencyConflictError,
   ValidationApplicationError,
   confirmPurchaseOrder,
+  correctPurchaseExtraCost,
   createPurchaseDraftRecord,
   getPurchaseById,
   listPurchaseRecords,
@@ -33,6 +34,7 @@ import {
 } from "@senvo/domain";
 import {
   confirmPurchaseServiceInputSchema,
+  correctPurchaseExtraCostServiceInputSchema,
   createPurchaseDraftServiceInputSchema,
   createSupplierServiceInputSchema,
   deactivateSupplierServiceInputSchema,
@@ -486,6 +488,51 @@ export class ProcurementApplicationService {
         );
 
         return mapPurchase(confirmed);
+      });
+    });
+  }
+
+  /**
+   * PROCUREMENT UPDATE: sets a posted purchase's transport/labour after the
+   * fact (forgotten at intake). Supplier prices and the supplier's balance
+   * stay as they are; the purchase lines, variant costs and a
+   * COST_CORRECTION entry change together in one transaction.
+   */
+  correctPurchaseExtraCost(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<PurchaseContract>> {
+    return this.execute(context, async (validated) => {
+      const input = parsePayload(
+        correctPurchaseExtraCostServiceInputSchema,
+        payload,
+      );
+      await this.authorize(validated, "UPDATE");
+      if (!this.transactionManager) {
+        throw new BusinessRuleError(
+          "Transaction manager is required for a purchase cost correction.",
+          "TRANSACTION_MANAGER_REQUIRED",
+        );
+      }
+      return this.transactionManager.execute(validated, async (tx) => {
+        const purchaseRepo = tx.purchaseRepository ?? this.purchases;
+        const costRepo = tx.costRepository ?? this.costRepository;
+        if (!purchaseRepo || !costRepo) {
+          throw new BusinessRuleError(
+            "Transactional repositories are required for a purchase cost correction.",
+            "TRANSACTIONAL_REPOSITORIES_MISSING",
+          );
+        }
+        const result = await correctPurchaseExtraCost(
+          { costs: costRepo, purchases: purchaseRepo },
+          {
+            correctedAt: new Date(),
+            organizationId: validated.organizationId,
+            purchaseId: input.purchaseId,
+            transportCostMinor: input.transportCostMinor,
+          },
+        );
+        return mapPurchase(result.purchase);
       });
     });
   }

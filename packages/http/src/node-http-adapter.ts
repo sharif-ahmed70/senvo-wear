@@ -1036,6 +1036,17 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
             } as HttpRoute,
           ]
         : []),
+      ...(procurement.correctPurchaseExtraCost
+        ? [
+            {
+              handler: procurement.correctPurchaseExtraCost,
+              input: pathBodyInput("purchaseId"),
+              method: "POST",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/extra-cost$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
       ...(procurement.listLastPurchaseCosts
         ? [
             {

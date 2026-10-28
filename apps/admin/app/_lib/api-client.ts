@@ -881,6 +881,18 @@ export class AdminApiClient {
     );
   }
 
+  /** Sets a received purchase's total transport/labour (extra cost). */
+  correctPurchaseExtraCost(
+    purchaseId: string,
+    transportCostMinor: number,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}/extra-cost`,
+      { ...request, body: { transportCostMinor }, method: "POST" },
+    );
+  }
+
   createPurchaseDraft(
     input: CreatePurchaseDraftServiceInputContract,
     request?: AdminApiRequest,

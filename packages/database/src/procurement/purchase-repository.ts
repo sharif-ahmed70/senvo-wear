@@ -10,7 +10,10 @@ import {
 } from "@senvo/domain";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 
-export type PurchasePrismaClient = Pick<PrismaClient, "purchase" | "$queryRaw">;
+export type PurchasePrismaClient = Pick<
+  PrismaClient,
+  "purchase" | "purchaseLine" | "$queryRaw"
+>;
 
 type KnownPrismaError = {
   code?: string;
@@ -66,6 +69,52 @@ export class PrismaPurchaseRepository implements PurchaseRepository {
 
   lastCostsForProduct(organizationId: string, productId: string) {
     return lastCostsForProductQuery(this.prisma, organizationId, productId);
+  }
+
+  async updateLineCosts(input: {
+    lines: ReadonlyArray<{
+      extraCostPerUnitMinor: number;
+      id: string;
+      totalCostMinor: bigint;
+      unitCostMinor: number;
+    }>;
+    organizationId: string;
+    purchaseId: string;
+  }): Promise<void> {
+    for (const line of input.lines) {
+      await this.prisma.purchaseLine.updateMany({
+        data: {
+          extraCostPerUnitMinor: line.extraCostPerUnitMinor,
+          totalCostMinor: line.totalCostMinor,
+          unitCostMinor: line.unitCostMinor,
+        },
+        where: {
+          id: line.id,
+          organizationId: input.organizationId,
+          purchaseId: input.purchaseId,
+        },
+      });
+    }
+  }
+
+  async listPostedLinesForVariants(
+    organizationId: string,
+    productVariantIds: readonly string[],
+  ) {
+    const lines = await this.prisma.purchaseLine.findMany({
+      select: {
+        productVariantId: true,
+        purchaseId: true,
+        quantity: true,
+        unitCostMinor: true,
+      },
+      where: {
+        organizationId,
+        productVariantId: { in: [...productVariantIds] },
+        purchase: { status: "POSTED" },
+      },
+    });
+    return lines;
   }
 
   async create(record: CreatePurchaseRecord): Promise<PurchaseWithLines> {
@@ -297,6 +346,7 @@ export async function lastCostsForProductQuery(
       extra_cost_per_unit_minor: number | null;
       product_variant_id: string;
       purchase_date: Date;
+      purchase_id: string;
       purchase_number: string;
       supplier_unit_cost_minor: number | null;
       unit_cost_minor: number;
@@ -308,6 +358,7 @@ export async function lastCostsForProductQuery(
       line.supplier_unit_cost_minor,
       line.extra_cost_per_unit_minor,
       purchase.purchase_date,
+      purchase.id::text AS purchase_id,
       purchase.purchase_number
     FROM purchase_lines line
     INNER JOIN purchases purchase
@@ -324,6 +375,7 @@ export async function lastCostsForProductQuery(
     extraCostPerUnitMinor: row.extra_cost_per_unit_minor,
     productVariantId: row.product_variant_id,
     purchaseDate: row.purchase_date,
+    purchaseId: row.purchase_id,
     purchaseNumber: row.purchase_number,
     supplierUnitCostMinor: row.supplier_unit_cost_minor,
     unitCostMinor: row.unit_cost_minor,
