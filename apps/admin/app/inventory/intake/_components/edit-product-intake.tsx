@@ -244,6 +244,38 @@ export function keepBookedCosts(
   return { ...next, overrides };
 }
 
+/**
+ * Gives colours/sizes added while editing the same prices as the rest: the
+ * purchase and selling price of a row with the same size (else the first
+ * row). An old variant typed in again keeps its own selling price. Each
+ * row is filled once (`filled`), so later changes by staff are kept.
+ */
+export function fillAddedLinePrices(
+  lines: readonly IntakeLine[],
+  prices: PriceDraft,
+  filled: Set<string>,
+): PriceDraft | null {
+  const added = lines.filter((line) => !filled.has(line.key));
+  if (!added.length) return null;
+  const known = lines.filter((line) => filled.has(line.key));
+  const overrides = { ...prices.overrides };
+  for (const line of added) {
+    filled.add(line.key);
+    const base =
+      known.find(
+        (other) => normalizeName(other.sizeName) === normalizeName(line.sizeName),
+      ) ?? known[0];
+    if (!base) continue;
+    overrides[line.key] = {
+      cost: costText(base, prices),
+      sell: line.existing
+        ? takaInputFromMinor(line.existing.sellingPriceMinor)
+        : sellText(base, prices),
+    };
+  }
+  return { ...prices, overrides };
+}
+
 /** Pieces to add (new intake) and to take out, versus the saved intake. */
 function quantityChanges(lines: readonly IntakeLine[], original: EditOriginal) {
   const added: IntakeLine[] = [];

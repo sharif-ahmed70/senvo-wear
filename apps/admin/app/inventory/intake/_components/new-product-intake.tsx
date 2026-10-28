@@ -2,7 +2,7 @@
 
 import { ImagePlus, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AdminApiError } from "../../../_lib/api-client";
 import { parseTaka } from "../_lib/currency-math";
 import {
@@ -33,6 +33,7 @@ import {
   applyIntakeEdit,
   describeEdit,
   EditSuccess,
+  fillAddedLinePrices,
   keepBookedCosts,
   type EditResult,
   type EditSetup,
@@ -119,6 +120,13 @@ export function NewProductIntake({
     () => linesFromGrid(grid, original?.existing),
     [grid, original],
   );
+  // Editing: rows added later get the same prices as the rest.
+  const filledKeys = useRef(new Set(original?.booked.keys() ?? []));
+  useEffect(() => {
+    if (!original) return;
+    const next = fillAddedLinePrices(lines, prices, filledKeys.current);
+    if (next) setPrices(next);
+  }, [lines, original, prices]);
   const editChanges = useMemo(
     () =>
       original
