@@ -601,6 +601,7 @@ export function PriceAndSupplierStep({
   lines,
   locations,
   lockTransport = false,
+  lockedCostKeys,
   onPrices,
   onPurchase,
   prices,
@@ -610,9 +611,9 @@ export function PriceAndSupplierStep({
 }: {
   colors: readonly ColorContract[];
   /**
-   * Editing a saved intake: only selling prices and the extra cost can
-   * change; purchase price, supplier, payment, date and location are shown
-   * locked (they are tied to stock and the supplier's account).
+   * Editing a saved intake: supplier, payment, date and location are shown
+   * locked (they are tied to the supplier's account); added pieces use
+   * them too.
    */
   editMode?: boolean;
   errors: FieldErrors;
@@ -622,6 +623,8 @@ export function PriceAndSupplierStep({
   locations: readonly StockLocationReadContract[];
   /** Shows the extra-cost box but does not allow changing it. */
   lockTransport?: boolean;
+  /** Rows whose purchase price is already booked (editing an intake). */
+  lockedCostKeys?: ReadonlySet<string>;
   onPrices: (prices: PriceDraft) => void;
   onPurchase: (purchase: PurchaseDraft) => void;
   prices: PriceDraft;
@@ -652,7 +655,6 @@ export function PriceAndSupplierStep({
         <label className={styles.field}>
           কেনা দাম (সবগুলোতে)
           <input
-            disabled={editMode}
             inputMode="decimal"
             onChange={(event) =>
               onPrices(setPriceForAll(prices, "cost", event.target.value))
@@ -731,7 +733,7 @@ export function PriceAndSupplierStep({
                     <td>
                       <input
                         aria-label={`${line.colorName} ${line.sizeName} কেনা দাম`}
-                        disabled={editMode}
+                        disabled={lockedCostKeys?.has(line.key) ?? false}
                         id={costId}
                         inputMode="decimal"
                         onChange={(event) =>
@@ -872,9 +874,10 @@ export function PriceAndSupplierStep({
 
       {editMode ? (
         <p className={styles.infoBand}>
-          কেনা দাম, Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার জায়গা এখানে
-          বদলানো যায় না — এগুলো Supplier-এর হিসাব আর স্টকের সাথে জড়ানো।
-          শুধু বিক্রির দাম আর অতিরিক্ত খরচ বদলাতে পারবেন।
+          আগে তোলা পিসের কেনা দাম, Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার
+          জায়গা এখানে বদলানো যায় না — এগুলো Supplier-এর হিসাবের সাথে জড়ানো।
+          নতুন যোগ করা পিস একই Supplier আর জায়গায় উঠবে; টাকা দিলে Supplier
+          পাতা থেকে দিন।
         </p>
       ) : null}
       {/* A disabled fieldset locks every control inside it. */}

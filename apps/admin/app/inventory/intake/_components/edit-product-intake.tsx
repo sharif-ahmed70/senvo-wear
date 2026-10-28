@@ -4,68 +4,39 @@ import type {
   CategoryContract,
   ProductDetailsContract,
   PurchaseContract,
+  StockIntakeContract,
   VariantLastPurchaseCostContract,
 } from "@senvo/contracts";
-import { CheckCircle2, ImagePlus, Trash2, Upload } from "lucide-react";
-import Image from "next/image";
+import { Barcode, CheckCircle2, Pencil, Warehouse } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useState } from "react";
 import { formatTaka, parseTaka, takaInputFromMinor } from "../_lib/currency-math";
 import {
   blankPurchase,
+  buildLines,
+  buildPurchaseSection,
   cleanName,
-  gridCounts,
-  hasErrors,
+  costText,
   lineKey,
   linesFromGrid,
   normalizeName,
   sellText,
-  summarizeIntake,
   todayInDhaka,
-  validatePriceStep,
-  validateProductStep,
   variantKey,
   type ExistingVariant,
-  type FieldErrors,
+  type IntakeLine,
   type PriceDraft,
   type ProductDraft,
   type PurchaseDraft,
   type QuantityGrid,
 } from "../_lib/intake-draft";
-import {
-  audienceOptions,
-  intakeErrorMessage,
-  typeOptions,
-} from "../_lib/intake-support";
-import {
-  CountBadge,
-  FieldMessage,
-  invalidProps,
-  PriceAndSupplierStep,
-  QuantityGridEditor,
-  STEP_ERROR_SUMMARY,
-  StepFrame,
-  Stepper,
-  type IntakeReferences,
-} from "./intake-parts";
-import {
-  ChoiceField,
-  MAX_PHOTO_BYTES,
-  NEW_PRODUCT_STEPS,
-  photoPayload,
-  photoTypes,
-  type PhotoType,
-} from "./new-product-intake";
+import { IntakeBarcodeLabels } from "./intake-barcode-labels";
+import type { IntakeReferences } from "./intake-parts";
+import { photoPayload } from "./new-product-intake";
 import styles from "./stock-intake-wizard.module.css";
 import { intakeClient } from "./use-intake-submission";
 
-const stepLeads = [
-  "নাম, কার জন্য, কী মাল, ছবি আর বিবরণ ঠিক করুন।",
-  "এই এন্ট্রিতে কোন রং-size কত পিস এসেছিল (শুধু দেখার জন্য)।",
-  "বিক্রির দাম আর অতিরিক্ত খরচ (গাড়ি ভাড়া, কুলি) ঠিক করুন।",
-  "কী কী বদলাবে দেখে নিন, তারপর Save করুন।",
-];
-
+/** What the edit page loads: the product and one of its intakes. */
 export type EditIntakeSource = {
   details: ProductDetailsContract;
   /** The product's purchases (intakes), oldest first. */
@@ -73,14 +44,40 @@ export type EditIntakeSource = {
   purchase: PurchaseContract | null;
 };
 
-type Original = {
+type BookedLine = {
+  quantity: number;
+  supplierUnitMinor: number;
+  variantId: string;
+};
+
+/** The intake as it was saved, turned back into the wizard's drafts. */
+export type EditOriginal = {
+  /** Pieces already booked per line key (this purchase). */
+  booked: Map<string, BookedLine>;
   categoryId: string;
-  grid: QuantityGrid;
+  /** Every variant of the product, so typing an old colour/size reuses it. */
   existing: Map<string, ExistingVariant>;
+  grid: QuantityGrid;
+  lockedColorIds: Set<string>;
+  lockedCostKeys: Set<string>;
+  lockedSizes: Set<string>;
   prices: PriceDraft;
   product: ProductDraft;
   purchase: PurchaseDraft;
   transportMinor: number;
+};
+
+export type EditSetup = {
+  canEditExtraCost: boolean;
+  onPurchaseChange: (purchaseId: string) => void;
+  original: EditOriginal;
+  source: EditIntakeSource;
+};
+
+export type EditResult = {
+  applied: string[];
+  labels: StockIntakeContract["variants"];
+  productName: string;
 };
 
 /** Purchases of a product, from its variants' latest purchase costs. */
@@ -98,18 +95,10 @@ export function purchasesFromLastCosts(
   return [...byId.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function extraTotalMinor(purchase: PurchaseContract | null): number {
-  return (purchase?.lines ?? []).reduce(
-    (sum, line) => sum + line.quantity * (line.extraCostPerUnitMinor ?? 0),
-    0,
-  );
-}
-
-/** Rebuilds the intake wizard's drafts from a saved product and purchase. */
-function originalFrom(
+export function editOriginalFrom(
   source: EditIntakeSource,
   references: IntakeReferences,
-): Original {
+): EditOriginal {
   const { details, purchase } = source;
   const category = references.categories.find(
     (item) => item.id === details.product.categoryId,
@@ -131,11 +120,26 @@ function originalFrom(
   const sizeOrder = new Map(references.sizes.map((s) => [s.id, s.sortOrder]));
   const variants = new Map(details.variants.map((v) => [v.id, v]));
 
-  // Only the variants in this purchase, with the pieces it brought.
+  const existing = new Map<string, ExistingVariant>();
+  for (const variant of details.variants) {
+    const color = colorName.get(variant.colorId);
+    const size = sizeName.get(variant.sizeId);
+    if (!color || !size) continue;
+    existing.set(variantKey(color, size), {
+      colorName: color,
+      onHand: 0,
+      sellingPriceMinor: variant.sellingPriceMinor,
+      sizeName: size,
+      variantId: variant.id,
+    });
+  }
+
+  // The grid shows this purchase's colours and sizes with its pieces.
   const colors: QuantityGrid["colors"] = [];
   const sizeIds: string[] = [];
-  const existing = new Map<string, ExistingVariant>();
+  const booked = new Map<string, BookedLine>();
   const overrides: PriceDraft["overrides"] = {};
+  let firstCost = "";
   for (const line of purchase?.lines ?? []) {
     const variant = variants.get(line.productVariantId);
     if (!variant) continue;
@@ -151,20 +155,29 @@ function originalFrom(
       Number(row.quantities[size] ?? 0) + line.quantity,
     );
     if (!sizeIds.includes(variant.sizeId)) sizeIds.push(variant.sizeId);
-    existing.set(variantKey(color, size), {
-      colorName: color,
-      onHand: 0,
-      sellingPriceMinor: variant.sellingPriceMinor,
-      sizeName: size,
-      variantId: variant.id,
-    });
-    const supplierPrice =
+    const supplierUnitMinor =
       line.supplierUnitCostMinor ??
       line.unitCostMinor - (line.extraCostPerUnitMinor ?? 0);
-    overrides[lineKey(id, size)] = {
-      cost: takaInputFromMinor(supplierPrice),
+    const key = lineKey(id, size);
+    booked.set(key, {
+      quantity: (booked.get(key)?.quantity ?? 0) + line.quantity,
+      supplierUnitMinor,
+      variantId: variant.id,
+    });
+    if (!existing.has(variantKey(color, size))) {
+      existing.set(variantKey(color, size), {
+        colorName: color,
+        onHand: 0,
+        sellingPriceMinor: variant.sellingPriceMinor,
+        sizeName: size,
+        variantId: variant.id,
+      });
+    }
+    overrides[key] = {
+      cost: takaInputFromMinor(supplierUnitMinor),
       sell: takaInputFromMinor(variant.sellingPriceMinor),
     };
+    if (!firstCost) firstCost = takaInputFromMinor(supplierUnitMinor);
   }
   sizeIds.sort(
     (a, b) =>
@@ -173,7 +186,10 @@ function originalFrom(
   );
   const sizes = sizeIds.map((id) => sizeName.get(id) ?? id);
 
-  const transportMinor = extraTotalMinor(purchase);
+  const transportMinor = (purchase?.lines ?? []).reduce(
+    (sum, line) => sum + line.quantity * (line.extraCostPerUnitMinor ?? 0),
+    0,
+  );
   const supplier = references.suppliers.find(
     (item) => item.id === purchase?.supplierId,
   );
@@ -199,14 +215,115 @@ function originalFrom(
   };
 
   return {
+    booked,
     categoryId: details.product.categoryId,
     existing,
     grid: { colors, sizes, sizesCustomized: true },
-    prices: { costAll: "", overrides, sellAll: "" },
+    lockedColorIds: new Set(colors.map((color) => color.id)),
+    lockedCostKeys: new Set(booked.keys()),
+    lockedSizes: new Set(sizes.map(normalizeName)),
+    prices: { costAll: firstCost, overrides, sellAll: "" },
     product,
     purchase: draft,
     transportMinor,
   };
+}
+
+/** Keeps already-booked purchase prices when "সবগুলোতে" is typed. */
+export function keepBookedCosts(
+  next: PriceDraft,
+  original: EditOriginal,
+): PriceDraft {
+  const overrides = { ...next.overrides };
+  for (const key of original.lockedCostKeys) {
+    overrides[key] = {
+      ...overrides[key],
+      cost: original.prices.overrides[key]?.cost ?? "",
+    };
+  }
+  return { ...next, overrides };
+}
+
+/** Pieces to add (new intake) and to take out, versus the saved intake. */
+function quantityChanges(lines: readonly IntakeLine[], original: EditOriginal) {
+  const added: IntakeLine[] = [];
+  const removed: Array<BookedLine & { label: string }> = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const before = original.booked.get(line.key);
+    seen.add(line.key);
+    const diff = line.quantity - (before?.quantity ?? 0);
+    if (diff > 0) added.push({ ...line, quantity: diff });
+    if (diff < 0 && before) {
+      removed.push({
+        ...before,
+        label: `${line.colorName} ${line.sizeName}`,
+        quantity: -diff,
+      });
+    }
+  }
+  for (const [key, before] of original.booked) {
+    if (seen.has(key)) continue;
+    const [colorId, size] = key.split("::");
+    const color = original.grid.colors.find((item) => item.id === colorId);
+    removed.push({ ...before, label: `${color?.name ?? ""} ${size ?? ""}` });
+  }
+  return { added, removed };
+}
+
+/** Plain-language list of what Save will change. */
+export function describeEdit(input: {
+  lines: readonly IntakeLine[];
+  original: EditOriginal;
+  photo: boolean;
+  prices: PriceDraft;
+  product: ProductDraft;
+  purchase: PurchaseDraft;
+}): string[] {
+  const { lines, original, prices, product, purchase } = input;
+  const list: string[] = [];
+  const before = original.product;
+  if (cleanName(product.name) !== cleanName(before.name)) {
+    list.push(`নাম: ${before.name} → ${cleanName(product.name)}`);
+  }
+  if (
+    normalizeName(product.audience) !== normalizeName(before.audience) ||
+    normalizeName(product.type) !== normalizeName(before.type)
+  ) {
+    list.push(
+      `Category: ${before.audience} › ${before.type || "—"} → ${cleanName(product.audience)} › ${cleanName(product.type)}`,
+    );
+  }
+  if (product.description.trim() !== before.description.trim()) {
+    list.push("বিবরণ বদলেছে");
+  }
+  if (input.photo) list.push("নতুন ছবি");
+  for (const line of lines) {
+    const sell = parseTaka(sellText(line, prices));
+    if (line.existing && sell !== null && sell !== line.existing.sellingPriceMinor) {
+      list.push(
+        `বিক্রির দাম ${line.colorName} ${line.sizeName}: ${formatTaka(line.existing.sellingPriceMinor)} → ${formatTaka(sell)}`,
+      );
+    }
+  }
+  const transport = parseTaka(purchase.transport) ?? 0;
+  if (transport !== original.transportMinor) {
+    list.push(
+      `অতিরিক্ত খরচ: ${formatTaka(original.transportMinor)} → ${formatTaka(transport)}`,
+    );
+  }
+  const { added, removed } = quantityChanges(lines, original);
+  for (const line of added) {
+    list.push(
+      `${line.existing ? "" : "নতুন "}${line.colorName} ${line.sizeName}: +${line.quantity} পিস (Supplier-এর বাকি বাড়বে)`,
+    );
+  }
+  for (const line of removed) {
+    list.push(
+      `${line.label}: −${line.quantity} পিস (Stock থেকে বাদ, Supplier-এর বাকি কমবে)`,
+    );
+  }
+  return list;
 }
 
 function findCategory(
@@ -233,532 +350,289 @@ function categorySlug(name: string): string {
   return `${base.length >= 2 ? base : "category"}-${Date.now().toString(36)}`;
 }
 
-/**
- * Edit a product through the same four steps it was entered with. Name,
- * category, photo, description, selling prices and the purchase's extra
- * cost can change; pieces, purchase price, supplier and payment stay as
- * entered (they are tied to stock and the supplier's account).
- */
-export function EditProductIntake({
-  canEditExtraCost,
-  canSave,
-  onPurchaseChange,
-  references,
-  source,
-}: {
-  canEditExtraCost: boolean;
-  canSave: boolean;
-  onPurchaseChange: (purchaseId: string) => void;
-  references: IntakeReferences;
-  source: EditIntakeSource;
-}) {
-  const uid = useId();
-  const original = useMemo(
-    () => originalFrom(source, references),
-    [references, source],
-  );
-  const [step, setStep] = useState(0);
-  const [product, setProduct] = useState<ProductDraft>(original.product);
-  const [prices, setPrices] = useState<PriceDraft>(original.prices);
-  const [purchase, setPurchase] = useState<PurchaseDraft>(original.purchase);
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null);
-  const [photoError, setPhotoError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [done, setDone] = useState<string[] | null>(null);
-
-  // A different purchase (or a reload) starts again from the saved values.
-  useEffect(() => {
-    setProduct(original.product);
-    setPrices(original.prices);
-    setPurchase(original.purchase);
-    setErrors({});
-    setSaveError("");
-  }, [original]);
-
-  useEffect(
-    () => () => {
-      if (photo) URL.revokeObjectURL(photo.url);
-    },
-    [photo],
-  );
-
-  const lines = useMemo(
-    () => linesFromGrid(original.grid, original.existing),
-    [original],
-  );
-  const counts = gridCounts(original.grid);
-  const totals = useMemo(
-    () => summarizeIntake(lines, prices, purchase),
-    [lines, prices, purchase],
-  );
-  const audiences = useMemo(
-    () => audienceOptions(references.categories),
-    [references.categories],
-  );
-  const types = useMemo(
-    () => typeOptions(references.categories, product.audience),
-    [product.audience, references.categories],
-  );
-  const missingSupplierPrice = (source.purchase?.lines ?? []).some(
-    (line) => line.supplierUnitCostMinor === null,
-  );
-
-  const changes = useMemo(() => {
-    const list: string[] = [];
-    const before = original.product;
-    if (cleanName(product.name) !== cleanName(before.name)) {
-      list.push(`নাম: ${before.name} → ${cleanName(product.name)}`);
-    }
-    if (
-      normalizeName(product.audience) !== normalizeName(before.audience) ||
-      normalizeName(product.type) !== normalizeName(before.type)
-    ) {
-      list.push(
-        `Category: ${before.audience} › ${before.type || "—"} → ${cleanName(product.audience)} › ${cleanName(product.type)}`,
-      );
-    }
-    if (product.description.trim() !== before.description.trim()) {
-      list.push("বিবরণ বদলেছে");
-    }
-    if (photo) list.push("নতুন ছবি");
-    for (const line of lines) {
-      const sell = parseTaka(sellText(line, prices));
-      if (line.existing && sell !== null && sell !== line.existing.sellingPriceMinor) {
-        list.push(
-          `বিক্রির দাম ${line.colorName} ${line.sizeName}: ${formatTaka(line.existing.sellingPriceMinor)} → ${formatTaka(sell)}`,
-        );
-      }
-    }
-    const transport = parseTaka(purchase.transport) ?? 0;
-    if (transport !== original.transportMinor) {
-      list.push(
-        `অতিরিক্ত খরচ: ${formatTaka(original.transportMinor)} → ${formatTaka(transport)}`,
-      );
-    }
-    return list;
-  }, [lines, original, photo, prices, product, purchase.transport]);
-
-  function validate(index: number): FieldErrors {
-    if (index === 0) return validateProductStep(product);
-    if (index === 2 && source.purchase) {
-      return validatePriceStep(lines, prices, purchase);
-    }
-    return {};
-  }
-
-  function goNext() {
-    if (step === 3) {
-      void save();
-      return;
-    }
-    const found = validate(step);
-    setErrors(found);
-    if (hasErrors(found)) return;
-    setStep(step + 1);
-  }
-
-  function goBack() {
-    setErrors({});
-    setSaveError("");
-    setStep(Math.max(0, step - 1));
-  }
-
-  async function resolveCategoryId(): Promise<string> {
-    let categories = references.categories;
-    let parent = findCategory(categories, cleanName(product.audience), null);
-    if (!parent) {
-      parent = (
-        await intakeClient.createCategory({
-          name: cleanName(product.audience),
-          parentId: null,
-          slug: categorySlug(product.audience),
-        })
-      ).data;
-      categories = [...categories, parent];
-    }
-    const type = findCategory(categories, cleanName(product.type), parent.id);
-    if (type) return type.id;
-    return (
+async function resolveCategoryId(
+  categories: readonly CategoryContract[],
+  product: ProductDraft,
+): Promise<string> {
+  let known = categories;
+  let parent = findCategory(known, cleanName(product.audience), null);
+  if (!parent) {
+    parent = (
       await intakeClient.createCategory({
-        name: cleanName(product.type),
-        parentId: parent.id,
-        slug: categorySlug(product.type),
+        name: cleanName(product.audience),
+        parentId: null,
+        slug: categorySlug(product.audience),
       })
-    ).data.id;
+    ).data;
+    known = [...known, parent];
   }
-
-  async function save() {
-    for (const index of [0, 2]) {
-      const found = validate(index);
-      if (hasErrors(found)) {
-        setErrors(found);
-        setStep(index);
-        return;
-      }
-    }
-    setErrors({});
-    setSaveError("");
-    setSaving(true);
-    const applied: string[] = [];
-    try {
-      const before = original.product;
-      const categoryChanged =
-        normalizeName(product.audience) !== normalizeName(before.audience) ||
-        normalizeName(product.type) !== normalizeName(before.type);
-      const categoryId = categoryChanged
-        ? await resolveCategoryId()
-        : original.categoryId;
-      const name = cleanName(product.name);
-      const description = product.description.trim();
-      if (
-        name !== cleanName(before.name) ||
-        description !== before.description.trim() ||
-        categoryId !== original.categoryId
-      ) {
-        await intakeClient.editProduct({
-          categoryId,
-          description: description || null,
-          expectedUpdatedAt: source.details.product.updatedAt,
-          name,
-          productId: source.details.product.id,
-        });
-        applied.push("নাম / Category / বিবরণ");
-      }
-
-      if (photo) {
-        await intakeClient.setPrimaryProductImage({
-          altText: name.slice(0, 240),
-          ...(await photoPayload(photo.file)),
-          idempotencyKey: `edit-photo:${crypto.randomUUID()}`,
-          productId: source.details.product.id,
-        });
-        applied.push("ছবি");
-      }
-
-      for (const line of lines) {
-        const sell = parseTaka(sellText(line, prices));
-        if (!line.existing || sell === null) continue;
-        if (sell === line.existing.sellingPriceMinor) continue;
-        await intakeClient.updateVariantPrice({
-          expectedSellingPriceMinor: line.existing.sellingPriceMinor,
-          sellingPriceMinor: sell,
-          variantId: line.existing.variantId,
-        });
-        applied.push(`বিক্রির দাম ${line.colorName} ${line.sizeName}`);
-      }
-
-      const transport = parseTaka(purchase.transport) ?? 0;
-      if (source.purchase && transport !== original.transportMinor) {
-        await intakeClient.correctPurchaseExtraCost(source.purchase.id, transport);
-        applied.push("অতিরিক্ত খরচ");
-      }
-      setDone(applied);
-    } catch (caught) {
-      setSaveError(
-        `${intakeErrorMessage(caught)}${applied.length ? ` (আগেই Save হয়েছে: ${applied.join(", ")})` : ""}`,
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function choosePhoto(file: File | undefined) {
-    if (!file) return;
-    if (!photoTypes.includes(file.type as PhotoType)) {
-      setPhotoError("শুধু JPG, PNG বা WebP ছবি দিন।");
-      return;
-    }
-    if (file.size > MAX_PHOTO_BYTES) {
-      setPhotoError("ছবি ৫ MB-এর মধ্যে হতে হবে।");
-      return;
-    }
-    setPhotoError("");
-    setPhoto({ file, url: URL.createObjectURL(file) });
-  }
-
-  function updateProduct(patch: Partial<ProductDraft>) {
-    setProduct((current) => ({ ...current, ...patch }));
-  }
-
-  if (done) {
-    return (
-      <section className={styles.formCard} role="status">
-        <div className={styles.cardBody}>
-          <h2>
-            <CheckCircle2 aria-hidden="true" size={20} /> Save হয়েছে
-          </h2>
-          <p>
-            {done.length
-              ? `বদলানো হয়েছে: ${done.join(", ")}।`
-              : "কিছু বদলানো হয়নি।"}
-          </p>
-          <div className={styles.addRow}>
-            <Link className={styles.primaryButton} href="/inventory">
-              Inventory-তে ফিরে যান
-            </Link>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  const stepError =
-    saveError ||
-    (hasErrors(errors) ? STEP_ERROR_SUMMARY : "") ||
-    (step === 3 && !canSave ? "Edit করার অনুমতি শুধু Owner বা Admin-এর।" : "") ||
-    (step === 3 && changes.length === 0 ? "কিছু বদলানো হয়নি।" : "");
-  const shownPhoto = photo?.url ?? source.details.primaryImage?.url ?? null;
-  const extraCostLocked = !canEditExtraCost || missingSupplierPrice;
-
+  const type = findCategory(known, cleanName(product.type), parent.id);
+  if (type) return type.id;
   return (
-    <div className={styles.layout}>
-      <Stepper
-        current={step}
-        label="Product Edit করার ধাপ"
-        note="নতুন মাল তোলার সময় যা দিয়েছিলেন সেগুলো এখানে আছে — যা ভুল তা ঠিক করে Save করুন।"
-        onSelect={(index) => {
-          setErrors({});
-          setStep(index);
-        }}
-        steps={NEW_PRODUCT_STEPS}
-      />
-      <StepFrame
-        badge={<CountBadge colors={counts.colors} pieces={counts.pieces} />}
-        errorMessage={stepError}
-        isLast={step === 3}
-        lead={stepLeads[step] ?? ""}
-        onBack={goBack}
-        onNext={goNext}
-        saveDisabled={!canSave || changes.length === 0}
-        saving={saving}
-        stepCount={NEW_PRODUCT_STEPS.length}
-        stepIndex={step}
-        title={NEW_PRODUCT_STEPS[step] ?? ""}
-      >
-        {source.purchases.length > 1 ? (
-          <label className={styles.field}>
-            কোন মাল তোলার এন্ট্রি
-            <select
-              onChange={(event) => onPurchaseChange(event.target.value)}
-              value={source.purchase?.id ?? ""}
-            >
-              {source.purchases.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.number} ·{" "}
-                  {new Date(item.date).toLocaleDateString("en-GB")}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+    await intakeClient.createCategory({
+      name: cleanName(product.type),
+      parentId: parent.id,
+      slug: categorySlug(product.type),
+    })
+  ).data.id;
+}
 
-        {step === 0 ? (
-          <>
-            <div className={styles.fields}>
-              <label className={`${styles.field} ${styles.fieldWide}`}>
-                <span>
-                  Product-এর নাম <b>*</b>
-                </span>
-                <input
-                  maxLength={160}
-                  onChange={(event) =>
-                    updateProduct({ name: event.target.value })
-                  }
-                  value={product.name}
-                  {...invalidProps(errors, "name", `${uid}-name-error`)}
-                />
-                <FieldMessage id={`${uid}-name-error`} message={errors.name} />
-              </label>
-              <ChoiceField
-                errorId={`${uid}-audience-error`}
-                errorMessage={errors.audience}
-                label="কার জন্য"
-                onChange={(audience) => updateProduct({ audience })}
-                options={audiences}
-                placeholder="অন্য কিছু হলে লিখুন"
-                value={product.audience}
-              />
-              <ChoiceField
-                emptyHint="এই ভাগে এখনো কিছু নেই — লিখে দিন, যেমন T-shirt বা Panjabi।"
-                errorId={`${uid}-type-error`}
-                errorMessage={errors.type}
-                label="কী মাল"
-                onChange={(type) => updateProduct({ type })}
-                options={types}
-                placeholder="যেমন T-shirt, Pant, Saree"
-                value={product.type}
-              />
-            </div>
+type MovementContract = { id: string };
 
-            <div className={styles.field}>
-              <span>ছবি</span>
-              <div className={styles.photoRow}>
-                {shownPhoto ? (
-                  <span className={styles.photoPreview}>
-                    <Image
-                      alt={product.name || "Product-এর ছবি"}
-                      fill
-                      sizes="92px"
-                      src={shownPhoto}
-                      unoptimized
-                    />
-                  </span>
-                ) : null}
-                <label className={styles.uploadZone} style={{ flex: 1 }}>
-                  {shownPhoto ? (
-                    <ImagePlus aria-hidden="true" size={22} />
-                  ) : (
-                    <Upload aria-hidden="true" size={22} />
-                  )}
-                  <span>
-                    <strong>{shownPhoto ? "ছবি বদলান" : "ছবি দিন"}</strong>
-                    <span>JPG, PNG বা WebP · ৫ MB পর্যন্ত</span>
-                  </span>
-                  <input
-                    accept={photoTypes.join(",")}
-                    className={styles.visuallyHidden}
-                    onChange={(event) => {
-                      choosePhoto(event.target.files?.[0]);
-                      event.currentTarget.value = "";
-                    }}
-                    type="file"
-                  />
-                </label>
-                {photo ? (
-                  <button
-                    aria-label="নতুন ছবি বাদ দিন"
-                    className={styles.iconButton}
-                    onClick={() => setPhoto(null)}
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" size={15} />
-                  </button>
-                ) : null}
-              </div>
-              {photoError ? (
-                <span className={styles.fieldError} role="alert">
-                  {photoError}
-                </span>
-              ) : null}
-            </div>
+/**
+ * Saves only what changed, in an order that keeps the cost history valid:
+ * product details, selling prices, extra cost, pieces taken out (stock
+ * adjustment + supplier credit), then added pieces as a stock intake on the
+ * same supplier and location (new barcodes). Returns the labels to print.
+ */
+export async function applyIntakeEdit(input: {
+  lines: readonly IntakeLine[];
+  photo: File | null;
+  prices: PriceDraft;
+  product: ProductDraft;
+  purchase: PurchaseDraft;
+  references: IntakeReferences;
+  setup: EditSetup;
+  onApplied: (applied: string[]) => void;
+}): Promise<EditResult> {
+  const { lines, prices, product, purchase, references, setup } = input;
+  const { original, source } = setup;
+  const productId = source.details.product.id;
+  const applied: string[] = [];
+  const done = (label: string) => {
+    applied.push(label);
+    input.onApplied([...applied]);
+  };
 
-            <label className={`${styles.field} ${styles.fieldWide}`}>
-              বিবরণ
-              <textarea
-                maxLength={2000}
-                onChange={(event) =>
-                  updateProduct({ description: event.target.value })
-                }
-                placeholder="কাপড়, fit, যত্ন — যা জানা দরকার"
-                rows={4}
-                value={product.description}
-                {...invalidProps(
-                  errors,
-                  "description",
-                  `${uid}-description-error`,
-                )}
-              />
-              <FieldMessage
-                id={`${uid}-description-error`}
-                message={errors.description}
-              />
-            </label>
-            <p className={styles.infoBand}>
-              Product code: {source.details.product.productCode} (বদলায় না)
-            </p>
-          </>
-        ) : null}
+  const before = original.product;
+  const categoryChanged =
+    normalizeName(product.audience) !== normalizeName(before.audience) ||
+    normalizeName(product.type) !== normalizeName(before.type);
+  const categoryId = categoryChanged
+    ? await resolveCategoryId(references.categories, product)
+    : original.categoryId;
+  const name = cleanName(product.name);
+  const description = product.description.trim();
+  if (
+    name !== cleanName(before.name) ||
+    description !== before.description.trim() ||
+    categoryId !== original.categoryId
+  ) {
+    await intakeClient.editProduct({
+      categoryId,
+      description: description || null,
+      expectedUpdatedAt: source.details.product.updatedAt,
+      name,
+      productId,
+    });
+    done("নাম / Category / বিবরণ");
+  }
 
-        {step === 1 ? (
-          <>
-            <p className={styles.infoBand}>
-              পিসের সংখ্যা এখানে বদলানো যায় না। সংখ্যা ভুল হলে Inventory →
-              Stock Adjustment ব্যবহার করুন; নতুন রং/size এলে “নতুন রং / Size
-              যোগ করুন”।
-            </p>
-            {source.purchase ? (
-              <fieldset
-                disabled
-                style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}
-              >
-                <QuantityGridEditor
-                  allowAdding={false}
-                  colorOptions={references.colors}
-                  errors={{}}
-                  existing={original.existing}
-                  grid={original.grid}
-                  onChange={() => undefined}
-                  sizeOptions={references.sizes}
-                />
-              </fieldset>
-            ) : (
-              <p className={styles.hint}>এই Product-এর মাল তোলার এন্ট্রি পাওয়া যায়নি।</p>
-            )}
-          </>
-        ) : null}
+  if (input.photo) {
+    await intakeClient.setPrimaryProductImage({
+      altText: name.slice(0, 240),
+      ...(await photoPayload(input.photo)),
+      idempotencyKey: `edit-photo:${crypto.randomUUID()}`,
+      productId,
+    });
+    done("ছবি");
+  }
 
-        {step === 2 ? (
-          source.purchase ? (
-            <>
-              <PriceAndSupplierStep
-                colors={references.colors}
-                editMode
-                errors={errors}
-                lines={lines}
-                locations={references.locations}
-                onPrices={setPrices}
-                lockTransport={extraCostLocked}
-                onPurchase={(next) =>
-                  // Only the extra cost can change here.
-                  setPurchase((current) => ({
-                    ...current,
-                    transport: next.transport,
-                  }))
-                }
-                prices={prices}
-                purchase={purchase}
-                suppliers={references.suppliers}
-                totals={totals}
-              />
-              {missingSupplierPrice ? (
-                <p className={styles.hint}>
-                  এই এন্ট্রিতে Supplier-এর প্রতি পিসের দাম লেখা নেই, তাই
-                  অতিরিক্ত খরচ বদলানো যাবে না।
-                </p>
-              ) : !canEditExtraCost ? (
-                <p className={styles.hint}>
-                  অতিরিক্ত খরচ বদলাতে পারেন শুধু Owner বা Admin।
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className={styles.hint}>এই Product-এর মাল তোলার এন্ট্রি পাওয়া যায়নি।</p>
-          )
-        ) : null}
+  const sellNow = new Map<string, number>();
+  for (const line of lines) {
+    const sell = parseTaka(sellText(line, prices));
+    if (!line.existing || sell === null) continue;
+    sellNow.set(line.existing.variantId, sell);
+    if (sell === line.existing.sellingPriceMinor) continue;
+    await intakeClient.updateVariantPrice({
+      expectedSellingPriceMinor: line.existing.sellingPriceMinor,
+      sellingPriceMinor: sell,
+      variantId: line.existing.variantId,
+    });
+    done(`বিক্রির দাম ${line.colorName} ${line.sizeName}`);
+  }
 
-        {step === 3 ? (
-          changes.length ? (
-            <div className={styles.field}>
-              <span>যা বদলাবে:</span>
-              <ul>
-                {changes.map((change) => (
-                  <li key={change}>{change}</li>
-                ))}
-              </ul>
-              <p className={styles.hint}>
-                বিক্রির দাম বদলালে এখন থেকে নতুন দামে বিক্রি হবে। অতিরিক্ত খরচ
-                বদলালে কেনা দাম আর লাভের হিসাব সেই অনুযায়ী ঠিক হবে।
-              </p>
-            </div>
-          ) : (
-            <p className={styles.hint}>
-              কিছু বদলানো হয়নি — আগের ধাপে গিয়ে যা ভুল তা ঠিক করুন।
-            </p>
-          )
-        ) : null}
-      </StepFrame>
-    </div>
+  const transport = parseTaka(purchase.transport) ?? 0;
+  if (source.purchase && transport !== original.transportMinor) {
+    await intakeClient.correctPurchaseExtraCost(source.purchase.id, transport);
+    done("অতিরিক্ত খরচ");
+  }
+
+  const { added, removed } = quantityChanges(lines, original);
+  if (removed.length && source.purchase) {
+    const id = crypto.randomUUID();
+    const draft = (
+      await intakeClient.request<MovementContract>("/inventory/movement-drafts", {
+        body: {
+          destinationLocationId: null,
+          idempotencyKey: `intake-edit:${id}`,
+          lines: removed.map((line) => ({
+            productVariantId: line.variantId,
+            quantity: line.quantity,
+          })),
+          movementNumber: `ADJ-${id.replace(/-/gu, "").slice(0, 12).toUpperCase()}`,
+          note: `Reason: মাল তোলার এন্ট্রি Edit (${source.purchase.purchaseNumber}) — পিস কমানো হয়েছে`,
+          occurredAt: new Date().toISOString(),
+          referenceId: id,
+          referenceType: "ADMIN_STOCK_ADJUSTMENT",
+          sourceLocationId: source.purchase.destinationLocationId,
+          type: "ADJUSTMENT_OUT",
+        },
+        method: "POST",
+      })
+    ).data;
+    await intakeClient.request<MovementContract>("/inventory/movements", {
+      body: { movementId: draft.id },
+      method: "POST",
+    });
+    done("পিস কমানো");
+    const credit = removed.reduce(
+      (sum, line) => sum + line.quantity * line.supplierUnitMinor,
+      0,
+    );
+    if (credit > 0) {
+      await intakeClient.recordSupplierAdjustment({
+        amountMinor: String(credit),
+        direction: "DEBIT",
+        entryType: "ADJUSTMENT",
+        idempotencyKey: `intake-edit-credit:${id}`,
+        notes: `Edit ${source.purchase.purchaseNumber}: ${removed.map((line) => `${line.label} −${line.quantity}`).join(", ")}`.slice(0, 500),
+        purchaseId: source.purchase.id,
+        supplierId: source.purchase.supplierId,
+      });
+      done("Supplier-এর বাকি কমানো");
+    }
+  }
+
+  let intake: StockIntakeContract | null = null;
+  if (added.length) {
+    const section = buildPurchaseSection({
+      ...purchase,
+      memoNumber: "",
+      note: source.purchase
+        ? `Edit-এ যোগ (${source.purchase.purchaseNumber})`
+        : "Edit-এ যোগ",
+      paid: "",
+      transport: "",
+      transportPaidToSupplier: false,
+    });
+    // Selling prices of old variants were saved above.
+    const intakeLines = buildLines(added, prices).map((line) =>
+      "existingVariantId" in line && line.existingVariantId
+        ? {
+            existingVariantId: line.existingVariantId,
+            quantity: line.quantity,
+            unitCostMinor: line.unitCostMinor,
+          }
+        : line,
+    );
+    intake = (
+      await intakeClient.createStockIntake({
+        idempotencyKey: `intake-edit:${crypto.randomUUID()}`,
+        lines: intakeLines,
+        product: { existingProductId: productId },
+        ...section,
+      })
+    ).data;
+    done(`${added.reduce((sum, line) => sum + line.quantity, 0)} পিস যোগ`);
+  }
+
+  // Labels for every colour/size in the edited entry.
+  const skuById = new Map(source.details.variants.map((v) => [v.id, v.sku]));
+  const labels: StockIntakeContract["variants"] = [];
+  for (const line of lines) {
+    const fromIntake = intake?.variants.find(
+      (item) =>
+        normalizeName(item.color) === normalizeName(line.colorName) &&
+        normalizeName(item.size) === normalizeName(line.sizeName),
+    );
+    const variantId = line.existing?.variantId ?? fromIntake?.id;
+    if (!variantId) continue;
+    let barcode = fromIntake?.barcode ?? null;
+    if (!barcode) {
+      const found = await intakeClient
+        .listVariantBarcodes(variantId)
+        .then((result) => result.data)
+        .catch(() => []);
+      barcode =
+        found.find((item) => item.status === "ACTIVE")?.value ??
+        found[0]?.value ??
+        null;
+    }
+    labels.push({
+      barcode,
+      color: line.colorName,
+      id: variantId,
+      quantity: line.quantity,
+      sellingPriceMinor:
+        sellNow.get(variantId) ??
+        fromIntake?.sellingPriceMinor ??
+        parseTaka(sellText(line, prices)) ??
+        0,
+      size: line.sizeName,
+      sku: fromIntake?.sku ?? skuById.get(variantId) ?? "",
+      unitCostMinor: parseTaka(costText(line, prices)) ?? 0,
+    });
+  }
+
+  return { applied, labels, productName: name };
+}
+
+export function editLines(grid: QuantityGrid, original: EditOriginal) {
+  return linesFromGrid(grid, original.existing);
+}
+
+export function EditSuccess({
+  onEditAgain,
+  result,
+}: {
+  onEditAgain: () => void;
+  result: EditResult;
+}) {
+  const [showLabels, setShowLabels] = useState(true);
+  const pieces = result.labels.reduce((sum, item) => sum + item.quantity, 0);
+  return (
+    <section aria-live="polite" className={styles.successCard}>
+      <div className={styles.successHead}>
+        <span className={styles.successIcon}>
+          <CheckCircle2 aria-hidden="true" size={28} />
+        </span>
+        <p className={styles.eyebrow}>Edit Save হয়েছে</p>
+        <h1>
+          {result.productName} — {pieces} পিস
+        </h1>
+        <p className={styles.heroLead} style={{ margin: "8px auto 0" }}>
+          {result.applied.length
+            ? `বদলানো হয়েছে: ${result.applied.join(", ")}।`
+            : "কিছু বদলানো হয়নি — আগের তথ্যই আছে।"}
+        </p>
+      </div>
+      <div className={styles.successActions}>
+        <button
+          aria-expanded={showLabels}
+          className={styles.primaryButton}
+          onClick={() => setShowLabels((value) => !value)}
+          type="button"
+        >
+          <Barcode aria-hidden="true" size={16} /> Barcode label print
+        </button>
+        <button
+          className={styles.secondaryButton}
+          onClick={onEditAgain}
+          type="button"
+        >
+          <Pencil aria-hidden="true" size={15} /> আবার Edit
+        </button>
+        <Link className={styles.secondaryButton} href="/inventory">
+          <Warehouse aria-hidden="true" size={15} /> Inventory
+        </Link>
+      </div>
+      {showLabels ? (
+        <IntakeBarcodeLabels
+          productName={result.productName}
+          variants={result.labels}
+        />
+      ) : null}
+    </section>
   );
 }

@@ -2,15 +2,16 @@
 
 import { AlertCircle, ArrowLeft, LoaderCircle } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminPermissions } from "../../../admin-shell";
 import { readErrorMessage } from "../_lib/intake-support";
 import {
-  EditProductIntake,
+  editOriginalFrom,
   purchasesFromLastCosts,
   type EditIntakeSource,
 } from "./edit-product-intake";
 import type { IntakeReferences } from "./intake-parts";
+import { NewProductIntake } from "./new-product-intake";
 import { loadIntakeReferences } from "./stock-intake-wizard";
 import styles from "./stock-intake-wizard.module.css";
 import { intakeClient } from "./use-intake-submission";
@@ -43,7 +44,7 @@ export function EditProductPage() {
     setSource(null);
     try {
       const [refs, details, lastCosts] = await Promise.all([
-        references ?? loadIntakeReferences(),
+        loadIntakeReferences(),
         intakeClient.getProduct(productId),
         intakeClient
           .listLastPurchaseCosts(productId)
@@ -62,13 +63,16 @@ export function EditProductPage() {
     } catch (caught) {
       setError(readErrorMessage(caught));
     }
-    // references is a cache only; reloading it is not needed on change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId, purchaseId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const original = useMemo(
+    () => (source && references ? editOriginalFrom(source, references) : null),
+    [references, source],
+  );
 
   function choosePurchase(id: string) {
     setPurchaseId(id);
@@ -90,8 +94,8 @@ export function EditProductPage() {
           <p className={styles.eyebrow}>Inventory · Edit</p>
           <h1>Product Edit করুন</h1>
           <p className={styles.heroLead}>
-            নতুন মাল তোলার সময় যে তথ্য দিয়েছিলেন সেগুলো এখানে আছে। যা ভুল
-            হয়েছে তা ঠিক করে Save করুন।
+            নতুন মাল তোলার সময় যে তথ্য দিয়েছিলেন সব ভরা আছে। যা বদলাতে চান
+            বদলান, নাহলে Next চাপুন — শেষে barcode print করতে পারবেন।
           </p>
         </div>
       </header>
@@ -115,7 +119,7 @@ export function EditProductPage() {
             </button>
           </div>
         </section>
-      ) : !references || !source ? (
+      ) : !references || !source || !original ? (
         <section aria-busy="true" className={styles.statePanel}>
           <LoaderCircle aria-hidden="true" className={styles.spin} size={22} />
           <div>
@@ -124,12 +128,17 @@ export function EditProductPage() {
           </div>
         </section>
       ) : (
-        <EditProductIntake
-          canEditExtraCost={canEditExtraCost}
+        <NewProductIntake
           canSave={canSave}
-          onPurchaseChange={choosePurchase}
+          edit={{
+            canEditExtraCost,
+            onPurchaseChange: choosePurchase,
+            original,
+            source,
+          }}
+          // A new entry starts the form again from its saved values.
+          key={source.purchase?.id ?? "none"}
           references={references}
-          source={source}
         />
       )}
     </main>
