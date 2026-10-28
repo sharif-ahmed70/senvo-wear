@@ -2,6 +2,7 @@
 
 import type {
   BarcodeLookupContract,
+  CategoryContract,
   ProductInventorySummaryContract,
   StockLocationReadContract,
 } from "@senvo/contracts";
@@ -71,6 +72,58 @@ export function InventoryOverview({
   const [search, setSearch] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatusFilter>("ALL");
+  // Category filter: a parent (Men/Women/Kids) includes its sub-categories.
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categories, setCategories] = useState<CategoryContract[]>([]);
+  const [productCategory, setProductCategory] = useState<
+    ReadonlyMap<string, string>
+  >(new Map());
+  const canReadCatalog = permissions.includes("CATALOG:READ");
+
+  useEffect(() => {
+    if (!canRead || !canReadCatalog) return;
+    let active = true;
+    void Promise.all([client.listCategories(), client.listProducts()])
+      .then(([categoryResult, productResult]) => {
+        if (!active) return;
+        setCategories(categoryResult.data);
+        setProductCategory(
+          new Map(
+            productResult.data.map((product) => [
+              product.id,
+              product.categoryId,
+            ]),
+          ),
+        );
+      })
+      // Without catalog data the page still works, just without this filter.
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [canRead, canReadCatalog]);
+
+  const categoryOptions = useMemo(() => {
+    const used = new Map<string, number>();
+    for (const categoryId of productCategory.values())
+      used.set(categoryId, (used.get(categoryId) ?? 0) + 1);
+    const byOrder = (a: CategoryContract, b: CategoryContract) =>
+      a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    return categories
+      .filter((category) => category.parentId === null)
+      .sort(byOrder)
+      .map((parent) => ({
+        children: categories
+          .filter(
+            (child) =>
+              child.parentId === parent.id && (used.get(child.id) ?? 0) > 0,
+          )
+          .sort(byOrder)
+          .map((child) => ({ ...child, products: used.get(child.id) ?? 0 })),
+        parent,
+      }))
+      .filter((group) => group.children.length > 0);
+  }, [categories, productCategory]);
 
   // Dialogs and Drawers
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -138,6 +191,17 @@ export function InventoryOverview({
         return false;
       }
 
+      // Category (a parent matches its sub-categories too)
+      if (categoryFilter) {
+        const categoryId = productCategory.get(item.product.id);
+        const parentId = categories.find(
+          (category) => category.id === categoryId,
+        )?.parentId;
+        if (categoryId !== categoryFilter && parentId !== categoryFilter) {
+          return false;
+        }
+      }
+
       // 2. Search query (Product name, Product code, Variant SKU)
       if (q) {
         const matchName = item.product.name.toLowerCase().includes(q);
@@ -152,7 +216,7 @@ export function InventoryOverview({
 
       return true;
     });
-  }, [items, search, statusFilter]);
+  }, [categories, categoryFilter, items, productCategory, search, statusFilter]);
 
   // Overall Warehouse Metrics (from all fetched items)
   const metrics = useMemo(() => {
@@ -424,6 +488,30 @@ export function InventoryOverview({
               ))}
             </select>
           </div>
+
+          {/* Category Filter */}
+          {categoryOptions.length > 0 ? (
+            <div className={styles.locationSelectWrap}>
+              <select
+                aria-label="Filter by category"
+                className={styles.locationSelect}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={categoryFilter}
+              >
+                <option value="">All Categories / সব ক্যাটাগরি</option>
+                {categoryOptions.map(({ children, parent }) => (
+                  <optgroup key={parent.id} label={parent.name}>
+                    <option value={parent.id}>{parent.name} — সব</option>
+                    {children.map((child) => (
+                      <option key={child.id} value={child.id}>
+                        {parent.name} › {child.name} ({child.products})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         {/* Stock Status Pills */}
@@ -510,12 +598,16 @@ export function InventoryOverview({
           <p>
             No inventory items matched your active search or filter criteria.
           </p>
-          {search || selectedLocationId || statusFilter !== "ALL" ? (
+          {search ||
+          selectedLocationId ||
+          categoryFilter ||
+          statusFilter !== "ALL" ? (
             <button
               className={styles.secondaryButton}
               onClick={() => {
                 setSearch("");
                 setSelectedLocationId("");
+                setCategoryFilter("");
                 setStatusFilter("ALL");
               }}
               type="button"
