@@ -595,10 +595,12 @@ export function QuantityGridEditor({
 export function PriceAndSupplierStep({
   canEditSupplier = false,
   colors,
+  editMode = false,
   errors,
   lastCosts,
   lines,
   locations,
+  lockTransport = false,
   onPrices,
   onPurchase,
   prices,
@@ -607,11 +609,19 @@ export function PriceAndSupplierStep({
   totals,
 }: {
   colors: readonly ColorContract[];
+  /**
+   * Editing a saved intake: only selling prices and the extra cost can
+   * change; purchase price, supplier, payment, date and location are shown
+   * locked (they are tied to stock and the supplier's account).
+   */
+  editMode?: boolean;
   errors: FieldErrors;
   /** Latest purchase price per existing variant (restock only). */
   lastCosts?: ReadonlyMap<string, VariantLastPurchaseCostContract>;
   lines: readonly IntakeLine[];
   locations: readonly StockLocationReadContract[];
+  /** Shows the extra-cost box but does not allow changing it. */
+  lockTransport?: boolean;
   onPrices: (prices: PriceDraft) => void;
   onPurchase: (purchase: PurchaseDraft) => void;
   prices: PriceDraft;
@@ -642,6 +652,7 @@ export function PriceAndSupplierStep({
         <label className={styles.field}>
           কেনা দাম (সবগুলোতে)
           <input
+            disabled={editMode}
             inputMode="decimal"
             onChange={(event) =>
               onPrices(setPriceForAll(prices, "cost", event.target.value))
@@ -720,6 +731,7 @@ export function PriceAndSupplierStep({
                     <td>
                       <input
                         aria-label={`${line.colorName} ${line.sizeName} কেনা দাম`}
+                        disabled={editMode}
                         id={costId}
                         inputMode="decimal"
                         onChange={(event) =>
@@ -829,6 +841,7 @@ export function PriceAndSupplierStep({
         <label className={styles.field}>
           অতিরিক্ত খরচ: গাড়ি ভাড়া, কুরিয়ার, কুলি (ঐচ্ছিক, সব মিলিয়ে)
           <input
+            disabled={lockTransport}
             inputMode="decimal"
             onChange={(event) => update({ transport: event.target.value })}
             placeholder="মোট ৳"
@@ -846,6 +859,7 @@ export function PriceAndSupplierStep({
         </p>
         <label className={styles.checkLabel}>
           <input
+            disabled={editMode}
             checked={purchase.transportPaidToSupplier}
             onChange={(event) =>
               update({ transportPaidToSupplier: event.target.checked })
@@ -856,6 +870,18 @@ export function PriceAndSupplierStep({
         </label>
       </div>
 
+      {editMode ? (
+        <p className={styles.infoBand}>
+          কেনা দাম, Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার জায়গা এখানে
+          বদলানো যায় না — এগুলো Supplier-এর হিসাব আর স্টকের সাথে জড়ানো।
+          শুধু বিক্রির দাম আর অতিরিক্ত খরচ বদলাতে পারবেন।
+        </p>
+      ) : null}
+      {/* A disabled fieldset locks every control inside it. */}
+      <fieldset
+        disabled={editMode}
+        style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}
+      >
       <SupplierSection
         canEditSupplier={canEditSupplier}
         errors={errors}
@@ -1006,6 +1032,7 @@ export function PriceAndSupplierStep({
           <FieldMessage id={`${uid}-note-error`} message={errors.note} />
         </label>
       </div>
+      </fieldset>
     </>
   );
 }

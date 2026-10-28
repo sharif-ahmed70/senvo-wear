@@ -60,9 +60,9 @@ const stepLeads = [
   "সব ঠিক থাকলে Save করুন — Product, barcode, stock আর Supplier খাতা একসাথে তৈরি হবে।",
 ];
 
-const MAX_PHOTO_BYTES = 5_242_880;
-const photoTypes = ["image/jpeg", "image/png", "image/webp"] as const;
-type PhotoType = (typeof photoTypes)[number];
+export const MAX_PHOTO_BYTES = 5_242_880;
+export const photoTypes = ["image/jpeg", "image/png", "image/webp"] as const;
+export type PhotoType = (typeof photoTypes)[number];
 
 export function NewProductIntake({
   canEditSupplier = false,
@@ -465,7 +465,7 @@ export function NewProductIntake({
   );
 }
 
-function ChoiceField({
+export function ChoiceField({
   emptyHint,
   errorId,
   errorMessage,
@@ -525,7 +525,7 @@ function ChoiceField({
   );
 }
 
-async function photoPayload(file: File) {
+export async function photoPayload(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
   const chunk = 0x8000;
