@@ -850,7 +850,7 @@ function mapSupplier(record: Supplier): SupplierContract {
   });
 }
 
-function mapPurchase(record: Purchase | PurchaseWithLines): PurchaseContract {
+export function mapPurchase(record: Purchase | PurchaseWithLines): PurchaseContract {
   const hasLines = "lines" in record && Array.isArray(record.lines);
   return purchaseContractSchema.parse({
     createdAt: record.createdAt.toISOString(),

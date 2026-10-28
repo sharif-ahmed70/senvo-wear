@@ -8,16 +8,21 @@ import {
   StockIntakeIdempotencyConflictError,
   SupplierPaymentIdempotencyConflictError,
   ValidationApplicationError,
+  correctStockIntake,
   recordStockIntake,
   type PermissionKey,
   type RecordStockIntakeInput,
 } from "@senvo/domain";
 import {
+  correctStockIntakeServiceInputSchema,
   createStockIntakeServiceInputSchema,
   stockIntakeContractSchema,
+  stockIntakeCorrectionContractSchema,
   type CreateStockIntakeServiceInputContract,
   type StockIntakeContract,
+  type StockIntakeCorrectionContract,
 } from "@senvo/contracts";
+import { mapPurchase } from "./procurement-application-service.js";
 import {
   requireAuthorization,
   type ApplicationAuthorizationService,
@@ -125,6 +130,60 @@ export class StockIntakeApplicationService {
       return stockIntakeContractSchema.parse({
         ...outcome.result,
         replayed: outcome.replayed,
+      });
+    });
+  }
+
+  /**
+   * Corrects a received intake in place (pieces, colours/sizes, supplier
+   * prices, extra cost). Needs the intake permissions plus PROCUREMENT
+   * UPDATE, because the purchase and the supplier's balance change.
+   */
+  correctStockIntake(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<StockIntakeCorrectionContract>> {
+    return this.execute(context, async (validated) => {
+      const parsed = correctStockIntakeServiceInputSchema.safeParse(payload);
+      if (!parsed.success) {
+        const issue = parsed.error.issues.at(0);
+        throw new ValidationApplicationServiceError(
+          issue
+            ? `${issue.path.join(".") || "payload"}: ${issue.message}`
+            : "Input is invalid.",
+        );
+      }
+      for (const permission of [
+        ...stockIntakeRequiredPermissions,
+        stockIntakeSupplierUpdatePermission,
+      ]) {
+        await requireAuthorization(
+          this.authorizationService,
+          validated,
+          permission,
+        );
+      }
+      const result = await this.transactionManager.execute(
+        validated,
+        async (transaction) =>
+          correctStockIntake(
+            {
+              ...requireTransactionRepositories(transaction),
+              generateBarcodeValue: this.generateBarcodeValue,
+            },
+            {
+              actorUserId: validated.userId,
+              idempotencyKey: parsed.data.idempotencyKey,
+              lines: parsed.data.lines,
+              organizationId: validated.organizationId,
+              purchaseId: parsed.data.purchaseId,
+              transportCostMinor: parsed.data.transportCostMinor,
+            },
+          ),
+      );
+      return stockIntakeCorrectionContractSchema.parse({
+        purchase: mapPurchase(result.purchase),
+        variants: result.variants,
       });
     });
   }

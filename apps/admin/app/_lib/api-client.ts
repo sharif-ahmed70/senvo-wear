@@ -76,6 +76,8 @@ import type {
   SupplierContract,
   SupplierLedgerEntryContract,
   StockIntakeContract,
+  StockIntakeCorrectionContract,
+  CorrectStockIntakeServiceInputContract,
   SupplierPaymentContract,
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
@@ -730,6 +732,18 @@ export class AdminApiClient {
       body: input,
       method: "POST",
     });
+  }
+
+  /** Corrects a received intake in place (pieces, colours/sizes, prices). */
+  correctStockIntake(
+    input: CorrectStockIntakeServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<StockIntakeCorrectionContract>(
+      `/inventory/stock-intakes/${purchaseId}/correction`,
+      { ...request, body, method: "POST" },
+    );
   }
 
   listSuppliers(

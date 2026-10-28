@@ -1119,6 +1119,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       path: /^\/inventory\/stock-intakes$/u,
       successStatus: 201,
     });
+    if (handlers.stockIntake.correctStockIntake) {
+      routes.push({
+        handler: handlers.stockIntake.correctStockIntake,
+        input: pathBodyInput("purchaseId"),
+        method: "POST",
+        path: /^\/inventory\/stock-intakes\/(?<id>[0-9a-f-]+)\/correction$/iu,
+        successStatus: 200,
+      });
+    }
   }
   if (handlers.shipping) {
     const shipping = handlers.shipping;

@@ -23,8 +23,10 @@ export function intakeEditHref(productId: string): string {
 
 export function EditProductPage() {
   const permissions = useAdminPermissions();
-  const canSave = permissions.includes("CATALOG:UPDATE");
-  const canEditExtraCost = permissions.includes("PROCUREMENT:UPDATE");
+  // The correction changes the purchase and the supplier balance too.
+  const canSave =
+    permissions.includes("CATALOG:UPDATE") &&
+    permissions.includes("PROCUREMENT:UPDATE");
   const [productId, setProductId] = useState<string | null>(null);
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
   const [references, setReferences] = useState<IntakeReferences | null>(null);
@@ -131,7 +133,6 @@ export function EditProductPage() {
         <NewProductIntake
           canSave={canSave}
           edit={{
-            canEditExtraCost,
             onPurchaseChange: choosePurchase,
             original,
             source,

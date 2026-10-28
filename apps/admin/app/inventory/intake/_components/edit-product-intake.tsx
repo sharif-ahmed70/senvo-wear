@@ -14,11 +14,9 @@ import { formatTaka, parseTaka, takaInputFromMinor } from "../_lib/currency-math
 import {
   blankPurchase,
   buildLines,
-  buildPurchaseSection,
   cleanName,
   costText,
   lineKey,
-  linesFromGrid,
   normalizeName,
   sellText,
   todayInDhaka,
@@ -59,7 +57,6 @@ export type EditOriginal = {
   existing: Map<string, ExistingVariant>;
   grid: QuantityGrid;
   lockedColorIds: Set<string>;
-  lockedCostKeys: Set<string>;
   lockedSizes: Set<string>;
   prices: PriceDraft;
   product: ProductDraft;
@@ -68,7 +65,6 @@ export type EditOriginal = {
 };
 
 export type EditSetup = {
-  canEditExtraCost: boolean;
   onPurchaseChange: (purchaseId: string) => void;
   original: EditOriginal;
   source: EditIntakeSource;
@@ -220,28 +216,12 @@ export function editOriginalFrom(
     existing,
     grid: { colors, sizes, sizesCustomized: true },
     lockedColorIds: new Set(colors.map((color) => color.id)),
-    lockedCostKeys: new Set(booked.keys()),
     lockedSizes: new Set(sizes.map(normalizeName)),
     prices: { costAll: firstCost, overrides, sellAll: "" },
     product,
     purchase: draft,
     transportMinor,
   };
-}
-
-/** Keeps already-booked purchase prices when "সবগুলোতে" is typed. */
-export function keepBookedCosts(
-  next: PriceDraft,
-  original: EditOriginal,
-): PriceDraft {
-  const overrides = { ...next.overrides };
-  for (const key of original.lockedCostKeys) {
-    overrides[key] = {
-      ...overrides[key],
-      cost: original.prices.overrides[key]?.cost ?? "",
-    };
-  }
-  return { ...next, overrides };
 }
 
 /**
@@ -338,6 +318,15 @@ export function describeEdit(input: {
       );
     }
   }
+  for (const line of lines) {
+    const booked = original.booked.get(line.key);
+    const cost = parseTaka(costText(line, prices));
+    if (booked && cost !== null && cost !== booked.supplierUnitMinor) {
+      list.push(
+        `কেনা দাম ${line.colorName} ${line.sizeName}: ${formatTaka(booked.supplierUnitMinor)} → ${formatTaka(cost)} (Supplier-এর বাকি সেই হিসাবে বদলাবে)`,
+      );
+    }
+  }
   const transport = parseTaka(purchase.transport) ?? 0;
   if (transport !== original.transportMinor) {
     list.push(
@@ -347,7 +336,7 @@ export function describeEdit(input: {
   const { added, removed } = quantityChanges(lines, original);
   for (const line of added) {
     list.push(
-      `${line.existing ? "" : "নতুন "}${line.colorName} ${line.sizeName}: +${line.quantity} পিস (Supplier-এর বাকি বাড়বে)`,
+      `${line.existing ? "" : "নতুন "}${line.colorName} ${line.sizeName}: +${line.quantity} পিস (Stock-এ উঠবে, Supplier-এর বাকি বাড়বে)`,
     );
   }
   for (const line of removed) {
@@ -409,13 +398,11 @@ async function resolveCategoryId(
   ).data.id;
 }
 
-type MovementContract = { id: string };
-
 /**
- * Saves only what changed, in an order that keeps the cost history valid:
- * product details, selling prices, extra cost, pieces taken out (stock
- * adjustment + supplier credit), then added pieces as a stock intake on the
- * same supplier and location (new barcodes). Returns the labels to print.
+ * Saves the product details (name, category, description, photo), then
+ * corrects the intake itself on the server in one step: pieces, new
+ * colours/sizes, purchase and selling prices and the extra cost. Stock,
+ * the supplier balance and costs change with it. Returns labels to print.
  */
 export async function applyIntakeEdit(input: {
   lines: readonly IntakeLine[];
@@ -470,148 +457,40 @@ export async function applyIntakeEdit(input: {
     done("ছবি");
   }
 
-  const sellNow = new Map<string, number>();
-  for (const line of lines) {
-    const sell = parseTaka(sellText(line, prices));
-    if (!line.existing || sell === null) continue;
-    sellNow.set(line.existing.variantId, sell);
-    if (sell === line.existing.sellingPriceMinor) continue;
-    await intakeClient.updateVariantPrice({
-      expectedSellingPriceMinor: line.existing.sellingPriceMinor,
-      sellingPriceMinor: sell,
-      variantId: line.existing.variantId,
-    });
-    done(`বিক্রির দাম ${line.colorName} ${line.sizeName}`);
-  }
-
-  const transport = parseTaka(purchase.transport) ?? 0;
-  if (source.purchase && transport !== original.transportMinor) {
-    await intakeClient.correctPurchaseExtraCost(source.purchase.id, transport);
-    done("অতিরিক্ত খরচ");
-  }
-
-  const { added, removed } = quantityChanges(lines, original);
-  if (removed.length && source.purchase) {
-    const id = crypto.randomUUID();
-    const draft = (
-      await intakeClient.request<MovementContract>("/inventory/movement-drafts", {
-        body: {
-          destinationLocationId: null,
-          idempotencyKey: `intake-edit:${id}`,
-          lines: removed.map((line) => ({
-            productVariantId: line.variantId,
-            quantity: line.quantity,
-          })),
-          movementNumber: `ADJ-${id.replace(/-/gu, "").slice(0, 12).toUpperCase()}`,
-          note: `Reason: মাল তোলার এন্ট্রি Edit (${source.purchase.purchaseNumber}) — পিস কমানো হয়েছে`,
-          occurredAt: new Date().toISOString(),
-          referenceId: id,
-          referenceType: "ADMIN_STOCK_ADJUSTMENT",
-          sourceLocationId: source.purchase.destinationLocationId,
-          type: "ADJUSTMENT_OUT",
-        },
-        method: "POST",
-      })
-    ).data;
-    await intakeClient.request<MovementContract>("/inventory/movements", {
-      body: { movementId: draft.id },
-      method: "POST",
-    });
-    done("পিস কমানো");
-    const credit = removed.reduce(
-      (sum, line) => sum + line.quantity * line.supplierUnitMinor,
-      0,
-    );
-    if (credit > 0) {
-      await intakeClient.recordSupplierAdjustment({
-        amountMinor: String(credit),
-        direction: "DEBIT",
-        entryType: "ADJUSTMENT",
-        idempotencyKey: `intake-edit-credit:${id}`,
-        notes: `Edit ${source.purchase.purchaseNumber}: ${removed.map((line) => `${line.label} −${line.quantity}`).join(", ")}`.slice(0, 500),
-        purchaseId: source.purchase.id,
-        supplierId: source.purchase.supplierId,
+  if (!source.purchase) {
+    // No intake entry found: only selling prices can be saved.
+    for (const line of lines) {
+      const sell = parseTaka(sellText(line, prices));
+      if (!line.existing || sell === null) continue;
+      if (sell === line.existing.sellingPriceMinor) continue;
+      await intakeClient.updateVariantPrice({
+        expectedSellingPriceMinor: line.existing.sellingPriceMinor,
+        sellingPriceMinor: sell,
+        variantId: line.existing.variantId,
       });
-      done("Supplier-এর বাকি কমানো");
+      done(`বিক্রির দাম ${line.colorName} ${line.sizeName}`);
     }
+    return { applied, labels: [], productName: name };
   }
 
-  let intake: StockIntakeContract | null = null;
-  if (added.length) {
-    const section = buildPurchaseSection({
-      ...purchase,
-      memoNumber: "",
-      note: source.purchase
-        ? `Edit-এ যোগ (${source.purchase.purchaseNumber})`
-        : "Edit-এ যোগ",
-      paid: "",
-      transport: "",
-      transportPaidToSupplier: false,
-    });
-    // Selling prices of old variants were saved above.
-    const intakeLines = buildLines(added, prices).map((line) =>
-      "existingVariantId" in line && line.existingVariantId
-        ? {
-            existingVariantId: line.existingVariantId,
-            quantity: line.quantity,
-            unitCostMinor: line.unitCostMinor,
-          }
-        : line,
-    );
-    intake = (
-      await intakeClient.createStockIntake({
-        idempotencyKey: `intake-edit:${crypto.randomUUID()}`,
-        lines: intakeLines,
-        product: { existingProductId: productId },
-        ...section,
-      })
-    ).data;
-    done(`${added.reduce((sum, line) => sum + line.quantity, 0)} পিস যোগ`);
-  }
-
-  // Labels for every colour/size in the edited entry.
-  const skuById = new Map(source.details.variants.map((v) => [v.id, v.sku]));
-  const labels: StockIntakeContract["variants"] = [];
-  for (const line of lines) {
-    const fromIntake = intake?.variants.find(
-      (item) =>
-        normalizeName(item.color) === normalizeName(line.colorName) &&
-        normalizeName(item.size) === normalizeName(line.sizeName),
-    );
-    const variantId = line.existing?.variantId ?? fromIntake?.id;
-    if (!variantId) continue;
-    let barcode = fromIntake?.barcode ?? null;
-    if (!barcode) {
-      const found = await intakeClient
-        .listVariantBarcodes(variantId)
-        .then((result) => result.data)
-        .catch(() => []);
-      barcode =
-        found.find((item) => item.status === "ACTIVE")?.value ??
-        found[0]?.value ??
-        null;
-    }
-    labels.push({
-      barcode,
-      color: line.colorName,
-      id: variantId,
-      quantity: line.quantity,
-      sellingPriceMinor:
-        sellNow.get(variantId) ??
-        fromIntake?.sellingPriceMinor ??
-        parseTaka(sellText(line, prices)) ??
-        0,
-      size: line.sizeName,
-      sku: fromIntake?.sku ?? skuById.get(variantId) ?? "",
-      unitCostMinor: parseTaka(costText(line, prices)) ?? 0,
-    });
-  }
-
-  return { applied, labels, productName: name };
-}
-
-export function editLines(grid: QuantityGrid, original: EditOriginal) {
-  return linesFromGrid(grid, original.existing);
+  const corrected = (
+    await intakeClient.correctStockIntake({
+      idempotencyKey: `intake-edit:${crypto.randomUUID()}`,
+      lines: buildLines(lines, prices),
+      purchaseId: source.purchase.id,
+      transportCostMinor: parseTaka(purchase.transport) ?? 0,
+    })
+  ).data;
+  const entryChanges = describeEdit({
+    lines,
+    original,
+    photo: false,
+    prices,
+    product: original.product,
+    purchase,
+  });
+  if (entryChanges.length) done("পিস / দাম / অতিরিক্ত খরচ");
+  return { applied, labels: corrected.variants, productName: name };
 }
 
 export function EditSuccess({

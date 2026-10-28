@@ -34,7 +34,6 @@ import {
   describeEdit,
   EditSuccess,
   fillAddedLinePrices,
-  keepBookedCosts,
   type EditResult,
   type EditSetup,
 } from "./edit-product-intake";
@@ -557,16 +556,12 @@ export function NewProductIntake({
             locations={references.locations}
             lockTransport={
               edit
-                ? !edit.canEditExtraCost ||
-                  (edit.source.purchase?.lines ?? []).some(
+                ? (edit.source.purchase?.lines ?? []).some(
                     (line) => line.supplierUnitCostMinor === null,
                   )
                 : false
             }
-            lockedCostKeys={original?.lockedCostKeys}
-            onPrices={(next) =>
-              setPrices(original ? keepBookedCosts(next, original) : next)
-            }
+            onPrices={setPrices}
             onPurchase={(next) =>
               // Editing: only the extra cost can change on this step.
               setPurchase((current) =>

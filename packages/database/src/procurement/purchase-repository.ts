@@ -97,6 +97,57 @@ export class PrismaPurchaseRepository implements PurchaseRepository {
     }
   }
 
+  async replaceLines(input: {
+    lines: ReadonlyArray<
+      Omit<CreatePurchaseLineRecord, "lineNumber"> & { id: string | null }
+    >;
+    organizationId: string;
+    purchaseId: string;
+  }): Promise<void> {
+    const where = {
+      organizationId: input.organizationId,
+      purchaseId: input.purchaseId,
+    };
+    const keep = input.lines.flatMap((line) => (line.id ? [line.id] : []));
+    await this.prisma.purchaseLine.deleteMany({
+      where: { ...where, id: { notIn: keep } },
+    });
+    const last = await this.prisma.purchaseLine.aggregate({
+      _max: { lineNumber: true },
+      where,
+    });
+    let nextLineNumber = (last._max.lineNumber ?? 0) + 1;
+    for (const line of input.lines) {
+      const data = {
+        extraCostPerUnitMinor: line.extraCostPerUnitMinor ?? null,
+        quantity: line.quantity,
+        supplierUnitCostMinor: line.supplierUnitCostMinor ?? null,
+        totalCostMinor: line.totalCostMinor,
+        unitCostMinor: line.unitCostMinor,
+      };
+      if (line.id) {
+        await this.prisma.purchaseLine.updateMany({
+          data,
+          where: { ...where, id: line.id },
+        });
+        continue;
+      }
+      await this.prisma.purchaseLine.create({
+        data: {
+          ...data,
+          ...where,
+          lineNumber: nextLineNumber,
+          notes: line.notes ?? null,
+          productName: line.productName,
+          productVariantId: line.productVariantId,
+          sku: line.sku,
+          variantName: line.variantName ?? null,
+        },
+      });
+      nextLineNumber += 1;
+    }
+  }
+
   async listPostedLinesForVariants(
     organizationId: string,
     productVariantIds: readonly string[],

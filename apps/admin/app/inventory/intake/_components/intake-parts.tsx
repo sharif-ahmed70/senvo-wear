@@ -601,7 +601,6 @@ export function PriceAndSupplierStep({
   lines,
   locations,
   lockTransport = false,
-  lockedCostKeys,
   onPrices,
   onPurchase,
   prices,
@@ -612,8 +611,7 @@ export function PriceAndSupplierStep({
   colors: readonly ColorContract[];
   /**
    * Editing a saved intake: supplier, payment, date and location are shown
-   * locked (they are tied to the supplier's account); added pieces use
-   * them too.
+   * locked; pieces, prices and the extra cost correct the same entry.
    */
   editMode?: boolean;
   errors: FieldErrors;
@@ -623,8 +621,6 @@ export function PriceAndSupplierStep({
   locations: readonly StockLocationReadContract[];
   /** Shows the extra-cost box but does not allow changing it. */
   lockTransport?: boolean;
-  /** Rows whose purchase price is already booked (editing an intake). */
-  lockedCostKeys?: ReadonlySet<string>;
   onPrices: (prices: PriceDraft) => void;
   onPurchase: (purchase: PurchaseDraft) => void;
   prices: PriceDraft;
@@ -733,7 +729,6 @@ export function PriceAndSupplierStep({
                     <td>
                       <input
                         aria-label={`${line.colorName} ${line.sizeName} কেনা দাম`}
-                        disabled={lockedCostKeys?.has(line.key) ?? false}
                         id={costId}
                         inputMode="decimal"
                         onChange={(event) =>
@@ -874,10 +869,10 @@ export function PriceAndSupplierStep({
 
       {editMode ? (
         <p className={styles.infoBand}>
-          আগে তোলা পিসের কেনা দাম, Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার
-          জায়গা এখানে বদলানো যায় না — এগুলো Supplier-এর হিসাবের সাথে জড়ানো।
-          নতুন যোগ করা পিস একই Supplier আর জায়গায় উঠবে; টাকা দিলে Supplier
-          পাতা থেকে দিন।
+          Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার জায়গা এখানে বদলানো যায়
+          না। পিস, কেনা দাম, বিক্রির দাম আর অতিরিক্ত খরচ বদলালে এই এন্ট্রিই ঠিক
+          হবে — Stock, Supplier-এর বাকি আর লাভের হিসাব সাথে সাথে মিলে যাবে।
+          টাকা দিতে হলে Supplier পাতা থেকে দিন।
         </p>
       ) : null}
       {/* A disabled fieldset locks every control inside it. */}

@@ -5314,6 +5314,29 @@ export const stockIntakeContractSchema = z
   .strict();
 export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
 
+/** Corrects a received intake in place: the full corrected list of lines. */
+export const correctStockIntakeServiceInputSchema = z
+  .object({
+    idempotencyKey: stockIntakeIdempotencyKeySchema,
+    lines: z.array(stockIntakeLineInputSchema).min(1).max(100),
+    purchaseId: idSchema,
+    transportCostMinor: stockIntakeMinorAmountSchema,
+  })
+  .strict();
+export type CorrectStockIntakeServiceInputContract = z.infer<
+  typeof correctStockIntakeServiceInputSchema
+>;
+
+export const stockIntakeCorrectionContractSchema = z
+  .object({
+    purchase: purchaseContractSchema,
+    variants: stockIntakeContractSchema.shape.variants,
+  })
+  .strict();
+export type StockIntakeCorrectionContract = z.infer<
+  typeof stockIntakeCorrectionContractSchema
+>;
+
 // ---------------------------------------------------------------------------
 // Reports: admin dashboard
 // ---------------------------------------------------------------------------

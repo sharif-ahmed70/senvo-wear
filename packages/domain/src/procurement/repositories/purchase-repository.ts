@@ -98,6 +98,18 @@ export type PurchaseRepository = {
     organizationId: string;
     purchaseId: string;
   }): Promise<void>;
+  /**
+   * Corrects a purchase's lines: lines with an `id` are updated, lines
+   * without one are added (next line numbers), and lines not listed are
+   * removed.
+   */
+  replaceLines?(input: {
+    lines: ReadonlyArray<
+      Omit<CreatePurchaseLineRecord, "lineNumber"> & { id: string | null }
+    >;
+    organizationId: string;
+    purchaseId: string;
+  }): Promise<void>;
   /** Lines of posted purchases for these variants (for cost replay). */
   listPostedLinesForVariants?(
     organizationId: string,

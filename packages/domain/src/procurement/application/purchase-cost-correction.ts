@@ -144,7 +144,39 @@ export async function correctPurchaseExtraCost(
     ),
   });
 
-  const variantIds = [...new Set(changed.map((line) => line.productVariantId))];
+  await replayPurchaseCosts(repositories, {
+    correctedAt: input.correctedAt,
+    organizationId: input.organizationId,
+    purchase,
+    variantIds: [...new Set(changed.map((line) => line.productVariantId))],
+  });
+
+  const updated = await purchases.findById(purchase.id, input.organizationId);
+  return { appliedMinor: distribution.appliedMinor, purchase: updated ?? purchase };
+}
+
+/**
+ * Replays the cost of these variants from their receipts using each posted
+ * purchase's current line costs, and records a COST_CORRECTION entry that
+ * points at `purchase`.
+ */
+export async function replayPurchaseCosts(
+  repositories: { costs: CostRepository; purchases: PurchaseRepository },
+  input: {
+    correctedAt: Date;
+    organizationId: string;
+    purchase: { id: string; purchaseNumber: string };
+    variantIds: readonly string[];
+  },
+): Promise<void> {
+  const { costs, purchases } = repositories;
+  const { purchase, variantIds } = input;
+  if (!purchases.listPostedLinesForVariants)
+    throw new BusinessRuleError(
+      "Purchase cost correction is not available.",
+      "COST_CORRECTION_UNAVAILABLE",
+    );
+  if (variantIds.length === 0) return;
   const postedLines = await purchases.listPostedLinesForVariants(
     input.organizationId,
     variantIds,
@@ -204,7 +236,4 @@ export async function correctPurchaseExtraCost(
       valueChangeMinor: replayed.inventoryValueMinor - beforeValue,
     });
   }
-
-  const updated = await purchases.findById(purchase.id, input.organizationId);
-  return { appliedMinor: distribution.appliedMinor, purchase: updated ?? purchase };
 }
