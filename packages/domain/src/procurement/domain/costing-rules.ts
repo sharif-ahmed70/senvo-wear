@@ -183,7 +183,17 @@ export function validatePurchaseLineData(params: {
 }
 
 export type DeriveCostStateAfterReceiptParams = {
-  costState: VariantCostState | null;
+  /** Only the cost fields are read (a replay passes just those). */
+  costState:
+    | VariantCostState
+    | Pick<
+        VariantCostState,
+        | "averageCostMinor"
+        | "costUnknownReason"
+        | "inventoryValueMinor"
+        | "isCostKnown"
+      >
+    | null;
   existingOnHandQuantity: number;
   receivedQuantity: number;
   unitCostMinor: number;

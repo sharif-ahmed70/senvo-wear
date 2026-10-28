@@ -2,7 +2,7 @@
 
 import { ImagePlus, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AdminApiError } from "../../../_lib/api-client";
 import { parseTaka } from "../_lib/currency-math";
 import {
@@ -24,10 +24,19 @@ import {
 } from "../_lib/intake-draft";
 import {
   audienceOptions,
+  intakeErrorMessage,
   OWNER_ONLY_MESSAGE,
   typeOptions,
 } from "../_lib/intake-support";
 import { sizePresetFor } from "../_lib/size-presets";
+import {
+  applyIntakeEdit,
+  describeEdit,
+  EditSuccess,
+  fillAddedLinePrices,
+  type EditResult,
+  type EditSetup,
+} from "./edit-product-intake";
 import {
   CountBadge,
   FieldMessage,
@@ -60,31 +69,44 @@ const stepLeads = [
   "সব ঠিক থাকলে Save করুন — Product, barcode, stock আর Supplier খাতা একসাথে তৈরি হবে।",
 ];
 
-const MAX_PHOTO_BYTES = 5_242_880;
-const photoTypes = ["image/jpeg", "image/png", "image/webp"] as const;
-type PhotoType = (typeof photoTypes)[number];
+export const MAX_PHOTO_BYTES = 5_242_880;
+export const photoTypes = ["image/jpeg", "image/png", "image/webp"] as const;
+export type PhotoType = (typeof photoTypes)[number];
 
 export function NewProductIntake({
   canEditSupplier = false,
   canSave,
+  edit,
   references,
 }: {
   canEditSupplier?: boolean;
   canSave: boolean;
+  /** Editing a saved product: the same steps, filled with what was entered. */
+  edit?: EditSetup;
   references: IntakeReferences;
 }) {
   const uid = useId();
+  const original = edit?.original;
   const [step, setStep] = useState(0);
-  const [product, setProduct] = useState<ProductDraft>(blankProduct);
-  const [grid, setGrid] = useState<QuantityGrid>({
-    colors: [],
-    sizes: [],
-    sizesCustomized: false,
-  });
-  const [prices, setPrices] = useState(blankPrices);
-  const [purchase, setPurchase] = useState(() =>
-    blankPurchase(references.locations.map((location) => location.id)),
+  const [product, setProduct] = useState<ProductDraft>(
+    original?.product ?? blankProduct,
   );
+  const [grid, setGrid] = useState<QuantityGrid>(
+    original?.grid ?? {
+      colors: [],
+      sizes: [],
+      sizesCustomized: false,
+    },
+  );
+  const [prices, setPrices] = useState(original?.prices ?? blankPrices);
+  const [purchase, setPurchase] = useState(
+    () =>
+      original?.purchase ??
+      blankPurchase(references.locations.map((location) => location.id)),
+  );
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editResult, setEditResult] = useState<EditResult | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null);
   const [photoError, setPhotoError] = useState("");
@@ -93,7 +115,31 @@ export function NewProductIntake({
   });
   const submission = useIntakeSubmission();
 
-  const lines = useMemo(() => linesFromGrid(grid), [grid]);
+  const lines = useMemo(
+    () => linesFromGrid(grid, original?.existing),
+    [grid, original],
+  );
+  // Editing: rows added later get the same prices as the rest.
+  const filledKeys = useRef(new Set(original?.booked.keys() ?? []));
+  useEffect(() => {
+    if (!original) return;
+    const next = fillAddedLinePrices(lines, prices, filledKeys.current);
+    if (next) setPrices(next);
+  }, [lines, original, prices]);
+  const editChanges = useMemo(
+    () =>
+      original
+        ? describeEdit({
+            lines,
+            original,
+            photo: Boolean(photo),
+            prices,
+            product,
+            purchase,
+          })
+        : [],
+    [lines, original, photo, prices, product, purchase],
+  );
   const counts = gridCounts(grid);
   const totals = useMemo(
     () => summarizeIntake(lines, prices, purchase),
@@ -155,6 +201,10 @@ export function NewProductIntake({
       }
     }
     setErrors({});
+    if (edit) {
+      await saveEdit(edit);
+      return;
+    }
     const saved = await submission.submit((idempotencyKey) =>
       buildNewProductPayload({
         idempotencyKey,
@@ -165,6 +215,35 @@ export function NewProductIntake({
       }),
     );
     if (saved && photo) await uploadPhoto(saved.product.id, photo.file);
+  }
+
+  async function saveEdit(setup: EditSetup) {
+    if (editSaving) return;
+    setEditSaving(true);
+    setEditError("");
+    let applied: string[] = [];
+    try {
+      setEditResult(
+        await applyIntakeEdit({
+          lines,
+          onApplied: (list) => {
+            applied = list;
+          },
+          photo: photo?.file ?? null,
+          prices,
+          product,
+          purchase,
+          references,
+          setup,
+        }),
+      );
+    } catch (caught) {
+      setEditError(
+        `${intakeErrorMessage(caught)}${applied.length ? ` (এগুলো Save হয়ে গেছে: ${applied.join(", ")} — পেজ আবার খুলে বাকিটা দেখুন)` : ""}`,
+      );
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   async function uploadPhoto(productId: string, file: File) {
@@ -223,6 +302,15 @@ export function NewProductIntake({
     setProduct((current) => ({ ...current, ...patch }));
   }
 
+  if (editResult) {
+    return (
+      <EditSuccess
+        onEditAgain={() => window.location.reload()}
+        result={editResult}
+      />
+    );
+  }
+
   const saved = submission.result;
   if (saved) {
     return (
@@ -241,7 +329,10 @@ export function NewProductIntake({
     );
   }
 
+  const shownPhoto =
+    photo?.url ?? edit?.source.details.primaryImage?.url ?? null;
   const stepError =
+    editError ||
     submission.error ||
     (hasErrors(errors) ? STEP_ERROR_SUMMARY : "") ||
     (step === 3 && !canSave ? OWNER_ONLY_MESSAGE : "");
@@ -250,8 +341,12 @@ export function NewProductIntake({
     <div className={styles.layout}>
       <Stepper
         current={step}
-        label="নতুন Product তোলার ধাপ"
-        note="Save করলে Product, প্রতিটা রং-size-এর barcode, stock আর Supplier-এর হিসাব একসাথে তৈরি হয়।"
+        label={edit ? "Product Edit করার ধাপ" : "নতুন Product তোলার ধাপ"}
+        note={
+          edit
+            ? "মাল তোলার সময় যা দিয়েছিলেন সব ভরা আছে — যা বদলাতে চান বদলান, নাহলে Next চাপুন। শেষে barcode print করা যাবে।"
+            : "Save করলে Product, প্রতিটা রং-size-এর barcode, stock আর Supplier-এর হিসাব একসাথে তৈরি হয়।"
+        }
         onSelect={(index) => {
           setErrors({});
           setStep(index);
@@ -266,11 +361,27 @@ export function NewProductIntake({
         onBack={goBack}
         onNext={goNext}
         saveDisabled={!canSave}
-        saving={submission.saving}
+        saving={submission.saving || editSaving}
         stepCount={NEW_PRODUCT_STEPS.length}
         stepIndex={step}
         title={NEW_PRODUCT_STEPS[step] ?? ""}
       >
+        {edit && edit.source.purchases.length > 1 ? (
+          <label className={styles.field}>
+            কোন মাল তোলার এন্ট্রি
+            <select
+              onChange={(event) => edit.onPurchaseChange(event.target.value)}
+              value={edit.source.purchase?.id ?? ""}
+            >
+              {edit.source.purchases.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.number} ·{" "}
+                  {new Date(item.date).toLocaleDateString("en-GB")}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {step === 0 ? (
           <>
             <div className={styles.fields}>
@@ -318,25 +429,25 @@ export function NewProductIntake({
             <div className={styles.field}>
               <span>ছবি (ঐচ্ছিক)</span>
               <div className={styles.photoRow}>
-                {photo ? (
+                {shownPhoto ? (
                   <span className={styles.photoPreview}>
                     <Image
                       alt={product.name || "Product-এর ছবি"}
                       fill
                       sizes="92px"
-                      src={photo.url}
+                      src={shownPhoto}
                       unoptimized
                     />
                   </span>
                 ) : null}
                 <label className={styles.uploadZone} style={{ flex: 1 }}>
-                  {photo ? (
+                  {shownPhoto ? (
                     <ImagePlus aria-hidden="true" size={22} />
                   ) : (
                     <Upload aria-hidden="true" size={22} />
                   )}
                   <span>
-                    <strong>{photo ? "ছবি বদলান" : "ছবি দিন"}</strong>
+                    <strong>{shownPhoto ? "ছবি বদলান" : "ছবি দিন"}</strong>
                     <span>
                       JPG, PNG বা WebP · ৫ MB পর্যন্ত · Save হওয়ার পরে তোলা হবে
                     </span>
@@ -418,13 +529,17 @@ export function NewProductIntake({
         {step === 1 ? (
           <>
             <p className={styles.infoBand}>
-              Size list এসেছে “{product.type.trim() || "Product"}” দেখে — দরকার
-              হলে Size যোগ করুন বা ✕ দিয়ে সরান।
+              {original
+                ? "আগে তোলা পিস ভরা আছে। নতুন রং/Size যোগ করতে পারেন, পিস বাড়াতে বা কমাতে পারেন — বাড়ালে Stock-এ উঠবে, কমালে Stock থেকে বাদ যাবে।"
+                : `Size list এসেছে “${product.type.trim() || "Product"}” দেখে — দরকার হলে Size যোগ করুন বা ✕ দিয়ে সরান।`}
             </p>
             <QuantityGridEditor
               colorOptions={references.colors}
               errors={errors}
+              existing={original?.existing}
               grid={grid}
+              lockedColorIds={original?.lockedColorIds}
+              lockedSizes={original?.lockedSizes}
               onChange={setGrid}
               sizeOptions={references.sizes}
             />
@@ -435,11 +550,24 @@ export function NewProductIntake({
           <PriceAndSupplierStep
             canEditSupplier={canEditSupplier}
             colors={references.colors}
+            editMode={Boolean(edit)}
             errors={errors}
             lines={lines}
             locations={references.locations}
+            lockTransport={
+              edit
+                ? (edit.source.purchase?.lines ?? []).some(
+                    (line) => line.supplierUnitCostMinor === null,
+                  )
+                : false
+            }
             onPrices={setPrices}
-            onPurchase={setPurchase}
+            onPurchase={(next) =>
+              // Editing: only the extra cost can change on this step.
+              setPurchase((current) =>
+                edit ? { ...current, transport: next.transport } : next,
+              )
+            }
             prices={prices}
             purchase={purchase}
             suppliers={references.suppliers}
@@ -460,12 +588,28 @@ export function NewProductIntake({
             totals={totals}
           />
         ) : null}
+        {step === 3 && edit ? (
+          <div className={styles.infoBand}>
+            {editChanges.length ? (
+              <>
+                <strong>যা বদলাবে:</strong>
+                <ul>
+                  {editChanges.map((change) => (
+                    <li key={change}>{change}</li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              "কিছু বদলানো হয়নি — Save করলে সরাসরি barcode print-এর পাতায় যাবে।"
+            )}
+          </div>
+        ) : null}
       </StepFrame>
     </div>
   );
 }
 
-function ChoiceField({
+export function ChoiceField({
   emptyHint,
   errorId,
   errorMessage,
@@ -525,7 +669,7 @@ function ChoiceField({
   );
 }
 
-async function photoPayload(file: File) {
+export async function photoPayload(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
   const chunk = 0x8000;

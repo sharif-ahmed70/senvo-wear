@@ -1036,6 +1036,17 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
             } as HttpRoute,
           ]
         : []),
+      ...(procurement.correctPurchaseExtraCost
+        ? [
+            {
+              handler: procurement.correctPurchaseExtraCost,
+              input: pathBodyInput("purchaseId"),
+              method: "POST",
+              path: /^\/procurement\/purchases\/(?<id>[0-9a-f-]+)\/extra-cost$/iu,
+              successStatus: 200,
+            } as HttpRoute,
+          ]
+        : []),
       ...(procurement.listLastPurchaseCosts
         ? [
             {
@@ -1108,6 +1119,15 @@ function createRoutes(handlers: SenvoHttpHandlers): readonly HttpRoute[] {
       path: /^\/inventory\/stock-intakes$/u,
       successStatus: 201,
     });
+    if (handlers.stockIntake.correctStockIntake) {
+      routes.push({
+        handler: handlers.stockIntake.correctStockIntake,
+        input: pathBodyInput("purchaseId"),
+        method: "POST",
+        path: /^\/inventory\/stock-intakes\/(?<id>[0-9a-f-]+)\/correction$/iu,
+        successStatus: 200,
+      });
+    }
   }
   if (handlers.shipping) {
     const shipping = handlers.shipping;

@@ -87,6 +87,41 @@ export type PurchaseRepository = {
     organizationId: string,
     productId: string,
   ): Promise<VariantLastPurchaseCost[]>;
+  /** Sets corrected per-piece costs on lines of one purchase. */
+  updateLineCosts?(input: {
+    lines: ReadonlyArray<{
+      extraCostPerUnitMinor: number;
+      id: string;
+      totalCostMinor: bigint;
+      unitCostMinor: number;
+    }>;
+    organizationId: string;
+    purchaseId: string;
+  }): Promise<void>;
+  /**
+   * Corrects a purchase's lines: lines with an `id` are updated, lines
+   * without one are added (next line numbers), and lines not listed are
+   * removed.
+   */
+  replaceLines?(input: {
+    lines: ReadonlyArray<
+      Omit<CreatePurchaseLineRecord, "lineNumber"> & { id: string | null }
+    >;
+    organizationId: string;
+    purchaseId: string;
+  }): Promise<void>;
+  /** Lines of posted purchases for these variants (for cost replay). */
+  listPostedLinesForVariants?(
+    organizationId: string,
+    productVariantIds: readonly string[],
+  ): Promise<
+    Array<{
+      productVariantId: string;
+      purchaseId: string;
+      quantity: number;
+      unitCostMinor: number;
+    }>
+  >;
 };
 
 export type PurchaseMemo = {
@@ -99,6 +134,7 @@ export type VariantLastPurchaseCost = {
   extraCostPerUnitMinor: number | null;
   productVariantId: string;
   purchaseDate: Date;
+  purchaseId: string;
   purchaseNumber: string;
   supplierUnitCostMinor: number | null;
   unitCostMinor: number;

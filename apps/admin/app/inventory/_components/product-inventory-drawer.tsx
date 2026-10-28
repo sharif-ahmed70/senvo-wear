@@ -30,6 +30,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AdminApiClient } from "../../_lib/api-client";
+import { intakeEditHref } from "../intake/_components/edit-product-page";
 import { intakeRestockHref } from "../intake/_components/stock-intake-wizard";
 import styles from "./inventory-overview.module.css";
 
@@ -54,7 +55,6 @@ export function ProductInventoryDrawer({
   const [variantBarcodes, setVariantBarcodes] = useState<
     Record<string, VariantBarcodeContract[]>
   >({});
-
   // Group variants by Color for Garment UX
   const colorGroups = useMemo(() => {
     const map = new Map<string, Array<(typeof item.variants)[number]>>();
@@ -433,13 +433,13 @@ export function ProductInventoryDrawer({
             </div>
 
             <div className={styles.quickActionButtonsGrid}>
-              {/* Name, category, price, colours/sizes: fixed on the catalog page. */}
+              {/* Opens the intake steps filled with what was entered. */}
               <Link
-                className={styles.actionBtnSecondary}
-                href={`/catalog/products/${encodeURIComponent(item.product.id)}`}
+                className={styles.actionBtnPrimary}
+                href={intakeEditHref(item.product.id)}
               >
                 <Pencil size={16} />
-                <span>নাম / Category / দাম ঠিক করুন (Edit)</span>
+                <span>Edit</span>
                 <ArrowRight size={14} />
               </Link>
               {canCreate ? (

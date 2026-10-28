@@ -877,6 +877,12 @@ export type {
   GetPurchaseByIdInput,
   ListPurchasesInput,
 } from "./procurement/application/purchase-use-cases.js";
+export {
+  correctPurchaseExtraCost,
+  replayPurchaseCosts,
+  replayVariantCost,
+} from "./procurement/application/purchase-cost-correction.js";
+export type { ReplayedCost } from "./procurement/application/purchase-cost-correction.js";
 
 export type {
   SupplierBalanceSummary,
@@ -933,9 +939,12 @@ export {
   STOCK_INTAKE_IDEMPOTENCY_PREFIX,
   StockIntakeIdempotencyConflictError,
   TRANSPORT_NOT_PAYABLE_NOTE,
+  correctStockIntake,
   recordStockIntake,
 } from "./procurement/application/stock-intake-use-cases.js";
 export type {
+  CorrectStockIntakeInput,
+  CorrectStockIntakeResult,
   RecordStockIntakeDependencies,
   RecordStockIntakeInput,
   RecordStockIntakeOutcome,

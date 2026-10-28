@@ -87,6 +87,7 @@ describe("PrismaPurchaseRepository", () => {
       $queryRaw: (() =>
         Promise.resolve([])) as unknown as PurchasePrismaClient["$queryRaw"],
       purchase: purchase as unknown as PurchasePrismaClient["purchase"],
+      purchaseLine: {} as PurchasePrismaClient["purchaseLine"],
     };
 
     return { client, purchase };

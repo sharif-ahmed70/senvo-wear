@@ -595,10 +595,12 @@ export function QuantityGridEditor({
 export function PriceAndSupplierStep({
   canEditSupplier = false,
   colors,
+  editMode = false,
   errors,
   lastCosts,
   lines,
   locations,
+  lockTransport = false,
   onPrices,
   onPurchase,
   prices,
@@ -607,11 +609,18 @@ export function PriceAndSupplierStep({
   totals,
 }: {
   colors: readonly ColorContract[];
+  /**
+   * Editing a saved intake: supplier, payment, date and location are shown
+   * locked; pieces, prices and the extra cost correct the same entry.
+   */
+  editMode?: boolean;
   errors: FieldErrors;
   /** Latest purchase price per existing variant (restock only). */
   lastCosts?: ReadonlyMap<string, VariantLastPurchaseCostContract>;
   lines: readonly IntakeLine[];
   locations: readonly StockLocationReadContract[];
+  /** Shows the extra-cost box but does not allow changing it. */
+  lockTransport?: boolean;
   onPrices: (prices: PriceDraft) => void;
   onPurchase: (purchase: PurchaseDraft) => void;
   prices: PriceDraft;
@@ -829,6 +838,7 @@ export function PriceAndSupplierStep({
         <label className={styles.field}>
           অতিরিক্ত খরচ: গাড়ি ভাড়া, কুরিয়ার, কুলি (ঐচ্ছিক, সব মিলিয়ে)
           <input
+            disabled={lockTransport}
             inputMode="decimal"
             onChange={(event) => update({ transport: event.target.value })}
             placeholder="মোট ৳"
@@ -846,6 +856,7 @@ export function PriceAndSupplierStep({
         </p>
         <label className={styles.checkLabel}>
           <input
+            disabled={editMode}
             checked={purchase.transportPaidToSupplier}
             onChange={(event) =>
               update({ transportPaidToSupplier: event.target.checked })
@@ -856,6 +867,19 @@ export function PriceAndSupplierStep({
         </label>
       </div>
 
+      {editMode ? (
+        <p className={styles.infoBand}>
+          Supplier, টাকা দেওয়া, তারিখ আর মাল রাখার জায়গা এখানে বদলানো যায়
+          না। পিস, কেনা দাম, বিক্রির দাম আর অতিরিক্ত খরচ বদলালে এই এন্ট্রিই ঠিক
+          হবে — Stock, Supplier-এর বাকি আর লাভের হিসাব সাথে সাথে মিলে যাবে।
+          টাকা দিতে হলে Supplier পাতা থেকে দিন।
+        </p>
+      ) : null}
+      {/* A disabled fieldset locks every control inside it. */}
+      <fieldset
+        disabled={editMode}
+        style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}
+      >
       <SupplierSection
         canEditSupplier={canEditSupplier}
         errors={errors}
@@ -1006,6 +1030,7 @@ export function PriceAndSupplierStep({
           <FieldMessage id={`${uid}-note-error`} message={errors.note} />
         </label>
       </div>
+      </fieldset>
     </>
   );
 }

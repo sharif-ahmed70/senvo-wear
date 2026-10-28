@@ -5,9 +5,12 @@ import type {
   ApplicationServiceResult,
 } from "@senvo/application";
 import {
+  correctStockIntakeServiceInputSchema,
   createStockIntakeServiceInputSchema,
+  type CorrectStockIntakeServiceInputContract,
   type CreateStockIntakeServiceInputContract,
   type StockIntakeContract,
+  type StockIntakeCorrectionContract,
 } from "@senvo/contracts";
 import { createProtectedApiHandler, type ApiHandler } from "./api-handler.js";
 
@@ -16,10 +19,15 @@ export type StockIntakeApplication = {
     context: ApplicationExecutionContext,
     payload: unknown,
   ): Promise<ApplicationServiceResult<StockIntakeContract>>;
+  correctStockIntake?(
+    context: ApplicationExecutionContext,
+    payload: unknown,
+  ): Promise<ApplicationServiceResult<StockIntakeCorrectionContract>>;
 };
 
 export type StockIntakeApiHandlers = {
   recordStockIntake: ApiHandler<StockIntakeContract>;
+  correctStockIntake?: ApiHandler<StockIntakeCorrectionContract>;
 };
 
 /**
@@ -44,5 +52,21 @@ export function createStockIntakeApiHandlers(dependencies: {
       inputSchema: createStockIntakeServiceInputSchema,
       permission: { action: "CREATE", resource: "PROCUREMENT" },
     }),
+    ...(dependencies.stockIntake.correctStockIntake
+      ? {
+          correctStockIntake: createProtectedApiHandler<
+            CorrectStockIntakeServiceInputContract,
+            StockIntakeCorrectionContract
+          >({
+            authenticationService: dependencies.authenticationService,
+            authorizationService: dependencies.authorizationService,
+            execute: (context, input) =>
+              dependencies.stockIntake.correctStockIntake?.(context, input) ??
+              Promise.reject(new Error("Stock intake correction is unavailable.")),
+            inputSchema: correctStockIntakeServiceInputSchema,
+            permission: { action: "UPDATE", resource: "PROCUREMENT" },
+          }),
+        }
+      : {}),
   };
 }

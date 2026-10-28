@@ -4697,6 +4697,7 @@ export const variantLastPurchaseCostContractSchema = z
     extraCostPerUnitMinor: z.number().int().nonnegative().nullable(),
     productVariantId: idSchema,
     purchaseDate: isoTimestampSchema,
+    purchaseId: idSchema,
     purchaseNumber: z.string(),
     supplierUnitCostMinor: z.number().int().nonnegative().nullable(),
     unitCostMinor: z.number().int().nonnegative(),
@@ -4711,6 +4712,20 @@ export const getPurchaseServiceInputSchema = z
     purchaseId: idSchema,
   })
   .strict();
+
+/**
+ * POST /procurement/purchases/:id/extra-cost. Sets the purchase's total
+ * transport/labour ("extra cost"), spread over its pieces like at intake.
+ */
+export const correctPurchaseExtraCostServiceInputSchema = z
+  .object({
+    purchaseId: idSchema,
+    transportCostMinor: z.number().int().nonnegative().max(2_147_483_647),
+  })
+  .strict();
+export type CorrectPurchaseExtraCostServiceInputContract = z.infer<
+  typeof correctPurchaseExtraCostServiceInputSchema
+>;
 export type GetPurchaseServiceInputContract = z.infer<
   typeof getPurchaseServiceInputSchema
 >;
@@ -5298,6 +5313,29 @@ export const stockIntakeContractSchema = z
   })
   .strict();
 export type StockIntakeContract = z.infer<typeof stockIntakeContractSchema>;
+
+/** Corrects a received intake in place: the full corrected list of lines. */
+export const correctStockIntakeServiceInputSchema = z
+  .object({
+    idempotencyKey: stockIntakeIdempotencyKeySchema,
+    lines: z.array(stockIntakeLineInputSchema).min(1).max(100),
+    purchaseId: idSchema,
+    transportCostMinor: stockIntakeMinorAmountSchema,
+  })
+  .strict();
+export type CorrectStockIntakeServiceInputContract = z.infer<
+  typeof correctStockIntakeServiceInputSchema
+>;
+
+export const stockIntakeCorrectionContractSchema = z
+  .object({
+    purchase: purchaseContractSchema,
+    variants: stockIntakeContractSchema.shape.variants,
+  })
+  .strict();
+export type StockIntakeCorrectionContract = z.infer<
+  typeof stockIntakeCorrectionContractSchema
+>;
 
 // ---------------------------------------------------------------------------
 // Reports: admin dashboard

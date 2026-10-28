@@ -76,6 +76,8 @@ import type {
   SupplierContract,
   SupplierLedgerEntryContract,
   StockIntakeContract,
+  StockIntakeCorrectionContract,
+  CorrectStockIntakeServiceInputContract,
   SupplierPaymentContract,
   UpdateSupplierServiceInputContract,
   StoreManagementContract,
@@ -732,6 +734,18 @@ export class AdminApiClient {
     });
   }
 
+  /** Corrects a received intake in place (pieces, colours/sizes, prices). */
+  correctStockIntake(
+    input: CorrectStockIntakeServiceInputContract,
+    request?: AdminApiRequest,
+  ) {
+    const { purchaseId, ...body } = input;
+    return this.request<StockIntakeCorrectionContract>(
+      `/inventory/stock-intakes/${purchaseId}/correction`,
+      { ...request, body, method: "POST" },
+    );
+  }
+
   listSuppliers(
     input: ListSuppliersServiceInputContract = {},
     request?: AdminApiRequest,
@@ -878,6 +892,18 @@ export class AdminApiClient {
     return this.request<PurchaseContract>(
       `/procurement/purchases/${purchaseId}`,
       request,
+    );
+  }
+
+  /** Sets a received purchase's total transport/labour (extra cost). */
+  correctPurchaseExtraCost(
+    purchaseId: string,
+    transportCostMinor: number,
+    request?: AdminApiRequest,
+  ) {
+    return this.request<PurchaseContract>(
+      `/procurement/purchases/${purchaseId}/extra-cost`,
+      { ...request, body: { transportCostMinor }, method: "POST" },
     );
   }
 

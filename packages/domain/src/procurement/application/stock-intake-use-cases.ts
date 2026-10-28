@@ -72,6 +72,12 @@ import {
   createPurchaseDraftRecord,
   type ConfirmPurchaseOrderDependencies,
 } from "./purchase-use-cases.js";
+import { replayPurchaseCosts } from "./purchase-cost-correction.js";
+import {
+  createInventoryMovement,
+  postInventoryMovement,
+} from "../../inventory/application/movement-use-cases.js";
+import { deriveCostStateAfterReceipt } from "../domain/costing-rules.js";
 import {
   recordSupplierAdjustment,
   recordSupplierPayment,
@@ -1291,4 +1297,349 @@ async function rebuildStockIntakeResult(
     transportRequestedMinor: stored.transportRequestedMinor,
     variants,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Correcting a saved intake                                           */
+/* ------------------------------------------------------------------ */
+
+export type CorrectStockIntakeInput = {
+  actorUserId: string | null;
+  idempotencyKey: string;
+  /** The complete, corrected list of lines (supplier price per piece). */
+  lines: readonly StockIntakeLineInput[];
+  organizationId: string;
+  purchaseId: string;
+  /** Total transport/labour of the purchase after the correction. */
+  transportCostMinor: number;
+};
+
+export type CorrectStockIntakeResult = {
+  purchase: PurchaseWithLines;
+  variants: StockIntakeResultVariant[];
+};
+
+/**
+ * Corrects a received intake in place, the way a wrong memo is fixed in a
+ * shop: the same purchase gets the right pieces and prices. In one
+ * transaction:
+ * - new colours/sizes are created (with barcodes) like at intake;
+ * - purchase lines are updated, added or removed and the extra cost is
+ *   spread again over the pieces;
+ * - stock moves by the difference only (RECEIPT for more pieces,
+ *   ADJUSTMENT_OUT for fewer, both linked to the purchase);
+ * - the supplier balance changes by the difference of the goods value;
+ * - variant costs are replayed from their purchase receipts.
+ * Sending the same lines again changes nothing, so a retry is safe.
+ */
+export async function correctStockIntake(
+  dependencies: RecordStockIntakeDependencies,
+  input: CorrectStockIntakeInput,
+): Promise<CorrectStockIntakeResult> {
+  const { organizationId } = input;
+  const { purchases } = dependencies;
+  if (!purchases.replaceLines || !purchases.listPostedLinesForVariants) {
+    throw new BusinessRuleError(
+      "Purchase correction is not available.",
+      "PURCHASE_CORRECTION_UNAVAILABLE",
+    );
+  }
+  const purchase = await purchases.findById(input.purchaseId, organizationId);
+  if (!purchase) throw new NotFoundError("Purchase was not found.");
+  if (purchase.status !== "POSTED") {
+    throw new BusinessRuleError(
+      "Only a received (posted) purchase can be corrected.",
+      "PURCHASE_NOT_POSTED",
+    );
+  }
+  const firstLine = purchase.lines[0];
+  if (!firstLine) {
+    throw new BusinessRuleError("The purchase has no lines.", "PURCHASE_EMPTY");
+  }
+  if (purchase.lines.some((line) => line.supplierUnitCostMinor === null)) {
+    throw new BusinessRuleError(
+      "This purchase was recorded without a supplier price per piece, so it cannot be corrected here.",
+      "SUPPLIER_PRICE_UNKNOWN",
+    );
+  }
+
+  const firstVariant = await dependencies.stockIntakes.findVariantById(
+    organizationId,
+    firstLine.productVariantId,
+  );
+  if (!firstVariant) throw new NotFoundError("Product variant was not found.");
+  const asIntake: RecordStockIntakeInput = {
+    actorUserId: input.actorUserId,
+    idempotencyKey: input.idempotencyKey,
+    lines: input.lines,
+    organizationId,
+    product: { existingProductId: firstVariant.productId },
+    purchase: { destinationLocationId: purchase.destinationLocationId },
+    supplier: null,
+    transportCostMinor: input.transportCostMinor,
+  };
+  const normalized = normalizeStockIntakeInput(asIntake);
+  const product = await resolveProduct(dependencies, organizationId, asIntake);
+  for (const line of purchase.lines) {
+    const variant = await dependencies.stockIntakes.findVariantById(
+      organizationId,
+      line.productVariantId,
+    );
+    if (!variant || variant.productId !== product.id) {
+      throw new BusinessRuleError(
+        "This purchase has more than one product; correct it from the purchase page.",
+        "PURCHASE_MULTIPLE_PRODUCTS",
+      );
+    }
+  }
+
+  const transport = distributeTransportCost(
+    normalized.lines.map((line) => ({
+      quantity: line.quantity,
+      unitCostMinor: line.unitCostMinor,
+    })),
+    normalized.transportCostMinor,
+  );
+  const resolved = await resolveLines(
+    dependencies,
+    organizationId,
+    product,
+    normalized.lines,
+    transport.unitCosts,
+  );
+  const barcodes = await ensureBarcodes(dependencies, organizationId, resolved);
+
+  const before = new Map(
+    purchase.lines.map((line) => [line.productVariantId, line]),
+  );
+  const after = new Map(resolved.map((line) => [line.variant.id, line]));
+  const added = resolved
+    .map((line) => ({
+      line,
+      quantity: line.quantity - (before.get(line.variant.id)?.quantity ?? 0),
+    }))
+    .filter((item) => item.quantity > 0);
+  const removed = purchase.lines
+    .map((line) => ({
+      line,
+      quantity:
+        line.quantity - (after.get(line.productVariantId)?.quantity ?? 0),
+    }))
+    .filter((item) => item.quantity > 0);
+
+  const goodsBefore = purchase.lines.reduce(
+    (sum, line) =>
+      sum + BigInt(line.quantity) * BigInt(line.supplierUnitCostMinor ?? 0),
+    0n,
+  );
+  const goodsAfter = resolved.reduce(
+    (sum, line) =>
+      sum + BigInt(line.quantity) * BigInt(line.supplierUnitCostMinor),
+    0n,
+  );
+  const unitCostChanged = resolved.some(
+    (line) => before.get(line.variant.id)?.unitCostMinor !== line.unitCostMinor,
+  );
+  if (
+    added.length === 0 &&
+    removed.length === 0 &&
+    !unitCostChanged &&
+    goodsAfter === goodsBefore
+  ) {
+    return { purchase, variants: correctionVariants(resolved, barcodes) };
+  }
+
+  await purchases.replaceLines({
+    lines: resolved.map((line) => ({
+      extraCostPerUnitMinor: line.unitCostMinor - line.supplierUnitCostMinor,
+      id: before.get(line.variant.id)?.id ?? null,
+      productName: product.name,
+      productVariantId: line.variant.id,
+      quantity: line.quantity,
+      sku: line.variant.sku,
+      supplierUnitCostMinor: line.supplierUnitCostMinor,
+      totalCostMinor: BigInt(line.quantity) * BigInt(line.unitCostMinor),
+      unitCostMinor: line.unitCostMinor,
+      variantName: `${line.color.name} / ${line.size.name}`,
+    })),
+    organizationId,
+    purchaseId: purchase.id,
+  });
+  await purchases.update({
+    id: purchase.id,
+    organizationId,
+    totalCostMinor: resolved.reduce(
+      (sum, line) => sum + BigInt(line.quantity) * BigInt(line.unitCostMinor),
+      0n,
+    ),
+  });
+
+  const keySuffix = normalized.idempotencyKey;
+  const reference = `Correction of purchase ${purchase.purchaseNumber}`;
+  const shortKey = keySuffix
+    .replace(/[^a-z0-9]/giu, "")
+    .slice(-8)
+    .toUpperCase();
+  // Fewer pieces first: fails early if they were already sold.
+  if (removed.length) {
+    const out = await createInventoryMovement(dependencies.inventoryMovements, {
+      idempotencyKey: `purchase-correction:${keySuffix}:out`,
+      lines: removed.map((item) => ({
+        note: reference,
+        productVariantId: item.line.productVariantId,
+        quantity: item.quantity,
+      })),
+      movementNumber: `COR-${purchase.purchaseNumber}-${shortKey}-OUT`,
+      note: reference,
+      occurredAt: new Date(),
+      organizationId,
+      referenceId: purchase.id,
+      referenceType: "PURCHASE",
+      sourceLocationId: purchase.destinationLocationId,
+      type: "ADJUSTMENT_OUT",
+    });
+    await postInventoryMovement(dependencies.inventoryMovements, {
+      movementId: out.id,
+      organizationId,
+    });
+  }
+  if (added.length) {
+    const draft = await createInventoryMovement(
+      dependencies.inventoryMovements,
+      {
+        destinationLocationId: purchase.destinationLocationId,
+        idempotencyKey: `purchase-correction:${keySuffix}:in`,
+        lines: added.map((item) => ({
+          note: reference,
+          productVariantId: item.line.variant.id,
+          quantity: item.quantity,
+        })),
+        movementNumber: `COR-${purchase.purchaseNumber}-${shortKey}-IN`,
+        note: reference,
+        occurredAt: new Date(),
+        organizationId,
+        referenceId: purchase.id,
+        referenceType: "PURCHASE",
+        type: "RECEIPT",
+      },
+    );
+    const posted = await postInventoryMovement(
+      dependencies.inventoryMovements,
+      { movementId: draft.id, organizationId },
+    );
+    // The added pieces are a receipt of this purchase, like at intake.
+    for (const item of added) {
+      const variantId = item.line.variant.id;
+      const onHand = await dependencies.costs.getVariantOnHandQuantity(
+        organizationId,
+        variantId,
+      );
+      const state = await dependencies.costs.getCostState(
+        organizationId,
+        variantId,
+      );
+      const derived = deriveCostStateAfterReceipt({
+        costState: state,
+        existingOnHandQuantity: Math.max(0, onHand - item.quantity),
+        receivedQuantity: item.quantity,
+        unitCostMinor: item.line.unitCostMinor,
+      });
+      await dependencies.costs.recordCostEntry({
+        afterAverageCostMinor: derived.afterAverageCostMinor,
+        afterQuantity: derived.afterQuantity,
+        afterValueMinor: derived.afterValueMinor,
+        beforeAverageCostMinor: derived.beforeAverageCostMinor,
+        beforeQuantity: derived.beforeQuantity,
+        beforeValueMinor: derived.beforeValueMinor,
+        eventType: "PURCHASE_RECEIPT",
+        organizationId,
+        productVariantId: variantId,
+        quantityChange: item.quantity,
+        reference: purchase.purchaseNumber,
+        sourceMovementId: posted.id,
+        sourcePurchaseId: purchase.id,
+        valueChangeMinor: derived.valueChangeMinor,
+      });
+      await dependencies.costs.upsertCostState({
+        averageCostMinor: derived.afterAverageCostMinor,
+        costUnknownReason: derived.costUnknownReason,
+        expectedVersion: state?.version,
+        inventoryValueMinor: derived.afterValueMinor,
+        isCostKnown: derived.isCostKnown,
+        lastCostEventAt: new Date(),
+        organizationId,
+        productVariantId: variantId,
+      });
+    }
+  }
+
+  // Prices or the extra share may have changed: replay the purchase's variants.
+  await replayPurchaseCosts(
+    { costs: dependencies.costs, purchases },
+    {
+      correctedAt: new Date(),
+      organizationId,
+      purchase,
+      variantIds: [...new Set([...before.keys(), ...after.keys()])],
+    },
+  );
+
+  const goodsDelta = goodsAfter - goodsBefore;
+  if (goodsDelta !== 0n) {
+    await recordSupplierAdjustment(
+      {
+        supplierLedgerRepository: dependencies.supplierLedger,
+        supplierRepository: dependencies.suppliers,
+      },
+      {
+        amountMinor: goodsDelta > 0n ? goodsDelta : -goodsDelta,
+        // CREDIT: more is owed to the supplier; DEBIT: less.
+        direction: goodsDelta > 0n ? "CREDIT" : "DEBIT",
+        entryType: "ADJUSTMENT",
+        notes: reference,
+        organizationId,
+        purchaseId: purchase.id,
+        referenceId: purchase.id,
+        supplierId: purchase.supplierId,
+      },
+    );
+  }
+
+  await dependencies.auditWriter.recordWithinTransaction({
+    action: "STOCK_INTAKE_CORRECTED",
+    actor: { userId: input.actorUserId },
+    metadata: {
+      addedPieces: added.reduce((sum, item) => sum + item.quantity, 0),
+      goodsDeltaMinor: goodsDelta.toString(),
+      lineCount: resolved.length,
+      productId: product.id,
+      removedPieces: removed.reduce((sum, item) => sum + item.quantity, 0),
+      transportAppliedMinor: transport.appliedMinor,
+    },
+    organizationId,
+    resource: "PURCHASE",
+    resourceId: purchase.id,
+  });
+
+  const updated = await purchases.findById(purchase.id, organizationId);
+  return {
+    purchase: updated ?? purchase,
+    variants: correctionVariants(resolved, barcodes),
+  };
+}
+
+function correctionVariants(
+  lines: readonly ResolvedLine[],
+  barcodes: readonly VariantBarcode[],
+): StockIntakeResultVariant[] {
+  return lines.map((line, index) => ({
+    barcode: barcodes[index]?.value ?? null,
+    color: line.color.name,
+    id: line.variant.id,
+    quantity: line.quantity,
+    sellingPriceMinor: line.sellingPriceMinor,
+    size: line.size.name,
+    sku: line.variant.sku,
+    unitCostMinor: line.unitCostMinor,
+  }));
 }
