@@ -26,6 +26,19 @@ const toNumber = (value: bigint | number | null | undefined) =>
   value === null || value === undefined ? 0 : Number(value);
 
 /**
+ * Cost of a returned quantity: the sale line's cost snapshot per piece, else
+ * the variant's current moving average; NULL when neither is known. Expects
+ * `return_line`, `snap` and `cost_state` in scope.
+ */
+const returnedCostSql = Prisma.sql`CASE
+  WHEN snap.is_cost_known AND snap.unit_cost_minor IS NOT NULL
+    THEN return_line.quantity::bigint * snap.unit_cost_minor
+  WHEN cost_state.is_cost_known AND cost_state.average_cost_minor IS NOT NULL
+    THEN return_line.quantity::bigint * cost_state.average_cost_minor
+  ELSE NULL
+END`;
+
+/**
  * Read-only dashboard aggregates. Every query filters on organization_id;
  * see packages/domain/src/reporting/dashboard.ts for the definitions.
  */
@@ -329,6 +342,25 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
             AND sale.status::text IN (${saleStatuses})
             AND sale.confirmed_at >= ${range.start}
             AND sale.confirmed_at < ${range.end}
+          UNION ALL
+          -- Returns count against the day they came back (negative).
+          SELECT
+            to_char(sale_return.returned_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
+            -return_line.line_credit_minor::bigint AS revenue,
+            -(${returnedCostSql})
+          FROM pos_sale_return_lines return_line
+          INNER JOIN pos_sale_returns sale_return
+            ON sale_return.id = return_line.return_id
+           AND sale_return.organization_id = return_line.organization_id
+          LEFT JOIN sale_line_cost_snapshots snap
+            ON snap.sales_order_line_id = return_line.sales_order_line_id
+           AND snap.organization_id = return_line.organization_id
+          LEFT JOIN variant_cost_states cost_state
+            ON cost_state.product_variant_id = return_line.product_variant_id
+           AND cost_state.organization_id = return_line.organization_id
+          WHERE return_line.organization_id = ${organizationId}::uuid
+            AND sale_return.returned_at >= ${range.start}
+            AND sale_return.returned_at < ${range.end}
         )
         SELECT
           date,
@@ -396,6 +428,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
           product_code: string;
           product_id: string;
           quantity: bigint;
+          returned_quantity: bigint;
           revenue_minor: bigint;
           uncosted_revenue_minor: bigint;
         }>
@@ -428,7 +461,8 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
               WHEN cost_state.is_cost_known AND cost_state.average_cost_minor IS NOT NULL
                 THEN line.quantity::bigint * cost_state.average_cost_minor
               ELSE NULL
-            END AS cost
+            END AS cost,
+            0::bigint AS returned
           FROM sales_order_lines line
           LEFT JOIN extra_share share
             ON share.variant_id = line.product_variant_id
@@ -451,39 +485,87 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
             AND sale.status::text IN (${saleStatuses})
             AND sale.confirmed_at >= ${range.start}
             AND sale.confirmed_at < ${range.end}
+          UNION ALL
+          -- Returns in the period, as negative sales (see the daily query).
+          SELECT
+            product.id,
+            product.name,
+            product.product_code,
+            -return_line.quantity::bigint,
+            -return_line.line_credit_minor::bigint,
+            COALESCE(share.ratio, 0),
+            -(${returnedCostSql}),
+            return_line.quantity::bigint
+          FROM pos_sale_return_lines return_line
+          INNER JOIN pos_sale_returns sale_return
+            ON sale_return.id = return_line.return_id
+           AND sale_return.organization_id = return_line.organization_id
+          LEFT JOIN extra_share share
+            ON share.variant_id = return_line.product_variant_id
+          INNER JOIN product_variants variant
+            ON variant.id = return_line.product_variant_id
+           AND variant.organization_id = return_line.organization_id
+          INNER JOIN products product
+            ON product.id = variant.product_id
+           AND product.organization_id = variant.organization_id
+          LEFT JOIN sale_line_cost_snapshots snap
+            ON snap.sales_order_line_id = return_line.sales_order_line_id
+           AND snap.organization_id = return_line.organization_id
+          LEFT JOIN variant_cost_states cost_state
+            ON cost_state.product_variant_id = return_line.product_variant_id
+           AND cost_state.organization_id = return_line.organization_id
+          WHERE return_line.organization_id = ${organizationId}::uuid
+            AND sale_return.returned_at >= ${range.start}
+            AND sale_return.returned_at < ${range.end}
+        ),
+        per_product AS (
+          SELECT
+            product_id,
+            name,
+            product_code,
+            SUM(quantity) AS quantity,
+            SUM(returned) AS returned,
+            COALESCE(SUM(revenue), 0) AS revenue,
+            COALESCE(SUM(cost), 0) AS cost,
+            COALESCE(SUM(ROUND(cost * extra_ratio)), 0) AS extra,
+            COALESCE(SUM(revenue) FILTER (WHERE cost IS NOT NULL), 0) AS costed_revenue,
+            COALESCE(SUM(revenue) FILTER (WHERE cost IS NULL), 0) AS uncosted_revenue
+          FROM sale_lines
+          GROUP BY product_id, name, product_code
         )
         SELECT
           product_id::text AS product_id,
           name,
           product_code,
-          SUM(quantity)::bigint AS quantity,
-          COALESCE(SUM(revenue), 0)::bigint AS revenue_minor,
-          COALESCE(SUM(cost), 0)::bigint AS cost_minor,
-          -- Never more than the cost itself.
-          LEAST(
-            COALESCE(SUM(ROUND(cost * extra_ratio)), 0),
-            COALESCE(SUM(cost), 0)
-          )::bigint AS extra_cost_minor,
-          COALESCE(SUM(revenue) FILTER (WHERE cost IS NOT NULL), 0)::bigint AS costed_revenue_minor,
-          COALESCE(SUM(revenue) FILTER (WHERE cost IS NULL), 0)::bigint AS uncosted_revenue_minor
-        FROM sale_lines
-        GROUP BY product_id, name, product_code`,
+          quantity::bigint AS quantity,
+          returned::bigint AS returned_quantity,
+          revenue::bigint AS revenue_minor,
+          cost::bigint AS cost_minor,
+          -- Rounding never makes the extra cost bigger than the cost itself.
+          (CASE WHEN cost >= 0 THEN LEAST(extra, cost) ELSE GREATEST(extra, cost) END)::bigint AS extra_cost_minor,
+          costed_revenue::bigint AS costed_revenue_minor,
+          uncosted_revenue::bigint AS uncosted_revenue_minor
+        FROM per_product`,
     ]);
     const lineByDate = new Map(lines.map((row) => [row.date, row]));
+    const orderByDate = new Map(orders.map((row) => [row.date, row]));
+    // A day with only returns has no orders but still changes the profit.
+    const dates = [...new Set([...orderByDate.keys(), ...lineByDate.keys()])];
     return {
       channels: channels.map((row) => ({
         channel: row.channel,
         previousPeriodMinor: toNumber(row.previous_minor),
         salesMinor: toNumber(row.sales_minor),
       })),
-      daily: orders.map((row) => {
-        const line = lineByDate.get(row.date);
+      daily: dates.map((date) => {
+        const line = lineByDate.get(date);
+        const order = orderByDate.get(date);
         return {
           costMinor: toNumber(line?.cost_minor),
           costedSalesMinor: toNumber(line?.costed_sales_minor),
-          date: row.date,
-          saleCount: toNumber(row.sale_count),
-          salesMinor: toNumber(row.sales_minor),
+          date,
+          saleCount: toNumber(order?.sale_count),
+          salesMinor: toNumber(order?.sales_minor),
         };
       }),
       productProfits: productProfits.map((row) => ({
@@ -494,6 +576,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
         productCode: row.product_code,
         productId: row.product_id,
         quantity: toNumber(row.quantity),
+        returnedQuantity: toNumber(row.returned_quantity),
         revenueMinor: toNumber(row.revenue_minor),
         uncostedRevenueMinor: toNumber(row.uncosted_revenue_minor),
       })),

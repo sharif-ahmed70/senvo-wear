@@ -28,10 +28,15 @@ import {
 import { formatBdt } from "../_lib/money";
 import { previewItemDiscounts, type ItemDiscountDraft } from "../_lib/discount";
 import { reconcileNextSale } from "../_lib/reconcile-next-sale";
+import {
+  exchangeCheckoutIdFrom,
+  exchangeRefundKey,
+  splitExchange,
+} from "../../_lib/exchange";
 import { BarcodeEntry } from "./barcode-entry";
 import { CartLineList } from "./cart-line-list";
 import { PaymentPanel } from "./payment-panel";
-import { SaleSuccess } from "./sale-success";
+import { SaleSuccess, type ExchangeOutcome } from "./sale-success";
 import {
   SellingContextSelector,
   type SellingContext,
@@ -127,6 +132,59 @@ function ActivePosSale({
   const canReadReceipt =
     permissions.includes("RECEIPT:READ") &&
     permissions.includes("PAYMENT:READ");
+  // An exchange ends with a refund on the old sale (same rights as Refund).
+  const canExchange =
+    permissions.includes("PAYMENT:CREATE") &&
+    permissions.includes("PAYMENT:APPROVE");
+  const [exchange, setExchange] = useState<{
+    checkoutId: string;
+    creditMinor: number;
+    orderNumber: string;
+  } | null>(null);
+  const [exchangeNotice, setExchangeNotice] = useState("");
+  const [exchangeOutcome, setExchangeOutcome] =
+    useState<ExchangeOutcome | null>(null);
+
+  // /pos/sell?exchange=<old checkout id>, opened after a return.
+  useEffect(() => {
+    const oldCheckoutId = exchangeCheckoutIdFrom(window.location.search);
+    if (!oldCheckoutId) return;
+    if (!canExchange) {
+      setExchangeNotice(
+        "বদল (Exchange) শুধু Owner/Admin/Manager করতে পারেন। এটা সাধারণ বিক্রি হিসেবে চলবে।",
+      );
+      return;
+    }
+    void client
+      .getPosReturns(oldCheckoutId)
+      .then((result) => {
+        const creditMinor = result.data.refundableMinor ?? 0;
+        if (creditMinor <= 0) {
+          setExchangeNotice(
+            `বিল ${result.data.orderNumber}-এ ফেরতের কোনো ক্রেডিট বাকি নেই। আগে সেই বিল থেকে মাল Return করুন।`,
+          );
+          return;
+        }
+        setExchange({
+          checkoutId: oldCheckoutId,
+          creditMinor,
+          orderNumber: result.data.orderNumber,
+        });
+      })
+      .catch(() =>
+        setExchangeNotice("পুরনো বিল খুঁজে পাওয়া যায়নি; এটা সাধারণ বিক্রি।"),
+      );
+  }, [canExchange]);
+
+  const exchangeSplit = exchange
+    ? splitExchange(exchange.creditMinor, afterItemDiscountMinor)
+    : null;
+
+  function cancelExchange() {
+    setExchange(null);
+    setExchangeNotice("");
+    window.history.replaceState(null, "", "/pos/sell");
+  }
 
   const loadCart = useCallback(async (cartId: string) => {
     setCartLoading(true);
@@ -319,6 +377,36 @@ function ActivePosSale({
         expectedVersion: cart.version,
         idempotencyKey: attempt.idempotencyKey,
       });
+      if (exchange) {
+        // The credit paid for this sale as cash; give it back on the old
+        // sale as a cash refund so the drawer only moves by the difference.
+        const { giveBackMinor } = splitExchange(
+          exchange.creditMinor,
+          result.data.totalMinor,
+        );
+        const outcome: ExchangeOutcome = {
+          creditMinor: exchange.creditMinor,
+          error: null,
+          giveBackMinor,
+          oldCheckoutId: exchange.checkoutId,
+          oldOrderNumber: exchange.orderNumber,
+          refundReceiptNumber: null,
+        };
+        try {
+          const refund = await client.createPosRefund({
+            checkoutId: exchange.checkoutId,
+            idempotencyKey: exchangeRefundKey(result.data.id),
+            refunds: [{ amountMinor: exchange.creditMinor, method: "CASH" }],
+          });
+          outcome.refundReceiptNumber = refund.data.refund.receiptNumber;
+        } catch (reason) {
+          outcome.error =
+            reason instanceof Error ? reason.message : "Refund failed.";
+        }
+        setExchangeOutcome(outcome);
+        setExchange(null);
+        window.history.replaceState(null, "", "/pos/sell");
+      }
       setCheckout(result.data);
       setPaymentOpen(false);
       setNotice("Sale completed.");
@@ -356,6 +444,7 @@ function ActivePosSale({
       setSelectedSessionId(next.id);
       setCart(nextCart);
       setCheckout(null);
+      setExchangeOutcome(null);
       setItemDiscounts({});
       setNotice("New sale ready.");
     } catch (reason) {
@@ -370,6 +459,7 @@ function ActivePosSale({
       <SaleSuccess
         canReadReceipt={canReadReceipt}
         checkout={checkout}
+        exchange={exchangeOutcome}
         onNextSale={() => void startNextSale()}
         preparationError={nextSaleError}
         preparingNext={preparingNext}
@@ -391,6 +481,30 @@ function ActivePosSale({
           </div>
         ) : null}
       </header>
+      {exchange ? (
+        <section aria-live="polite" className="pos-exchange-banner">
+          <div>
+            <strong>বদল (Exchange) চলছে</strong>
+            <span>
+              পুরনো বিল {exchange.orderNumber} থেকে ফেরতের ক্রেডিট{" "}
+              {formatBdt(exchange.creditMinor)}। নতুন মাল scan করুন — কাস্টমার
+              শুধু দামের পার্থক্য দেবেন, বেশি হলে বাকিটা ফেরত পাবেন।
+            </span>
+          </div>
+          <button
+            className="pos-sale-secondary"
+            disabled={submitting}
+            onClick={cancelExchange}
+            type="button"
+          >
+            সাধারণ বিক্রি করুন
+          </button>
+        </section>
+      ) : exchangeNotice ? (
+        <p className="pos-form-error" role="status">
+          {exchangeNotice}
+        </p>
+      ) : null}
       <div aria-live="polite" className="pos-sale-announcer">
         {notice ? <p className="pos-notice">{notice}</p> : null}
         {error ? (
@@ -445,6 +559,7 @@ function ActivePosSale({
                 <PaymentPanel
                   canApproveDue={permissions.includes("PAYMENT:APPROVE")}
                   canDiscount={canDiscount}
+                  exchangeCreditMinor={exchange?.creditMinor ?? 0}
                   onCancel={() => !submitting && setPaymentOpen(false)}
                   onComplete={(input) => void completeSale(input)}
                   submitting={submitting}
@@ -511,6 +626,31 @@ function ActivePosSale({
                         <dt>Total</dt>
                         <dd>{formatBdt(afterItemDiscountMinor)}</dd>
                       </div>
+                      {exchangeSplit ? (
+                        <>
+                          <div>
+                            <dt>বদলের ক্রেডিট</dt>
+                            <dd>
+                              −{formatBdt(exchangeSplit.appliedCreditMinor)}
+                            </dd>
+                          </div>
+                          <div className="pos-order-total">
+                            {exchangeSplit.giveBackMinor > 0 ? (
+                              <>
+                                <dt>কাস্টমারকে ফেরত</dt>
+                                <dd>{formatBdt(exchangeSplit.giveBackMinor)}</dd>
+                              </>
+                            ) : (
+                              <>
+                                <dt>কাস্টমার দেবেন</dt>
+                                <dd>
+                                  {formatBdt(exchangeSplit.customerPaysMinor)}
+                                </dd>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      ) : null}
                     </dl>
                     <p>
                       The final amount is confirmed when you complete the sale.

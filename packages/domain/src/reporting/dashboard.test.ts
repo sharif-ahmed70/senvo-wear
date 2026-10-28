@@ -102,6 +102,7 @@ describe("dashboard period", () => {
             productCode: "PAN-0001",
             productId: "11111111-1111-4111-8111-111111111111",
             quantity: 3,
+            returnedQuantity: 0,
             revenueMinor: 24_000,
             uncostedRevenueMinor: 20_000,
           },
@@ -113,6 +114,7 @@ describe("dashboard period", () => {
             productCode: "SHI-0001",
             productId: "22222222-2222-4222-8222-222222222222",
             quantity: 2,
+            returnedQuantity: 0,
             revenueMinor: 6_000,
             uncostedRevenueMinor: 0,
           },
@@ -156,6 +158,76 @@ describe("dashboard period", () => {
     expect(summary.daily).toEqual([
       { date: "2026-10-20", profitMinor: 0, salesMinor: 0 },
       { date: "2026-10-21", profitMinor: 4_000, salesMinor: 30_000 },
+    ]);
+  });
+
+  it("takes a return off the profit of the day it came back", () => {
+    // Shoe sold on 20th (1 480, cost 975), returned on 21st; a shirt sold
+    // on 21st (400, cost 241) as the exchange.
+    const summary = summarizePeriod(
+      dashboardRange("2026-10-21", { from: "2026-10-20", to: "2026-10-21" }),
+      {
+        channels: [],
+        daily: [
+          {
+            costMinor: 97_500,
+            costedSalesMinor: 148_000,
+            date: "2026-10-20",
+            saleCount: 1,
+            salesMinor: 148_000,
+          },
+          {
+            costMinor: 24_100 - 97_500,
+            costedSalesMinor: 40_000 - 148_000,
+            date: "2026-10-21",
+            saleCount: 1,
+            salesMinor: 40_000,
+          },
+        ],
+        productProfits: [
+          {
+            costMinor: 0,
+            costedRevenueMinor: 0,
+            extraCostMinor: 0,
+            name: "Shoe",
+            productCode: "SPO-0002",
+            productId: "11111111-1111-4111-8111-111111111111",
+            quantity: 0,
+            returnedQuantity: 1,
+            revenueMinor: 0,
+            uncostedRevenueMinor: 0,
+          },
+          {
+            costMinor: 24_100,
+            costedRevenueMinor: 40_000,
+            extraCostMinor: 1_100,
+            name: "Shirt",
+            productCode: "SHI-0001",
+            productId: "22222222-2222-4222-8222-222222222222",
+            quantity: 1,
+            returnedQuantity: 0,
+            revenueMinor: 40_000,
+            uncostedRevenueMinor: 0,
+          },
+        ],
+        refundsMinor: 0,
+        topProducts: [],
+        uncostedSalesMinor: 0,
+      },
+    );
+    // Only the exchanged shirt's profit is left.
+    expect(summary.profitMinor).toBe(15_900);
+    expect(summary.daily).toEqual([
+      { date: "2026-10-20", profitMinor: 50_500, salesMinor: 148_000 },
+      { date: "2026-10-21", profitMinor: -34_600, salesMinor: 40_000 },
+    ]);
+    expect(summary.productProfits).toEqual([
+      expect.objectContaining({ name: "Shirt", profitMinor: 15_900 }),
+      expect.objectContaining({
+        name: "Shoe",
+        profitMinor: 0,
+        returnedQuantity: 1,
+      }),
     ]);
   });
 });

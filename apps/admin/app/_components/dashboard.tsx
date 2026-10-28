@@ -324,7 +324,8 @@ export function AdminDashboard({
                 <MetricCard
                   className={styles.productRow}
                   href={product.href}
-                  key={product.label}
+                  // Two products can share a name; the link holds the id.
+                  key={product.href ?? `${product.label}-${index}`}
                 >
                   <span className={styles.productThumb} aria-hidden="true">
                     <span>{String(index + 1).padStart(2, "0")}</span>

@@ -21,15 +21,27 @@ const statusLabels = {
   UNRECORDED: "Payment not recorded",
 } as const;
 
+/** How the old sale's side of an exchange ended. */
+export type ExchangeOutcome = {
+  creditMinor: number;
+  error: string | null;
+  giveBackMinor: number;
+  oldCheckoutId: string;
+  oldOrderNumber: string;
+  refundReceiptNumber: string | null;
+};
+
 export function SaleSuccess({
   canReadReceipt,
   checkout,
+  exchange,
   onNextSale,
   preparationError,
   preparingNext,
 }: {
   canReadReceipt: boolean;
   checkout: PosCheckoutContract;
+  exchange?: ExchangeOutcome | null;
   onNextSale: () => void;
   preparationError: FriendlyPosError | null;
   preparingNext: boolean;
@@ -59,6 +71,29 @@ export function SaleSuccess({
             <small>{statusLabels[checkout.paymentStatus]}</small>
           </div>
         </header>
+
+        {exchange ? (
+          exchange.error ? (
+            <p className="pos-form-error" role="alert">
+              বদলের নতুন বিক্রি হয়েছে, কিন্তু পুরনো বিল {exchange.oldOrderNumber}
+              -এ {formatBdt(exchange.creditMinor)} ফেরত লেখা যায়নি:{" "}
+              {exchange.error}{" "}
+              <Link href={`/pos/checkouts/${exchange.oldCheckoutId}`}>
+                পুরনো বিল খুলে Refund-এ {formatBdt(exchange.creditMinor)} Cash
+                দিন
+              </Link>
+            </p>
+          ) : (
+            <p className="pos-notice" role="status">
+              বদল সম্পূর্ণ: পুরনো বিল {exchange.oldOrderNumber}-এর{" "}
+              {formatBdt(exchange.creditMinor)} এই বিক্রিতে ধরা হয়েছে (Refund{" "}
+              {exchange.refundReceiptNumber}).
+              {exchange.giveBackMinor > 0
+                ? ` কাস্টমারকে ফেরত দিন ${formatBdt(exchange.giveBackMinor)}।`
+                : ""}
+            </p>
+          )
+        ) : null}
 
         <section
           className="pos-success-facts"

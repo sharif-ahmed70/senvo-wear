@@ -33,6 +33,13 @@ import { ValidationApplicationError } from "../errors.js";
  *   average cost. Lines without any known cost are left out of profit and
  *   reported as `uncostedSalesMinor`. Profit = costed line revenue - cost; it
  *   ignores order-level delivery fees and refunds.
+ * - Returns: a POS sale return line counts against the business day it was
+ *   returned (`returned_at`), not the day of the sale: its credit is taken
+ *   off line revenue and returned quantity x the sale line's unit cost (the
+ *   cost snapshot, else the current moving average) off cost. An exchange is
+ *   a return plus a new sale, so only the new item's profit remains. Sales
+ *   totals and counts stay gross; with returns, cost and uncosted revenue of
+ *   a period can be negative.
  * - Profit by product: the same sale lines and cost rule as the period
  *   profit, grouped by product, so the rows add up to the period totals.
  *   Ranked by profit, at most DASHBOARD_PRODUCT_PROFIT_LIMIT products. The
@@ -265,6 +272,8 @@ export type DashboardProductProfit = {
   quantity: number;
   /** Revenue of all its sale lines. */
   revenueMinor: number;
+  /** Pieces returned in the period (already taken off `quantity`). */
+  returnedQuantity: number;
   /** Revenue of lines without any known cost (left out of profit). */
   uncostedRevenueMinor: number;
 };

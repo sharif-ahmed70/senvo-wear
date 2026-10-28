@@ -5376,7 +5376,8 @@ export const dashboardSummaryContractSchema = z
                 })
                 .strict(),
             ),
-            costMinor: dashboardMinorSchema,
+            /** Net of returns in the period, so it can be negative. */
+            costMinor: z.number().int(),
             daily: z
               .array(
                 z
@@ -5390,21 +5391,27 @@ export const dashboardSummaryContractSchema = z
               .max(366),
             from: calendarDateSchema,
             previousSalesMinor: dashboardMinorSchema,
-            /** Per product, ranked by profit; adds up to the totals. */
+            /**
+             * Per product, ranked by profit; adds up to the totals. Sales
+             * minus returns in the period, so amounts can be negative.
+             */
             productProfits: z
               .array(
                 z
                   .object({
-                    costMinor: dashboardMinorSchema,
+                    costMinor: z.number().int(),
                     /** Transport/labour part of costMinor. */
-                    extraCostMinor: dashboardMinorSchema,
+                    extraCostMinor: z.number().int(),
                     name: z.string(),
                     productCode: z.string(),
                     productId: idSchema,
                     profitMinor: z.number().int(),
-                    quantity: dashboardCountSchema,
-                    revenueMinor: dashboardMinorSchema,
-                    uncostedRevenueMinor: dashboardMinorSchema,
+                    /** Pieces sold minus pieces returned. */
+                    quantity: z.number().int(),
+                    /** Pieces returned in the period. */
+                    returnedQuantity: dashboardCountSchema,
+                    revenueMinor: z.number().int(),
+                    uncostedRevenueMinor: z.number().int(),
                   })
                   .strict(),
               )
@@ -5426,7 +5433,8 @@ export const dashboardSummaryContractSchema = z
                   .strict(),
               )
               .max(5),
-            uncostedSalesMinor: dashboardMinorSchema,
+            /** Net of returns in the period, so it can be negative. */
+            uncostedSalesMinor: z.number().int(),
           })
           .strict(),
         refundsTodayMinor: dashboardMinorSchema,

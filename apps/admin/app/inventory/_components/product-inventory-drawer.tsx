@@ -19,6 +19,7 @@ import {
   PackageCheck,
   PackagePlus,
   Palette,
+  Pencil,
   RefreshCw,
   ScanBarcode,
   SlidersHorizontal,
@@ -432,6 +433,25 @@ export function ProductInventoryDrawer({
             </div>
 
             <div className={styles.quickActionButtonsGrid}>
+              {/* Name, category, price, colours/sizes: fixed on the catalog page. */}
+              <Link
+                className={styles.actionBtnSecondary}
+                href={`/catalog/products/${encodeURIComponent(item.product.id)}`}
+              >
+                <Pencil size={16} />
+                <span>নাম / Category / দাম ঠিক করুন (Edit)</span>
+                <ArrowRight size={14} />
+              </Link>
+              {canCreate ? (
+                <Link
+                  className={styles.actionBtnSecondary}
+                  href="/inventory/adjustment"
+                >
+                  <SlidersHorizontal size={16} />
+                  <span>পিসের সংখ্যা ভুল? Stock Adjustment</span>
+                  <ArrowRight size={14} />
+                </Link>
+              ) : null}
               {canCreate ? (
                 <>
                   <Link

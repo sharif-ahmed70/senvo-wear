@@ -72,6 +72,28 @@ did not take on this unit, so receipts use "SENVO Receipt (Label mode)".
    there): per product pieces, sales, supplier price, extra cost
    (transport/labour, shown apart so the supplier price stays recognisable),
    profit and margin; rows add up to the Profit card. Owner/admin only.
+8. **Returns and exchanges** (guide: `docs/RETURNS_EXCHANGE_BN.md`): a POS
+   return counts against the day it came back (credit off sales, returned
+   quantity x the sale line's unit cost off cost) in the Profit card and
+   Profit by product ("ফেরত (পিস)" column). Exchange: after a return, "বদলে
+   নতুন মাল দিন" opens New Sale with the return credit; the customer pays only
+   the difference and the credit is refunded in cash on the old sale.
+
+## Return Hold location (database, not in git)
+
+POS returns need an active, non-sellable `RETURN_HOLD` stock location, and no
+screen creates one. On the shop laptop it was added on 2026-10-26 as
+"Return Hold" (`LOCAL-RETURN`) in the same branch as Main Stock:
+
+```sql
+INSERT INTO stock_locations (id, organization_id, branch_id, name, code, type,
+  status, is_sellable, created_at, updated_at, version)
+SELECT gen_random_uuid(), s.organization_id, s.branch_id, 'Return Hold',
+  'LOCAL-RETURN', 'RETURN_HOLD', 'ACTIVE', false, now(), now(), 1
+FROM stock_locations s
+WHERE s.code = 'LOCAL-MAIN'
+  AND NOT EXISTS (SELECT 1 FROM stock_locations WHERE type = 'RETURN_HOLD');
+```
 
 ## Data correction (database, not in git)
 
