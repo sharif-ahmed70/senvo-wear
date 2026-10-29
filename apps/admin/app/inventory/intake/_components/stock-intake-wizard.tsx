@@ -2,7 +2,6 @@
 
 import {
   AlertCircle,
-  ArrowLeft,
   LoaderCircle,
   ShieldAlert,
 } from "lucide-react";
@@ -15,6 +14,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
+import { usePageDraft } from "../../../_lib/page-draft";
 import { useAdminPermissions, useAdminSession } from "../../../admin-shell";
 import {
   canRecordStockIntake,
@@ -94,7 +94,7 @@ export function StockIntakeWizard({
     "PROCUREMENT:UPDATE",
   );
   const uid = useId();
-  const [tab, setTab] = useState<Tab>("new");
+  const [tab, setTab] = usePageDraft<Tab>("intake-tab", "new");
   const [references, setReferences] = useState<IntakeReferences | null>(
     initialReferences ?? null,
   );
@@ -110,7 +110,7 @@ export function StockIntakeWizard({
     } else if (new URLSearchParams(window.location.search).get("tab") === "restock") {
       setTab("restock");
     }
-  }, []);
+  }, [setTab]);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -136,9 +136,6 @@ export function StockIntakeWizard({
   return (
     <main className={styles.page}>
       <div className={styles.topline}>
-        <Link className={styles.backLink} href="/inventory">
-          <ArrowLeft aria-hidden="true" size={15} /> Inventory
-        </Link>
         <Link className={styles.backLink} href="/catalog/products/new">
           শুধু Product তৈরি (stock ছাড়া)
         </Link>

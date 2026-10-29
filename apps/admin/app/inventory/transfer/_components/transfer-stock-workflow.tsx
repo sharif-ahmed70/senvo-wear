@@ -43,6 +43,11 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "../../receive/_components/receive-stock-workflow.module.css";
+import {
+  clearPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -86,20 +91,31 @@ export function TransferStockWorkflow({
   const canCreateInventory = permissions.includes("INVENTORY:CREATE");
   const canReadCatalog = permissions.includes("CATALOG:READ");
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = usePageDraft<Step>("step", 1, (kept) =>
+    kept === 4 ? undefined : kept,
+  );
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const [products, setProducts] = useState<ProductContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
-  const [sourceLocationId, setSourceLocationId] = useState("");
-  const [destinationLocationId, setDestinationLocationId] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [sourceLocationId, setSourceLocationId] = usePageDraft(
+    "source-location-id",
+    "",
+  );
+  const [destinationLocationId, setDestinationLocationId] = usePageDraft(
+    "destination-location-id",
+    "",
+  );
+  const [selectedProductId, setSelectedProductId] = usePageDraft(
+    "selected-product-id",
+    "",
+  );
   const [productDetails, setProductDetails] =
     useState<ProductDetailsContract | null>(null);
-  const [productQuery, setProductQuery] = useState("");
+  const [productQuery, setProductQuery] = usePageDraft("product-query", "");
   const [scanValue, setScanValue] = useState("");
-  const [lines, setLines] = useState<TransferLine[]>([]);
-  const [note, setNote] = useState("");
+  const [lines, setLines] = usePageDraft<TransferLine[]>("lines", []);
+  const [note, setNote] = usePageDraft("note", "");
   const [loading, setLoading] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [addingVariantId, setAddingVariantId] = useState("");
@@ -112,6 +128,10 @@ export function TransferStockWorkflow({
     useState<InventoryMovementContract | null>(null);
   const [postedMovement, setPostedMovement] =
     useState<InventoryMovementContract | null>(null);
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (postedMovement) clearPageDraft();
+  }, [postedMovement]);
   const [transferId, setTransferId] = useState(() => crypto.randomUUID());
 
   const loadFoundation = useCallback(async () => {
@@ -151,7 +171,12 @@ export function TransferStockWorkflow({
     } finally {
       setLoading(false);
     }
-  }, [canReadCatalog, canReadInventory]);
+  }, [
+    canReadCatalog,
+    canReadInventory,
+    setDestinationLocationId,
+    setSourceLocationId,
+  ]);
 
   useEffect(() => {
     void loadFoundation();
@@ -482,6 +507,7 @@ export function TransferStockWorkflow({
   }
 
   function resetTransfer() {
+    resumePageDraft();
     setStep(1);
     setLines([]);
     setNote("");
@@ -521,9 +547,6 @@ export function TransferStockWorkflow({
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <div>
-          <Link className={styles.backLink} href="/inventory">
-            <ArrowLeft size={14} /> Inventory
-          </Link>
           <p className={styles.eyebrow}>Location-to-location movement</p>
           <h1>Transfer Stock</h1>
           <p>

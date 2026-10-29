@@ -9,6 +9,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { canAccessPath, type AdminSession } from "../_lib/admin-access";
 import { AdminNavigation } from "./admin-navigation";
+import { PageBackBar } from "./page-back-bar";
 import styles from "./admin-shell.module.css";
 
 export function AdminAppFrame({
@@ -99,7 +100,10 @@ export function AdminAppFrame({
             </div>
           </div>
         </header>
-        <div className={`${styles.content} admin-content`}>{children}</div>
+        <div className={`${styles.content} admin-content`}>
+          <PageBackBar />
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -209,7 +209,7 @@ describe("PurchaseHistoryWorkspace List Rendering", () => {
 });
 
 describe("PurchaseHistoryWorkspace Detail View", () => {
-  it("renders purchase detail with line items and back link", () => {
+  it("renders purchase detail with line items", () => {
     const html = renderToStaticMarkup(
       <PurchaseHistoryWorkspace
         initialPurchase={mockDraftPurchase}
@@ -220,7 +220,6 @@ describe("PurchaseHistoryWorkspace Detail View", () => {
     );
 
     expect(html).toContain("ক্রয় আদেশ: PO-20260927-001");
-    expect(html).toContain("সকল ক্রয় তালিকায় ফিরে যান");
     expect(html).toContain("Signature Heavyweight Tee");
     expect(html).toContain("SHT-BLK-M");
     expect(html).toContain("Black / M");

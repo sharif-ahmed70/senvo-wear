@@ -29,6 +29,7 @@ import {
 } from "react";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
+import { usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -63,10 +64,10 @@ export function SalesOrdersWorkspace({
 }
 
 function SalesOrderList() {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [channel, setChannel] = useState("");
-  const [filters, setFilters] = useState({
+  const [search, setSearch] = usePageDraft("search", "");
+  const [status, setStatus] = usePageDraft("status", "");
+  const [channel, setChannel] = usePageDraft("channel", "");
+  const [filters, setFilters] = usePageDraft("filters", {
     channel: "",
     search: "",
     status: "",

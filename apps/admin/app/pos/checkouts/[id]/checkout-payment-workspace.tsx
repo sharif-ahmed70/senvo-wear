@@ -6,7 +6,6 @@ import type {
   PosCheckoutContract,
 } from "@senvo/contracts";
 import {
-  ArrowLeft,
   Banknote,
   CheckCircle2,
   CircleAlert,
@@ -238,15 +237,6 @@ export function CheckoutPaymentWorkspace({
 
   return (
     <main className={styles.page}>
-      <div className={styles.breadcrumbs}>
-        <Link href="/pos/checkouts">
-          <ArrowLeft aria-hidden="true" size={15} />
-          Checkout History
-        </Link>
-        <span aria-hidden="true">/</span>
-        <strong>Payment details</strong>
-      </div>
-
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>Checkout payment</span>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { PurchaseContract, SupplierContract } from "@senvo/contracts";
-import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
+import { LoaderCircle, Save } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AdminApiClient, AdminApiError } from "../../../../_lib/api-client";
@@ -108,15 +108,6 @@ export function PurchaseExtraCostEditor({ purchaseId }: { purchaseId: string }) 
 
   return (
     <main className={styles.page}>
-      <div className={styles.topline}>
-        <Link className={styles.backLink} href={`/procurement/purchases/${purchaseId}`}>
-          <ArrowLeft aria-hidden="true" size={15} /> Purchase
-        </Link>
-        <Link className={styles.backLink} href="/inventory">
-          Inventory
-        </Link>
-      </div>
-
       <header className={styles.hero}>
         <div>
           <p className={styles.eyebrow}>মাল তোলার এন্ট্রি · এডিট</p>

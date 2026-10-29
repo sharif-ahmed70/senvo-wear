@@ -29,6 +29,7 @@ import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./supplier-workspace.module.css";
+import { usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient();
 
@@ -133,10 +134,10 @@ export function SupplierListPanel({
   );
   const [error, setError] = useState(initialError ?? "");
   const [successMessage, setSuccessMessage] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
+  const [searchQuery, setSearchQuery] = usePageDraft("search-query", "");
+  const [statusFilter, setStatusFilter] = usePageDraft<
     "ALL" | "ACTIVE" | "INACTIVE"
-  >("ALL");
+  >("status-filter", "ALL");
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] =

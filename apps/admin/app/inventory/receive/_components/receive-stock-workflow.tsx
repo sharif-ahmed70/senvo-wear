@@ -50,6 +50,11 @@ import {
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./receive-stock-workflow.module.css";
 import { canReceiveStock, ReceiptAttempt } from "../_lib/receipt-attempt";
+import {
+  clearPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -79,19 +84,27 @@ export function ReceiveStockWorkflow({
   const canReceive = canReceiveStock(permissions);
   const canReadCatalog = permissions.includes("CATALOG:READ");
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = usePageDraft<Step>("step", 1, (kept) =>
+    kept === 4 ? undefined : kept,
+  );
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const [products, setProducts] = useState<ProductContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
-  const [selectedLocationId, setSelectedLocationId] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = usePageDraft(
+    "selected-location-id",
+    "",
+  );
+  const [selectedProductId, setSelectedProductId] = usePageDraft(
+    "selected-product-id",
+    "",
+  );
   const [productDetails, setProductDetails] =
     useState<ProductDetailsContract | null>(null);
-  const [productQuery, setProductQuery] = useState("");
+  const [productQuery, setProductQuery] = usePageDraft("product-query", "");
   const [scanValue, setScanValue] = useState("");
-  const [lines, setLines] = useState<ReceiptLine[]>([]);
-  const [note, setNote] = useState("");
+  const [lines, setLines] = usePageDraft<ReceiptLine[]>("lines", []);
+  const [note, setNote] = usePageDraft("note", "");
   const [loading, setLoading] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -103,6 +116,10 @@ export function ReceiveStockWorkflow({
     useState<InventoryMovementContract | null>(null);
   const [postedMovement, setPostedMovement] =
     useState<InventoryMovementContract | null>(null);
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (postedMovement) clearPageDraft();
+  }, [postedMovement]);
   const [receiptId, setReceiptId] = useState(() => crypto.randomUUID());
   const attempt = useRef<ReceiptAttempt | null>(null);
   const [attemptLocked, setAttemptLocked] = useState(false);
@@ -139,7 +156,7 @@ export function ReceiveStockWorkflow({
     } finally {
       setLoading(false);
     }
-  }, [canReadCatalog, canReceive]);
+  }, [canReadCatalog, canReceive, setSelectedLocationId]);
 
   useEffect(() => {
     void loadFoundation();
@@ -347,6 +364,7 @@ export function ReceiveStockWorkflow({
   }
 
   function resetReceipt() {
+    resumePageDraft();
     attempt.current = null;
     setAttemptLocked(false);
     setStep(1);
@@ -388,9 +406,6 @@ export function ReceiveStockWorkflow({
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <div>
-          <Link className={styles.backLink} href="/inventory">
-            <ArrowLeft size={14} /> Inventory
-          </Link>
           <p className={styles.eyebrow}>Incoming stock</p>
           <h1>Receive Stock</h1>
           <p>

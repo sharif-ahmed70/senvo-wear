@@ -15,6 +15,7 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./checkout-history-workspace.module.css";
+import { usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -80,11 +81,14 @@ function CheckoutHistoryContent({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState<
+  const [query, setQuery] = usePageDraft("query", "");
+  const [paymentStatus, setPaymentStatus] = usePageDraft<
     "ALL" | PosCheckoutContract["paymentStatus"]
-  >("ALL");
-  const [dueFilter, setDueFilter] = useState<"ALL" | "DUE" | "CLEAR">("ALL");
+  >("payment-status", "ALL");
+  const [dueFilter, setDueFilter] = usePageDraft<"ALL" | "DUE" | "CLEAR">(
+    "due-filter",
+    "ALL",
+  );
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (mode === "initial") setLoading(true);

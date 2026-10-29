@@ -4,6 +4,11 @@ import { ImagePlus, Trash2, Upload } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AdminApiError } from "../../../_lib/api-client";
+import {
+  clearPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
 import { parseTaka } from "../_lib/currency-math";
 import {
   blankPrices,
@@ -87,22 +92,31 @@ export function NewProductIntake({
 }) {
   const uid = useId();
   const original = edit?.original;
-  const [step, setStep] = useState(0);
-  const [product, setProduct] = useState<ProductDraft>(
+  // Kept for the tab: Back (or leaving and coming back) shows it again.
+  const [step, setStep] = usePageDraft("new-step", 0);
+  const [product, setProduct] = usePageDraft<ProductDraft>(
+    "new-product",
     original?.product ?? blankProduct,
   );
-  const [grid, setGrid] = useState<QuantityGrid>(
+  const [grid, setGrid] = usePageDraft<QuantityGrid>(
+    "new-grid",
     original?.grid ?? {
       colors: [],
       sizes: [],
       sizesCustomized: false,
     },
   );
-  const [prices, setPrices] = useState(original?.prices ?? blankPrices);
-  const [purchase, setPurchase] = useState(
+  const [prices, setPrices] = usePageDraft(
+    "new-prices",
+    original?.prices ?? blankPrices,
+  );
+  const [purchase, setPurchase] = usePageDraft(
+    "new-purchase",
     () =>
       original?.purchase ??
       blankPurchase(references.locations.map((location) => location.id)),
+    // A chosen memo photo cannot be kept; it is picked again.
+    (kept) => ({ ...kept, memoFile: null }),
   );
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
@@ -114,6 +128,10 @@ export function NewProductIntake({
     status: "none",
   });
   const submission = useIntakeSubmission();
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (submission.result || editResult) clearPageDraft();
+  }, [editResult, submission.result]);
 
   const lines = useMemo(
     () => linesFromGrid(grid, original?.existing),
@@ -125,7 +143,7 @@ export function NewProductIntake({
     if (!original) return;
     const next = fillAddedLinePrices(lines, prices, filledKeys.current);
     if (next) setPrices(next);
-  }, [lines, original, prices]);
+  }, [lines, original, prices, setPrices]);
   const editChanges = useMemo(
     () =>
       original
@@ -295,6 +313,7 @@ export function NewProductIntake({
     );
     setErrors({});
     submission.reset();
+    resumePageDraft();
     setStep(0);
   }
 

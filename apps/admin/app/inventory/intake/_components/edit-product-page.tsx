@@ -1,7 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, LoaderCircle } from "lucide-react";
-import Link from "next/link";
+import { AlertCircle, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminPermissions } from "../../../admin-shell";
 import { readErrorMessage } from "../_lib/intake-support";
@@ -85,12 +84,6 @@ export function EditProductPage() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.topline}>
-        <Link className={styles.backLink} href="/inventory">
-          <ArrowLeft aria-hidden="true" size={15} /> Inventory
-        </Link>
-      </div>
-
       <header className={styles.hero}>
         <div>
           <p className={styles.eyebrow}>Inventory · Edit</p>

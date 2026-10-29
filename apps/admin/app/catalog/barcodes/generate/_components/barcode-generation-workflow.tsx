@@ -40,6 +40,7 @@ import { useAdminPermissions } from "../../../../admin-shell";
 import { ProductThumb } from "../../../../_components/product-thumb";
 import styles from "./barcode-generation.module.css";
 import { BarcodeLabelSheet } from "../../_components/barcode-label-sheet";
+import { usePageDraft } from "../../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -104,24 +105,30 @@ export function BarcodeGenerationWorkflow({
   const [products, setProducts] = useState<ProductContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedProductId, setSelectedProductId] = usePageDraft(
+    "selected-product-id",
+    "",
+  );
   const [, setDetails] = useState<ProductDetailsContract | null>(null);
   const [rows, setRows] = useState<VariantBarcodeState[]>([]);
   const [selectedVariantIds, setSelectedVariantIds] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<CandidateBarcode[]>([]);
   const [generated, setGenerated] = useState<GeneratedBarcode[]>([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = usePageDraft("query", "");
   const [loading, setLoading] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [printSettings, setPrintSettings] = useState<PrintSettings>({
-    copies: 1,
-    labelSize: "40x30",
-    showProduct: true,
-    showSku: true,
-  });
+  const [printSettings, setPrintSettings] = usePageDraft<PrintSettings>(
+    "print-settings",
+    {
+      copies: 1,
+      labelSize: "40x30",
+      showProduct: true,
+      showSku: true,
+    },
+  );
 
   const colorNames = useMemo(
     () => new Map(colors.map((color) => [color.id, color.name])),
@@ -162,7 +169,7 @@ export function BarcodeGenerationWorkflow({
     } finally {
       setLoading(false);
     }
-  }, [requestedProductId]);
+  }, [requestedProductId, setSelectedProductId]);
 
   const loadProduct = useCallback(
     async (productId: string) => {

@@ -7,7 +7,6 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   ArrowRightLeft,
   Boxes,
@@ -226,9 +225,6 @@ export function MovementDetailWorkspace({
           </p>
         </div>
         <div className={styles.headerActions}>
-          <Link className={styles.secondaryButton} href="/inventory/movements">
-            <ArrowLeft size={16} /> Back to movements
-          </Link>
           {movement ? (
             <button
               className={styles.exportButton}

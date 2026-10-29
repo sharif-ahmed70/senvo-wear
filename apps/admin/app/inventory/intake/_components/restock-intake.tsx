@@ -27,6 +27,12 @@ import {
 import { OWNER_ONLY_MESSAGE, readErrorMessage } from "../_lib/intake-support";
 import { restockSetupFrom, type RestockSetup } from "../_lib/restock";
 import {
+  clearPageDraft,
+  readPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
+import {
   CountBadge,
   FieldMessage,
   invalidProps,
@@ -87,8 +93,11 @@ export function RestockIntake({
   start?: RestockStart | null;
 }) {
   const uid = useId();
-  const [step, setStep] = useState(0);
-  const [query, setQuery] = useState("");
+  // Kept for the tab: Back (or leaving and coming back) shows it again.
+  // The kept step is shown only once its product has loaded again.
+  const [keptStep] = useState(() => readPageDraft<number>("restock-step") ?? 0);
+  const [step, setStep] = usePageDraft("restock-step", 0, () => 0);
+  const [query, setQuery] = usePageDraft("restock-query", "");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [results, setResults] = useState<
@@ -96,17 +105,30 @@ export function RestockIntake({
   >(null);
   const [loadingId, setLoadingId] = useState("");
   const [selected, setSelected] = useState<Selected | null>(null);
-  const [grid, setGrid] = useState<QuantityGrid>(emptyGrid);
-  const [showAdd, setShowAdd] = useState(false);
-  const [prices, setPrices] = useState(blankPrices);
-  const [purchase, setPurchase] = useState(() =>
-    blankPurchase(references.locations.map((location) => location.id)),
+  const [grid, setGrid] = usePageDraft<QuantityGrid>("restock-grid", emptyGrid);
+  const [showAdd, setShowAdd] = usePageDraft("restock-show-add", false);
+  const [prices, setPrices] = usePageDraft("restock-prices", blankPrices);
+  const [purchase, setPurchase] = usePageDraft(
+    "restock-purchase",
+    () => blankPurchase(references.locations.map((location) => location.id)),
+    // A chosen memo photo cannot be kept; it is picked again.
+    (kept) => ({ ...kept, memoFile: null }),
   );
+  // The chosen product is loaded again from the server when coming back.
+  const [picked, setPicked] = usePageDraft<{
+    code: string;
+    id: string;
+  } | null>("restock-picked", null);
+  const kept = useRef({ grid, picked, prices, showAdd });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [lastCosts, setLastCosts] = useState<
     ReadonlyMap<string, VariantLastPurchaseCostContract>
   >(new Map());
   const submission = useIntakeSubmission();
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (submission.result) clearPageDraft();
+  }, [submission.result]);
   const selectedProductId = selected?.summary.product.id ?? "";
 
   // Show the previous purchase price next to each existing size.
@@ -181,6 +203,7 @@ export function RestockIntake({
       const variants = await intakeClient.listVariants(summary.product.id);
       const setup = restockSetupFrom(summary, variants.data, references.sizes);
       setSelected({ ...setup, summary });
+      setPicked({ code: summary.product.productCode, id: summary.product.id });
       setGrid(setup.grid);
       setShowAdd(setup.grid.colors.length === 0);
       setPrices(blankPrices);
@@ -195,25 +218,41 @@ export function RestockIntake({
   }
 
   // Opened from a product's "নতুন রং/size" or "আবার মাল এলো" button.
+  // Coming back to a half-done entry opens the same product again.
   const started = useRef("");
   useEffect(() => {
-    if (!start || started.current === start.productId) return;
-    started.current = start.productId;
-    setQuery(start.productCode);
+    const before = kept.current;
+    const resume =
+      before.picked && (!start || start.productId === before.picked.id)
+        ? before.picked
+        : null;
+    if (!resume && !start) return;
+    const productId = resume?.id ?? start?.productId ?? "";
+    const productCode = resume?.code ?? start?.productCode ?? "";
+    if (started.current === productId) return;
+    started.current = productId;
+    setQuery(productCode);
     void (async () => {
       setSearching(true);
       try {
         const page = await intakeClient.listInventoryProducts({
           pageSize: 20,
-          search: start.productCode.slice(0, 120),
+          search: productCode.slice(0, 120),
         });
         setResults(page.data.items);
         const match = page.data.items.find(
-          (item) => item.product.id === start.productId,
+          (item) => item.product.id === productId,
         );
         if (match && (await choose(match))) {
-          setStep(1);
-          if (start.addVariant) setShowAdd(true);
+          if (resume) {
+            setGrid(before.grid);
+            setPrices(before.prices);
+            setShowAdd(before.showAdd);
+            setStep(keptStep);
+          } else {
+            setStep(1);
+            if (start?.addVariant) setShowAdd(true);
+          }
         }
       } catch (caught) {
         setSearchError(readErrorMessage(caught));
@@ -277,6 +316,7 @@ export function RestockIntake({
     setQuery("");
     setResults(null);
     setSelected(null);
+    setPicked(null);
     setGrid(emptyGrid);
     setShowAdd(false);
     setPrices(blankPrices);
@@ -285,6 +325,7 @@ export function RestockIntake({
     );
     setErrors({});
     submission.reset();
+    resumePageDraft();
     setStep(0);
   }
 
