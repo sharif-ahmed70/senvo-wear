@@ -43,6 +43,9 @@ import {
 } from "./selling-context-selector";
 
 import { useAdminPermissions } from "../../../admin-shell";
+import {
+  usePageDraft,
+} from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
@@ -93,7 +96,10 @@ function ActivePosSale({
     [],
   );
   const [openingCounter, setOpeningCounter] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = usePageDraft(
+    "selected-session-id",
+    "",
+  );
   const [cart, setCart] = useState<PosCartDetailsContract | null>(null);
   const [checkout, setCheckout] = useState<PosCheckoutContract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,9 +119,9 @@ function ActivePosSale({
   const checkoutAttempt = useRef<CheckoutAttempt | null>(null);
   const selectedContext =
     contexts.find(({ session }) => session.id === selectedSessionId) ?? null;
-  const [itemDiscounts, setItemDiscounts] = useState<
+  const [itemDiscounts, setItemDiscounts] = usePageDraft<
     Record<string, ItemDiscountDraft>
-  >({});
+  >("item-discounts", {});
   // Every cashier who can check out may discount (same permission as checkout).
   const canDiscount =
     permissions.includes("POS:UPDATE") || permissions.includes("POS:APPROVE");
@@ -241,7 +247,7 @@ function ActivePosSale({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setSelectedSessionId]);
 
   async function handleOpenCounter(
     counterId: string,

@@ -41,6 +41,9 @@ import { ProductHistoryModal } from "./product-history-modal";
 import { ProductInventoryDrawer } from "./product-inventory-drawer";
 import { ProductThumb } from "../../_components/product-thumb";
 import styles from "./inventory-overview.module.css";
+import {
+  usePageDraft,
+} from "../../_lib/page-draft";
 
 const client = new AdminApiClient();
 
@@ -69,11 +72,20 @@ export function InventoryOverview({
   } | null>(null);
 
   // Filters
-  const [search, setSearch] = useState("");
-  const [selectedLocationId, setSelectedLocationId] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StockStatusFilter>("ALL");
+  const [search, setSearch] = usePageDraft("search", "");
+  const [selectedLocationId, setSelectedLocationId] = usePageDraft(
+    "selected-location-id",
+    "",
+  );
+  const [statusFilter, setStatusFilter] = usePageDraft<StockStatusFilter>(
+    "status-filter",
+    "ALL",
+  );
   // Category filter: a parent (Men/Women/Kids) includes its sub-categories.
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = usePageDraft(
+    "category-filter",
+    "",
+  );
   const [categories, setCategories] = useState<CategoryContract[]>([]);
   const [productCategory, setProductCategory] = useState<
     ReadonlyMap<string, string>

@@ -8,7 +8,6 @@ import type {
 import { PurchaseMemo } from "./purchase-memo";
 import {
   AlertCircle,
-  ArrowLeft,
   ChevronRight,
   Clock,
   Package,
@@ -23,6 +22,7 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./purchase-history-workspace.module.css";
+import { usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient();
 
@@ -148,9 +148,18 @@ function PurchaseListPanel({
   const [error, setError] = useState<string | null>(initialError ?? null);
 
   // Backend-supported filters only
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [supplierFilter, setSupplierFilter] = useState<string>("");
-  const [locationFilter, setLocationFilter] = useState<string>("");
+  const [statusFilter, setStatusFilter] = usePageDraft<string>(
+    "status-filter",
+    "",
+  );
+  const [supplierFilter, setSupplierFilter] = usePageDraft<string>(
+    "supplier-filter",
+    "",
+  );
+  const [locationFilter, setLocationFilter] = usePageDraft<string>(
+    "location-filter",
+    "",
+  );
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -476,11 +485,6 @@ function PurchaseDetailsPanel({
 
   return (
     <div className={styles.container}>
-      <Link className={styles.backLink} href="/procurement/purchases">
-        <ArrowLeft size={16} />
-        সকল ক্রয় তালিকায় ফিরে যান (Back to purchases)
-      </Link>
-
       <PageHeader
         description="ক্রয় আদেশের সম্পূর্ণ বিবরণ ও পণ্যের তালিকা।"
         eyebrow="Procurement / ক্রয় বিবরণ"

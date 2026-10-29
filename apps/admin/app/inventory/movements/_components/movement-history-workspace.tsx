@@ -38,6 +38,7 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "./movement-history-workspace.module.css";
+import { usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -77,15 +78,15 @@ export function MovementHistoryWorkspace({
 
   const canRead = permissions.includes("INVENTORY:READ");
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
-  const [locationId, setLocationId] = useState("");
-  const [type, setType] = useState<"" | MovementType>("");
-  const [status, setStatus] = useState<"" | MovementStatus>("");
-  const [filters, setFilters] = useState<Filters>({
+  const [locationId, setLocationId] = usePageDraft("location-id", "");
+  const [type, setType] = usePageDraft<"" | MovementType>("type", "");
+  const [status, setStatus] = usePageDraft<"" | MovementStatus>("status", "");
+  const [filters, setFilters] = usePageDraft<Filters>("filters", {
     locationId: "",
     status: "",
     type: "",
   });
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePageDraft("search", "");
   const [cursors, setCursors] = useState<Array<string | undefined>>([
     undefined,
   ]);

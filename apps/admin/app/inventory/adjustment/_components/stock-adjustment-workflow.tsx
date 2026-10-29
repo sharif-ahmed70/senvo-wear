@@ -13,7 +13,6 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   Barcode,
   Check,
@@ -42,6 +41,11 @@ import type { AdminPermissionKey } from "../../../_lib/admin-access";
 import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import styles from "../../receive/_components/receive-stock-workflow.module.css";
+import {
+  clearPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -91,21 +95,26 @@ export function StockAdjustmentWorkflow({
   const canCreateInventory = permissions.includes("INVENTORY:CREATE");
   const canReadCatalog = permissions.includes("CATALOG:READ");
 
-  const [step, setStep] = useState<Step>(1);
-  const [direction, setDirection] = useState<Direction>("IN");
+  const [step, setStep] = usePageDraft<Step>("step", 1, (kept) =>
+    kept === 4 ? undefined : kept,
+  );
+  const [direction, setDirection] = usePageDraft<Direction>("direction", "IN");
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const [products, setProducts] = useState<ProductContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
-  const [locationId, setLocationId] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [locationId, setLocationId] = usePageDraft("location-id", "");
+  const [selectedProductId, setSelectedProductId] = usePageDraft(
+    "selected-product-id",
+    "",
+  );
   const [productDetails, setProductDetails] =
     useState<ProductDetailsContract | null>(null);
-  const [productQuery, setProductQuery] = useState("");
+  const [productQuery, setProductQuery] = usePageDraft("product-query", "");
   const [scanValue, setScanValue] = useState("");
-  const [lines, setLines] = useState<AdjustmentLine[]>([]);
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
+  const [lines, setLines] = usePageDraft<AdjustmentLine[]>("lines", []);
+  const [reason, setReason] = usePageDraft("reason", "");
+  const [notes, setNotes] = usePageDraft("notes", "");
   const [outAcknowledged, setOutAcknowledged] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingProduct, setLoadingProduct] = useState(false);
@@ -119,6 +128,10 @@ export function StockAdjustmentWorkflow({
     useState<InventoryMovementContract | null>(null);
   const [postedMovement, setPostedMovement] =
     useState<InventoryMovementContract | null>(null);
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (postedMovement) clearPageDraft();
+  }, [postedMovement]);
   const [adjustmentId, setAdjustmentId] = useState(() => crypto.randomUUID());
 
   const loadFoundation = useCallback(async () => {
@@ -150,7 +163,7 @@ export function StockAdjustmentWorkflow({
     } finally {
       setLoading(false);
     }
-  }, [canReadCatalog, canReadInventory]);
+  }, [canReadCatalog, canReadInventory, setLocationId]);
 
   useEffect(() => {
     void loadFoundation();
@@ -501,6 +514,7 @@ export function StockAdjustmentWorkflow({
   }
 
   function resetAdjustment() {
+    resumePageDraft();
     setStep(1);
     setDirection("IN");
     setLines([]);
@@ -543,9 +557,6 @@ export function StockAdjustmentWorkflow({
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <div>
-          <Link className={styles.backLink} href="/inventory">
-            <ArrowLeft size={14} /> Inventory
-          </Link>
           <p className={styles.eyebrow}>Inventory correction</p>
           <h1>Stock Adjustment</h1>
           <p>

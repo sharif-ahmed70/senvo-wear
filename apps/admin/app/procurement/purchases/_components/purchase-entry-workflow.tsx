@@ -12,7 +12,6 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertCircle,
-  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   Clock,
@@ -27,6 +26,7 @@ import { AdminApiClient, AdminApiError } from "../../../_lib/api-client";
 import { useAdminPermissions } from "../../../admin-shell";
 import { PurchaseAccessNotice } from "./purchase-history-workspace";
 import styles from "./purchase-entry-workflow.module.css";
+import { clearPageDraft, usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient();
 
@@ -144,7 +144,10 @@ export function PurchaseEntryWorkflow({
   const canConfirm = permissions.includes("PROCUREMENT:UPDATE");
 
   // Step state: 1 = Header, 2 = Products & Variants, 3 = Review & Submit
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(initialStep ?? 1);
+  const [currentStep, setCurrentStep] = usePageDraft<1 | 2 | 3>(
+    "purchase-current-step",
+    initialStep ?? 1,
+  );
 
   // References
   const [suppliers, setSuppliers] = useState<SupplierContract[]>(
@@ -208,6 +211,10 @@ export function PurchaseEntryWorkflow({
       : null,
   );
   const [draftRestored, setDraftRestored] = useState<boolean>(false);
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (successMode) clearPageDraft();
+  }, [successMode]);
 
   // Recover uncommitted draft from session storage on mount
   useEffect(() => {
@@ -708,11 +715,6 @@ export function PurchaseEntryWorkflow({
 
   return (
     <div className={styles.container}>
-      <Link className={styles.backLink} href="/procurement/purchases">
-        <ArrowLeft size={16} />
-        ক্রয় তালিকায় ফিরে যান (Back to purchases)
-      </Link>
-
       <PageHeader
         description="সরবরাহকারী থেকে নতুন পণ্য গ্রহণ, ক্রয়মূল্য ও স্টক এন্ট্রি।"
         eyebrow="Procurement / নতুন ক্রয়"

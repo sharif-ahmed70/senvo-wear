@@ -8,7 +8,6 @@ import type {
 } from "@senvo/contracts";
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
   Plus,
   RefreshCw,
@@ -29,6 +28,7 @@ import {
   formatPayableDate,
 } from "../../suppliers/_components/supplier-payable-section";
 import styles from "./payments-workspace.module.css";
+import { clearPageDraft, usePageDraft } from "../../../_lib/page-draft";
 
 const client = new AdminApiClient();
 
@@ -135,9 +135,15 @@ export function PaymentsListPanel({
     initialPayments === undefined && !initialError,
   );
   const [error, setError] = useState(initialError ?? "");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [methodFilter, setMethodFilter] = useState<string>("ALL");
-  const [supplierFilter, setSupplierFilter] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = usePageDraft("search-query", "");
+  const [methodFilter, setMethodFilter] = usePageDraft<string>(
+    "method-filter",
+    "ALL",
+  );
+  const [supplierFilter, setSupplierFilter] = usePageDraft<string>(
+    "supplier-filter",
+    "ALL",
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -454,16 +460,18 @@ export function NewPaymentForm({
   const [suppliers, setSuppliers] = useState<SupplierContract[]>(
     initialSuppliers ?? [],
   );
-  const [selectedSupplierId, setSelectedSupplierId] =
-    useState<string>(targetSupplierId);
-  const [amountTaka, setAmountTaka] = useState("");
-  const [paymentDate, setPaymentDate] = useState(() =>
+  const [selectedSupplierId, setSelectedSupplierId] = usePageDraft<string>(
+    "selected-supplier-id",
+    targetSupplierId,
+  );
+  const [amountTaka, setAmountTaka] = usePageDraft("amount-taka", "");
+  const [paymentDate, setPaymentDate] = usePageDraft("payment-date", () =>
     new Date().toISOString().slice(0, 10),
   );
   const [paymentMethod, setPaymentMethod] =
-    useState<SupplierPaymentMethodContract>("CASH");
-  const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("");
+    usePageDraft<SupplierPaymentMethodContract>("payment-method", "CASH");
+  const [reference, setReference] = usePageDraft("reference", "");
+  const [notes, setNotes] = usePageDraft("notes", "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [loadingSuppliers, setLoadingSuppliers] = useState(
@@ -486,7 +494,7 @@ export function NewPaymentForm({
       }
     }
     void fetchSuppliers();
-  }, [initialSuppliers, selectedSupplierId]);
+  }, [initialSuppliers, selectedSupplierId, setSelectedSupplierId]);
 
   if (!canCreate) {
     return (
@@ -538,6 +546,7 @@ export function NewPaymentForm({
       };
 
       await client.recordSupplierPayment(input);
+      clearPageDraft();
       router.push(`/procurement/suppliers/${selectedSupplierId}`);
     } catch (err) {
       setError(errorMessage(err));
@@ -548,14 +557,6 @@ export function NewPaymentForm({
   return (
     <div className={styles.container}>
       <div>
-        <Link
-          className={styles.secondaryButton}
-          href="/procurement/payments"
-          style={{ marginBottom: "1rem" }}
-        >
-          <ArrowLeft size={16} />
-          <span>পেমেন্ট তালিকায় ফিরে যান</span>
-        </Link>
         <PageHeader
           description="সরবরাহকারীকে দেওয়া অর্থ বা বিল পরিশোধের হিসাব সংরক্ষণ করুন।"
           eyebrow="Procurement / নতুন পেমেন্ট"

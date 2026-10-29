@@ -38,6 +38,11 @@ import {
 import { VariantMatrixSection } from "./variant-matrix-section";
 export { VariantMatrixSection } from "./variant-matrix-section";
 import styles from "./product-create-wizard.module.css";
+import {
+  clearPageDraft,
+  resumePageDraft,
+  usePageDraft,
+} from "../../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
@@ -103,16 +108,24 @@ const blankBasics: BasicsState = {
 export function ProductCreateWizard() {
   const [references, setReferences] = useState<ReferenceData | null>(null);
   const [referenceError, setReferenceError] = useState("");
-  const [step, setStep] = useState<Step>(0);
-  const [basics, setBasics] = useState<BasicsState>(blankBasics);
-  const [variants, setVariants] = useState<VariantDraft[]>([
-    createVariantDraft(),
-  ]);
+  const [step, setStep] = usePageDraft<Step>("product-step", 0);
+  const [basics, setBasics] = usePageDraft<BasicsState>(
+    "product-basics",
+    blankBasics,
+  );
+  const [variants, setVariants] = usePageDraft<VariantDraft[]>(
+    "product-variants",
+    [createVariantDraft()],
+  );
   const [media, setMedia] = useState<MediaDraft[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<SaveResult | null>(null);
   const [partialSave, setPartialSave] = useState<PartialSave | null>(null);
+  // Saved: the entry must not come back filled in.
+  useEffect(() => {
+    if (result) clearPageDraft();
+  }, [result]);
 
   useEffect(() => {
     let active = true;
@@ -187,6 +200,7 @@ export function ProductCreateWizard() {
   }
 
   function reset() {
+    resumePageDraft();
     media.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     setBasics(blankBasics);
     setVariants([createVariantDraft()]);

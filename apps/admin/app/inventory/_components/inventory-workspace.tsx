@@ -29,6 +29,7 @@ import {
   AdminApiError,
   type AdminApiResult,
 } from "../../_lib/api-client";
+import { usePageDraft } from "../../_lib/page-draft";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -128,9 +129,12 @@ function InventoryTab({
 }
 
 function AvailabilityView() {
-  const [search, setSearch] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [filters, setFilters] = useState({ locationId: "", search: "" });
+  const [search, setSearch] = usePageDraft("stock-search", "");
+  const [locationId, setLocationId] = usePageDraft("stock-location-id", "");
+  const [filters, setFilters] = usePageDraft("stock-filters", {
+    locationId: "",
+    search: "",
+  });
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const pager = useInventoryPager<InventoryAvailabilityReadContract>(
     useCallback(
@@ -293,10 +297,14 @@ function LocationsView() {
 }
 
 function MovementsView() {
-  const [locationId, setLocationId] = useState("");
-  const [status, setStatus] = useState("");
-  const [type, setType] = useState("");
-  const [filters, setFilters] = useState({ locationId, status, type });
+  const [locationId, setLocationId] = usePageDraft("movements-location-id", "");
+  const [status, setStatus] = usePageDraft("movements-status", "");
+  const [type, setType] = usePageDraft("movements-type", "");
+  const [filters, setFilters] = usePageDraft("movements-filters", {
+    locationId,
+    status,
+    type,
+  });
   const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
   const pager = useInventoryPager<InventoryMovementHistoryContract>(
     useCallback(

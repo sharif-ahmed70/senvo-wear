@@ -13,6 +13,7 @@ import {
 import { AdminAppFrame } from "./_components/admin-app-frame";
 import { NoAccessState } from "./_components/no-access-state";
 import { AdminAuthClient, type AdminCredentials } from "./_lib/admin-auth";
+import { clearAllPageDrafts } from "./_lib/page-draft";
 import {
   canAccessPath,
   type AdminPermissionKey,
@@ -182,6 +183,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const handleLogout = useCallback(async () => {
     if (state.kind !== "authenticated") return;
     await authClient.logout(state.credentials);
+    clearAllPageDrafts();
     setState({ kind: "unauthenticated" });
   }, [state]);
 

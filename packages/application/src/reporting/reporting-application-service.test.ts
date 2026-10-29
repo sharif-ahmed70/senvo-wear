@@ -3,6 +3,7 @@ import {
   type DashboardReadModel,
   type DashboardReadRepository,
   type PermissionKey,
+  type Role,
 } from "@senvo/domain";
 import { describe, expect, it } from "vitest";
 import type { ApplicationAuthorizationService } from "../context/authorization.js";
@@ -77,9 +78,13 @@ const contextPermissions: ApplicationAuthorizationService = {
       : Promise.reject(new AuthorizationError()),
 };
 
-function service() {
+function service(role: Role = "OWNER") {
   const calls: boolean[] = [];
   const dashboards: DashboardReadRepository = {
+    actorRole: (id, organization) =>
+      Promise.resolve(
+        id === userId && organization === organizationId ? role : null,
+      ),
     readDashboard: (input) => {
       calls.push(input.includeFinancials);
       return Promise.resolve({
@@ -115,22 +120,42 @@ const OWNER: PermissionKey[] = [
 ];
 
 describe("ReportingApplicationService.getDashboardSummary", () => {
-  it("omits financials entirely without POS APPROVE", async () => {
-    const harness = service();
+  it("shows staff sales but no cost, profit or stock value", async () => {
+    const harness = service("STAFF");
     const result = await harness.service.getDashboardSummary(
       context(STAFF),
       {},
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect("financials" in result.data).toBe(false);
-    expect(JSON.stringify(result.data)).not.toMatch(/salesMinor|refunds/u);
-    expect(harness.calls).toEqual([false]);
+    expect(harness.calls).toEqual([true]);
+    const financials = result.data.financials;
+    expect(financials?.todaySalesMinor).toBeTypeOf("number");
+    expect(financials?.period.saleCount).toBeTypeOf("number");
+    expect(financials && "stock" in financials).toBe(false);
+    expect(JSON.stringify(result.data)).not.toMatch(
+      /costMinor|profitMinor|productProfits|uncosted/u,
+    );
     expect(result.data.attention).toMatchObject({
       lowStockVariants: 2,
       outOfStockVariants: 3,
       pendingOrders: 5,
     });
+  });
+
+  it("keeps profit from managers and admins too", async () => {
+    for (const role of ["ADMIN", "MANAGER"] as const) {
+      const result = await service(role).service.getDashboardSummary(
+        context(OWNER),
+        {},
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.financials?.period.saleCount).toBe(2);
+      expect(JSON.stringify(result.data)).not.toMatch(
+        /costMinor|profitMinor|productProfits|uncosted/u,
+      );
+    }
   });
 
   it("includes financials for owners", async () => {

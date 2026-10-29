@@ -94,27 +94,31 @@ export function dashboardModelFromSummary(
     ? periodLabel(period.from, period.to, summary.businessDate)
     : "Today";
   if (period) {
-    const costedSales = period.profitMinor + period.costMinor;
-    metrics.push(
-      {
-        href: "/sales/orders",
-        label: "Sales",
-        meta: `${changeLabel(period.salesMinor, period.previousSalesMinor)} vs previous period`,
-        value: formatMinor(period.salesMinor),
-      },
-      {
+    metrics.push({
+      href: "/sales/orders",
+      label: "Sales",
+      meta: `${changeLabel(period.salesMinor, period.previousSalesMinor)} vs previous period`,
+      value: formatMinor(period.salesMinor),
+    });
+    // Profit only for roles that may see costs (the others get no cost data).
+    const { costMinor, profitMinor, uncostedSalesMinor } = period;
+    if (profitMinor !== undefined && costMinor !== undefined) {
+      const costedSales = profitMinor + costMinor;
+      metrics.push({
         // Opens profit per product for the same period.
         href: `/reports/profit?from=${period.from}&to=${period.to}`,
         label: "Profit (estimated)",
         meta:
-          period.uncostedSalesMinor > 0
-            ? `${formatMinor(period.uncostedSalesMinor)} of sales has no cost yet`
+          uncostedSalesMinor !== undefined && uncostedSalesMinor > 0
+            ? `${formatMinor(uncostedSalesMinor)} of sales has no cost yet`
             : costedSales > 0
-              ? `${((period.profitMinor / costedSales) * 100).toFixed(1)}% margin`
+              ? `${((profitMinor / costedSales) * 100).toFixed(1)}% margin`
               : "No costed sales",
-        tone: period.profitMinor < 0 ? "attention" : "default",
-        value: formatMinor(period.profitMinor),
-      },
+        tone: profitMinor < 0 ? "attention" : "default",
+        value: formatMinor(profitMinor),
+      });
+    }
+    metrics.push(
       {
         href: "/pos/checkouts",
         label: "Sales count",

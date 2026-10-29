@@ -9,7 +9,6 @@ import type {
 import {
   AlertCircle,
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
   ImagePlus,
   LoaderCircle,
@@ -147,10 +146,6 @@ export function ProductInventoryDetail({
 
   return (
     <main className="inventory-page product-detail-page">
-      <Link className="inventory-back-link" href="/catalog/products">
-        <ArrowLeft aria-hidden="true" size={16} />
-        Products
-      </Link>
       <header className="inventory-header">
         <div>
           <p className="page-eyebrow">{product.product.productCode}</p>

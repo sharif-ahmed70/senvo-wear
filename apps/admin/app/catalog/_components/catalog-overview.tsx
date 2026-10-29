@@ -36,6 +36,7 @@ import {
 import { AdminApiClient } from "../../_lib/api-client";
 import { useAdminPermissions } from "../../admin-shell";
 import styles from "./catalog-overview.module.css";
+import { usePageDraft } from "../../_lib/page-draft";
 
 const PAGE_SIZE = 8;
 const client = new AdminApiClient({
@@ -146,7 +147,10 @@ export function CatalogOverview({
   const [categories, setCategories] = useState<CategoryContract[]>([]);
   const [colors, setColors] = useState<ColorContract[]>([]);
   const [sizes, setSizes] = useState<SizeContract[]>([]);
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [viewMode, setViewMode] = usePageDraft<"cards" | "table">(
+    "view-mode",
+    "cards",
+  );
   const [rowDetails, setRowDetails] = useState<
     Record<string, ProductRowDetail>
   >({});
@@ -160,10 +164,10 @@ export function CatalogOverview({
   const detailLoading = pendingBatches > 0;
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [categoryId, setCategoryId] = useState("ALL");
-  const [status, setStatus] = useState("ALL");
-  const [page, setPage] = useState(1);
+  const [query, setQuery] = usePageDraft("query", "");
+  const [categoryId, setCategoryId] = usePageDraft("category-id", "ALL");
+  const [status, setStatus] = usePageDraft("status", "ALL");
+  const [page, setPage] = usePageDraft("page", 1);
 
   const load = useCallback(async () => {
     setState("loading");
@@ -254,9 +258,14 @@ export function CatalogOverview({
       });
   }, [canReadInventory, visibleProducts]);
 
+  // Back to page 1 when a filter changes (not when a kept page opens).
+  const lastFilters = useRef(JSON.stringify([categoryId, query, status]));
   useEffect(() => {
+    const now = JSON.stringify([categoryId, query, status]);
+    if (now === lastFilters.current) return;
+    lastFilters.current = now;
     setPage(1);
-  }, [categoryId, query, status]);
+  }, [categoryId, query, setPage, status]);
 
   const counts = useMemo(
     () => ({

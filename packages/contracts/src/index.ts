@@ -5401,7 +5401,10 @@ export const dashboardSummaryContractSchema = z
               .strict(),
           )
           .length(7),
-        /** The picked period. Profit is estimated (see the domain notes). */
+        /**
+         * The picked period. Profit is estimated (see the domain notes).
+         * Cost and profit fields are left out for roles that may not see costs.
+         */
         period: z
           .object({
             averageSaleMinor: dashboardMinorSchema,
@@ -5415,13 +5418,13 @@ export const dashboardSummaryContractSchema = z
                 .strict(),
             ),
             /** Net of returns in the period, so it can be negative. */
-            costMinor: z.number().int(),
+            costMinor: z.number().int().optional(),
             daily: z
               .array(
                 z
                   .object({
                     date: calendarDateSchema,
-                    profitMinor: z.number().int(),
+                    profitMinor: z.number().int().optional(),
                     salesMinor: dashboardMinorSchema,
                   })
                   .strict(),
@@ -5453,8 +5456,9 @@ export const dashboardSummaryContractSchema = z
                   })
                   .strict(),
               )
-              .max(500),
-            profitMinor: z.number().int(),
+              .max(500)
+              .optional(),
+            profitMinor: z.number().int().optional(),
             refundsMinor: dashboardMinorSchema,
             saleCount: dashboardCountSchema,
             salesMinor: dashboardMinorSchema,
@@ -5472,17 +5476,18 @@ export const dashboardSummaryContractSchema = z
               )
               .max(5),
             /** Net of returns in the period, so it can be negative. */
-            uncostedSalesMinor: z.number().int(),
+            uncostedSalesMinor: z.number().int().optional(),
           })
           .strict(),
         refundsTodayMinor: dashboardMinorSchema,
-        /** On-hand stock valued at moving average cost. */
+        /** On-hand stock valued at moving average cost (cost roles only). */
         stock: z
           .object({
             costMinor: dashboardMinorSchema,
             uncostedUnits: dashboardCountSchema,
           })
-          .strict(),
+          .strict()
+          .optional(),
         todaySaleCount: dashboardCountSchema,
         todaySalesMinor: dashboardMinorSchema,
         topProducts: z
