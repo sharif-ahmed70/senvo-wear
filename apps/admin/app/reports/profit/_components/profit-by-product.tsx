@@ -4,7 +4,6 @@ import type { DashboardSummaryContract } from "@senvo/contracts";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowLeft,
   LoaderCircle,
   Search,
 } from "lucide-react";
@@ -25,7 +24,24 @@ const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL,
 });
 
-type Period = NonNullable<DashboardSummaryContract["financials"]>["period"];
+type SalesPeriod = NonNullable<DashboardSummaryContract["financials"]>["period"];
+// Cost and profit come only to roles that may see costs.
+type Period = SalesPeriod &
+  Required<
+    Pick<
+      SalesPeriod,
+      "costMinor" | "productProfits" | "profitMinor" | "uncostedSalesMinor"
+    >
+  >;
+
+function withProfit(period: SalesPeriod | undefined): Period | null {
+  return period?.productProfits &&
+    period.costMinor !== undefined &&
+    period.profitMinor !== undefined &&
+    period.uncostedSalesMinor !== undefined
+    ? (period as Period)
+    : null;
+}
 
 type LoadState =
   | { kind: "loading" }
@@ -90,9 +106,10 @@ export function ProfitByProduct() {
         from: period.from,
         to: period.to,
       });
+      const withCosts = withProfit(result.data.financials?.period);
       setState(
-        result.data.financials
-          ? { kind: "ready", period: result.data.financials.period }
+        withCosts
+          ? { kind: "ready", period: withCosts }
           : { kind: "forbidden" },
       );
     } catch (caught) {
@@ -176,10 +193,6 @@ export function ProfitByProduct() {
 
   return (
     <main className={styles.page}>
-      <Link className={styles.backLink} href="/">
-        <ArrowLeft aria-hidden="true" size={15} /> Dashboard
-      </Link>
-
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>Reports · লাভের হিসাব</p>

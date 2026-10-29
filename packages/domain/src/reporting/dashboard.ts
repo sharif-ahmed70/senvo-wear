@@ -1,4 +1,5 @@
 import { ValidationApplicationError } from "../errors.js";
+import type { Role } from "../identity/domain/models.js";
 
 /**
  * Admin dashboard read model.
@@ -50,6 +51,10 @@ import { ValidationApplicationError } from "../errors.js";
  *   over every stock location x the variant's current moving average cost.
  *   Units of variants without a known cost are left out of the value and
  *   reported as `uncostedUnits`; negative on-hand counts as zero.
+ * - Who sees what: sales figures (totals, counts, channels, top products) go
+ *   to everyone who may read the dashboard, so the whole shop team knows how
+ *   the day is going. Cost, profit and stock value go only to the owner; for
+ *   everyone else those fields are left out (not zeroed).
  */
 export const DASHBOARD_MAX_RANGE_DAYS = 366;
 export const DASHBOARD_TIME_ZONE = "Asia/Dhaka";
@@ -219,7 +224,8 @@ export type DashboardSummary = {
     last7Days: Array<{ date: string; salesMinor: number }>;
     period: DashboardPeriodSummary;
     refundsTodayMinor: number;
-    stock: DashboardStockValue;
+    /** Left out for roles that may not see costs. */
+    stock?: DashboardStockValue;
     todaySaleCount: number;
     todaySalesMinor: number;
     topProducts: Array<{
@@ -291,6 +297,10 @@ export type DashboardTopProduct = {
   revenueMinor: number;
 };
 
+/**
+ * costMinor, profitMinor, productProfits, uncostedSalesMinor and the daily
+ * profitMinor are left out for roles that may not see costs.
+ */
 export type DashboardPeriodSummary = {
   averageSaleMinor: number;
   channels: Array<{
@@ -298,20 +308,20 @@ export type DashboardPeriodSummary = {
     previousPeriodMinor: number;
     salesMinor: number;
   }>;
-  costMinor: number;
-  daily: Array<{ date: string; profitMinor: number; salesMinor: number }>;
+  costMinor?: number;
+  daily: Array<{ date: string; profitMinor?: number; salesMinor: number }>;
   from: string;
   previousSalesMinor: number;
   /** Ranked by profit; adds up to the period's profit and cost. */
-  productProfits: DashboardProductProfit[];
+  productProfits?: DashboardProductProfit[];
   /** Estimated: see the definitions at the top of this file. */
-  profitMinor: number;
+  profitMinor?: number;
   refundsMinor: number;
   saleCount: number;
   salesMinor: number;
   to: string;
   topProducts: DashboardTopProduct[];
-  uncostedSalesMinor: number;
+  uncostedSalesMinor?: number;
 };
 
 /** Raw aggregates for the picked period. */
@@ -360,16 +370,20 @@ export type DashboardReadRepository = {
     organizationId: string;
     windows: DashboardWindows;
   }): Promise<DashboardReadModel>;
+  /** The user's role in the organization (who may see profit). */
+  actorRole?(userId: string, organizationId: string): Promise<Role | null>;
 };
 
 /**
- * Builds the dashboard. Financial figures are read only when the caller may
- * see them; otherwise the block is absent (not zeroed).
+ * Builds the dashboard. Sales figures are read only when the caller may see
+ * them; otherwise the block is absent (not zeroed). `includeCosts` (default:
+ * same as includeFinancials) adds cost, profit and stock value to them.
  */
 export async function getDashboardSummary(
   repository: DashboardReadRepository,
   input: {
     from?: string;
+    includeCosts?: boolean;
     includeFinancials: boolean;
     now: Date;
     organizationId: string;
@@ -425,8 +439,44 @@ export async function getDashboardSummary(
       ),
       yesterdaySalesMinor: daily.get(windows.yesterdayDate)?.salesMinor ?? 0,
     };
+    if (!(input.includeCosts ?? input.includeFinancials)) {
+      summary.financials = withoutCosts(summary.financials);
+    }
   }
   return summary;
+}
+
+type DashboardFinancials = NonNullable<DashboardSummary["financials"]>;
+
+/**
+ * Sales only: cost, profit and stock value removed. Built field by field, so
+ * a cost figure added later is not passed on by accident.
+ */
+export function withoutCosts(
+  financials: DashboardFinancials,
+): DashboardFinancials {
+  const { period } = financials;
+  return {
+    channels: financials.channels,
+    last7Days: financials.last7Days,
+    period: {
+      averageSaleMinor: period.averageSaleMinor,
+      channels: period.channels,
+      daily: period.daily.map(({ date, salesMinor }) => ({ date, salesMinor })),
+      from: period.from,
+      previousSalesMinor: period.previousSalesMinor,
+      refundsMinor: period.refundsMinor,
+      saleCount: period.saleCount,
+      salesMinor: period.salesMinor,
+      to: period.to,
+      topProducts: period.topProducts,
+    },
+    refundsTodayMinor: financials.refundsTodayMinor,
+    todaySaleCount: financials.todaySaleCount,
+    todaySalesMinor: financials.todaySalesMinor,
+    topProducts: financials.topProducts,
+    yesterdaySalesMinor: financials.yesterdaySalesMinor,
+  };
 }
 
 /** Totals, zero-filled daily series and channel rows for the picked period. */

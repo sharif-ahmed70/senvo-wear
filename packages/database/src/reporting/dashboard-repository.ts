@@ -16,7 +16,7 @@ import { availabilityCtes } from "../inventory/read-repository.js";
 
 type DashboardPrismaClient = Pick<
   PrismaClient,
-  "$queryRaw" | "salesOrder" | "salesSession"
+  "$queryRaw" | "organizationMembership" | "salesOrder" | "salesSession"
 >;
 
 const statusList = (statuses: readonly string[]) =>
@@ -62,6 +62,14 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
           : Promise.resolve(null),
       ]);
     return { financials, inventory, openSessions, pendingOrders, recentOrders };
+  }
+
+  async actorRole(userId: string, organizationId: string) {
+    const membership = await this.prisma.organizationMembership.findFirst({
+      select: { role: true },
+      where: { organizationId, status: "ACTIVE", userId },
+    });
+    return membership?.role ?? null;
   }
 
   private async countPendingOrders(organizationId: string) {

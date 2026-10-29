@@ -46,10 +46,9 @@ export class ReportingApplicationService {
   }
 
   /**
-   * REPORT READ gives the operational dashboard. The `financials` block
-   * (sales, refunds, channels, top products) is added only when the caller
-   * also holds POS APPROVE, the permission that already guards cash
-   * settlement; otherwise it is left out entirely.
+   * REPORT READ gives the dashboard with the shop's sales: totals, counts,
+   * refunds, channels and top products, which the whole team may know.
+   * Cost, profit and stock value are added only for the owner.
    */
   getDashboardSummary(
     context: ApplicationExecutionContext,
@@ -70,13 +69,11 @@ export class ReportingApplicationService {
           resource: "REPORT",
         },
       );
-      const includeFinancials = await this.allows(trusted, {
-        action: "APPROVE",
-        resource: "POS",
-      });
+      const includeCosts = await this.isOwner(trusted);
       const summary = await getDashboardSummary(this.dependencies.dashboards, {
         from: parsed.data.from,
-        includeFinancials,
+        includeCosts,
+        includeFinancials: true,
         to: parsed.data.to,
         now: this.clock.now(),
         organizationId: trusted.organizationId,
@@ -99,21 +96,16 @@ export class ReportingApplicationService {
     });
   }
 
-  private async allows(
+  /** Read from the membership, not the session, so a role change counts. */
+  private async isOwner(
     context: ValidatedApplicationExecutionContext,
-    permission: { action: "APPROVE"; resource: "POS" },
   ): Promise<boolean> {
-    try {
-      await requireAuthorization(
-        this.dependencies.authorizationService,
-        context,
-        permission,
-      );
-      return true;
-    } catch (error) {
-      if (error instanceof AuthorizationError) return false;
-      throw error;
-    }
+    const { dashboards } = this.dependencies;
+    if (!context.userId || !dashboards.actorRole) return false;
+    return (
+      (await dashboards.actorRole(context.userId, context.organizationId)) ===
+      "OWNER"
+    );
   }
 
   private async execute<T>(

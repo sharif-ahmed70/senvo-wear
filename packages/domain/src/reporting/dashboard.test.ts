@@ -302,6 +302,38 @@ describe("getDashboardSummary", () => {
     expect(calls[0]?.includeFinancials).toBe(false);
   });
 
+  it("gives sales without cost, profit or stock value when costs are hidden", async () => {
+    const model = emptyModel();
+    model.financials?.dailySales.push({
+      date: "2026-10-02",
+      saleCount: 2,
+      salesMinor: 40000,
+    });
+    const { repo } = repository(model);
+    const summary = await getDashboardSummary(repo, {
+      includeCosts: false,
+      includeFinancials: true,
+      now,
+      organizationId: "org",
+    });
+    expect(summary.financials).toMatchObject({
+      todaySaleCount: 2,
+      todaySalesMinor: 40000,
+    });
+    expect(summary.financials && "stock" in summary.financials).toBe(false);
+    const period = summary.financials?.period;
+    expect(period?.saleCount).toBeTypeOf("number");
+    for (const field of [
+      "costMinor",
+      "productProfits",
+      "profitMinor",
+      "uncostedSalesMinor",
+    ]) {
+      expect(period && field in period).toBe(false);
+    }
+    expect(period?.daily.every((day) => !("profitMinor" in day))).toBe(true);
+  });
+
   it("reads today and yesterday from the daily rows", async () => {
     const model = emptyModel();
     model.financials?.dailySales.push(
