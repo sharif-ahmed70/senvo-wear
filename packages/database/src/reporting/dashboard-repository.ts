@@ -39,6 +39,90 @@ const returnedCostSql = Prisma.sql`CASE
 END`;
 
 /**
+ * The Asia/Dhaka business date of a stored timestamp. The app sends times
+ * as UTC wall-clock text, which PostgreSQL reads in the server's TimeZone
+ * (the shop laptop's server runs America/Los_Angeles), and Prisma reads them
+ * back the same way, so they look right in the app but are shifted inside
+ * SQL. Undoing the session zone first gives the real moment; on a UTC
+ * server this changes nothing. Window bounds need no fix: they are sent the
+ * same way, so they are shifted alike.
+ */
+const businessDateSql = (column: string) =>
+  Prisma.sql`to_char(((${Prisma.raw(column)} AT TIME ZONE current_setting('TimeZone')) AT TIME ZONE 'UTC') AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD')`;
+
+/**
+ * Net sales entries of [start, end), as the CTEs `exchange_orders` and
+ * `sales_entries` (at, channel, amount, counted):
+ * - each confirmed sale adds its total and counts as one sale, except the
+ *   new bill of an exchange, which is not a new sale (counted = 0);
+ * - each POS return takes its credit off on the day it came back, under the
+ *   sale's channel.
+ * An exchange is recognised by the refund the POS writes for its credit,
+ * keyed `exchange-<new checkout id>`. So an even exchange adds nothing and
+ * only a price difference moves the day's sales.
+ */
+function salesEntriesSql(organizationId: string, start: Date, end: Date) {
+  return Prisma.sql`
+    exchange_orders AS (
+      SELECT checkout.sales_order_id
+      FROM payment_refunds refund
+      INNER JOIN pos_checkout_records checkout
+        ON checkout.organization_id = refund.organization_id
+       AND refund.idempotency_key = 'exchange-' || checkout.id::text
+      WHERE refund.organization_id = ${organizationId}::uuid
+    ),
+    sales_entries AS (
+      SELECT
+        sale.confirmed_at AS at,
+        sale.channel::text AS channel,
+        sale.total_minor::bigint AS amount,
+        CASE WHEN exchange.sales_order_id IS NULL THEN 1 ELSE 0 END AS counted
+      FROM sales_orders sale
+      LEFT JOIN exchange_orders exchange
+        ON exchange.sales_order_id = sale.id
+      WHERE sale.organization_id = ${organizationId}::uuid
+        AND sale.status::text IN (${statusList(SALE_ORDER_STATUSES)})
+        AND sale.confirmed_at >= ${start}
+        AND sale.confirmed_at < ${end}
+      UNION ALL
+      SELECT
+        sale_return.returned_at AS at,
+        sale.channel::text AS channel,
+        -sale_return.total_credit_minor::bigint AS amount,
+        0 AS counted
+      FROM pos_sale_returns sale_return
+      INNER JOIN sales_orders sale
+        ON sale.id = sale_return.sales_order_id
+       AND sale.organization_id = sale_return.organization_id
+      WHERE sale_return.organization_id = ${organizationId}::uuid
+        AND sale_return.returned_at >= ${start}
+        AND sale_return.returned_at < ${end}
+    )`;
+}
+
+/**
+ * Money actually given back to customers in [start, end). An exchange's
+ * refund only moves the credit onto the new bill, so just the part above
+ * the new bill's total (cash handed back) counts.
+ */
+function moneyBackSql(organizationId: string, start: Date, end: Date) {
+  return Prisma.sql`
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN exchange.id IS NULL THEN refund.amount_minor
+        ELSE GREATEST(refund.amount_minor - exchange.total_minor, 0)
+      END
+    ), 0)::bigint AS refunds_minor
+    FROM payment_refunds refund
+    LEFT JOIN pos_checkout_records exchange
+      ON exchange.organization_id = refund.organization_id
+     AND refund.idempotency_key = 'exchange-' || exchange.id::text
+    WHERE refund.organization_id = ${organizationId}::uuid
+      AND refund.issued_at >= ${start}
+      AND refund.issued_at < ${end}`;
+}
+
+/**
  * Read-only dashboard aggregates. Every query filters on organization_id;
  * see packages/domain/src/reporting/dashboard.ts for the definitions.
  */
@@ -173,15 +257,12 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
       this.prisma.$queryRaw<
         Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
       >`
+        WITH ${salesEntriesSql(organizationId, windows.last7Start, windows.tomorrowStart)}
         SELECT
-          to_char(confirmed_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
-          COUNT(*)::bigint AS sale_count,
-          COALESCE(SUM(total_minor), 0)::bigint AS sales_minor
-        FROM sales_orders
-        WHERE organization_id = ${organizationId}::uuid
-          AND status::text IN (${saleStatuses})
-          AND confirmed_at >= ${windows.last7Start}
-          AND confirmed_at < ${windows.tomorrowStart}
+          ${businessDateSql("at")} AS date,
+          SUM(counted)::bigint AS sale_count,
+          COALESCE(SUM(amount), 0)::bigint AS sales_minor
+        FROM sales_entries
         GROUP BY 1`,
       this.prisma.$queryRaw<
         Array<{
@@ -190,22 +271,16 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
           sales_minor: bigint;
         }>
       >`
+        WITH ${salesEntriesSql(organizationId, windows.previous7Start, windows.tomorrowStart)}
         SELECT
-          channel::text AS channel,
-          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at >= ${windows.last7Start}), 0)::bigint AS sales_minor,
-          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at < ${windows.last7Start}), 0)::bigint AS previous_minor
-        FROM sales_orders
-        WHERE organization_id = ${organizationId}::uuid
-          AND status::text IN (${saleStatuses})
-          AND confirmed_at >= ${windows.previous7Start}
-          AND confirmed_at < ${windows.tomorrowStart}
+          channel,
+          COALESCE(SUM(amount) FILTER (WHERE at >= ${windows.last7Start}), 0)::bigint AS sales_minor,
+          COALESCE(SUM(amount) FILTER (WHERE at < ${windows.last7Start}), 0)::bigint AS previous_minor
+        FROM sales_entries
         GROUP BY channel`,
-      this.prisma.$queryRaw<Array<{ refunds_minor: bigint }>>`
-        SELECT COALESCE(SUM(amount_minor), 0)::bigint AS refunds_minor
-        FROM payment_refunds
-        WHERE organization_id = ${organizationId}::uuid
-          AND issued_at >= ${windows.todayStart}
-          AND issued_at < ${windows.tomorrowStart}`,
+      this.prisma.$queryRaw<Array<{ refunds_minor: bigint }>>(
+        moneyBackSql(organizationId, windows.todayStart, windows.tomorrowStart),
+      ),
       this.prisma.$queryRaw<
         Array<{
           name: string;
@@ -307,15 +382,12 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
       this.prisma.$queryRaw<
         Array<{ date: string; sale_count: bigint; sales_minor: bigint }>
       >`
+        WITH ${salesEntriesSql(organizationId, range.start, range.end)}
         SELECT
-          to_char(confirmed_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
-          COUNT(*)::bigint AS sale_count,
-          COALESCE(SUM(total_minor), 0)::bigint AS sales_minor
-        FROM sales_orders
-        WHERE organization_id = ${organizationId}::uuid
-          AND status::text IN (${saleStatuses})
-          AND confirmed_at >= ${range.start}
-          AND confirmed_at < ${range.end}
+          ${businessDateSql("at")} AS date,
+          SUM(counted)::bigint AS sale_count,
+          COALESCE(SUM(amount), 0)::bigint AS sales_minor
+        FROM sales_entries
         GROUP BY 1`,
       this.prisma.$queryRaw<
         Array<{
@@ -327,7 +399,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
       >`
         WITH sale_lines AS (
           SELECT
-            to_char(sale.confirmed_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
+            ${businessDateSql("sale.confirmed_at")} AS date,
             line.line_total_minor::bigint AS revenue,
             CASE
               WHEN snap.is_cost_known AND snap.total_cost_minor IS NOT NULL
@@ -353,7 +425,7 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
           UNION ALL
           -- Returns count against the day they came back (negative).
           SELECT
-            to_char(sale_return.returned_at AT TIME ZONE ${DASHBOARD_TIME_ZONE}, 'YYYY-MM-DD') AS date,
+            ${businessDateSql("sale_return.returned_at")} AS date,
             -return_line.line_credit_minor::bigint AS revenue,
             -(${returnedCostSql})
           FROM pos_sale_return_lines return_line
@@ -380,22 +452,16 @@ export class PrismaDashboardReadRepository implements DashboardReadRepository {
       this.prisma.$queryRaw<
         Array<{ channel: string; previous_minor: bigint; sales_minor: bigint }>
       >`
+        WITH ${salesEntriesSql(organizationId, range.previousStart, range.end)}
         SELECT
-          channel::text AS channel,
-          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at >= ${range.start}), 0)::bigint AS sales_minor,
-          COALESCE(SUM(total_minor) FILTER (WHERE confirmed_at < ${range.start}), 0)::bigint AS previous_minor
-        FROM sales_orders
-        WHERE organization_id = ${organizationId}::uuid
-          AND status::text IN (${saleStatuses})
-          AND confirmed_at >= ${range.previousStart}
-          AND confirmed_at < ${range.end}
+          channel,
+          COALESCE(SUM(amount) FILTER (WHERE at >= ${range.start}), 0)::bigint AS sales_minor,
+          COALESCE(SUM(amount) FILTER (WHERE at < ${range.start}), 0)::bigint AS previous_minor
+        FROM sales_entries
         GROUP BY channel`,
-      this.prisma.$queryRaw<Array<{ refunds_minor: bigint }>>`
-        SELECT COALESCE(SUM(amount_minor), 0)::bigint AS refunds_minor
-        FROM payment_refunds
-        WHERE organization_id = ${organizationId}::uuid
-          AND issued_at >= ${range.start}
-          AND issued_at < ${range.end}`,
+      this.prisma.$queryRaw<Array<{ refunds_minor: bigint }>>(
+        moneyBackSql(organizationId, range.start, range.end),
+      ),
       this.prisma.$queryRaw<
         Array<{
           name: string;

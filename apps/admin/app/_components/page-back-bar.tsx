@@ -55,6 +55,7 @@ const routes: Record<string, Route> = {
     label: "Return Receipt",
     parent: "/pos/checkouts",
   },
+  "/pos/return-exchange": { label: "Return / Exchange" },
   "/pos/sell": { label: "New Sale" },
   "/pos/sessions": { label: "Sales Sessions" },
   "/pos/sessions/[id]/z-report": { label: "Z-Report", parent: "/pos/sessions" },

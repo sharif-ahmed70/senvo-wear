@@ -105,6 +105,59 @@
   padding: 8px 10px;
   width: 100%;
 }
+/* Return / Exchange: find the sale. */
+.pos-return-search {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 560px) {
+  .pos-return-search {
+    grid-template-columns: 1fr;
+  }
+}
+.pos-return-results-title {
+  font-size: 0.9rem;
+  margin: 6px 0 0;
+}
+.pos-sale-header__side {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Return: good piece back on sale, or to Return hold. */
+.pos-payment-form .pos-return-condition {
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+}
+.pos-return-condition legend {
+  color: var(--admin-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0 4px;
+}
+.pos-payment-form .pos-return-condition label {
+  align-items: center;
+  color: var(--admin-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.82rem;
+  gap: 8px;
+}
+.pos-payment-form .pos-return-condition input {
+  min-height: 0;
+  padding: 0;
+  width: auto;
+}
 .pos-payment-form .pos-confirmation {
   align-items: flex-start;
   color: var(--admin-text);

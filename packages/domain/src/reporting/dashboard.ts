@@ -14,8 +14,15 @@ import type { Role } from "../identity/domain/models.js";
  *   earlier. Every POS checkout creates exactly one sales order (channel POS)
  *   and runs it through confirm and fulfil, so counting sales orders counts a
  *   POS sale once; pos_checkout_records are never added on top.
- * - Refunds: payment_refunds by `issued_at`, reported on their own and never
- *   netted from sales.
+ * - Sales (net): sale totals minus POS return credits, each return on the day
+ *   it came back (under the sale's channel), so a day can be negative.
+ * - Exchange: a return plus a new bill paid with the return's credit; the POS
+ *   then refunds that credit on the old bill with the key
+ *   `exchange-<new checkout id>`. The new bill is not counted as a sale, and
+ *   an even exchange adds nothing to sales: only a price difference does.
+ * - Refunds: payment_refunds by `issued_at`, as money given back to
+ *   customers: of an exchange refund only the part above the new bill (cash
+ *   handed back) counts. Shown on their own, not taken off sales again.
  * - Pending orders: sales orders awaiting fulfilment, i.e. status RESERVED
  *   or CONFIRMED.
  * - Stock: per variant, available-to-sell summed over every stock location
@@ -38,9 +45,8 @@ import type { Role } from "../identity/domain/models.js";
  *   returned (`returned_at`), not the day of the sale: its credit is taken
  *   off line revenue and returned quantity x the sale line's unit cost (the
  *   cost snapshot, else the current moving average) off cost. An exchange is
- *   a return plus a new sale, so only the new item's profit remains. Sales
- *   totals and counts stay gross; with returns, cost and uncosted revenue of
- *   a period can be negative.
+ *   a return plus a new sale, so only the new item's profit remains. With
+ *   returns, sales, cost and uncosted revenue of a period can be negative.
  * - Profit by product: the same sale lines and cost rule as the period
  *   profit, grouped by product, so the rows add up to the period totals.
  *   Ranked by profit, at most DASHBOARD_PRODUCT_PROFIT_LIMIT products. The

@@ -71,26 +71,49 @@ export class PrismaSalesOrderReadRepository implements SalesOrderReadRepository 
       where: {
         organizationId: input.organizationId,
         ...(input.channel ? { channel: input.channel } : {}),
-        ...(input.search
-          ? {
-              orderNumber: {
-                contains: input.search,
-                mode: "insensitive" as const,
-              },
-            }
-          : {}),
         ...(input.status ? { status: input.status } : {}),
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { [comparison]: cursor.createdAt } },
+        AND: [
+          // Find a sale by its bill number, the customer's phone or the SKU
+          // of an item on it (a scanned barcode gives the SKU).
+          ...(input.search
+            ? [
                 {
-                  createdAt: cursor.createdAt,
-                  id: { [comparison]: cursor.id },
+                  OR: [
+                    {
+                      orderNumber: {
+                        contains: input.search,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    { customerPhone: { contains: input.search } },
+                    {
+                      lines: {
+                        some: {
+                          skuSnapshot: {
+                            equals: input.search,
+                            mode: "insensitive" as const,
+                          },
+                        },
+                      },
+                    },
+                  ],
                 },
-              ],
-            }
-          : {}),
+              ]
+            : []),
+          ...(cursor
+            ? [
+                {
+                  OR: [
+                    { createdAt: { [comparison]: cursor.createdAt } },
+                    {
+                      createdAt: cursor.createdAt,
+                      id: { [comparison]: cursor.id },
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
     });
     const pageRecords = records.slice(0, input.pageSize);

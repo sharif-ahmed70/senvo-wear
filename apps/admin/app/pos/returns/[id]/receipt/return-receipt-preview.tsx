@@ -99,7 +99,7 @@ export function ReturnReceiptPreview({
             <dd>{receipt.acceptedByName}</dd>
           </div>
           <div>
-            <dt>Return hold</dt>
+            <dt>রাখা হয়েছে</dt>
             <dd>{receipt.destinationLocationName}</dd>
           </div>
           <div>

@@ -122,7 +122,7 @@ export function dashboardModelFromSummary(
       {
         href: "/pos/checkouts",
         label: "Sales count",
-        meta: "Confirmed and fulfilled",
+        meta: "Exchanges are not new sales",
         value: String(period.saleCount),
       },
       {
@@ -134,7 +134,7 @@ export function dashboardModelFromSummary(
       {
         href: "/pos/checkouts",
         label: "Refunds",
-        meta: "Shown separately, not deducted",
+        meta: "Money given back to customers",
         value: formatMinor(period.refundsMinor),
       },
     );

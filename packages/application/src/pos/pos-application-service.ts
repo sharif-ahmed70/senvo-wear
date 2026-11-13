@@ -1519,7 +1519,7 @@ function mapBusinessRuleMessage(message: string): string {
   if (message.includes("legacy payment checkout"))
     return "Returns are not available for this older sale yet.";
   if (message.includes("Return hold"))
-    return "Choose an active Return hold location.";
+    return "Choose where the returned piece goes: selling stock or Return hold.";
   if (message.includes("remaining returnable quantity"))
     return "This quantity is more than the customer can still return.";
   if (message.includes("already fully returned"))

@@ -146,7 +146,25 @@ describe("POS sale returns", () => {
     ).rejects.toThrow("already fully returned");
   });
 
-  it("rejects legacy checkouts and sellable return destinations", async () => {
+  it("puts a good piece straight back into sellable stock", async () => {
+    const prep = preparation();
+    if (prep.destination) {
+      prep.destination.isSellable = true;
+      prep.destination.name = "Main Stock";
+      prep.destination.type = "WAREHOUSE";
+    }
+    const result = await recordPosSaleReturn(
+      {
+        inventory: inventory(),
+        receipts: new FakeReturnReceipts(),
+        returns: new FakeReturns(prep),
+      },
+      input(),
+    );
+    expect(result.saleReturn.destinationLocationId).toBe(ids.destination);
+  });
+
+  it("rejects legacy checkouts and unusable return destinations", async () => {
     const legacy = preparation();
     legacy.initialPayment = null;
     await expect(
@@ -159,14 +177,15 @@ describe("POS sale returns", () => {
         input(),
       ),
     ).rejects.toThrow("legacy payment checkout");
-    const sellable = preparation();
-    if (sellable.destination) sellable.destination.isSellable = true;
+    // Neither a Return hold nor sellable: e.g. a damaged-goods store.
+    const blocked = preparation();
+    if (blocked.destination) blocked.destination.type = "WAREHOUSE";
     await expect(
       recordPosSaleReturn(
         {
           inventory: inventory(),
           receipts: new FakeReturnReceipts(),
-          returns: new FakeReturns(sellable),
+          returns: new FakeReturns(blocked),
         },
         input(),
       ),
