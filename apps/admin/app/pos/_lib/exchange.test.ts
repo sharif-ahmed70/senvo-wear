@@ -4,10 +4,24 @@ import {
   exchangeCheckoutIdFrom,
   exchangeHref,
   exchangeRefundKey,
+  returnFirstFrom,
+  returnHref,
   splitExchange,
 } from "./exchange";
 
 const id = "b55c82d4-96e5-44cc-8982-b69a16100216";
+
+describe("return link", () => {
+  it("opens the sale with the return form at the top", () => {
+    expect(returnHref(id)).toBe(`/pos/checkouts/${id}?return=1`);
+    expect(returnFirstFrom({ return: "1" })).toBe(true);
+  });
+
+  it("keeps the normal order for a plain sale link", () => {
+    expect(returnFirstFrom({})).toBe(false);
+    expect(returnFirstFrom({ return: ["1", "1"] })).toBe(false);
+  });
+});
 
 describe("exchange", () => {
   it("customer pays only the difference for a dearer item", () => {

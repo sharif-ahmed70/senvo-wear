@@ -9,6 +9,21 @@
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
+/**
+ * The sale with the return form at the top. A #hash cannot do this: the
+ * return part is still loading when the page opens, so nothing scrolls.
+ */
+export function returnHref(checkoutId: string): string {
+  return `/pos/checkouts/${encodeURIComponent(checkoutId)}?return=1`;
+}
+
+/** True when the sale page was opened with returnHref. */
+export function returnFirstFrom(
+  query: Record<string, string | string[] | undefined>,
+): boolean {
+  return query.return === "1";
+}
+
 /** New Sale in exchange mode for the sale (checkout) that was returned. */
 export function exchangeHref(checkoutId: string): string {
   return `/pos/sell?exchange=${encodeURIComponent(checkoutId)}`;

@@ -13,6 +13,7 @@ import {
   submitScanOnEnterOrTab,
 } from "../../../_lib/scan-input";
 import { formatBdt } from "../../sell/_lib/money";
+import { returnHref } from "../../_lib/exchange";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -235,7 +236,7 @@ export function ReturnExchangeFinder() {
                   <td>
                     <Link
                       className="pos-secondary-button"
-                      href={`/pos/checkouts/${sale.checkoutId}#return-heading`}
+                      href={returnHref(sale.checkoutId)}
                     >
                       <Undo2 size={15} /> ফেরত / বদল
                     </Link>
