@@ -4,7 +4,7 @@ import type {
   PosCheckoutContract,
   SalesOrderListReadContract,
 } from "@senvo/contracts";
-import { LoaderCircle, Search, Undo2 } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Search, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { AdminApiClient } from "../../../_lib/api-client";
@@ -14,6 +14,7 @@ import {
 } from "../../../_lib/scan-input";
 import { formatBdt } from "../../sell/_lib/money";
 import { returnHref } from "../../_lib/exchange";
+import { CheckoutReturnWorkspace } from "../../checkouts/[id]/checkout-return-workspace";
 
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
@@ -93,6 +94,8 @@ export function ReturnExchangeFinder() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
+  // The bill being returned: its form opens here, not on the sale page.
+  const [selected, setSelected] = useState<FoundSale | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,6 +142,31 @@ export function ReturnExchangeFinder() {
   }
 
   const shown = results ?? recentSales(checkouts);
+
+  if (selected) {
+    return (
+      <>
+        <div className="pos-return-picked">
+          <button
+            className="pos-secondary-button"
+            onClick={() => setSelected(null)}
+            type="button"
+          >
+            <ArrowLeft size={16} /> অন্য বিল খুঁজুন
+          </button>
+          <span>
+            বিল <strong>{selected.orderNumber}</strong> ·{" "}
+            {formatBdt(selected.totalMinor)}
+          </span>
+          <Link href={returnHref(selected.checkoutId)}>পুরো বিল দেখুন</Link>
+        </div>
+        <CheckoutReturnWorkspace
+          checkoutId={selected.checkoutId}
+          key={selected.checkoutId}
+        />
+      </>
+    );
+  }
 
   return (
     <section className="pos-payment-page" aria-labelledby="return-finder">
@@ -234,12 +262,16 @@ export function ReturnExchangeFinder() {
                   <td data-label="কাস্টমার">{sale.customer}</td>
                   <td data-label="মোট">{formatBdt(sale.totalMinor)}</td>
                   <td>
-                    <Link
-                      className="pos-secondary-button"
-                      href={returnHref(sale.checkoutId)}
+                    <button
+                      className="pos-primary-button"
+                      onClick={() => {
+                        setSelected(sale);
+                        window.scrollTo({ top: 0 });
+                      }}
+                      type="button"
                     >
                       <Undo2 size={15} /> ফেরত / বদল
-                    </Link>
+                    </button>
                   </td>
                 </tr>
               ))}

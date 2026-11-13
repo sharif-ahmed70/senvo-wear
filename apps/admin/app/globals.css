@@ -2796,6 +2796,39 @@ a {
   justify-content: center;
   min-height: 42px;
 }
+/* The main action: filled, so it is easy to find (it had no colour). */
+.pos-primary-button {
+  background: var(--admin-accent);
+  border: 1px solid var(--admin-accent);
+  border-radius: 5px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 16px;
+  text-decoration: none;
+}
+.pos-primary-button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.pos-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.pos-return-picked {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px clamp(16px, 3vw, 34px) 0;
+}
+.pos-return-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pos-return-actions button {
+  min-height: 46px;
+}
 @media (max-width: 760px) {
   .pos-payment-line {
     grid-template-columns: 1fr;

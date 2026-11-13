@@ -6,12 +6,14 @@ import type {
   StockLocationReadContract,
 } from "@senvo/contracts";
 import {
+  ArrowLeftRight,
   CircleAlert,
   LoaderCircle,
   ReceiptText,
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -105,6 +107,9 @@ export function CheckoutReturnWorkspace({
     totalCreditMinor: number;
   } | null>(null);
   const attemptKey = useRef<string | null>(null);
+  // Set by the button pressed: open New Sale for the exchange after saving.
+  const exchangeAfter = useRef(false);
+  const router = useRouter();
 
   const load = useCallback(async () => {
     if (!canRead) return;
@@ -160,6 +165,15 @@ export function CheckoutReturnWorkspace({
         ...(reasonNote.trim() ? { reasonNote: reasonNote.trim() } : {}),
       });
       setAccount(result.data.account);
+      if (
+        exchangeAfter.current &&
+        canExchange &&
+        (result.data.account.refundableMinor ?? 0) > 0
+      ) {
+        attemptKey.current = null;
+        router.push(exchangeHref(checkoutId));
+        return;
+      }
       setSuccess({
         id: result.data.saleReturn.id,
         putBackForSale: condition === "GOOD",
@@ -237,9 +251,8 @@ export function CheckoutReturnWorkspace({
             ফেরত লেখা হয় না।
           </p>
           <p>
-            বদল (অন্য size/রং বা অন্য মাল): আগে এখানে মাল ফেরত নিন, তারপর
-            &quot;বদলে নতুন মাল দিন&quot; চাপুন। শুধু টাকা ফেরত দিতে নিচের
-            Refund ব্যবহার করুন।
+            কত পিস ফেরত লিখে নিচের বোতাম চাপুন: শুধু ফেরত, অথবা ফেরত নিয়ে
+            বদলে অন্য size/রং বা অন্য মাল।
           </p>
         </div>
         <button
@@ -479,18 +492,42 @@ export function CheckoutReturnWorkspace({
             Credit preview: {formatBdt(previewTotalMinor)}. The recorded amount
             is calculated again by the server.
           </p>
-          <button
-            className="pos-primary-button"
-            disabled={saving || locations.length === 0}
-            type="submit"
-          >
-            {saving ? (
-              <LoaderCircle className="barcode-spin" size={17} />
-            ) : (
-              <RotateCcw size={17} />
-            )}{" "}
-            Record return
-          </button>
+          <div className="pos-return-actions">
+            {canExchange ? (
+              <button
+                className="pos-primary-button"
+                disabled={saving || locations.length === 0}
+                onClick={() => {
+                  exchangeAfter.current = true;
+                }}
+                type="submit"
+              >
+                {saving ? (
+                  <LoaderCircle className="barcode-spin" size={17} />
+                ) : (
+                  <ArrowLeftRight size={17} />
+                )}{" "}
+                ফেরত নিয়ে বদল দিন (Exchange)
+              </button>
+            ) : null}
+            <button
+              className={
+                canExchange ? "pos-secondary-button" : "pos-primary-button"
+              }
+              disabled={saving || locations.length === 0}
+              onClick={() => {
+                exchangeAfter.current = false;
+              }}
+              type="submit"
+            >
+              {saving ? (
+                <LoaderCircle className="barcode-spin" size={17} />
+              ) : (
+                <RotateCcw size={17} />
+              )}{" "}
+              শুধু ফেরত নিন
+            </button>
+          </div>
         </form>
       ) : canCreate ? (
         <State

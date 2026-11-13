@@ -205,7 +205,8 @@ describe("admin routes", () => {
       />,
     );
     expect(workspace).toContain("Return access unavailable");
-    expect(workspace).not.toContain("Record return");
+    expect(workspace).not.toContain("শুধু ফেরত নিন");
+    expect(workspace).not.toContain("ফেরত নিয়ে বদল দিন");
     const receipt = renderToStaticMarkup(
       <ReturnReceiptPreview
         returnId="10000000-0000-4000-8000-000000000001"
