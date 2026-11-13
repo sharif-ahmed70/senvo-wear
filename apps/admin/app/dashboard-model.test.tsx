@@ -109,6 +109,8 @@ describe("dashboard model", () => {
     expect(html).toContain("+50.0%");
     expect(html).toContain("৳ 1,250.5");
     expect(html).toContain("No sales in this period.");
+    // The owner asked to hide the average sale everywhere.
+    expect(html).not.toContain("Average sale");
   });
 
   it("shows estimated profit and links every card", () => {

@@ -128,12 +128,6 @@ export function dashboardModelFromSummary(
       },
       {
         href: "/pos/checkouts",
-        label: "Average sale value",
-        meta: periodText,
-        value: formatMinor(period.averageSaleMinor),
-      },
-      {
-        href: "/pos/checkouts",
         label: "Refunds",
         meta: "Money given back to customers",
         value: formatMinor(period.refundsMinor),
