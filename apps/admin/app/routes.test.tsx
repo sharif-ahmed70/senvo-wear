@@ -273,12 +273,14 @@ describe("admin routes", () => {
         onReturnMore={() => undefined}
         success={{
           id: "10000000-0000-4000-8000-000000000002",
+          putBackForSale: true,
           receiptNumber: "RET-1001",
           totalCreditMinor: 3_000,
         }}
       />,
     );
     expect(html).toContain("Return recorded");
+    expect(html).toContain("barcode scan করে বিক্রি করা যাবে");
     expect(html).toContain("refund has not been issued yet");
     expect(html).toContain("View return receipt");
     expect(html).toContain("Print return receipt");

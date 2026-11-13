@@ -131,15 +131,17 @@ export async function recordPosSaleReturn(
     !preparation.order.fulfillmentMovementId
   )
     throw new BusinessRuleError("Only fulfilled POS sales can be returned.");
+  // A piece in good condition goes straight back to a sellable stock, so its
+  // barcode sells again; anything to check goes to a non-sellable Return
+  // hold first.
   const destination = preparation.destination;
   if (
     !destination ||
     destination.status !== "ACTIVE" ||
-    destination.type !== "RETURN_HOLD" ||
-    destination.isSellable
+    (!destination.isSellable && destination.type !== "RETURN_HOLD")
   )
     throw new BusinessRuleError(
-      "An active non-sellable Return hold location is required.",
+      "An active Return hold or sellable stock location is required.",
     );
 
   const priorByLine = new Map<string, number>();
@@ -210,7 +212,9 @@ export async function recordPosSaleReturn(
       quantity: line.quantity,
     })),
     movementNumber: `RET-${compactId}`,
-    note: "POS sale return received into Return hold",
+    note: destination.isSellable
+      ? "POS sale return put back for sale"
+      : "POS sale return received into Return hold",
     occurredAt: input.returnedAt,
     organizationId,
     referenceId: returnId,

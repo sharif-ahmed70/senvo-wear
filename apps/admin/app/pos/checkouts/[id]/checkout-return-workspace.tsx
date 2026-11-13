@@ -28,6 +28,24 @@ import { exchangeHref } from "../../_lib/exchange";
 const client = new AdminApiClient({
   baseUrl: process.env.NEXT_PUBLIC_SENVO_API_URL ?? "",
 });
+const holdTypes = ["QC_HOLD", "DAMAGE_HOLD", "RETURN_HOLD", "TRANSIT"];
+
+/** Where a returned piece can go: back on sale, or to Return hold. */
+export function returnDestinations(locations: StockLocationReadContract[]) {
+  const active = locations.filter((location) => location.status === "ACTIVE");
+  return {
+    holds: active.filter(
+      (location) => location.type === "RETURN_HOLD" && !location.isSellable,
+    ),
+    selling: active.filter(
+      (location) => location.isSellable && !holdTypes.includes(location.type),
+    ),
+  };
+}
+
+/** GOOD: back on sale (the barcode sells again). CHECK: to Return hold. */
+type ReturnCondition = "CHECK" | "GOOD";
+
 const reasonLabels: Record<PosReturnReasonCode, string> = {
   CHANGED_MIND: "Changed mind",
   DEFECTIVE: "Defective item",
@@ -66,8 +84,13 @@ export function CheckoutReturnWorkspace({
     permissions.includes("PAYMENT:READ") &&
     permissions.includes("SALES:READ");
   const [account, setAccount] = useState<PosReturnAccountContract | null>(null);
-  const [locations, setLocations] = useState<StockLocationReadContract[]>([]);
+  const [destinations, setDestinations] = useState<
+    ReturnType<typeof returnDestinations>
+  >({ holds: [], selling: [] });
+  const [condition, setCondition] = useState<ReturnCondition>("GOOD");
   const [destinationLocationId, setDestinationLocationId] = useState("");
+  const locations =
+    condition === "GOOD" ? destinations.selling : destinations.holds;
   const [reasonCode, setReasonCode] =
     useState<PosReturnReasonCode>("SIZE_OR_FIT");
   const [reasonNote, setReasonNote] = useState("");
@@ -77,6 +100,7 @@ export function CheckoutReturnWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
     id: string;
+    putBackForSale: boolean;
     receiptNumber: string;
     totalCreditMinor: number;
   } | null>(null);
@@ -97,15 +121,10 @@ export function CheckoutReturnWorkspace({
             }),
       ]);
       setAccount(returnsResult.data);
-      const returnHolds = locationsResult.data.items.filter(
-        (location) =>
-          location.status === "ACTIVE" &&
-          location.type === "RETURN_HOLD" &&
-          !location.isSellable,
-      );
-      setLocations(returnHolds);
+      const found = returnDestinations(locationsResult.data.items);
+      setDestinations(found);
       setDestinationLocationId(
-        (current) => current || returnHolds.at(0)?.id || "",
+        (current) => current || found.selling.at(0)?.id || "",
       );
     } catch (reason) {
       setError(messageFor(reason));
@@ -125,7 +144,7 @@ export function CheckoutReturnWorkspace({
       .filter(([, quantity]) => quantity > 0)
       .map(([salesOrderLineId, quantity]) => ({ quantity, salesOrderLineId }));
     if (!destinationLocationId || lines.length === 0) {
-      setError("Choose a Return hold location and at least one item quantity.");
+      setError("মাল কোথায় যাবে বেছে নিন, আর অন্তত একটা আইটেমের পিস লিখুন।");
       return;
     }
     attemptKey.current ??= `pos-return-${crypto.randomUUID()}`;
@@ -143,6 +162,7 @@ export function CheckoutReturnWorkspace({
       setAccount(result.data.account);
       setSuccess({
         id: result.data.saleReturn.id,
+        putBackForSale: condition === "GOOD",
         receiptNumber: result.data.saleReturn.receiptNumber,
         totalCreditMinor: result.data.saleReturn.totalCreditMinor,
       });
@@ -212,8 +232,9 @@ export function CheckoutReturnWorkspace({
           <span>Sales return</span>
           <h2 id="return-heading">Return items from {account.orderNumber}</h2>
           <p>
-            Returned stock goes to Return hold for review. No cash refund is
-            recorded here.
+            ভালো মাল সরাসরি বিক্রির stock-এ ফেরে, তার barcode আবার বিক্রিতে কাজ
+            করে। নষ্ট বা দেখে নিতে হবে এমন মাল Return Hold-এ যায়। এখানে টাকা
+            ফেরত লেখা হয় না।
           </p>
           <p>
             বদল (অন্য size/রং বা অন্য মাল): আগে এখানে মাল ফেরত নিন, তারপর
@@ -312,23 +333,56 @@ export function CheckoutReturnWorkspace({
           onSubmit={(event) => void submit(event)}
         >
           <div className="pos-form-grid">
-            <label>
-              Return hold location
-              <select
-                required
-                value={destinationLocationId}
-                onChange={(event) =>
-                  setDestinationLocationId(event.target.value)
-                }
-              >
-                <option value="">Choose location</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="pos-return-condition">
+              <legend>মালের অবস্থা</legend>
+              <label>
+                <input
+                  checked={condition === "GOOD"}
+                  name="return-condition"
+                  onChange={() => {
+                    setCondition("GOOD");
+                    setDestinationLocationId(
+                      destinations.selling.at(0)?.id ?? "",
+                    );
+                  }}
+                  type="radio"
+                />
+                ভালো আছে — আবার বিক্রির জন্য stock-এ রাখুন
+              </label>
+              <label>
+                <input
+                  checked={condition === "CHECK"}
+                  name="return-condition"
+                  onChange={() => {
+                    setCondition("CHECK");
+                    setDestinationLocationId(
+                      destinations.holds.at(0)?.id ?? "",
+                    );
+                  }}
+                  type="radio"
+                />
+                নষ্ট / দেখে নিতে হবে — Return Hold-এ রাখুন
+              </label>
+            </fieldset>
+            {locations.length > 1 ? (
+              <label>
+                {condition === "GOOD" ? "কোন stock-এ" : "কোন Return Hold-এ"}
+                <select
+                  required
+                  value={destinationLocationId}
+                  onChange={(event) =>
+                    setDestinationLocationId(event.target.value)
+                  }
+                >
+                  <option value="">Choose location</option>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label>
               Reason
               <select
@@ -416,8 +470,9 @@ export function CheckoutReturnWorkspace({
           </div>
           {locations.length === 0 ? (
             <p className="pos-inline-error">
-              An active, non-sellable Return hold location is required before
-              recording a return.
+              {condition === "GOOD"
+                ? "বিক্রির কোনো চালু stock location নেই।"
+                : "কোনো চালু Return Hold location নেই। Inventory → Locations-এ একটা তৈরি করুন।"}
             </p>
           ) : null}
           <p className="pos-muted">
@@ -518,6 +573,7 @@ export function ReturnSuccessState({
   onReturnMore: () => void;
   success: {
     id: string;
+    putBackForSale: boolean;
     receiptNumber: string;
     totalCreditMinor: number;
   };
@@ -525,7 +581,12 @@ export function ReturnSuccessState({
   return (
     <section className="pos-inline-success" aria-live="polite">
       <strong>Return recorded</strong>
-      <span>Items received into Return hold | {success.receiptNumber}</span>
+      <span>
+        {success.putBackForSale
+          ? "মাল আবার বিক্রির stock-এ উঠেছে, barcode scan করে বিক্রি করা যাবে"
+          : "মাল Return Hold-এ রাখা হয়েছে"}{" "}
+        | {success.receiptNumber}
+      </span>
       <span>
         Return credit {formatBdt(success.totalCreditMinor)} | Adjusted total{" "}
         {formatBdt(account.adjustedPayableMinor ?? 0)}
