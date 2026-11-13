@@ -303,6 +303,17 @@ export type DashboardTopProduct = {
   revenueMinor: number;
 };
 
+/** One product's sales in the picked period, without cost (every role). */
+export type DashboardProductSale = Pick<
+  DashboardProductProfit,
+  | "name"
+  | "productCode"
+  | "productId"
+  | "quantity"
+  | "returnedQuantity"
+  | "revenueMinor"
+>;
+
 /**
  * costMinor, profitMinor, productProfits, uncostedSalesMinor and the daily
  * profitMinor are left out for roles that may not see costs.
@@ -320,6 +331,8 @@ export type DashboardPeriodSummary = {
   previousSalesMinor: number;
   /** Ranked by profit; adds up to the period's profit and cost. */
   productProfits?: DashboardProductProfit[];
+  /** Every product sold, most pieces first; the same rows without cost. */
+  productSales: DashboardProductSale[];
   /** Estimated: see the definitions at the top of this file. */
   profitMinor?: number;
   refundsMinor: number;
@@ -471,6 +484,7 @@ export function withoutCosts(
       daily: period.daily.map(({ date, salesMinor }) => ({ date, salesMinor })),
       from: period.from,
       previousSalesMinor: period.previousSalesMinor,
+      productSales: period.productSales,
       refundsMinor: period.refundsMinor,
       saleCount: period.saleCount,
       salesMinor: period.salesMinor,
@@ -529,6 +543,22 @@ export function summarizePeriod(
       .sort(
         (a, b) =>
           b.profitMinor - a.profitMinor ||
+          b.revenueMinor - a.revenueMinor ||
+          a.productId.localeCompare(b.productId),
+      )
+      .slice(0, DASHBOARD_PRODUCT_PROFIT_LIMIT),
+    productSales: period.productProfits
+      .map((row) => ({
+        name: row.name,
+        productCode: row.productCode,
+        productId: row.productId,
+        quantity: row.quantity,
+        returnedQuantity: row.returnedQuantity,
+        revenueMinor: row.revenueMinor,
+      }))
+      .sort(
+        (a, b) =>
+          b.quantity + b.returnedQuantity - (a.quantity + a.returnedQuantity) ||
           b.revenueMinor - a.revenueMinor ||
           a.productId.localeCompare(b.productId),
       )

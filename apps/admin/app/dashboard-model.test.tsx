@@ -117,6 +117,8 @@ describe("dashboard model", () => {
     expect(html).toContain("৳ 500.5");
     expect(html).toContain("40.0% margin");
     expect(html).toContain('href="/sales/orders"');
+    // Sales opens the products sold in the same period.
+    expect(html).toContain('href="/reports/sales?from=');
     expect(html).toContain('href="/pos/checkouts"');
     expect(html).toContain('href="/pos/sessions"');
     expect(html).toContain('href="/inventory"');
