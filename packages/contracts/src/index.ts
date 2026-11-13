@@ -5354,6 +5354,11 @@ export type GetDashboardSummaryServiceInputContract = z.infer<
 
 const dashboardCountSchema = z.number().int().nonnegative();
 const dashboardMinorSchema = z.number().int().nonnegative();
+/**
+ * Net sales: returns are taken off on the day they come back, so a day with
+ * more returns than sales is negative.
+ */
+const dashboardNetMinorSchema = z.number().int();
 
 /**
  * GET /reports/dashboard. Business day is the Asia/Dhaka calendar day; money
@@ -5386,8 +5391,8 @@ export const dashboardSummaryContractSchema = z
           z
             .object({
               channel: salesOrderChannelSchema,
-              previousPeriodMinor: dashboardMinorSchema,
-              salesMinor: dashboardMinorSchema,
+              previousPeriodMinor: dashboardNetMinorSchema,
+              salesMinor: dashboardNetMinorSchema,
             })
             .strict(),
         ),
@@ -5396,7 +5401,7 @@ export const dashboardSummaryContractSchema = z
             z
               .object({
                 date: calendarDateSchema,
-                salesMinor: dashboardMinorSchema,
+                salesMinor: dashboardNetMinorSchema,
               })
               .strict(),
           )
@@ -5407,13 +5412,13 @@ export const dashboardSummaryContractSchema = z
          */
         period: z
           .object({
-            averageSaleMinor: dashboardMinorSchema,
+            averageSaleMinor: dashboardNetMinorSchema,
             channels: z.array(
               z
                 .object({
                   channel: salesOrderChannelSchema,
-                  previousPeriodMinor: dashboardMinorSchema,
-                  salesMinor: dashboardMinorSchema,
+                  previousPeriodMinor: dashboardNetMinorSchema,
+                  salesMinor: dashboardNetMinorSchema,
                 })
                 .strict(),
             ),
@@ -5425,13 +5430,13 @@ export const dashboardSummaryContractSchema = z
                   .object({
                     date: calendarDateSchema,
                     profitMinor: z.number().int().optional(),
-                    salesMinor: dashboardMinorSchema,
+                    salesMinor: dashboardNetMinorSchema,
                   })
                   .strict(),
               )
               .max(366),
             from: calendarDateSchema,
-            previousSalesMinor: dashboardMinorSchema,
+            previousSalesMinor: dashboardNetMinorSchema,
             /**
              * Per product, ranked by profit; adds up to the totals. Sales
              * minus returns in the period, so amounts can be negative.
@@ -5461,7 +5466,7 @@ export const dashboardSummaryContractSchema = z
             profitMinor: z.number().int().optional(),
             refundsMinor: dashboardMinorSchema,
             saleCount: dashboardCountSchema,
-            salesMinor: dashboardMinorSchema,
+            salesMinor: dashboardNetMinorSchema,
             to: calendarDateSchema,
             topProducts: z
               .array(
@@ -5489,7 +5494,7 @@ export const dashboardSummaryContractSchema = z
           .strict()
           .optional(),
         todaySaleCount: dashboardCountSchema,
-        todaySalesMinor: dashboardMinorSchema,
+        todaySalesMinor: dashboardNetMinorSchema,
         topProducts: z
           .array(
             z
@@ -5502,7 +5507,7 @@ export const dashboardSummaryContractSchema = z
               .strict(),
           )
           .max(5),
-        yesterdaySalesMinor: dashboardMinorSchema,
+        yesterdaySalesMinor: dashboardNetMinorSchema,
       })
       .strict()
       .optional(),
