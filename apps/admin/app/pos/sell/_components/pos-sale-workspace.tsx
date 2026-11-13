@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, LoaderCircle, ShoppingCart } from "lucide-react";
+import { AlertCircle, LoaderCircle, ShoppingCart, Undo2 } from "lucide-react";
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -480,12 +481,19 @@ function ActivePosSale({
           <h1>New Sale</h1>
           <span>Scan items, review the order, and take payment.</span>
         </div>
-        {selectedContext ? (
-          <div className="pos-sale-header__counter">
-            <span>Sales counter</span>
-            <strong>{selectedContext.counter.name}</strong>
-          </div>
-        ) : null}
+        <div className="pos-sale-header__side">
+          {canExchange ? (
+            <Link className="pos-secondary-button" href="/pos/return-exchange">
+              <Undo2 aria-hidden="true" size={16} /> Return / Exchange
+            </Link>
+          ) : null}
+          {selectedContext ? (
+            <div className="pos-sale-header__counter">
+              <span>Sales counter</span>
+              <strong>{selectedContext.counter.name}</strong>
+            </div>
+          ) : null}
+        </div>
       </header>
       {exchange ? (
         <section aria-live="polite" className="pos-exchange-banner">

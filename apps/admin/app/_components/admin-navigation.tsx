@@ -17,6 +17,7 @@ import {
   ReceiptText,
   CircleDollarSign,
   Truck,
+  Undo2,
   FileText,
   Wallet,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const navigationIcons = {
   sessions: Clock3,
   checkouts: ReceiptText,
   newSale: CircleDollarSign,
+  returns: Undo2,
   suppliers: Truck,
   purchases: FileText,
   payments: Wallet,

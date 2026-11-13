@@ -53,6 +53,7 @@ export type AdminNavigationItem = {
     | "team"
     | "roles"
     | "newSale"
+    | "returns"
     | "counter"
     | "sessions"
     | "checkouts"
@@ -130,6 +131,19 @@ export const adminNavigationItems: readonly AdminNavigationItem[] = [
       "POS:UPDATE",
       "SALES:CREATE",
       "PAYMENT:CREATE",
+    ],
+  },
+  {
+    href: "/pos/return-exchange",
+    icon: "returns",
+    label: "Return / Exchange",
+    permissions: [
+      "POS:READ",
+      "POS:UPDATE",
+      "SALES:UPDATE",
+      "SALES_ORDER:READ",
+      "INVENTORY:CREATE",
+      "PAYMENT:APPROVE",
     ],
   },
   {
@@ -289,6 +303,17 @@ const routePermissions: ReadonlyArray<
   [
     "/pos/sell",
     ["POS:READ", "POS:CREATE", "POS:UPDATE", "SALES:CREATE", "PAYMENT:CREATE"],
+  ],
+  [
+    "/pos/return-exchange",
+    [
+      "POS:READ",
+      "POS:UPDATE",
+      "SALES:UPDATE",
+      "SALES_ORDER:READ",
+      "INVENTORY:CREATE",
+      "PAYMENT:APPROVE",
+    ],
   ],
   ["/organization", ["ORGANIZATION:READ"]],
   ["/store-locations", ["ORGANIZATION:READ"]],
