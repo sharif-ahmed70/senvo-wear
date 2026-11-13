@@ -54,6 +54,19 @@ export function foundSales(
     .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt));
 }
 
+/**
+ * The sales order search for a bill number, phone or SKU. No channel filter:
+ * POS saves counter sales as OFFLINE_STORE and booth sales as EVENT_BOOTH,
+ * and foundSales keeps only orders that have a POS checkout.
+ */
+export function saleSearchQuery(searchFor: string) {
+  return {
+    order: "NEWEST" as const,
+    pageSize: 50,
+    search: searchFor.slice(0, 64),
+  };
+}
+
 function recentSales(checkouts: readonly PosCheckoutContract[]): FoundSale[] {
   return [...checkouts]
     .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt))
@@ -115,12 +128,7 @@ export function ReturnExchangeFinder() {
           // Not a barcode: search by bill number, phone or SKU as typed.
         }
       }
-      const page = await client.listSalesOrders({
-        channel: "POS",
-        order: "NEWEST",
-        pageSize: 50,
-        search: searchFor.slice(0, 64),
-      });
+      const page = await client.listSalesOrders(saleSearchQuery(searchFor));
       setResults(foundSales(page.data.items, checkouts));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Search failed.");
