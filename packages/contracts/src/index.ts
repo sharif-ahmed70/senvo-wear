@@ -5463,6 +5463,24 @@ export const dashboardSummaryContractSchema = z
               )
               .max(500)
               .optional(),
+            /** Every product sold, most pieces first; no cost (all roles). */
+            productSales: z
+              .array(
+                z
+                  .object({
+                    name: z.string(),
+                    productCode: z.string(),
+                    productId: idSchema,
+                    /** Pieces sold minus pieces returned. */
+                    quantity: z.number().int(),
+                    /** Pieces returned in the period. */
+                    returnedQuantity: dashboardCountSchema,
+                    revenueMinor: z.number().int(),
+                  })
+                  .strict(),
+              )
+              .max(500)
+              .optional(),
             profitMinor: z.number().int().optional(),
             refundsMinor: dashboardMinorSchema,
             saleCount: dashboardCountSchema,

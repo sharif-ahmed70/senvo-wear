@@ -68,6 +68,7 @@ const routes: Record<string, Route> = {
   "/procurement/suppliers": { label: "Suppliers" },
   "/procurement/suppliers/[id]": { label: "Supplier" },
   "/reports/profit": { label: "লাভের হিসাব" },
+  "/reports/sales": { label: "কী কী বিক্রি হলো" },
   "/roles": { label: "Roles" },
   "/sales-orders": { label: "Sales Orders" },
   "/sales/booths": { label: "Booth History" },

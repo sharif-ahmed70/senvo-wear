@@ -95,7 +95,8 @@ export function dashboardModelFromSummary(
     : "Today";
   if (period) {
     metrics.push({
-      href: "/sales/orders",
+      // Opens the products sold in the same period (every role).
+      href: `/reports/sales?from=${period.from}&to=${period.to}`,
       label: "Sales",
       meta: `${changeLabel(period.salesMinor, period.previousSalesMinor)} vs previous period`,
       value: formatMinor(period.salesMinor),

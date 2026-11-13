@@ -146,6 +146,25 @@ describe("dashboard period", () => {
       extraCostMinor: 500,
       profitMinor: 500,
     });
+    // Sales per product for every role: most pieces first, no cost.
+    expect(summary.productSales).toEqual([
+      {
+        name: "Panjabi",
+        productCode: "PAN-0001",
+        productId: "11111111-1111-4111-8111-111111111111",
+        quantity: 3,
+        returnedQuantity: 0,
+        revenueMinor: 24_000,
+      },
+      {
+        name: "Shirt",
+        productCode: "SHI-0001",
+        productId: "22222222-2222-4222-8222-222222222222",
+        quantity: 2,
+        returnedQuantity: 0,
+        revenueMinor: 6_000,
+      },
+    ]);
     expect(summary).toMatchObject({
       averageSaleMinor: 15_000,
       costMinor: 6_000,
@@ -332,6 +351,8 @@ describe("getDashboardSummary", () => {
       expect(period && field in period).toBe(false);
     }
     expect(period?.daily.every((day) => !("profitMinor" in day))).toBe(true);
+    // Products sold stay visible without costs.
+    expect(period?.productSales).toEqual([]);
   });
 
   it("reads today and yesterday from the daily rows", async () => {
